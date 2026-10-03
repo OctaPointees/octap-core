@@ -7,22 +7,25 @@
     "node": ">=24.15 <25"
   },
   "workspaces": [
-    "packages/contracts",
-    "packages/core",
-    "packages/infrastructure",
-    "packages/sdk",
-    "apps/api",
-    "apps/mcp",
-    "apps/worker"
+    "api/libs/contracts",
+    "api/libs/core",
+    "api/libs/infrastructure",
+    "ts-sdks",
+    "api",
+    "mcp",
+    "workers",
+    "frontend"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "node scripts/build.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "eslint apps packages",
+    "lint": "eslint api mcp workers ts-sdks frontend",
     "start:api": "npm run start --workspace @octap/api",
     "start:mcp": "npm run start --workspace @octap/mcp",
     "start:worker": "npm run start --workspace @octap/worker",
-    "check:bootstrap": "node scripts/check-bootstrap.mjs"
+    "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "dev:frontend": "npm run dev --workspace @octap/frontend",
+    "start:frontend": "npm run start --workspace @octap/frontend"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

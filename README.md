@@ -1,5 +1,5 @@
 # OctaP Source
-Backend scaffold for NestJS, MCP, the TypeScript SDK and Sui.
+Product scaffold for Sui contracts, the NestJS API, Next.js frontend, TypeScript SDKs, MCP and workers.
 This folder sits next to the design knowledge base at [OctaP-Designing](https://github.com/OctaPointees/OctaP-Designing).
 
 **Scaffold only:** modules, package boundaries, draft interfaces, empty worker classes
@@ -7,15 +7,17 @@ and empty Move modules. There are no business endpoints, tool handlers, backgrou
 database schemas, real service connections or transaction execution.
 
 ## Layout
+
 | Location | Responsibility |
 | --- | --- |
-| apps/api | NestJS REST gateway and Node gRPC adapter slots |
-| apps/mcp | Separate NestJS host for the future MCP Streamable HTTP adapter |
-| apps/worker | Shared-service worker composition and job slots |
-| packages/core | Shared application modules, domain boundary and integration ports |
-| packages/infrastructure | PostgreSQL, Redis, Sui, Enoki, ClickHouse, Walrus, Seal, Stripe, webhooks and realtime slots |
-| packages/contracts | Draft shared types, REST and protobuf contract locations |
-| packages/sdk | Node client and REST/gRPC transport interfaces, browser/webhook helper slots |
+| api | NestJS REST gateway, Node gRPC adapter slots and shared backend libraries |
+| frontend | Next.js merchant/admin portal and customer/POS reference route slots |
+| mcp | Separate NestJS host for the future MCP Streamable HTTP adapter |
+| workers | Shared-service worker composition and job slots |
+| api/libs/core | Shared application modules, domain boundary and integration ports |
+| api/libs/infrastructure | PostgreSQL, Redis, Sui, Enoki, ClickHouse, Walrus, Seal, Stripe, webhooks and realtime slots |
+| api/libs/contracts | Draft shared types, REST and protobuf contract locations |
+| ts-sdks | Node client and REST/gRPC transport interfaces, browser/webhook helper slots |
 | contracts/sui | Move module slots matching the technical object map |
 
 ## Local checks
@@ -34,6 +36,7 @@ After building:
 npm run start:api
 npm run start:mcp
 npm run start:worker
+npm run dev:frontend
 ```
 
 API and MCP hosts bind to localhost on ports 3000 and 3001; all requests return 404.
@@ -46,7 +49,8 @@ See [architecture and source mapping](docs/architecture.md) for design traceabil
 Dependencies are tooling choices for this scaffold, not proof of protocol or chain compatibility.
 
 ## Validation
-Lint, all seven TypeScript builds/typechecks, and Nest dependency-graph bootstrap
-for API/MCP/worker passed locally. A package-lock.json records resolved dependencies.
+Lint, a build from scratch, all eight workspace typechecks and Nest bootstrap passed locally.
+Frontend routes are empty placeholders; no authentication or business UI is implemented.
+A package-lock.json records resolved dependencies.
 Move build was attempted with Sui CLI 1.79.0 but could not fetch the framework from
 GitHub in this environment; Move compilation remains unverified.
