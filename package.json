@@ -1,0 +1,34 @@
+{
+  "name": "octap-source",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15 <25"
+  },
+  "workspaces": [
+    "packages/contracts",
+    "packages/core",
+    "packages/infrastructure",
+    "packages/sdk",
+    "apps/api",
+    "apps/mcp",
+    "apps/worker"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint apps packages",
+    "start:api": "npm run start --workspace @octap/api",
+    "start:mcp": "npm run start --workspace @octap/mcp",
+    "start:worker": "npm run start --workspace @octap/worker",
+    "check:bootstrap": "node scripts/check-bootstrap.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

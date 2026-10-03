@@ -1,0 +1,6 @@
+[package]
+name = "octap"
+edition = "2024"
+
+[addresses]
+octap = "0x0"
