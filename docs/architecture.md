@@ -6,7 +6,7 @@
 - [Product scope](https://github.com/OctaPointees/OctaP-Designing/blob/main/brainstorming/outputs/02-product-and-scope.md): SDK/identity/approval boundaries and non-transferable points.
 - [Conceptual ERD](https://github.com/OctaPointees/OctaP-Designing/blob/main/reports/report-1/erd/report-explanation.md) and [use-case model](https://github.com/OctaPointees/OctaP-Designing/blob/main/reports/report-1/usecase.drawio.xml): entity vocabulary and functional boundaries, not a physical schema.
 - Report 3 remains a continuously edited template, not a scaffold baseline.
-- Team direction: four product roots (contracts, api, frontend, ts-sdks), workers inside API, MCP in a separate repo.
+- Team direction: OctaP_Core owns contracts, api and ts-sdks; OctaP_Web owns frontend; workers stay inside API; MCP stays in a separate repo.
 
 ## What was borrowed from Harbor
 
@@ -41,14 +41,16 @@ It does not copy Harbor's Hono/Effect runtime, wallet custody, queue library, bu
 | Public API types/OpenAPI/protobuf | ts-sdks/packages/contracts |
 | Merchant Node SDK | ts-sdks/packages/node |
 | Browser login/signing/offline helpers | ts-sdks/packages/browser |
-| Merchant/admin/customer/POS surfaces | frontend/src/app and feature components/hooks |
+| Merchant/admin/customer/POS surfaces | OctaP_Web/src/app and feature components/hooks |
 | MCP | Separate repository; consume authenticated API/SDK boundaries |
 
 ## Dependencies and processes
 
 HTTP transport -> domain/application services -> domain ports -> infrastructure adapters.
 Workers -> processors -> the same domain/application services and ports.
-Frontend hooks -> typed API client -> public API; Node/browser SDKs -> public contracts.
+OctaP_Web hooks -> typed API client -> public API; Node/browser SDKs -> public contracts.
+Web consumes versioned public types/SDKs and has its own package manifest, lockfile, build and CI.
+Core owns business and chain rules; Web owns presentation and interaction state.
 Domain code never imports controllers or vendor SDKs. Infrastructure owns vendor details.
 
 HTTP and worker share one build/package but run as separate processes. AppModule does not

@@ -1,5 +1,5 @@
 {
-  "name": "octap-source",
+  "name": "octap-core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,18 +10,15 @@
     "ts-sdks/packages/contracts",
     "ts-sdks/packages/node",
     "ts-sdks/packages/browser",
-    "api",
-    "frontend"
+    "api"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "eslint api/src ts-sdks/packages frontend scripts",
+    "lint": "eslint api/src ts-sdks/packages scripts",
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
-    "check:bootstrap": "node scripts/check-bootstrap.mjs",
-    "dev:frontend": "npm run dev --workspace @octap/frontend",
-    "start:frontend": "npm run start --workspace @octap/frontend"
+    "check:bootstrap": "node scripts/check-bootstrap.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

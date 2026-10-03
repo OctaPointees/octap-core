@@ -1,56 +1,47 @@
-# OctaP Source
-Project scaffold based on the [OctaP design knowledge base](https://github.com/OctaPointees/OctaP-Designing).
+# OctaP Core
 
-## Product directories
+Core scaffold based on the [OctaP design knowledge base](https://github.com/OctaPointees/OctaP-Designing).
+The frontend lives in [OctaP_Web](https://github.com/OctaPointees/OctaP_Web). MCP belongs to a separate repository.
+
+## Repository ownership
 
 ```text
-contracts/                 Sui Move package and contract tooling slots
-api/                       NestJS API and background workers in one package
-  src/
-    main.ts                HTTP entrypoint
-    worker.ts              Worker entrypoint
-    api/                   REST, gRPC, DTOs, guards and interceptors
-    domain/                Feature services, domain rules, workers and processors
-    infra/                 Repositories, cache, vendor clients, queue and realtime
-    config/                Startup configuration slots
-    observability/         Shared logging, tracing and metrics slots
-  db/                      PostgreSQL and ClickHouse migration slots
-  scripts/                 Operational tooling slots
-  tests/                   Unit, integration and contract test locations
-frontend/                  Next.js merchant/admin portal and customer/POS reference
-  src/app/                 Route and layout boundaries
-  src/components/          UI organized by feature, shared components and primitives
-  src/hooks/               Feature query/state hooks
-  src/lib/                 API access, auth, config, monitoring and pure helpers
-  src/providers/           Session/tenant/query provider composition
-  src/types/               Shared wire types and view-model location
-  tests/                   Unit, integration and end-to-end test locations
+contracts/sui/             Move object modules, tests and contract tooling slots
+api/
+  src/main.ts             NestJS HTTP entrypoint
+  src/worker.ts           Separate worker process in the same API package
+  src/api/                REST/gRPC adapters, DTOs, guards and interceptors
+  src/domain/             Feature modules, services and colocated workers/processors
+  src/infra/              Repositories, vendor clients, cache, queue and realtime
+  src/config/             Startup configuration slots
+  src/observability/      Shared telemetry slots
+  db/                     PostgreSQL and ClickHouse migration slots
+  tests/                  Unit, integration and contract tests
+  scripts/                Operational tooling slots
 ts-sdks/packages/
-  contracts/               Shared TypeScript, OpenAPI and protobuf boundaries
-  node/                    Node merchant SDK, REST/gRPC and webhook helpers
-  browser/                 Browser-safe login/signing/offline helper slots
-docs/                      Architecture and implementation guide
-scripts/                   Workspace build and bootstrap checks
+  contracts/              Public TypeScript types, OpenAPI and protobuf boundaries
+  node/                   Merchant Node SDK transport and webhook slots
+  browser/                Browser-safe login, signing and offline helper slots
+docs/                     Architecture map and implementation guide
+scripts/                  Ordered workspace builds and Nest bootstrap checks
 ```
 
-MCP is a separate repository. There is no MCP server package or top-level workers package here.
-Workers have their own entrypoint/process, share API domain services, and are registered only
-in `api/src/worker.module.ts`.
+Core owns application rules, persistence, workers, on-chain invariants and SDK source.
+Web owns routes, components, hooks, providers and presentation state. It consumes the public
+API and versioned public packages; it never imports Core's domain or infrastructure files.
+Private merchant and vendor credentials remain in Core.
 
-**Scaffold only:** services, controllers, clients, repositories, processors and workers are
-empty classes. Pages are empty route slots. No business endpoints, RPCs, consumers, queues,
-DB schemas, integration calls, signing, transaction execution or authorization are implemented.
+**Scaffold only:** service/controller/repository/client/worker classes and Move modules reserve
+implementation locations. There are no business endpoints, consumers, database schemas,
+external calls, transaction execution or authorization behavior.
 
-## Team starting points
-
-Read [the implementation guide](docs/implementation-guide.md) to find where a use case belongs.
-Read [the architecture map](docs/architecture.md) for dependency rules and source traceability.
-The organization borrows Harbor's product boundaries, transport/domain/infra separation and
-colocated workers while keeping NestJS and OctaP's technical decisions.
+Read [the implementation guide](docs/implementation-guide.md) and
+[architecture map](docs/architecture.md) before implementing a feature.
+The folder organization borrows Harbor's transport/domain/infra separation while retaining NestJS.
 
 ## Local commands
 
-Use Node.js 24 LTS and npm 11. Install from the repository root.
+Use Node.js 24 LTS and npm 11, from this repository root:
 
 ```sh
 npm ci
@@ -58,25 +49,25 @@ npm run lint
 npm run build
 npm run typecheck
 npm run check:bootstrap
-```
-
-The build script follows workspace dependency order: shared contracts, SDKs, API and frontend.
-Run separate processes after building:
-
-```sh
 npm run start:api
 npm run start:worker
-npm run dev:frontend
 ```
 
-API binds to localhost:3000; no business route is registered. Frontend development binds to
-localhost:3002; its pages are empty. The worker initializes its Nest context then exits because
-no consumers are implemented. The API does not load WorkerModule.
-Backend `.env` files are not loaded automatically; supply environment variables through your
-shell or Node's --env-file option. Root [.env.example](.env.example) lists reserved private settings.
+Build order is shared contracts, Node/browser SDKs, then API. API binds to localhost:3000;
+no business routes are registered. Only WorkerModule registers worker providers. The worker
+initializes its Nest context and exits because consumers are still placeholders.
+Supply environment variables through your shell or Node's --env-file option; [.env.example](.env.example)
+lists reserved private settings.
+
+## Public package handoff
+
+OctaP_Web installs a committed npm tarball of @octap/contracts so a standalone clone builds
+without a sibling Core checkout or registry credentials. The only source of these wire types is
+`ts-sdks/packages/contracts`. This artifact carries types, not backend business rules.
+See [the package handoff guide](docs/package-handoff.md) for regeneration and future registry releases.
 
 ## Verification scope
 
-Lint, builds, typechecks and Nest bootstrap validate scaffold composition, not business behavior.
-No feature tests are claimed for placeholders. Move compilation remains unverified because
-Sui CLI 1.79.0 could not download its framework dependency from GitHub in this environment.
+Lint, build, typecheck and Nest bootstrap validate scaffold composition. Feature behavior remains
+unimplemented. Move compilation remains unverified because the Sui CLI could not download
+its framework dependency from GitHub in this environment.

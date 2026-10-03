@@ -68,10 +68,13 @@ infra/queue. Job schemas, retries, schedules and consumers remain unimplemented.
 
 ## Frontend and SDKs
 
-Pages/layouts under frontend/src/app compose surfaces. Put product UI in components/<feature>,
+Pages/layouts under [OctaP_Web](https://github.com/OctaPointees/OctaP_Web)/src/app compose surfaces. Put product UI in components/<feature>,
 queries/mutations and view state in hooks/<feature>, transport mapping in lib/octap-api, and
 session/tenant/query composition in providers. Keep auth, config and monitoring in their named
 lib folders. Server-enforced permissions remain necessary even when layouts are separate.
+
+Web is built and deployed independently. Consume Core public contracts through versioned packages,
+never through a sibling folder import. See [package handoff](package-handoff.md).
 
 Node client and REST/gRPC transports belong in ts-sdks/packages/node. Customer signing/login
 and provisional offline snapshots belong in packages/browser. Shared DTOs belong in
