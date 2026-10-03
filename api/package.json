@@ -6,15 +6,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "@nestjs/core": "^11.0.0",
-    "@octap/core": "0.0.0",
-    "@octap/infrastructure": "0.0.0",
-    "@nestjs/platform-express": "^11.0.0"
+    "@nestjs/platform-express": "^11.0.0",
+    "@octap/contracts": "0.0.0",
+    "@mysten/sui": "^2.0.0"
   }
 }

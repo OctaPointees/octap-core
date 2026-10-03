@@ -1,19 +1,6 @@
 {
-  "name": "@octap/sdk",
+  "name": "@octap/ts-sdks-root",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@octap/contracts": "0.0.0"
-  }
+  "description": "Typed API contracts, Node integration SDK and browser helpers. Managed by root npm workspaces."
 }
