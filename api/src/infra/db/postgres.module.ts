@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { drizzleProvider, postgresClientProvider, DRIZZLE_DB, POSTGRES_CLIENT } from './postgres.provider.js';
 import { OrganizationsRepository } from './repositories/organizations.repository.js';
 import { MembersRepository } from './repositories/members.repository.js';
 import { PoliciesRepository } from './repositories/policies.repository.js';
@@ -9,5 +10,22 @@ import { ProjectionsRepository } from './repositories/projections.repository.js'
 import { WebhooksRepository } from './repositories/webhooks.repository.js';
 import { BillingRepository } from './repositories/billing.repository.js';
 import { IndexerCursorsRepository } from './repositories/indexer-cursors.repository.js';
-@Module({ providers: [OrganizationsRepository, MembersRepository, PoliciesRepository, OperationsRepository, OutboxRepository, CampaignApprovalsRepository, ProjectionsRepository, WebhooksRepository, BillingRepository, IndexerCursorsRepository], exports: [OrganizationsRepository, MembersRepository, PoliciesRepository, OperationsRepository, OutboxRepository, CampaignApprovalsRepository, ProjectionsRepository, WebhooksRepository, BillingRepository, IndexerCursorsRepository] })
+
+const repositories = [
+  OrganizationsRepository,
+  MembersRepository,
+  PoliciesRepository,
+  OperationsRepository,
+  OutboxRepository,
+  CampaignApprovalsRepository,
+  ProjectionsRepository,
+  WebhooksRepository,
+  BillingRepository,
+  IndexerCursorsRepository,
+];
+
+@Module({
+  providers: [postgresClientProvider, drizzleProvider, ...repositories],
+  exports: [DRIZZLE_DB, POSTGRES_CLIENT, ...repositories],
+})
 export class PostgresModule {}

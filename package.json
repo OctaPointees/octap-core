@@ -18,7 +18,11 @@
     "lint": "eslint api/src ts-sdks/packages scripts",
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
-    "check:bootstrap": "node scripts/check-bootstrap.mjs"
+    "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "db:generate": "npm run db:generate --workspace @octap/api",
+    "db:migrate": "npm run db:migrate --workspace @octap/api",
+    "db:push": "npm run db:push --workspace @octap/api",
+    "db:studio": "npm run db:studio --workspace @octap/api"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
