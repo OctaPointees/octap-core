@@ -163,12 +163,12 @@ export const loyaltyTransactionsRelations = relations(
 );
 
 // VOUCHERS RELATIONS
-export const vouchersRelations = relations(vouchers, ({ one }) => ({
+export const vouchersRelations = relations(vouchers, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [vouchers.organizationId],
     references: [organizations.id],
   }),
-  ownership: one(voucherOwnerships),
+  ownerships: many(voucherOwnerships),
 }));
 
 // VOUCHER OWNERSHIPS RELATIONS

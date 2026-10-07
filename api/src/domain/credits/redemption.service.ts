@@ -1,4 +1,54 @@
-import { Injectable } from '@nestjs/common';
-/** Scaffold: Customer-signed redemption coordination. No use cases are implemented. */
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import type { RedeemPointsRequest, RedeemPointsResponse } from '@octap/contracts';
+
 @Injectable()
-export class RedemptionService {}
+export class RedemptionService {
+  constructor(private readonly creditsRepo: CreditsRepository) {}
+
+  async executeRedeem(organizationId: string, request: RedeemPointsRequest): Promise<RedeemPointsResponse> {
+    if (request.pointsAmount <= 0) {
+      throw new BadRequestException('Points amount must be greater than zero');
+    }
+
+    const existingTx = await this.creditsRepo.findTransactionByIdempotency(
+      organizationId,
+      request.idempotencyKey,
+    );
+
+    if (existingTx) {
+      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);
+      return {
+        transactionId: existingTx.id,
+        organizationEndUserId: existingTx.organizationEndUserId,
+        pointsRedeemed: existingTx.pointsAmount,
+        newBalance: Number(ownership.confirmedBalance),
+        status: existingTx.status,
+        idempotencyKey: existingTx.idempotencyKey,
+      };
+    }
+
+    try {
+      const { transaction, newBalance } = await this.creditsRepo.recordRedeemTransaction({
+        organizationId,
+        organizationEndUserId: request.organizationEndUserId,
+        pointsAmount: request.pointsAmount,
+        idempotencyKey: request.idempotencyKey,
+        receiptReference: request.receiptReference,
+        metadata: request.metadata,
+      });
+
+      return {
+        transactionId: transaction.id,
+        organizationEndUserId: transaction.organizationEndUserId,
+        pointsRedeemed: transaction.pointsAmount,
+        newBalance,
+        status: transaction.status,
+        idempotencyKey: transaction.idempotencyKey,
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to redeem points';
+      throw new BadRequestException(message);
+    }
+  }
+}

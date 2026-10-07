@@ -10,6 +10,8 @@ import { ProjectionsRepository } from './repositories/projections.repository.js'
 import { WebhooksRepository } from './repositories/webhooks.repository.js';
 import { BillingRepository } from './repositories/billing.repository.js';
 import { IndexerCursorsRepository } from './repositories/indexer-cursors.repository.js';
+import { CreditsRepository } from './repositories/credits.repository.js';
+import { RewardsRepository } from './repositories/rewards.repository.js';
 
 const repositories = [
   OrganizationsRepository,
@@ -22,6 +24,8 @@ const repositories = [
   WebhooksRepository,
   BillingRepository,
   IndexerCursorsRepository,
+  CreditsRepository,
+  RewardsRepository,
 ];
 
 @Module({

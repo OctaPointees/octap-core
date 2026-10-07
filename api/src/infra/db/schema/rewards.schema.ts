@@ -65,7 +65,6 @@ export const voucherOwnerships = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     voucherId: uuid('voucher_id')
       .notNull()
-      .unique()
       .references(() => vouchers.id, { onDelete: 'cascade' }),
     organizationEndUserId: uuid('organization_end_user_id')
       .notNull()
