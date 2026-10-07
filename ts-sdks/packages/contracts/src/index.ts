@@ -1,1 +1,2 @@
-export type { ActorContext, BalanceSnapshot, OperationReference, Points } from './loyalty.js';
+export * from './loyalty.js';
+export * from './rewards.js';

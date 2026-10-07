@@ -16,3 +16,67 @@ export interface BalanceSnapshot {
   observed_at: string;
   stale: boolean;
 }
+
+export type LoyaltyTxType = 'EARN' | 'REDEEM' | 'REVERSAL' | 'TRANSFER' | 'EXPIRY' | 'ADJUSTMENT';
+export type LoyaltyTxStatus = 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED';
+
+export interface EarnPointsRequest {
+  organizationEndUserId: string;
+  pointsAmount: number;
+  idempotencyKey: string;
+  receiptReference?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EarnPointsResponse {
+  transactionId: string;
+  organizationEndUserId: string;
+  pointsEarned: number;
+  newBalance: number;
+  status: LoyaltyTxStatus;
+  idempotencyKey: string;
+}
+
+export interface RedeemPointsRequest {
+  organizationEndUserId: string;
+  pointsAmount: number;
+  idempotencyKey: string;
+  receiptReference?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RedeemPointsResponse {
+  transactionId: string;
+  organizationEndUserId: string;
+  pointsRedeemed: number;
+  newBalance: number;
+  status: LoyaltyTxStatus;
+  idempotencyKey: string;
+}
+
+export interface CreditBalanceSnapshot {
+  organizationEndUserId: string;
+  confirmedBalance: number;
+  pendingEarn: number;
+  pendingRedemption: number;
+  lifetimeEarned: number;
+  lifetimeRedeemed: number;
+  asOfCheckpoint?: string | null;
+}
+
+export interface LoyaltyTransactionDto {
+  id: string;
+  organizationId: string;
+  organizationEndUserId: string;
+  createdByMembershipId?: string | null;
+  blockchainTransactionId?: string | null;
+  transactionType: LoyaltyTxType;
+  pointsAmount: number;
+  idempotencyKey: string;
+  receiptReference?: string | null;
+  status: LoyaltyTxStatus;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
