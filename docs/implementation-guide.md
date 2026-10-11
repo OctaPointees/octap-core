@@ -1,93 +1,64 @@
 # Team implementation guide
 
-## Start with the owning feature
+The tree only contains working code. To add a feature, pick an item from [the roadmap](roadmap.md),
+create the files it needs following the pattern below, and move its roadmap row to **Implemented**
+in the same pull request. Do not add empty classes or folders for future work; add a roadmap row instead.
 
-Each domain folder holds its use-case services and module. Core flows have dedicated service
-files so new work does not accumulate in a generic service. Read that domain's README before
-adding code. Introduce DTO/type/port methods when their contract is reviewed; do not create one
-class per field or force a service/repository/worker onto features that do not need it.
+`credits` and `rewards` are the reference implementations. Copy their shape.
 
-| Work item | Primary files/folders |
-| --- | --- |
-| Login, sessions, zkLogin | api/src/domain/identity; api/src/infra/clients/enoki |
-| Tenant, role, scope and object rules | api/src/domain/authorization; api/src/api/guards |
-| Organizations and subdomains | api/src/domain/organizations |
-| Enrollment and member identity binding | api/src/domain/members |
-| Program controls/capabilities | api/src/domain/programs; contracts/sui |
-| Policy versions and preview | api/src/domain/policies/policies.service.ts; policy-preview.service.ts |
-| Earn | api/src/domain/credits/earn.service.ts |
-| Customer-signed redemption | api/src/domain/credits/redemption.service.ts |
-| Cancellation and reversal | api/src/domain/credits/reversal.service.ts |
-| Expiry/clawback | api/src/domain/credits/expiry.service.ts |
-| Command/idempotency/outbox | api/src/domain/operations/operations.service.ts; outbox.service.ts |
-| UNKNOWN operation recovery | api/src/domain/operations/operation-recovery.service.ts |
-| Campaign draft/preview/approval | api/src/domain/campaigns; campaign-approval.service.ts |
-| Reward catalog and voucher lifecycle | api/src/domain/rewards |
-| API keys/scopes/sandbox/logs | api/src/domain/developer |
-| Merchant webhooks | api/src/domain/webhooks; infra/clients/merchant-webhooks |
-| Stripe test billing | api/src/domain/billing; infra/clients/stripe |
-| Audit/export/verifier | api/src/domain/audit; audit-verifier.service.ts; infra/clients/walrus and seal |
-| Checkpoint cursor/replay | api/src/domain/indexer; infra/db/repositories/indexer-cursors.repository.ts |
-| Derived analytics | api/src/domain/analytics; infra/clients/clickhouse |
-| Notifications | api/src/domain/notifications |
-| Platform governance | api/src/domain/administration |
+## Adding an API feature
 
-## API transport, domain and persistence
+Paths are relative to `api/src`.
 
-1. Define a reviewed public request/response in ts-sdks/packages/contracts; keep Node/browser wire behavior compatible.
-2. Map and validate requests in api/src/api/dto and rest controllers or grpc adapters.
-3. Implement shared identity/tenant/scope/object authorization before exposing endpoints.
-4. Implement use-case orchestration in the owning domain service. Controllers own protocol details.
-5. Define required domain ports near the feature; common integration slots exist in domain/shared/integration.ports.ts.
-6. Implement DB access in infra/db/repositories and vendor calls in infra/clients. Bind implementations in Nest modules.
-7. Add migrations under api/db and meaningful tests under api/tests. A conceptual ERD is not a ready SQL schema.
+1. **Wire types**: add the request/response types to `ts-sdks/packages/contracts/src/<feature>.ts`
+   and export them from its `index.ts`.
+2. **Schema**: add or change tables in `infra/db/schema/<feature>.schema.ts`, export from
+   `schema/index.ts`, then run `npm run db:generate` and commit the migration under `api/db/postgres/migrations`.
+3. **Repository**: `infra/db/repositories/<feature>.repository.ts` injects `DRIZZLE_DB`.
+   Register it in `infra/db/postgres.module.ts`. Use `withRls` from `infra/db/rls.ts` for tenant-scoped queries.
+4. **Domain**: `domain/<feature>/<feature>.service.ts` (split into `<use-case>.service.ts` when a
+   flow is large) plus `<feature>.module.ts`. Add the module to `domain/domain.module.ts`.
+   Business rules live here; services depend on repositories, never on controllers.
+5. **Transport**: `api/rest/<feature>.controller.ts` and body DTOs in `api/dto/<feature>.dto.ts`.
+   Register the controller in `api/rest/rest.module.ts`. Controllers only map protocol details.
+6. **SDK**: add client methods in `ts-sdks/packages/node/src/client.ts` (and the browser client if
+   customers call it directly).
+7. **Tests**: add unit tests with mocked repositories/fetch to `scripts/test-unit.mjs`.
+8. **Docs**: add a short `README.md` in the domain folder and update [the roadmap](roadmap.md).
 
-For earn, the intended path is a credits controller -> earn service -> operations/outbox acceptance
--> transaction processor -> Sui/Enoki clients -> checkpoint/projection processing -> operation status.
-Those are destinations for future implementation; no step currently executes. Durable command
-acceptance must precede dispatch, and only successful chain effects establish confirmed points.
+Add a vendor client under `infra/clients/<vendor>/` and a new infrastructure module (imported by
+`infra/infrastructure.module.ts`) only when a feature actually calls that vendor. Add its
+environment variables to `.env.example` in the same change.
 
-## Workers belong to their feature
+## Workers
 
-| Job | Location |
-| --- | --- |
-| Transaction submission | domain/credits/transaction.worker.ts and transaction.processor.ts |
-| Bucket expiry | domain/credits/expiry.worker.ts and expiry.processor.ts |
-| Projection | domain/operations/projection.worker.ts and projection.processor.ts |
-| Checkpoint ingestion/replay | domain/indexer/checkpoint.worker.ts and checkpoint.processor.ts |
-| Signed delivery | domain/webhooks/webhook.worker.ts and webhook.processor.ts |
-| Analytics export | domain/analytics/analytics.worker.ts and analytics.processor.ts |
-| Audit export | domain/audit/audit.worker.ts and audit.processor.ts |
-| Billing reconciliation | domain/billing/billing.worker.ts and billing.processor.ts |
-| Notification delivery | domain/notifications/notifications.worker.ts and notifications.processor.ts |
+HTTP and worker share one package but run as separate processes. A job lives next to its
+feature: `<job>.worker.ts` owns consumer lifecycle, concurrency and shutdown; `<job>.processor.ts`
+coordinates one job through the feature's domain services. Register both only in
+`worker.module.ts`; `npm run check:bootstrap` fails if `AppModule` loads the worker module.
+Workers never duplicate rules from HTTP handlers.
 
-Paths in this table are relative to api/src. A worker owns consumer lifecycle/concurrency/shutdown;
-a processor coordinates a job through domain services. Neither duplicates rules from HTTP handlers.
-Register runtime providers in worker.module.ts, not app.module.ts. Queue plumbing belongs in
-infra/queue. Job schemas, retries, schedules and consumers remain unimplemented.
+## Rules that every feature keeps
 
-## Frontend and SDKs
+- Sui is authoritative for confirmed points; PostgreSQL owns commands, idempotency, outbox and
+  approvals. Durable command acceptance precedes chain dispatch.
+- Customer redemption requires beneficiary consent. Points are non-transferable and tenant-isolated.
+- Domain code never imports controllers or vendor SDKs directly; infrastructure owns vendor details.
+- Merchant and vendor credentials stay in Core; browser SDK options never carry them.
+- Web consumes Core only through public packages (see [package handoff](package-handoff.md)),
+  never through sibling folder imports.
 
-Pages/layouts under [OctaP_Web](https://github.com/OctaPointees/OctaP_Web)/src/app compose surfaces. Put product UI in components/<feature>,
-queries/mutations and view state in hooks/<feature>, transport mapping in lib/octap-api, and
-session/tenant/query composition in providers. Keep auth, config and monitoring in their named
-lib folders. Server-enforced permissions remain necessary even when layouts are separate.
+## Frontend
 
-Web is built and deployed independently. Consume Core public contracts through versioned packages,
-never through a sibling folder import. See [package handoff](package-handoff.md).
+Frontend work belongs in [OctaP_Web](https://github.com/OctaPointees/OctaP_Web). Server-side
+permission checks remain required even when Web hides a surface.
 
-Node client and REST/gRPC transports belong in ts-sdks/packages/node. Customer signing/login
-and provisional offline snapshots belong in packages/browser. Shared DTOs belong in
-packages/contracts. Merchant private credentials never enter browser SDK options.
+## Checks
 
-## Contract and test boundaries
+Run before opening a pull request:
 
-Sui object modules stay under contracts/sui/sources; add layouts/functions only with reviewed
-invariants and tests under contracts/sui/tests. Deploy/codegen tooling goes in contracts/sui/scripts.
-API tests are grouped by unit, integration and contract. Frontend tests use unit, integration and
-e2e slots. SDK tests cover actual transport/error/signature behavior when it exists. No placeholder
-coverage target or mock integration result is claimed by this scaffold.
+```sh
+npm run lint && npm run build && npm run typecheck && npm test && npm run check:bootstrap
+```
 
-The existing lint/build/typecheck/bootstrap commands validate structure. Add runtime dependencies,
-feature-specific tests and integration checks with implementation rather than preloading every
-library or copying Harbor-specific tooling into this repository.
+Add runtime dependencies with the feature that uses them, not ahead of time.

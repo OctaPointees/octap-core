@@ -13,7 +13,6 @@ export {
 export type {
   Transport,
   RestTransport,
-  GrpcTransport,
 } from './transports/transport.js';
 
 // Re-export contract types so consumers of @octap/sdk have immediate access to wire schemas

@@ -1,5 +1,4 @@
 # Browser SDK
-Separate browser-safe boundary for Google/zkLogin login, customer transaction signing,
-snapshot reads and offline earn-intent buffering. `src/auth`, `src/signing` and `src/offline`
-reserve those helper locations. `src/client.ts` only defines draft public options.
-No private credentials, signing logic, intent persistence or network calls are implemented.
+`src/client.ts` is a browser-safe client that reads balances and claims vouchers with a customer
+auth token. It never takes merchant credentials. Login, signing and offline helpers are planned
+(see the roadmap).

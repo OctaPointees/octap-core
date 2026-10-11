@@ -1,4 +1,0 @@
-syntax = "proto3";
-package octap.v1;
-// Scaffold only: service methods/messages await the reviewed core API contract.
-// Points and u64 values must use decimal strings at JavaScript boundaries.

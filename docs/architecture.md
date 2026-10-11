@@ -20,29 +20,10 @@ It does not copy Harbor's Hono/Effect runtime, wallet custody, queue library, bu
 
 ## Component map
 
-| Design | Scaffold location |
-| --- | --- |
-| NestJS REST/Node gRPC | api/src/api/rest and api/src/api/grpc |
-| Shared application services | api/src/domain/<feature> and DomainModule |
-| Identity/tenant/scope/approval | identity and authorization domains; api/guards |
-| Program/policy/member/credit | programs, policies, members and credits domains |
-| Durable command/idempotency/outbox/recovery | operations domain; infra/db/repositories; db/postgres |
-| Transaction/expiry workers | credits domain; worker.module.ts |
-| Projection/recovery workers | operations domain; worker.module.ts |
-| Checkpoint ingestion/replay | indexer domain; infra/clients/sui |
-| Google zkLogin/sponsorship | identity/zklogin.service.ts; infra/clients/enoki |
-| Signed merchant webhooks | webhooks domain; infra/clients/merchant-webhooks; Node SDK helpers |
-| ClickHouse analytics | analytics domain; infra/clients/clickhouse; db/clickhouse |
-| Audit/Walrus/Seal | audit domain; infra/clients/walrus and seal |
-| Stripe merchant billing | billing domain; infra/clients/stripe |
-| Redis/realtime | infra/cache and infra/realtime |
-| Logs/metrics/lag | api/src/observability |
-| Sui object map | contracts/sui/sources |
-| Public API types/OpenAPI/protobuf | ts-sdks/packages/contracts |
-| Merchant Node SDK | ts-sdks/packages/node |
-| Browser login/signing/offline helpers | ts-sdks/packages/browser |
-| Merchant/admin/customer/POS surfaces | OctaP_Web/src/app and feature components/hooks |
-| MCP | Separate repository; consume authenticated API/SDK boundaries |
+The design components (identity, authorization, programs, policies, credits, operations, campaigns,
+rewards, developer, webhooks, billing, analytics, audit, notifications, administration, indexer,
+workers, Sui objects and SDK helpers) and where each one will live are tracked in
+[the roadmap](roadmap.md). Only components listed there as implemented exist in the source tree.
 
 ## Dependencies and processes
 
@@ -54,13 +35,11 @@ Core owns business and chain rules; Web owns presentation and interaction state.
 Domain code never imports controllers or vendor SDKs. Infrastructure owns vendor details.
 
 HTTP and worker share one build/package but run as separate processes. AppModule does not
-import WorkerModule. WorkerModule alone registers worker/processor providers. No consumers,
-timers or job execution exist in the scaffold.
+import WorkerModule. WorkerModule alone registers worker/processor providers.
 
 MCP has no package, dependencies, startup script or server code in this repo. A future separate
 MCP adapter calls the same authorized API use cases through an API/SDK boundary; it must not
 copy business logic, bypass tenant/role/scope/object checks, or implement its own point authority.
-No separate MCP repo is created by this scaffold change.
 
 ## Sources of truth and deferred work
 
@@ -70,7 +49,5 @@ ClickHouse is analytics-only; Stripe test billing is distinct from loyalty point
 stay backend-only. Customer redemption requires beneficiary consent; campaign execution requires
 an approved immutable manifest. Walrus/Seal audit export stays outside checkout.
 
-None of those invariants is enforced by empty classes. DTO schemas, domain rules, port methods,
-physical tables/RLS, endpoint/RPC methods, retries, signers, worker execution, protocol conformance,
-Move object layouts/entry functions, external connections and product UI remain unimplemented.
-The scaffold reserves distinct files/folders and composes modules; it does not report mocks as integrations.
+Credits and rewards currently persist to PostgreSQL only. The chain-side invariants above are
+enforced once the Sui contracts, transaction worker and projection are built (see the roadmap).
