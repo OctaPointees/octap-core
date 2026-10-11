@@ -1,4 +1,3 @@
 import type { RestTransport } from './rest.transport.js';
-import type { GrpcTransport } from './grpc.transport.js';
-export type { RestTransport, GrpcTransport };
-export type Transport = RestTransport | GrpcTransport;
+export type { RestTransport };
+export type Transport = RestTransport;

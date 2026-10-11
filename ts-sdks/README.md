@@ -2,10 +2,9 @@
 
 | Package | Role |
 | --- | --- |
-| packages/contracts (@octap/contracts) | Draft shared types and REST/protobuf contract locations |
-| packages/node (@octap/sdk) | Merchant Node integration: REST/gRPC, deadlines, retries, webhook verification |
-| packages/browser (@octap/browser-sdk) | Customer login/signing and offline earn-intent helpers |
+| packages/contracts (@octap/contracts) | Shared wire types for points and vouchers |
+| packages/node (@octap/sdk) | Merchant Node client over REST |
+| packages/browser (@octap/browser-sdk) | Browser-safe client for customers |
 
-The repository root manages all npm workspaces and one lockfile. The API and frontend consume
-shared wire types from contracts; neither SDK imports API internals. Browser SDK options contain
-no merchant credentials. All client factories, calls, signing and verification remain unimplemented.
+The repository root manages all npm workspaces and one lockfile. Neither SDK imports API internals.
+Browser SDK options contain no merchant credentials. Planned SDK work is in [the roadmap](../docs/roadmap.md).

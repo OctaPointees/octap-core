@@ -5,4 +5,4 @@ import { AppModule } from './app.module.js';
 const app = await NestFactory.create(AppModule);
 app.enableShutdownHooks();
 await app.listen(Number(process.env.API_PORT ?? 3000), process.env.API_HOST ?? '127.0.0.1');
-Logger.log('API scaffold listening; no business routes registered.');
+Logger.log('API listening.');
