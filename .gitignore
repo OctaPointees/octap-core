@@ -7,7 +7,6 @@ build/
 *.tsbuildinfo
 coverage/
 .npm-cache/
-contracts/sui/Move.lock
 
 .next/
 out/

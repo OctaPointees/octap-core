@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { EarnService } from '../api/dist/domain/credits/earn.service.js';
 import { RedemptionService } from '../api/dist/domain/credits/redemption.service.js';
 import { RewardsService } from '../api/dist/domain/rewards/rewards.service.js';
+import { ChainSubmitProcessor } from '../api/dist/domain/credits/chain-submit.processor.js';
 
 test('EarnService: successfully records points and updates balance', async () => {
   const mockCreditsRepo = {
@@ -146,6 +147,136 @@ test('RewardsService: creates and claims voucher with point redemption', async (
   assert.equal(claimResult.voucherId, 'v-1');
   assert.equal(claimResult.pointsDeducted, 50);
   assert.ok(claimResult.serialCode.startsWith('DISCOUNT10-'));
+});
+
+// ==========================================
+// CHAIN SUBMIT WORKER TESTS
+// ==========================================
+
+function fakeChainResult({ status = 'success', errorMessage, events = [] } = {}) {
+  return {
+    digest: 'DIGEST1',
+    status,
+    errorMessage,
+    events,
+    eventField(eventSuffix, field) {
+      const event = events.find((e) => e.type.endsWith(`::${eventSuffix}`));
+      return event?.parsedJson?.[field];
+    },
+  };
+}
+
+function fakeOperation(overrides = {}) {
+  return {
+    id: 'op-1',
+    commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+    idempotencyKey: 'idem-chain-1',
+    payload: {
+      loyaltyTransactionId: 'tx-1',
+      organizationEndUserId: 'user-1',
+      pointsAmount: 10000,
+    },
+    ...overrides,
+  };
+}
+
+test('ChainSubmitProcessor: opens an account, earns, and confirms on success', async () => {
+  const calls = { openAccount: 0, earn: [], confirmEarnOnChain: null, markSubmitted: null, setSuiCreditAccountId: null };
+
+  const operationsRepo = {
+    markFailed: async () => assert.fail('should not mark failed on success'),
+    markSubmitted: async (id, digest) => { calls.markSubmitted = { id, digest }; },
+  };
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: null }),
+    setSuiCreditAccountId: async (id, accountId) => { calls.setSuiCreditAccountId = { id, accountId }; },
+    confirmEarnOnChain: async (params) => { calls.confirmEarnOnChain = params; },
+    failEarnOnChain: async () => assert.fail('should not fail on success'),
+  };
+  const suiClient = {
+    openAccount: async () => {
+      calls.openAccount += 1;
+      return fakeChainResult({
+        events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc1' } }],
+      });
+    },
+    earn: async (params) => {
+      calls.earn.push(params);
+      return fakeChainResult({
+        events: [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }],
+      });
+    },
+    issuerAddress: () => '0xissuer',
+  };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+
+  assert.equal(calls.openAccount, 1);
+  assert.equal(calls.setSuiCreditAccountId.accountId, '0xacc1');
+  assert.equal(calls.earn[0].accountId, '0xacc1');
+  assert.equal(calls.earn[0].purchaseAmount, 10000);
+  assert.equal(calls.confirmEarnOnChain.reservedPointsAmount, 10000);
+  assert.equal(calls.confirmEarnOnChain.confirmedPointsAmount, 100);
+  assert.equal(calls.confirmEarnOnChain.digest, 'DIGEST1');
+  assert.equal(calls.markSubmitted.digest, 'DIGEST1');
+});
+
+test('ChainSubmitProcessor: reuses an existing on-chain account without reopening', async () => {
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' }),
+    confirmEarnOnChain: async () => {},
+  };
+  const suiClient = {
+    openAccount: async () => assert.fail('should not reopen an existing account'),
+    earn: async (params) => {
+      assert.equal(params.accountId, '0xexisting');
+      return fakeChainResult({
+        events: [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '50' } }],
+      });
+    },
+    issuerAddress: () => '0xissuer',
+  };
+  const operationsRepo = { markSubmitted: async () => {} };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+});
+
+test('ChainSubmitProcessor: reverts the pending reservation when the chain call fails', async () => {
+  let failedCall = null;
+  let markedFailed = null;
+
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' }),
+    confirmEarnOnChain: async () => assert.fail('should not confirm on failure'),
+    failEarnOnChain: async (params) => { failedCall = params; },
+  };
+  const suiClient = {
+    earn: async () => fakeChainResult({ status: 'failure', errorMessage: 'EInsufficientBalance' }),
+    issuerAddress: () => '0xissuer',
+  };
+  const operationsRepo = {
+    markFailed: async (id, message) => { markedFailed = { id, message }; },
+  };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+
+  assert.equal(failedCall.reservedPointsAmount, 10000);
+  assert.equal(markedFailed.message, 'EInsufficientBalance');
+});
+
+test('ChainSubmitProcessor: rejects an unsupported command type without touching chain state', async () => {
+  let markedFailed = null;
+  const operationsRepo = { markFailed: async (id, message) => { markedFailed = { id, message }; } };
+  const creditsRepo = { getCreditOwnershipByEndUserId: async () => assert.fail('should not look up ownership') };
+  const suiClient = { earn: async () => assert.fail('should not call chain') };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation({ commandType: 'SOMETHING_ELSE' }));
+
+  assert.match(markedFailed.message, /Unsupported commandType/);
 });
 
 // ==========================================
