@@ -15,5 +15,9 @@
   },
   "dependencies": {
     "@octap/contracts": "0.0.0"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }
