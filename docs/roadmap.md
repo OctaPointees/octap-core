@@ -30,9 +30,11 @@ then move the row to **Implemented** in the same pull request.
   requires the beneficiary's own signature (Move-enforced, not a bug), which needs zkLogin
   (Identity, below) — a worker signing with the IssuerCap key would abort on-chain every time, so
   it isn't wired rather than wired wrong. See `api/src/infra/clients/sui/sui.client.ts`.
-- The chain adapter is demo-scoped to **one program/policy/IssuerCap from env**, applied to every
-  organization (`SUI_PROGRAM_CONTROL_ID` etc. in `.env.example`) — real per-organization program
-  provisioning is the `domain/programs` row below, not built yet.
+- The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
+  organization — those object ids are committed constants in
+  `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
+  doc comment for why object ids aren't env vars), not something `.env.example` configures. Real
+  per-organization program provisioning is the `domain/programs` row below, not built yet.
 - An end user has no real Sui address yet (no zkLogin/identity binding), so the worker opens each
   `CreditAccount` under a placeholder address derived from the PG ownership row id
   (`chain-submit.processor.ts`'s `demoBeneficiaryAddress`) — nobody holds its private key. Fine for
