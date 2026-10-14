@@ -29,6 +29,7 @@ export class CreditsService {
       organizationEndUserId: tx.organizationEndUserId,
       createdByMembershipId: tx.createdByMembershipId,
       blockchainTransactionId: tx.blockchainTransactionId,
+      blockchainDigest: tx.blockchainTransaction?.digest ?? null,
       transactionType: tx.transactionType,
       pointsAmount: Number(tx.pointsAmount),
       idempotencyKey: tx.idempotencyKey,
