@@ -1,5 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OctapChainClient, signerFromPrivateKey, type OctapNetwork, type SubmittedChainTransaction } from '@octap/chain';
+import {
+  OctapChainClient,
+  signerFromPrivateKey,
+  TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
+  MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
+  type OctapNetwork,
+  type OctapDemoProgramConfig,
+  type SubmittedChainTransaction,
+} from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
 
 export interface ChainCallResult extends SubmittedChainTransaction {
@@ -18,28 +26,42 @@ function toChainCallResult(result: SubmittedChainTransaction): ChainCallResult {
 }
 
 /**
+ * Picks the demo program config for `network` — object ids, not secrets, so they're committed
+ * constants in `@octap/chain` (same reasoning as `@walrus-console/bucket-groups`'
+ * `TESTNET_BUCKET_GROUP_PACKAGE_CONFIG`), not individual env vars. `SUI_NETWORK` is the only env
+ * knob this depends on.
+ */
+function demoProgramConfig(network: OctapNetwork): OctapDemoProgramConfig {
+  if (network === 'testnet') {
+    return TESTNET_OCTAP_DEMO_PROGRAM_CONFIG;
+  }
+  if (network === 'mainnet' && MAINNET_OCTAP_DEMO_PROGRAM_CONFIG) {
+    return MAINNET_OCTAP_DEMO_PROGRAM_CONFIG;
+  }
+  throw new Error(`Sui chain adapter: no demo program configured for network "${network}"`);
+}
+
+/**
  * Worker-only adapter to `@octap/chain`. Registered in `worker.module.ts`, never in
  * `infra/infrastructure.module.ts` — `AppModule` (the internet-facing HTTP process) has no reason
  * to hold `SUI_ISSUER_PRIVATE_KEY` in memory at all, only the worker process that actually
  * dispatches chain transactions does.
  *
- * Demo-scoped: one program/policy/IssuerCap from env, applied to every organization, until
- * `domain/programs` (docs/roadmap.md) exists to look these up per organization instead.
+ * Demo-scoped: one program/policy/IssuerCap (from `@octap/chain`'s committed constants, keyed
+ * only by `SUI_NETWORK`), applied to every organization, until `domain/programs`
+ * (docs/roadmap.md) exists to look these up per organization instead.
  */
 @Injectable()
 export class SuiClientService {
   private readonly logger = new Logger(SuiClientService.name);
+  private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
+  private readonly programConfig = demoProgramConfig(this.network);
   private chainClient?: OctapChainClient;
   private signer?: Signer;
 
   private get client(): OctapChainClient {
     if (!this.chainClient) {
-      const network = (process.env.SUI_NETWORK ?? 'testnet') as OctapNetwork;
-      const packageId = process.env.SUI_PACKAGE_ID;
-      this.chainClient = new OctapChainClient({
-        network,
-        package: packageId ? { packageId } : undefined,
-      });
+      this.chainClient = new OctapChainClient({ network: this.network, package: this.programConfig });
     }
     return this.chainClient;
   }
@@ -58,8 +80,8 @@ export class SuiClientService {
 
   async openAccount(beneficiary: string): Promise<ChainCallResult> {
     const tx = this.client.buildOpenAccountTransaction({
-      issuerCapId: requireEnv('SUI_ISSUER_CAP_ID'),
-      programId: requireEnv('SUI_PROGRAM_CONTROL_ID'),
+      issuerCapId: this.programConfig.issuerCapId,
+      programId: this.programConfig.programControlId,
       beneficiary,
     });
     tx.setGasBudget(50_000_000);
@@ -69,9 +91,9 @@ export class SuiClientService {
 
   async earn(params: { accountId: string; purchaseAmount: number; operationKey: string }): Promise<ChainCallResult> {
     const tx = this.client.buildEarnTransaction({
-      issuerCapId: requireEnv('SUI_ISSUER_CAP_ID'),
-      programId: requireEnv('SUI_PROGRAM_CONTROL_ID'),
-      policyId: requireEnv('SUI_POLICY_VERSION_ID'),
+      issuerCapId: this.programConfig.issuerCapId,
+      programId: this.programConfig.programControlId,
+      policyId: this.programConfig.policyVersionId,
       accountId: params.accountId,
       purchaseAmount: params.purchaseAmount,
       operationKey: new TextEncoder().encode(params.operationKey),

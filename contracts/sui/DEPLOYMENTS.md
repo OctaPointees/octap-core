@@ -1,8 +1,10 @@
 # octap deployments
 
 Object ids per network for the published `octap` package. Update this table on every publish,
-upgrade, or program/policy change. `ts-sdks/packages/chain/sui-codegen.config.ts` and the API's
-`SUI_PACKAGE_ID` / `SUI_PROGRAM_CONTROL_ID` env vars come from this table.
+upgrade, or program/policy change, and keep `ts-sdks/packages/chain/sui-codegen.config.ts` and
+`ts-sdks/packages/chain/src/constants.ts`'s `TESTNET_OCTAP_DEMO_PROGRAM_CONFIG` in sync with it by
+hand — there is no registry or indexer to read it from yet. These are public on-chain ids, not
+secrets, so they're committed source, never env vars (see `constants.ts`'s doc comment).
 
 ## testnet
 

@@ -11,5 +11,8 @@ export {
 export {
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
+  TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
+  MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
   type OctapPackageConfig,
+  type OctapDemoProgramConfig,
 } from './constants.js';
