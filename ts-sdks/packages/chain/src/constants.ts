@@ -35,7 +35,7 @@ export const TESTNET_OCTAP_DEMO_PROGRAM_CONFIG: OctapDemoProgramConfig = {
   packageId: TESTNET_OCTAP_PACKAGE_CONFIG.packageId,
   programControlId: '0xa00660cbaf73253db7628ab3927f3234c6058ac0afa6d1fcb620d10fcf990434',
   policyVersionId: '0x627cc1e3152b501887ab05be1f24294abae34ea4135da658da3a47ddcddf0ba6',
-  issuerCapId: '0x937f16a5e8686f11b2bb4222d3bc6a4aef81443b71707246be219c55e45708c9',
+  issuerCapId: '0xf0896fc57c6edd4ada51fd20ea561e24cb7d962d8920ac29db6105cedf7455cc',
 };
 
 /** Not deployed yet; see contracts/sui/DEPLOYMENTS.md. */

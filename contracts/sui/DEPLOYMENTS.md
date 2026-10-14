@@ -23,16 +23,20 @@ secrets, so they're committed source, never env vars (see `constants.ts`'s doc c
 | `program_control::ProgramControl` (shared, initial version 1) | `0xa00660cbaf73253db7628ab3927f3234c6058ac0afa6d1fcb620d10fcf990434` |
 | `capabilities::AdminCap` | `0x0b97b3270c979007844a29a90ec38748524fc3f2c3c799946435af527c1a3474` |
 | `policy_version::PolicyVersion` (immutable, v1, 100 bps, 30-day expiry) | `0x627cc1e3152b501887ab05be1f24294abae34ea4135da658da3a47ddcddf0ba6` |
-| `capabilities::IssuerCap` (sent to the deploy wallet; see note) | `0x937f16a5e8686f11b2bb4222d3bc6a4aef81443b71707246be219c55e45708c9` |
+| `capabilities::IssuerCap` (used by `SUI_ISSUER_PRIVATE_KEY`, see note) | `0xf0896fc57c6edd4ada51fd20ea561e24cb7d962d8920ac29db6105cedf7455cc` |
 | `credit_account::CreditAccount` (demo beneficiary, alias `octap-demo-user`) | `0xc44cf23af9e8ac15231857dcf3b9c30c9898e3f4bec6613950168c41166fcf9a` |
 | Demo beneficiary address (alias `octap-demo-user`) | `0x61576ee6119f66db3bf6cfeab99b2c9cc3314f596e3d98393c8bf66b21a1f576` |
 
-The `IssuerCap` above is held by the same wallet as `AdminCap` purely for demo convenience — on
-Sui, who can `earn` vs who can `pause`/rotate-policy is decided entirely by which capability
-object a signer holds, not by which wallet it is, so splitting them into separate addresses later
-is a plain `sui client transfer` of the `IssuerCap` object, not a contract or deployment change.
-Production custody should move `IssuerCap` to the backend worker's own signer and keep `AdminCap`
-off any server that runs continuously (see `contracts/sui/README.md`).
+`AdminCap` stays on the deploy wallet (`octap-admin`); `IssuerCap` above was minted separately to
+its own generated keypair, whose secret only ever lives in a local `.env`'s `SUI_ISSUER_PRIVATE_KEY`
+(never committed, never shown in a terminal transcript) — this is the key `ChainSubmitWorker`
+actually signs with. An earlier testnet `IssuerCap` (`0x937f16a5...`) was minted to the deploy
+wallet itself during manual CLI/SDK verification before this service existed; it's unused now but
+left alone rather than revoked (no revoke entry point exists yet — see
+`contracts/sui/README.md`'s known gaps). Splitting `AdminCap`/`IssuerCap` across addresses is a
+custody choice, not a contract one: who can `earn` vs who can `pause`/rotate-policy is decided
+entirely by which capability object a signer holds, so moving `IssuerCap` again later is just
+`sui client transfer`, never a contract or deployment change.
 
 Testnet data is disposable. Losing these ids means recreating a program/policy/account, not a
 republish of the package itself (`UpgradeCap` is what a republish needs).
