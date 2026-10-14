@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
+import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
+import { operations } from '../schema/operations.schema.js';
 
 @Injectable()
 export class CreditsRepository {
@@ -36,6 +37,14 @@ export class CreditsRepository {
     });
   }
 
+  /**
+   * Durably accepts an earn command: inserts the loyalty transaction as PENDING, moves
+   * `pointsAmount` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
+   * confirmed points, see docs/architecture.md), and enqueues a `CREDIT_EARN_CHAIN_SUBMIT`
+   * operation in the same transaction so command acceptance and chain dispatch commit atomically.
+   * `ChainSubmitProcessor` (domain/credits/chain-submit.processor.ts) resolves it later via
+   * `confirmEarnOnChain`/`failEarnOnChain`.
+   */
   async recordEarnTransaction(params: {
     organizationId: string;
     organizationEndUserId: string;
@@ -45,7 +54,6 @@ export class CreditsRepository {
     metadata?: Record<string, unknown>;
   }) {
     return this.db.transaction(async (tx) => {
-      // 1. Get or create ownership
       let ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -65,7 +73,6 @@ export class CreditsRepository {
         ownership = newOwnership;
       }
 
-      // 2. Insert loyalty transaction
       const [transaction] = await tx
         .insert(loyaltyTransactions)
         .values({
@@ -75,28 +82,128 @@ export class CreditsRepository {
           pointsAmount: params.pointsAmount,
           idempotencyKey: params.idempotencyKey,
           receiptReference: params.receiptReference,
-          status: 'CONFIRMED',
+          status: 'PENDING',
           metadata: params.metadata ?? {},
         })
         .returning();
 
-      // 3. Increment confirmedBalance and lifetimeEarned
-      const newConfirmedBalance = Number(ownership.confirmedBalance) + params.pointsAmount;
-      const newLifetimeEarned = Number(ownership.lifetimeEarned) + params.pointsAmount;
-
+      const newPendingEarn = Number(ownership.pendingEarn) + params.pointsAmount;
       await tx
         .update(creditOwnerships)
-        .set({
-          confirmedBalance: newConfirmedBalance,
-          lifetimeEarned: newLifetimeEarned,
-          updatedAt: new Date(),
-        })
+        .set({ pendingEarn: newPendingEarn, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
+
+      await tx.insert(operations).values({
+        tenantId: params.organizationId,
+        idempotencyKey: params.idempotencyKey,
+        commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+        status: 'PENDING',
+        payload: {
+          loyaltyTransactionId: transaction.id,
+          organizationEndUserId: params.organizationEndUserId,
+          pointsAmount: params.pointsAmount,
+        },
+      });
 
       return {
         transaction,
-        newBalance: newConfirmedBalance,
+        // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
+        newBalance: Number(ownership.confirmedBalance),
       };
+    });
+  }
+
+  async getLoyaltyTransactionById(id: string) {
+    return this.db.query.loyaltyTransactions.findFirst({ where: eq(loyaltyTransactions.id, id) });
+  }
+
+  async getCreditOwnershipByEndUserId(organizationEndUserId: string) {
+    return this.db.query.creditOwnerships.findFirst({
+      where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
+    });
+  }
+
+  async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
+    await this.db
+      .update(creditOwnerships)
+      .set({ suiCreditAccountId, updatedAt: new Date() })
+      .where(eq(creditOwnerships.id, ownershipId));
+  }
+
+  /**
+   * Records the on-chain receipt and resolves the pending reservation.
+   *
+   * `reservedPointsAmount` (what `recordEarnTransaction` moved into `pendingEarn`) and
+   * `confirmedPointsAmount` (the `CreditEarned` event's actual `amount`) can differ: the demo
+   * policy is 100 bps, so the chain treats the requested `pointsAmount` as a purchase amount and
+   * credits 1% of it, not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
+   * the loyalty transaction is corrected to the confirmed figure here — Sui is authoritative for
+   * confirmed points (docs/architecture.md), the PG row at insert time was only a request.
+   */
+  async confirmEarnOnChain(params: {
+    loyaltyTransactionId: string;
+    organizationEndUserId: string;
+    reservedPointsAmount: number;
+    confirmedPointsAmount: number;
+    digest: string;
+    sender: string;
+  }) {
+    return this.db.transaction(async (tx) => {
+      const [blockchainTx] = await tx
+        .insert(blockchainTransactions)
+        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+        .returning();
+
+      await tx
+        .update(loyaltyTransactions)
+        .set({
+          status: 'CONFIRMED',
+          pointsAmount: params.confirmedPointsAmount,
+          blockchainTransactionId: blockchainTx.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      });
+      if (ownership) {
+        await tx
+          .update(creditOwnerships)
+          .set({
+            confirmedBalance: Number(ownership.confirmedBalance) + params.confirmedPointsAmount,
+            pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount,
+            lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
+            updatedAt: new Date(),
+          })
+          .where(eq(creditOwnerships.id, ownership.id));
+      }
+
+      return blockchainTx;
+    });
+  }
+
+  /** Reverts the optimistic `pendingEarn` bump and marks the command FAILED. */
+  async failEarnOnChain(params: {
+    loyaltyTransactionId: string;
+    organizationEndUserId: string;
+    reservedPointsAmount: number;
+  }) {
+    return this.db.transaction(async (tx) => {
+      await tx
+        .update(loyaltyTransactions)
+        .set({ status: 'FAILED', updatedAt: new Date() })
+        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      });
+      if (ownership) {
+        await tx
+          .update(creditOwnerships)
+          .set({ pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount, updatedAt: new Date() })
+          .where(eq(creditOwnerships.id, ownership.id));
+      }
     });
   }
 

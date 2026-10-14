@@ -17,6 +17,7 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@octap/chain": "0.0.0",
     "@octap/contracts": "0.0.0",
     "dotenv": "^18.0.5",
     "drizzle-orm": "^0.45.3",

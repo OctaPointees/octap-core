@@ -6,16 +6,18 @@ The frontend lives in [OctaP_Web](https://github.com/OctaPointees/OctaP_Web). MC
 ## Repository ownership
 
 ```text
-contracts/sui/             Sui Move package (no modules yet)
+contracts/sui/             Sui Move package: capabilities, program_control, policy_version, credit_account
 api/
   src/main.ts             NestJS HTTP entrypoint
   src/worker.ts           Separate worker process in the same API package
   src/api/                REST controllers and DTOs
-  src/domain/             Feature modules and services (credits, rewards)
+  src/domain/             Feature modules and services (credits, rewards, chain-submit worker)
   src/infra/db/           Drizzle schema, repositories, RLS helper
+  src/infra/clients/sui/  Worker-only Sui chain adapter (signer key never in the HTTP process)
   db/postgres/            Generated PostgreSQL migrations
 ts-sdks/packages/
   contracts/              Public TypeScript wire types
+  chain/                  Backend-only: @mysten/codegen bindings + chain client (not published)
   node/                   Merchant Node SDK (REST)
   browser/                Browser-safe client
 docs/                     Architecture, implementation guide, roadmap
@@ -28,8 +30,13 @@ API and versioned public packages; it never imports Core's domain or infrastruct
 Private merchant and vendor credentials remain in Core.
 
 **What exists today:** points (earn/redeem/balance/history) and vouchers, backed by PostgreSQL,
-plus the SDK clients for them. Everything else in the design is listed in [the roadmap](docs/roadmap.md)
-and has no code yet. New features are added as new files; there are no empty slots to fill.
+plus the SDK clients for them. Earning points now really lands on Sui testnet: the HTTP request
+durably accepts the command in Postgres and returns immediately, a worker dispatches it to the
+`octap` Move package, and confirmed amounts flow back into the PG projection — see
+`docs/roadmap.md`'s known gaps for exactly what's still demo-scoped (one program for all
+organizations, redeem stays off-chain pending zkLogin). Everything else in the design is listed in
+[the roadmap](docs/roadmap.md) and has no code yet. New features are added as new files; there are
+no empty slots to fill.
 
 Read [the roadmap](docs/roadmap.md), [the implementation guide](docs/implementation-guide.md) and
 [architecture map](docs/architecture.md) before implementing a feature.
@@ -50,9 +57,11 @@ npm run start:api
 npm run start:worker
 ```
 
-Build order is shared contracts, Node/browser SDKs, then API. API binds to localhost:3000 and
-needs `DATABASE_URL` (see [.env.example](.env.example)); apply migrations with `npm run db:migrate`.
-Only WorkerModule registers worker providers; the worker currently has none, so it initializes and exits.
+Build order is shared contracts, the chain package, Node/browser SDKs, then API. API binds to
+localhost:3000 and needs `DATABASE_URL` (see [.env.example](.env.example)); apply migrations with
+`npm run db:migrate`. Only WorkerModule registers worker providers; it now runs
+`ChainSubmitWorker`, which needs the `SUI_*` variables in `.env.example` to actually dispatch (it
+still boots and polls harmlessly without them — only a claimed operation's chain call fails).
 Supply environment variables through your shell, a root `.env`, or Node's --env-file option.
 
 ## Public package handoff

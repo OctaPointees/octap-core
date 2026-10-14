@@ -1,0 +1,28 @@
+{
+  "name": "@octap/chain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "codegen": "sui-ts-codegen generate && node scripts/fix-codegen-windows-imports.mjs"
+  },
+  "dependencies": {
+    "@mysten/bcs": "^2.1.2",
+    "@mysten/sui": "^2.36.0"
+  },
+  "devDependencies": {
+    "@mysten/codegen": "^0.12.19"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
