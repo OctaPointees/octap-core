@@ -262,6 +262,7 @@ export class CreditsRepository {
       where: eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
       orderBy: [desc(loyaltyTransactions.createdAt)],
       limit,
+      with: { blockchainTransaction: true },
     });
   }
 }

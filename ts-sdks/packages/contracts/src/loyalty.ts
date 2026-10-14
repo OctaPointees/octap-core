@@ -70,6 +70,8 @@ export interface LoyaltyTransactionDto {
   organizationEndUserId: string;
   createdByMembershipId?: string | null;
   blockchainTransactionId?: string | null;
+  /** The Sui transaction digest, once `blockchainTransactionId` resolves on-chain. */
+  blockchainDigest?: string | null;
   transactionType: LoyaltyTxType;
   pointsAmount: number;
   idempotencyKey: string;
