@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contracts';
 
@@ -6,7 +6,8 @@ import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contra
 export class CreditsService {
   constructor(private readonly creditsRepo: CreditsRepository) {}
 
-  async getBalance(organizationEndUserId: string): Promise<CreditBalanceSnapshot> {
+  async getBalance(organizationId: string, organizationEndUserId: string): Promise<CreditBalanceSnapshot> {
+    await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
     const ownership = await this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId);
 
     return {
@@ -20,8 +21,13 @@ export class CreditsService {
     };
   }
 
-  async listTransactions(organizationEndUserId: string, limit = 50): Promise<LoyaltyTransactionDto[]> {
-    const records = await this.creditsRepo.listTransactionsByMember(organizationEndUserId, limit);
+  async listTransactions(
+    organizationId: string,
+    organizationEndUserId: string,
+    limit = 50,
+  ): Promise<LoyaltyTransactionDto[]> {
+    await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
+    const records = await this.creditsRepo.listTransactionsByMember(organizationId, organizationEndUserId, limit);
 
     return records.map((tx) => ({
       id: tx.id,
@@ -38,5 +44,12 @@ export class CreditsService {
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     }));
+  }
+
+  private async assertMemberBelongsToOrganization(organizationId: string, organizationEndUserId: string) {
+    const memberOrgId = await this.creditsRepo.findMemberOrganizationId(organizationEndUserId);
+    if (memberOrgId !== organizationId) {
+      throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
+    }
   }
 }

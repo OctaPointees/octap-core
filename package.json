@@ -19,6 +19,7 @@
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
     "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "seed:dev-credential": "node scripts/seed-dev-credential.mjs",
     "test": "node --test scripts/test-unit.mjs",
     "db:generate": "npm run db:generate --workspace @octap/api",
     "db:migrate": "npm run db:migrate --workspace @octap/api",

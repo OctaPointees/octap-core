@@ -48,9 +48,9 @@ export class RewardsService {
     return list.map((v) => this.mapVoucherDto(v));
   }
 
-  async getVoucher(voucherId: string): Promise<VoucherDto> {
+  async getVoucher(organizationId: string, voucherId: string): Promise<VoucherDto> {
     const voucher = await this.rewardsRepo.findVoucherById(voucherId);
-    if (!voucher) {
+    if (!voucher || voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with id ${voucherId} not found`);
     }
     return this.mapVoucherDto(voucher);
@@ -62,7 +62,7 @@ export class RewardsService {
     req: ClaimVoucherRequest,
   ): Promise<ClaimVoucherResponse> {
     const voucher = await this.rewardsRepo.findVoucherById(voucherId);
-    if (!voucher) {
+    if (!voucher || voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with id ${voucherId} not found`);
     }
 
@@ -116,9 +116,9 @@ export class RewardsService {
     }
   }
 
-  async redeemVoucher(req: RedeemVoucherRequest): Promise<RedeemVoucherResponse> {
+  async redeemVoucher(organizationId: string, req: RedeemVoucherRequest): Promise<RedeemVoucherResponse> {
     const ownership = await this.rewardsRepo.findOwnershipBySerial(req.serialCode);
-    if (!ownership) {
+    if (!ownership || ownership.voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with serial code ${req.serialCode} not found`);
     }
 
@@ -144,19 +144,21 @@ export class RewardsService {
     };
   }
 
-  async listMemberVouchers(organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {
+  async listMemberVouchers(organizationId: string, organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {
     const ownerships = await this.rewardsRepo.listOwnershipsByMember(organizationEndUserId);
-    return ownerships.map((o) => ({
-      id: o.id,
-      voucherId: o.voucherId,
-      organizationEndUserId: o.organizationEndUserId,
-      serialCode: o.serialCode,
-      status: o.status,
-      claimedAt: o.claimedAt.toISOString(),
-      redeemedAt: o.redeemedAt?.toISOString() ?? null,
-      expiresAt: o.expiresAt?.toISOString() ?? null,
-      voucher: this.mapVoucherDto(o.voucher),
-    }));
+    return ownerships
+      .filter((o) => o.voucher.organizationId === organizationId)
+      .map((o) => ({
+        id: o.id,
+        voucherId: o.voucherId,
+        organizationEndUserId: o.organizationEndUserId,
+        serialCode: o.serialCode,
+        status: o.status,
+        claimedAt: o.claimedAt.toISOString(),
+        redeemedAt: o.redeemedAt?.toISOString() ?? null,
+        expiresAt: o.expiresAt?.toISOString() ?? null,
+        voucher: this.mapVoucherDto(o.voucher),
+      }));
   }
 
   private mapVoucherDto(voucher: typeof vouchers.$inferSelect): VoucherDto {

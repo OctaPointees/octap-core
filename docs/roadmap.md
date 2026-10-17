@@ -18,12 +18,19 @@ then move the row to **Implemented** in the same pull request.
 | Merchant Node client (REST) for points and vouchers | ts-sdks/packages/node |
 | Browser client for balance and voucher claim | ts-sdks/packages/browser |
 | Unit tests for credits/rewards services and SDK clients | scripts/test-unit.mjs |
+| Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 
 ### Known gaps in implemented features
 
-- Controllers fall back to a hard-coded organization id when the `x-organization-id` header is
-  missing. There is no authentication or tenant check yet (see Identity/Authorization below).
 - Points are written to PostgreSQL only; nothing is submitted to Sui yet.
+- The API-key guard checks bearer-token validity, scope, and tenant ownership of the requested
+  resource, but there is no mTLS, replay-window/nonce, rate limiting, or HMAC request signing yet,
+  and system-user (dashboard login) sessions are a separate, not-yet-started auth path. See
+  `OCT-83` for that hardening pass.
+- Postgres RLS policies exist on every tenant-scoped table but are not actually enforced: the API
+  pool connects without ever calling `withRls()`, so isolation today is enforced only in
+  application code (now at both the credential-resolution and service layer), not by the database
+  itself as a second line of defense.
 
 ## Not started
 
@@ -36,7 +43,7 @@ and vendor clients.
 | Feature | Suggested location | Notes |
 | --- | --- | --- |
 | Identity: login, sessions, Google zkLogin | domain/identity; infra/clients/enoki | Enoki keys stay backend-only |
-| Authorization: tenant, role, scope, object checks | domain/authorization; api/guards | Needed before exposing more endpoints |
+| Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
 | Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Programs: program controls and capabilities | domain/programs | Paired with Move program_control |
