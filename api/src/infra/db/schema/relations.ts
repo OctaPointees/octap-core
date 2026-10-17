@@ -158,6 +158,11 @@ export const loyaltyTransactionsRelations = relations(
       fields: [loyaltyTransactions.blockchainTransactionId],
       references: [blockchainTransactions.id],
     }),
+    reversesTransaction: one(loyaltyTransactions, {
+      fields: [loyaltyTransactions.reversesTransactionId],
+      references: [loyaltyTransactions.id],
+      relationName: 'reversal',
+    }),
     voucherOwnerships: many(voucherOwnerships),
   }),
 );

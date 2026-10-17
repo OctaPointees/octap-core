@@ -13,3 +13,8 @@ export interface RedeemPointsBodyDto {
   receiptReference?: string;
   metadata?: Record<string, unknown>;
 }
+
+export interface ReverseTransactionBodyDto {
+  idempotencyKey: string;
+  reason: string;
+}

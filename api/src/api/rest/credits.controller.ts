@@ -2,15 +2,17 @@ import { Controller, Post, Get, Body, Param, Query, BadRequestException } from '
 import { CreditsService } from '../../domain/credits/credits.service.js';
 import { EarnService } from '../../domain/credits/earn.service.js';
 import { RedemptionService } from '../../domain/credits/redemption.service.js';
+import { ReversalService } from '../../domain/credits/reversal.service.js';
 import { Scopes } from '../../infra/auth/scopes.decorator.js';
 import { Tenant } from '../../infra/auth/tenant.decorator.js';
 import type { TenantContext } from '../../infra/auth/tenant-context.js';
-import type { EarnPointsBodyDto, RedeemPointsBodyDto } from '../dto/credits.dto.js';
+import type { EarnPointsBodyDto, RedeemPointsBodyDto, ReverseTransactionBodyDto } from '../dto/credits.dto.js';
 import type {
   EarnPointsResponse,
   RedeemPointsResponse,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
+  ReverseTransactionResponse,
 } from '@octap/contracts';
 
 @Controller('v1/credits')
@@ -19,6 +21,7 @@ export class CreditsController {
     private readonly creditsService: CreditsService,
     private readonly earnService: EarnService,
     private readonly redemptionService: RedemptionService,
+    private readonly reversalService: ReversalService,
   ) {}
 
   @Post('earn')
@@ -37,6 +40,19 @@ export class CreditsController {
       throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
     }
     return this.redemptionService.executeRedeem(tenant.organizationId, body);
+  }
+
+  @Post('transactions/:transactionId/reverse')
+  @Scopes('write')
+  async reverseTransaction(
+    @Tenant() tenant: TenantContext,
+    @Param('transactionId') transactionId: string,
+    @Body() body: ReverseTransactionBodyDto,
+  ): Promise<ReverseTransactionResponse> {
+    if (!body.idempotencyKey || !body.reason) {
+      throw new BadRequestException('idempotencyKey and reason are required');
+    }
+    return this.reversalService.reverseTransaction(tenant.organizationId, { transactionId, ...body });
   }
 
   @Get('members/:memberId/balance')
