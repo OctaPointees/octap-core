@@ -8,6 +8,13 @@
       "when": 1791185261546,
       "tag": "0000_open_energizer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792239616123,
+      "tag": "0001_dark_dragon_man",
+      "breakpoints": true
     }
   ]
 }

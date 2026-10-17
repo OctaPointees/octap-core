@@ -1,0 +1,2 @@
+ALTER TABLE "voucher_ownerships" DROP CONSTRAINT "voucher_ownerships_voucher_id_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "voucher_ownership_voucher_member_idx" ON "voucher_ownerships" USING btree ("voucher_id","organization_end_user_id");
