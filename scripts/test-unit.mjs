@@ -28,7 +28,8 @@ test('EarnService: successfully records points and updates balance', async () =>
     }),
   };
 
-  const service = new EarnService(mockCreditsRepo);
+  const mockWebhooks = { emit: async () => {} };
+  const service = new EarnService(mockCreditsRepo, mockWebhooks);
   const result = await service.executeEarn('org-1', {
     organizationEndUserId: 'user-1',
     pointsAmount: 50,
@@ -82,7 +83,8 @@ test('RedemptionService: deducts points successfully', async () => {
     }),
   };
 
-  const service = new RedemptionService(mockCreditsRepo);
+  const mockWebhooks = { emit: async () => {} };
+  const service = new RedemptionService(mockCreditsRepo, mockWebhooks);
   const result = await service.executeRedeem('org-1', {
     organizationEndUserId: 'user-1',
     pointsAmount: 30,
@@ -725,6 +727,212 @@ test('ReversalService: a concurrent double reversal is rejected (race caught by 
     () => service.reverseTransaction('org-1', { transactionId: 'tx-earn-1', idempotencyKey: 'reverse-6', reason: 'x' }),
     /unique constraint/,
   );
+});
+
+// ==========================================
+// WEBHOOKS TESTS (OCT-54)
+// ==========================================
+import { WebhookEndpointsService } from '../api/dist/domain/webhooks/webhook-endpoints.service.js';
+import { WebhookDeliveryService } from '../api/dist/domain/webhooks/webhook-delivery.service.js';
+import { WebhookDeliveryProcessor, MAX_DELIVERY_ATTEMPTS } from '../api/dist/domain/webhooks/webhook-delivery.processor.js';
+import { signWebhookPayload, verifyWebhookSignature, generateWebhookSecret } from '../api/dist/domain/webhooks/webhook-signing.util.js';
+import { verifyWebhookSignature as sdkVerifyWebhookSignature } from '../ts-sdks/packages/node/dist/webhooks.js';
+
+test('webhook-signing: a valid signature verifies and a tampered body does not', () => {
+  const secret = generateWebhookSecret();
+  const body = JSON.stringify({ id: 'evt-1', type: 'credits.earned' });
+  const signature = signWebhookPayload(body, secret);
+
+  assert.equal(verifyWebhookSignature(body, signature, secret), true);
+  assert.equal(verifyWebhookSignature(body + ' ', signature, secret), false);
+  assert.equal(verifyWebhookSignature(body, signature, generateWebhookSecret()), false);
+});
+
+test('webhook-signing: the server util and the Node SDK verifier agree (cross-package)', () => {
+  const secret = generateWebhookSecret();
+  const body = JSON.stringify({ id: 'evt-2', type: 'credits.redeemed' });
+  const signature = signWebhookPayload(body, secret);
+
+  assert.equal(sdkVerifyWebhookSignature(body, signature, secret), true);
+  assert.equal(sdkVerifyWebhookSignature(body, 'not-hex-but-also-wrong', secret), false);
+});
+
+test('WebhookEndpointsService: register returns the secret once, list never includes it', async () => {
+  const store = new Map();
+  let nextId = 1;
+  const repo = {
+    createEndpoint: async (data) => {
+      const row = { id: `ep-${nextId++}`, status: 'ACTIVE', ...data };
+      store.set(row.id, row);
+      return row;
+    },
+    listEndpoints: async (orgId) => [...store.values()].filter((e) => e.organizationId === orgId),
+    findEndpointForOrganization: async (orgId, id) => (store.get(id)?.organizationId === orgId ? store.get(id) : null),
+    setEndpointStatus: async (id, status) => {
+      const row = store.get(id);
+      row.status = status;
+      return row;
+    },
+    rotateEndpointSecret: async (id, secret) => {
+      const row = store.get(id);
+      row.secret = secret;
+      return row;
+    },
+  };
+  const service = new WebhookEndpointsService(repo);
+
+  const registered = await service.register('org-1', 'https://merchant.example/hooks', 'POS integration');
+  assert.ok(registered.secret.startsWith('whsec_'));
+
+  const listed = await service.list('org-1');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].secret, undefined);
+  assert.equal(listed[0].url, 'https://merchant.example/hooks');
+});
+
+test('WebhookEndpointsService: rejects an invalid URL and cross-tenant endpoint management', async () => {
+  const repo = {
+    createEndpoint: async () => { throw new Error('should not be called'); },
+    findEndpointForOrganization: async () => null,
+  };
+  const service = new WebhookEndpointsService(repo);
+
+  await assert.rejects(() => service.register('org-1', 'not-a-url'), /valid http/);
+  await assert.rejects(() => service.disable('org-2', 'ep-1'), /was not found/);
+});
+
+test('WebhookDeliveryService: emit enqueues only to ACTIVE endpoints and never throws', async () => {
+  const enqueued = [];
+  const repo = {
+    listActiveEndpoints: async () => [{ id: 'ep-active' }],
+    enqueueDelivery: async (params) => enqueued.push(params),
+  };
+  const service = new WebhookDeliveryService(repo);
+
+  await service.emit('org-1', 'credits.earned', { transactionId: 'tx-1' });
+  assert.equal(enqueued.length, 1);
+  assert.equal(enqueued[0].eventType, 'credits.earned');
+
+  const throwingRepo = { listActiveEndpoints: async () => { throw new Error('db down'); } };
+  await assert.doesNotReject(() => new WebhookDeliveryService(throwingRepo).emit('org-1', 'credits.earned', {}));
+});
+
+test('WebhookDeliveryService: replay only works on a DEAD_LETTER delivery, same org', async () => {
+  const deadLetter = { id: 'dlv-1', organizationId: 'org-1', status: 'DEAD_LETTER' };
+  const repo = {
+    findDeliveryForOrganization: async (orgId, id) => (orgId === 'org-1' && id === 'dlv-1' ? deadLetter : null),
+    resetForReplay: async (id) => ({ id, status: 'PENDING', attemptCount: 0 }),
+  };
+  const service = new WebhookDeliveryService(repo);
+
+  const replayed = await service.replay('org-1', 'dlv-1');
+  assert.equal(replayed.status, 'PENDING');
+  assert.equal(replayed.id, 'dlv-1'); // identity preserved
+
+  await assert.rejects(() => service.replay('org-2', 'dlv-1'), /was not found/);
+
+  const pendingRepo = { findDeliveryForOrganization: async () => ({ id: 'dlv-2', organizationId: 'org-1', status: 'PENDING' }) };
+  await assert.rejects(() => new WebhookDeliveryService(pendingRepo).replay('org-1', 'dlv-2'), /Only a DEAD_LETTER/);
+});
+
+function withMockFetch(impl, run) {
+  const original = globalThis.fetch;
+  globalThis.fetch = impl;
+  return run().finally(() => {
+    globalThis.fetch = original;
+  });
+}
+
+test('WebhookDeliveryProcessor: a successful delivery is marked DELIVERED with a valid signature', async () => {
+  const secret = generateWebhookSecret();
+  const endpoint = { id: 'ep-1', url: 'https://merchant.example/hooks', secret, status: 'ACTIVE' };
+  const delivery = { id: 'dlv-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: { a: 1 }, attemptCount: 1 };
+  let markedDeliveredStatus;
+  let seenHeaders;
+  const repo = {
+    findEndpointById: async () => endpoint,
+    markDelivered: async (_id, status) => {
+      markedDeliveredStatus = status;
+    },
+  };
+  const processor = new WebhookDeliveryProcessor(repo);
+
+  await withMockFetch(
+    async (url, init) => {
+      seenHeaders = init.headers;
+      const expectedSig = signWebhookPayload(init.body, secret);
+      assert.equal(init.headers['x-octap-signature'], expectedSig);
+      return { ok: true, status: 200 };
+    },
+    () => processor.process(delivery),
+  );
+
+  assert.equal(markedDeliveredStatus, 200);
+  assert.equal(seenHeaders['x-octap-event-id'], 'dlv-1');
+  assert.equal(seenHeaders['x-octap-event-type'], 'credits.earned');
+});
+
+test('WebhookDeliveryProcessor: a non-2xx response schedules a retry, not a dead-letter, below the attempt cap', async () => {
+  const endpoint = { id: 'ep-1', url: 'https://merchant.example/hooks', secret: generateWebhookSecret(), status: 'ACTIVE' };
+  const delivery = { id: 'dlv-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: {}, attemptCount: 2 };
+  let scheduled;
+  const repo = {
+    findEndpointById: async () => endpoint,
+    scheduleRetry: async (id, nextAttemptAt, status, error) => {
+      scheduled = { id, nextAttemptAt, status, error };
+    },
+  };
+  const processor = new WebhookDeliveryProcessor(repo);
+
+  await withMockFetch(async () => ({ ok: false, status: 503 }), () => processor.process(delivery));
+
+  assert.equal(scheduled.id, 'dlv-1');
+  assert.equal(scheduled.status, 503);
+  assert.ok(scheduled.nextAttemptAt > new Date());
+});
+
+test('WebhookDeliveryProcessor: exhausting the attempt cap dead-letters instead of retrying again', async () => {
+  const endpoint = { id: 'ep-1', url: 'https://merchant.example/hooks', secret: generateWebhookSecret(), status: 'ACTIVE' };
+  const delivery = { id: 'dlv-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: {}, attemptCount: MAX_DELIVERY_ATTEMPTS };
+  let deadLettered = false;
+  const repo = {
+    findEndpointById: async () => endpoint,
+    markDeadLetter: async () => {
+      deadLettered = true;
+    },
+    scheduleRetry: async () => {
+      throw new Error('should not retry past the cap');
+    },
+  };
+  const processor = new WebhookDeliveryProcessor(repo);
+
+  await withMockFetch(async () => ({ ok: false, status: 500 }), () => processor.process(delivery));
+
+  assert.equal(deadLettered, true);
+});
+
+test('WebhookDeliveryProcessor: a disabled endpoint dead-letters immediately without an HTTP attempt', async () => {
+  const delivery = { id: 'dlv-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: {}, attemptCount: 1 };
+  let fetchCalled = false;
+  let deadLettered = false;
+  const repo = {
+    findEndpointById: async () => ({ id: 'ep-1', status: 'DISABLED' }),
+    markDeadLetter: async () => {
+      deadLettered = true;
+    },
+  };
+  const processor = new WebhookDeliveryProcessor(repo);
+
+  await withMockFetch(
+    async () => {
+      fetchCalled = true;
+      return { ok: true, status: 200 };
+    },
+    () => processor.process(delivery),
+  );
+
+  assert.equal(fetchCalled, false);
+  assert.equal(deadLettered, true);
 });
 
 // ==========================================

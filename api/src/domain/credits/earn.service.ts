@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 
 @Injectable()
 export class EarnService {
-  constructor(private readonly creditsRepo: CreditsRepository) {}
+  constructor(
+    private readonly creditsRepo: CreditsRepository,
+    private readonly webhooks: WebhookDeliveryService,
+  ) {}
 
   async executeEarn(organizationId: string, request: EarnPointsRequest): Promise<EarnPointsResponse> {
     if (request.pointsAmount <= 0) {
@@ -41,6 +45,13 @@ export class EarnService {
       idempotencyKey: request.idempotencyKey,
       receiptReference: request.receiptReference,
       metadata: request.metadata,
+    });
+
+    await this.webhooks.emit(organizationId, 'credits.earned', {
+      transactionId: transaction.id,
+      organizationEndUserId: transaction.organizationEndUserId,
+      pointsAmount: transaction.pointsAmount,
+      newBalance,
     });
 
     return {
