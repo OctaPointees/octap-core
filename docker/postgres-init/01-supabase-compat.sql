@@ -34,3 +34,13 @@ $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
+
+-- Supabase grants its roles table access by default; a vanilla image starts with none, so
+-- every RLS-gated query would fail with "permission denied" even when the policy itself
+-- would have allowed it. Covers tables that exist now and ones future migrations add.
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant all privileges on all tables in schema public to service_role;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public
+  grant all privileges on tables to service_role;

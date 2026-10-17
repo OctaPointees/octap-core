@@ -11,4 +11,9 @@ Loyalty points for an organization's end users.
 - `credits.module.ts`: Nest provider composition.
 
 Persistence is `infra/db/repositories/credits.repository.ts`; HTTP is `api/rest/credits.controller.ts`.
+The three write transactions (`recordEarnTransaction`/`recordRedeemTransaction`/
+`recordReversalTransaction`) run through `infra/db/rls.ts`'s `withRls()`, so Postgres RLS is a
+real second line of defense on `loyalty_transactions` here, not just the app-code tenant checks
+in `credits.service.ts`/`earn.service.ts`/etc. Read paths don't go through `withRls()` yet (see
+the roadmap's known gaps).
 Chain-time expiry buckets are not implemented yet (see the roadmap).

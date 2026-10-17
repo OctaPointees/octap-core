@@ -25,6 +25,7 @@ then move the row to **Implemented** in the same pull request.
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
+| Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 
 ### Known gaps in implemented features
 
@@ -55,14 +56,28 @@ then move the row to **Implemented** in the same pull request.
   plan, or collections flow. There is also no expiry-bucket model in Postgres at all yet (that's
   still Move-only, see `credit_account.move`), so "retain original bucket and deadline semantics"
   does not apply to anything here: reversal only touches `confirmedBalance`/transaction status.
-- The API-key guard checks bearer-token validity, scope, and tenant ownership of the requested
-  resource, but there is no mTLS, replay-window/nonce, rate limiting, or HMAC request signing yet,
-  and system-user (dashboard login) sessions are a separate, not-yet-started auth path. See
-  `OCT-83` for that hardening pass.
-- Postgres RLS policies exist on every tenant-scoped table but are not actually enforced: the API
-  pool connects without ever calling `withRls()`, so isolation today is enforced only in
-  application code (now at both the credential-resolution and service layer), not by the database
-  itself as a second line of defense.
+- No mTLS: deliberately not built at the app layer — there is no reverse proxy/Dockerfile in
+  this repo yet to terminate TLS in front of it, and raw `https.Server` client-cert verification
+  inside the Node process would be guessing at a deployment shape that doesn't exist. mTLS
+  belongs at a proxy (nginx/Envoy/load balancer) forwarding a verified-identity header, when one
+  gets introduced.
+- HMAC request signing (`@RequireSignedRequest()`) is opt-in per route, applied so far only to
+  `ApiCredentialsController`'s mutating routes — not every write route requires it yet.
+- System-user (dashboard login) sessions are a separate, not-yet-started auth path from the
+  API-key model entirely.
+- RLS is enforced (`withRls()`, real `authenticated`/`service_role` roles and grants — see
+  `docker/postgres-init`) only on `CreditsRepository`'s three REST-triggered write transactions
+  (`recordEarnTransaction`/`recordRedeemTransaction`/`recordReversalTransaction`). The worker-only
+  `confirmEarnOnChain`/`failEarnOnChain` callbacks (chain-submit path) still run on the plain
+  pooled connection too — same gap, just not in scope here since this pass targeted the API's
+  write path specifically. Every read path and all of
+  `RewardsRepository`/`WebhooksRepository`/`ApiCredentialsRepository` still run on the plain
+  pooled connection — RLS policies exist on their tables too, but nothing sets the session's
+  tenant context for them, so they're protected only by application-code checks, not yet by the
+  database as a second line of defense. Converting them is the same pattern, left for a follow-up
+  to keep this change reviewable. `creditOwnerships` itself has no RLS policy at all (it's keyed
+  by member, not by organization directly), so it relies on application code regardless of
+  role/session context.
 
 ## Not started
 
