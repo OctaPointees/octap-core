@@ -21,8 +21,7 @@ then move the row to **Implemented** in the same pull request.
 | Sui Move: capabilities, program_control, policy_version, credit_account (earn/redeem, expiry-bucket FIFO) | contracts/sui/sources; tests under contracts/sui/tests |
 | Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
-| Members: `ensure-by-phone` only (find-or-create by phone, no verification/roles) | api/src/domain/members; api/src/api/rest/members.controller.ts — see its README for why this isn't the full roadmap item below |
-| CORS enabled (permissive) so a separate frontend origin can call the API | api/src/main.ts |
+| CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 
 ### Known gaps in implemented features
 
@@ -58,7 +57,7 @@ and vendor clients.
 | Identity: login, sessions, Google zkLogin | domain/identity; infra/clients/enoki | Enoki keys stay backend-only |
 | Authorization: tenant, role, scope, object checks | domain/authorization; api/guards | Needed before exposing more endpoints |
 | Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
-| Members: enrollment, identity binding | domain/members | A minimal `ensure-by-phone` slice is implemented (see Implemented above) — verification (OTP/SMS), profile editing, and roles are still not started |
+| Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Programs: program controls and capabilities | domain/programs | Paired with Move program_control |
 | Policies: versions and preview | domain/policies | Paired with Move policy_version |
 | Credits: reversal/cancellation | domain/credits/reversal.service.ts | Receipt-referenced |
