@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { RewardsRepository } from '../../infra/db/repositories/rewards.repository.js';
 import type { vouchers } from '../../infra/db/schema/rewards.schema.js';
 import { RedemptionService } from '../credits/redemption.service.js';
+import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 import type {
   CreateVoucherRequest,
   VoucherDto,
@@ -18,6 +19,7 @@ export class RewardsService {
   constructor(
     private readonly rewardsRepo: RewardsRepository,
     private readonly redemptionService: RedemptionService,
+    private readonly creditsRepo: CreditsRepository,
   ) {}
 
   async createVoucher(organizationId: string, req: CreateVoucherRequest): Promise<VoucherDto> {
@@ -64,6 +66,11 @@ export class RewardsService {
     const voucher = await this.rewardsRepo.findVoucherById(voucherId);
     if (!voucher || voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with id ${voucherId} not found`);
+    }
+
+    const memberOrgId = await this.creditsRepo.findMemberOrganizationId(req.organizationEndUserId);
+    if (memberOrgId !== organizationId) {
+      throw new NotFoundException(`Member ${req.organizationEndUserId} was not found for this organization`);
     }
 
     if (voucher.status !== 'ACTIVE') {
@@ -145,6 +152,10 @@ export class RewardsService {
   }
 
   async listMemberVouchers(organizationId: string, organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {
+    const memberOrgId = await this.creditsRepo.findMemberOrganizationId(organizationEndUserId);
+    if (memberOrgId !== organizationId) {
+      throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
+    }
     const ownerships = await this.rewardsRepo.listOwnershipsByMember(organizationEndUserId);
     return ownerships
       .filter((o) => o.voucher.organizationId === organizationId)

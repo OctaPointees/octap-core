@@ -14,6 +14,7 @@ import { Scopes, SCOPES_KEY } from '../api/dist/infra/auth/scopes.decorator.js';
 
 test('EarnService: successfully records points and updates balance', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => null,
     recordEarnTransaction: async (params) => ({
       transaction: {
@@ -41,6 +42,7 @@ test('EarnService: successfully records points and updates balance', async () =>
 
 test('EarnService: respects idempotency', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => ({
       id: 'tx-1',
       organizationEndUserId: 'user-1',
@@ -66,6 +68,7 @@ test('EarnService: respects idempotency', async () => {
 
 test('RedemptionService: deducts points successfully', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => null,
     recordRedeemTransaction: async (params) => ({
       transaction: {
@@ -143,7 +146,8 @@ test('RewardsService: creates and claims voucher with point redemption', async (
     },
   };
 
-  const service = new RewardsService(mockRewardsRepo, mockRedemptionService);
+  const mockCreditsRepo = { findMemberOrganizationId: async () => 'org-1' };
+  const service = new RewardsService(mockRewardsRepo, mockRedemptionService, mockCreditsRepo);
 
   const claimResult = await service.claimVoucher('org-1', 'v-1', {
     organizationEndUserId: 'user-1',
@@ -315,6 +319,77 @@ test('ChainSubmitProcessor: rejects an unsupported command type without touching
   await processor.process(fakeOperation({ commandType: 'SOMETHING_ELSE' }));
 
   assert.match(markedFailed.message, /Unsupported commandType/);
+});
+
+test('EarnService: rejects earning for a member belonging to another organization', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    findTransactionByIdempotency: async () => {
+      throw new Error('should not be reached: ownership check must happen first');
+    },
+  };
+  const service = new EarnService(mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.executeEarn('org-1', { organizationEndUserId: 'user-org2', pointsAmount: 50, idempotencyKey: 'k' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RedemptionService: rejects redeeming for a member belonging to another organization', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    findTransactionByIdempotency: async () => {
+      throw new Error('should not be reached: ownership check must happen first');
+    },
+  };
+  const service = new RedemptionService(mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.executeRedeem('org-1', { organizationEndUserId: 'user-org2', pointsAmount: 10, idempotencyKey: 'k' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RewardsService: claiming a free voucher (no redeem call) still rejects a cross-tenant member', async () => {
+  const freeVoucher = {
+    id: 'v-free',
+    organizationId: 'org-1',
+    code: 'FREEGIFT',
+    pointsCost: 0,
+    totalSupply: null,
+    claimedCount: 0,
+    status: 'ACTIVE',
+    expiresAt: null,
+  };
+  const mockRewardsRepo = {
+    findVoucherById: async () => freeVoucher,
+    claimVoucherInstance: async () => {
+      throw new Error('should not be reached: membership check must happen first');
+    },
+  };
+  const mockCreditsRepo = { findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2') };
+  const service = new RewardsService(mockRewardsRepo, {}, mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.claimVoucher('org-1', 'v-free', { organizationEndUserId: 'user-org2' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RewardsService: listMemberVouchers rejects a cross-tenant member instead of silently returning an empty list', async () => {
+  const mockRewardsRepo = {
+    listOwnershipsByMember: async () => {
+      throw new Error('should not be reached: membership check must happen first');
+    },
+  };
+  const mockCreditsRepo = { findMemberOrganizationId: async () => 'org-2' };
+  const service = new RewardsService(mockRewardsRepo, {}, mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.listMemberVouchers('org-1', 'user-org2'),
+    /was not found for this organization/,
+  );
 });
 
 // ==========================================
