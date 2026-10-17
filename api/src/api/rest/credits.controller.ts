@@ -1,16 +1,10 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Param,
-  Headers,
-  Query,
-  BadRequestException,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, BadRequestException } from '@nestjs/common';
 import { CreditsService } from '../../domain/credits/credits.service.js';
 import { EarnService } from '../../domain/credits/earn.service.js';
 import { RedemptionService } from '../../domain/credits/redemption.service.js';
+import { Scopes } from '../../infra/auth/scopes.decorator.js';
+import { Tenant } from '../../infra/auth/tenant.decorator.js';
+import type { TenantContext } from '../../infra/auth/tenant-context.js';
 import type { EarnPointsBodyDto, RedeemPointsBodyDto } from '../dto/credits.dto.js';
 import type {
   EarnPointsResponse,
@@ -28,39 +22,39 @@ export class CreditsController {
   ) {}
 
   @Post('earn')
-  async earn(
-    @Headers('x-organization-id') orgHeader: string | undefined,
-    @Body() body: EarnPointsBodyDto,
-  ): Promise<EarnPointsResponse> {
-    const orgId = orgHeader || '00000000-0000-0000-0000-000000000001';
+  @Scopes('write')
+  async earn(@Tenant() tenant: TenantContext, @Body() body: EarnPointsBodyDto): Promise<EarnPointsResponse> {
     if (!body.organizationEndUserId || !body.pointsAmount || !body.idempotencyKey) {
       throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
     }
-    return this.earnService.executeEarn(orgId, body);
+    return this.earnService.executeEarn(tenant.organizationId, body);
   }
 
   @Post('redeem')
-  async redeem(
-    @Headers('x-organization-id') orgHeader: string | undefined,
-    @Body() body: RedeemPointsBodyDto,
-  ): Promise<RedeemPointsResponse> {
-    const orgId = orgHeader || '00000000-0000-0000-0000-000000000001';
+  @Scopes('write')
+  async redeem(@Tenant() tenant: TenantContext, @Body() body: RedeemPointsBodyDto): Promise<RedeemPointsResponse> {
     if (!body.organizationEndUserId || !body.pointsAmount || !body.idempotencyKey) {
       throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
     }
-    return this.redemptionService.executeRedeem(orgId, body);
+    return this.redemptionService.executeRedeem(tenant.organizationId, body);
   }
 
   @Get('members/:memberId/balance')
-  async getBalance(@Param('memberId') memberId: string): Promise<CreditBalanceSnapshot> {
-    return this.creditsService.getBalance(memberId);
+  @Scopes('read')
+  async getBalance(
+    @Tenant() tenant: TenantContext,
+    @Param('memberId') memberId: string,
+  ): Promise<CreditBalanceSnapshot> {
+    return this.creditsService.getBalance(tenant.organizationId, memberId);
   }
 
   @Get('members/:memberId/transactions')
+  @Scopes('read')
   async getTransactions(
+    @Tenant() tenant: TenantContext,
     @Param('memberId') memberId: string,
     @Query('limit') limit?: string,
   ): Promise<LoyaltyTransactionDto[]> {
-    return this.creditsService.listTransactions(memberId, limit ? Number(limit) : 50);
+    return this.creditsService.listTransactions(tenant.organizationId, memberId, limit ? Number(limit) : 50);
   }
 }
