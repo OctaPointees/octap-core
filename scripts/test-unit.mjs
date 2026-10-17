@@ -148,6 +148,38 @@ test('RewardsService: creates and claims voucher with point redemption', async (
   assert.ok(claimResult.serialCode.startsWith('DISCOUNT10-'));
 });
 
+test('RewardsService: a second claim of the same voucher by the same member is rejected', async () => {
+  const voucher = {
+    id: 'v-1',
+    organizationId: 'org-1',
+    code: 'FREESHIP',
+    title: 'Free shipping',
+    pointsCost: 0,
+    discountType: 'FIXED_AMOUNT',
+    totalSupply: 100,
+    claimedCount: 1,
+    status: 'ACTIVE',
+    startsAt: null,
+    expiresAt: null,
+    metadata: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const mockRewardsRepo = {
+    findVoucherById: async () => voucher,
+    // Mirrors what voucher_ownership_voucher_member_idx now enforces at the DB level too.
+    claimVoucherInstance: async () => {
+      throw new Error('Voucher has already been claimed by this member');
+    },
+  };
+  const service = new RewardsService(mockRewardsRepo, {});
+
+  await assert.rejects(
+    () => service.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1' }),
+    /already been claimed/,
+  );
+});
+
 // ==========================================
 // SDK UNIT TESTS
 // ==========================================
