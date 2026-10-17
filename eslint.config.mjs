@@ -12,6 +12,6 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
-  { languageOptions: { globals: { process: 'readonly', console: 'readonly' } } },
+  { languageOptions: { globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly' } } },
   ...tseslint.configs.recommended,
 );

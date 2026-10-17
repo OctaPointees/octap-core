@@ -11,6 +11,9 @@ import { ApiKeyGuard } from '../api/dist/infra/auth/api-key.guard.js';
 import { ApiCredentialsService } from '../api/dist/infra/auth/api-credentials.service.js';
 import { hashApiKey } from '../api/dist/infra/auth/api-key-hash.util.js';
 import { Scopes, SCOPES_KEY } from '../api/dist/infra/auth/scopes.decorator.js';
+import { RequireSignedRequest, REQUIRE_SIGNED_REQUEST_KEY } from '../api/dist/infra/auth/signed-request.decorator.js';
+import { buildCanonicalRequest, signCanonicalRequest } from '../api/dist/infra/auth/request-signing.util.js';
+import { RATE_LIMIT_MAX_REQUESTS } from '../api/dist/infra/auth/rate-limit.util.js';
 
 test('EarnService: successfully records points and updates balance', async () => {
   const mockCreditsRepo = {
@@ -400,12 +403,30 @@ test('RewardsService: listMemberVouchers rejects a cross-tenant member instead o
 // ==========================================
 
 function mockExecutionContext({ headers, handler = () => {}, klass = class {} }) {
-  const request = { headers };
+  const request = { headers, method: 'GET', url: '/v1/test', rawBody: Buffer.from('') };
   return {
     switchToHttp: () => ({ getRequest: () => request }),
     getHandler: () => handler,
     getClass: () => klass,
     _request: request,
+  };
+}
+
+/** A Redis double that always allows rate limiting and nonce claims — for tests not about those. */
+function mockRedisAllowing() {
+  const store = new Map();
+  return {
+    incr: async (key) => {
+      const next = (store.get(key) ?? 0) + 1;
+      store.set(key, next);
+      return next;
+    },
+    expire: async () => 1,
+    set: async (key, value, _ex, _ttl, nx) => {
+      if (nx === 'NX' && store.has(key)) return null;
+      store.set(key, value);
+      return 'OK';
+    },
   };
 }
 
@@ -424,7 +445,7 @@ test('ApiKeyGuard: valid key attaches tenant context and passes', async () => {
       touched = true;
     },
   };
-  const guard = new ApiKeyGuard(repo, new Reflector());
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
 
   const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_valid' } });
   const result = await guard.canActivate(ctx);
@@ -435,14 +456,14 @@ test('ApiKeyGuard: valid key attaches tenant context and passes', async () => {
 });
 
 test('ApiKeyGuard: rejects a missing Authorization header', async () => {
-  const guard = new ApiKeyGuard({ findByKeyHash: async () => null }, new Reflector());
+  const guard = new ApiKeyGuard({ findByKeyHash: async () => null }, new Reflector(), mockRedisAllowing());
   const ctx = mockExecutionContext({ headers: {} });
   await assert.rejects(() => guard.canActivate(ctx), /Missing API credential/);
 });
 
 test('ApiKeyGuard: rejects an unknown or revoked key', async () => {
   const repo = { findByKeyHash: async () => ({ status: 'REVOKED' }) };
-  const guard = new ApiKeyGuard(repo, new Reflector());
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
   const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_revoked' } });
   await assert.rejects(() => guard.canActivate(ctx), /invalid or has been revoked/);
 });
@@ -457,7 +478,7 @@ test('ApiKeyGuard: rejects an expired key', async () => {
       scopes: ['read'],
     }),
   };
-  const guard = new ApiKeyGuard(repo, new Reflector());
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
   const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_expired' } });
   await assert.rejects(() => guard.canActivate(ctx), /expired/);
 });
@@ -467,7 +488,7 @@ test('ApiKeyGuard: rejects a stolen key replayed with a different org header (an
     findByKeyHash: async () => ({ id: 'cred-3', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
     touchLastUsed: async () => {},
   };
-  const guard = new ApiKeyGuard(repo, new Reflector());
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
   const ctx = mockExecutionContext({
     headers: { authorization: 'Bearer octap_live_org1key', 'x-organization-id': 'org-2' },
   });
@@ -479,7 +500,7 @@ test('ApiKeyGuard: blocks a write attempt from a read-only credential (privilege
     findByKeyHash: async () => ({ id: 'cred-4', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
     touchLastUsed: async () => {},
   };
-  const guard = new ApiKeyGuard(repo, new Reflector());
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
 
   // Applying the decorator factory manually (no TS decorator syntax in a plain .mjs test file)
   // is equivalent to writing `@Scopes('write')` on this method.
@@ -494,6 +515,174 @@ test('ApiKeyGuard: blocks a write attempt from a read-only credential (privilege
   });
 
   await assert.rejects(() => guard.canActivate(ctx), /missing the required "write" scope/);
+});
+
+test('ApiKeyGuard: rejects once the per-credential rate limit is exceeded', async () => {
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-5', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
+    touchLastUsed: async () => {},
+  };
+  const redis = mockRedisAllowing();
+  const guard = new ApiKeyGuard(repo, new Reflector(), redis);
+  const makeCtx = () => mockExecutionContext({ headers: { authorization: 'Bearer octap_live_ratelimited' } });
+
+  for (let i = 0; i < RATE_LIMIT_MAX_REQUESTS; i++) {
+    assert.equal(await guard.canActivate(makeCtx()), true);
+  }
+  await assert.rejects(() => guard.canActivate(makeCtx()), /Rate limit exceeded/);
+});
+
+test('ApiKeyGuard: fails closed (503) when Redis is unreachable for rate limiting', async () => {
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-6', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
+    touchLastUsed: async () => {},
+  };
+  const brokenRedis = { incr: async () => { throw new Error('ECONNREFUSED'); } };
+  const guard = new ApiKeyGuard(repo, new Reflector(), brokenRedis);
+  const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_x' } });
+
+  await assert.rejects(() => guard.canActivate(ctx), /Rate limiting is temporarily unavailable/);
+});
+
+function signedRequestContext({ credentialKey = 'octap_live_signed', signingKey, method = 'POST', path = '/v1/api-credentials', body = '{}', handler, overrideSignature, overrideNonce, overrideTimestamp }) {
+  const timestamp = (overrideTimestamp ?? Math.floor(Date.now() / 1000)).toString();
+  const nonce = overrideNonce ?? 'nonce-1';
+  const canonical = buildCanonicalRequest({ method, path, timestamp, nonce, rawBody: body });
+  const signature = overrideSignature ?? signCanonicalRequest(canonical, signingKey);
+  return mockExecutionContext({
+    headers: {
+      authorization: `Bearer ${credentialKey}`,
+      'x-octap-timestamp': timestamp,
+      'x-octap-nonce': nonce,
+      'x-octap-signature': signature,
+    },
+    handler: handler ?? signedHandlerFixture(),
+  });
+}
+
+function signedHandlerFixture() {
+  function route() {}
+  RequireSignedRequest()(route, 'route', { value: route });
+  assert.equal(Reflect.getMetadata(REQUIRE_SIGNED_REQUEST_KEY, route), true);
+  return route;
+}
+
+test('ApiKeyGuard: a correctly signed request on a @RequireSignedRequest() route passes', async () => {
+  const signingKey = hashApiKey('octap_live_signed');
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-7', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
+
+  const ctx = signedRequestContext({ signingKey });
+  // mockExecutionContext() defaults method/url; override to match what was signed above.
+  ctx._request.method = 'POST';
+  ctx._request.url = '/v1/api-credentials';
+  ctx._request.rawBody = Buffer.from('{}');
+
+  assert.equal(await guard.canActivate(ctx), true);
+});
+
+test('ApiKeyGuard: a signed route rejects a request missing the signature headers', async () => {
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-8', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
+  const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_signed' }, handler: signedHandlerFixture() });
+
+  await assert.rejects(() => guard.canActivate(ctx), /requires a signed request/);
+});
+
+test('ApiKeyGuard: a signed route rejects a tampered signature', async () => {
+  const signingKey = hashApiKey('octap_live_signed');
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-9', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
+
+  const ctx = signedRequestContext({ signingKey, overrideSignature: 'a'.repeat(64) });
+  ctx._request.method = 'POST';
+  ctx._request.url = '/v1/api-credentials';
+  ctx._request.rawBody = Buffer.from('{}');
+
+  await assert.rejects(() => guard.canActivate(ctx), /Invalid request signature/);
+});
+
+test('ApiKeyGuard: a signed route rejects a stale timestamp (outside the replay window)', async () => {
+  const signingKey = hashApiKey('octap_live_signed');
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-10', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
+
+  const ctx = signedRequestContext({ signingKey, overrideTimestamp: Math.floor(Date.now() / 1000) - 10_000 });
+  ctx._request.method = 'POST';
+  ctx._request.url = '/v1/api-credentials';
+  ctx._request.rawBody = Buffer.from('{}');
+
+  await assert.rejects(() => guard.canActivate(ctx), /outside the replay window/);
+});
+
+test('ApiKeyGuard: a signed route rejects a replayed (already-used) nonce', async () => {
+  const signingKey = hashApiKey('octap_live_signed');
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-11', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const redis = mockRedisAllowing();
+  const guard = new ApiKeyGuard(repo, new Reflector(), redis);
+
+  const makeSignedCtx = () => {
+    const ctx = signedRequestContext({ signingKey, overrideNonce: 'reused-nonce' });
+    ctx._request.method = 'POST';
+    ctx._request.url = '/v1/api-credentials';
+    ctx._request.rawBody = Buffer.from('{}');
+    return ctx;
+  };
+
+  assert.equal(await guard.canActivate(makeSignedCtx()), true);
+  await assert.rejects(() => guard.canActivate(makeSignedCtx()), /already used, or replay protection is unavailable/);
+});
+
+test('ApiKeyGuard: a signed route fails closed when Redis is unreachable for nonce claims', async () => {
+  const signingKey = hashApiKey('octap_live_signed');
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-12', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['admin'] }),
+    touchLastUsed: async () => {},
+  };
+  const brokenNonceRedis = {
+    incr: async () => 1,
+    expire: async () => 1,
+    set: async () => { throw new Error('ECONNREFUSED'); },
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector(), brokenNonceRedis);
+
+  const ctx = signedRequestContext({ signingKey });
+  ctx._request.method = 'POST';
+  ctx._request.url = '/v1/api-credentials';
+  ctx._request.rawBody = Buffer.from('{}');
+
+  await assert.rejects(() => guard.canActivate(ctx), /already used, or replay protection is unavailable/);
+});
+
+test('ApiKeyGuard: rotating a credential invalidates signatures made with the old signing key', async () => {
+  const oldSigningKey = hashApiKey('octap_live_before_rotation');
+  // After rotation the credential's own keyHash changes; a bearer lookup with the OLD raw key
+  // no longer resolves any ACTIVE credential at all, so a request signed with the old
+  // derived key is rejected at the bearer-auth step, before signature verification even runs.
+  const repo = { findByKeyHash: async () => null };
+  const guard = new ApiKeyGuard(repo, new Reflector(), mockRedisAllowing());
+
+  const ctx = signedRequestContext({ credentialKey: 'octap_live_before_rotation', signingKey: oldSigningKey });
+  ctx._request.method = 'POST';
+  ctx._request.url = '/v1/api-credentials';
+  ctx._request.rawBody = Buffer.from('{}');
+
+  await assert.rejects(() => guard.canActivate(ctx), /invalid or has been revoked/);
 });
 
 test('ApiCredentialsService: issues a key whose raw value is never persisted, then revoke/rotate lifecycle', async () => {
