@@ -20,10 +20,17 @@ then move the row to **Implemented** in the same pull request.
 | Unit tests for credits/rewards services and SDK clients | scripts/test-unit.mjs |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
+| Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 
 ### Known gaps in implemented features
 
 - Points are written to PostgreSQL only; nothing is submitted to Sui yet.
+- Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
+  `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
+  done here to keep this change reviewable. `emit()` is also not in the same DB transaction as the
+  write that triggers it (a crash in between would silently drop the event), and the endpoint
+  `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
+  not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
   plan, or collections flow. There is also no expiry-bucket model in Postgres at all yet (that's
@@ -58,7 +65,6 @@ and vendor clients.
 | Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists in operations.schema.ts |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
 | Developer: API keys, scopes, sandbox, request logs | domain/developer | |
-| Merchant webhooks: signed delivery | domain/webhooks; infra/clients/merchant-webhooks | Node SDK verification helper |
 | Billing: Stripe test billing, reconciliation | domain/billing; infra/clients/stripe | Schema exists in billing.schema.ts; distinct from points |
 | Analytics: derived analytics export | domain/analytics; infra/clients/clickhouse; api/db/clickhouse | Analytics-only store |
 | Audit: export, Walrus/Seal evidence, verifier | domain/audit; infra/clients/walrus, seal | Outside checkout path |

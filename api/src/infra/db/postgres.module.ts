@@ -3,11 +3,13 @@ import { drizzleProvider, postgresClientProvider, DRIZZLE_DB, POSTGRES_CLIENT } 
 import { CreditsRepository } from './repositories/credits.repository.js';
 import { RewardsRepository } from './repositories/rewards.repository.js';
 import { ApiCredentialsRepository } from './repositories/api-credentials.repository.js';
+import { WebhooksRepository } from './repositories/webhooks.repository.js';
 
 const repositories = [
   CreditsRepository,
   RewardsRepository,
   ApiCredentialsRepository,
+  WebhooksRepository,
 ];
 
 @Module({

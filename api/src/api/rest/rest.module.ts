@@ -4,8 +4,9 @@ import { AuthModule } from '../../infra/auth/auth.module.js';
 import { CreditsController } from './credits.controller.js';
 import { RewardsController } from './rewards.controller.js';
 import { ApiCredentialsController } from './api-credentials.controller.js';
+import { WebhooksController } from './webhooks.controller.js';
 @Module({
   imports: [DomainModule, AuthModule],
-  controllers: [CreditsController, RewardsController, ApiCredentialsController],
+  controllers: [CreditsController, RewardsController, ApiCredentialsController, WebhooksController],
 })
 export class RestModule {}

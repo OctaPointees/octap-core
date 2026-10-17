@@ -10,6 +10,8 @@ export {
   OctaApiError,
 } from './errors/index.js';
 
+export { verifyWebhookSignature } from './webhooks.js';
+
 export type {
   Transport,
   RestTransport,
@@ -39,4 +41,10 @@ export type {
   RedeemVoucherRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
+  WebhookEndpointStatus,
+  WebhookDeliveryStatus,
+  WebhookEndpointDto,
+  WebhookEndpointWithSecretDto,
+  RegisterWebhookEndpointRequest,
+  WebhookDeliveryDto,
 } from '@octap/contracts';

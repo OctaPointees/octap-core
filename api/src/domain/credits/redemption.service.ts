@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type { RedeemPointsRequest, RedeemPointsResponse } from '@octap/contracts';
 
 @Injectable()
 export class RedemptionService {
-  constructor(private readonly creditsRepo: CreditsRepository) {}
+  constructor(
+    private readonly creditsRepo: CreditsRepository,
+    private readonly webhooks: WebhookDeliveryService,
+  ) {}
 
   async executeRedeem(organizationId: string, request: RedeemPointsRequest): Promise<RedeemPointsResponse> {
     if (request.pointsAmount <= 0) {
@@ -36,6 +40,13 @@ export class RedemptionService {
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
+      });
+
+      await this.webhooks.emit(organizationId, 'credits.redeemed', {
+        transactionId: transaction.id,
+        organizationEndUserId: transaction.organizationEndUserId,
+        pointsAmount: transaction.pointsAmount,
+        newBalance,
       });
 
       return {

@@ -19,6 +19,7 @@ import {
   subscriptions,
   invoices,
 } from './billing.schema.js';
+import { webhookEndpoints, webhookDeliveries } from './webhooks.schema.js';
 
 // SYSTEM USERS RELATIONS
 export const systemUsersRelations = relations(systemUsers, ({ many }) => ({
@@ -68,6 +69,8 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   paymentMethods: many(paymentMethods),
   subscriptions: many(subscriptions),
   invoices: many(invoices),
+  webhookEndpoints: many(webhookEndpoints),
+  webhookDeliveries: many(webhookDeliveries),
 }));
 
 // ORGANIZATION CHANGE REQUESTS RELATIONS
@@ -237,5 +240,26 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   organization: one(organizations, {
     fields: [invoices.organizationId],
     references: [organizations.id],
+  }),
+}));
+
+// WEBHOOK ENDPOINTS RELATIONS
+export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [webhookEndpoints.organizationId],
+    references: [organizations.id],
+  }),
+  deliveries: many(webhookDeliveries),
+}));
+
+// WEBHOOK DELIVERIES RELATIONS
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [webhookDeliveries.organizationId],
+    references: [organizations.id],
+  }),
+  endpoint: one(webhookEndpoints, {
+    fields: [webhookDeliveries.endpointId],
+    references: [webhookEndpoints.id],
   }),
 }));
