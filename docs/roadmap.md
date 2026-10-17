@@ -19,10 +19,16 @@ then move the row to **Implemented** in the same pull request.
 | Browser client for balance and voucher claim | ts-sdks/packages/browser |
 | Unit tests for credits/rewards services and SDK clients | scripts/test-unit.mjs |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
+| Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 
 ### Known gaps in implemented features
 
 - Points are written to PostgreSQL only; nothing is submitted to Sui yet.
+- Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
+  further redemption via the existing balance check — there is no separate debt ledger, repayment
+  plan, or collections flow. There is also no expiry-bucket model in Postgres at all yet (that's
+  still Move-only, see `credit_account.move`), so "retain original bucket and deadline semantics"
+  does not apply to anything here: reversal only touches `confirmedBalance`/transaction status.
 - The API-key guard checks bearer-token validity, scope, and tenant ownership of the requested
   resource, but there is no mTLS, replay-window/nonce, rate limiting, or HMAC request signing yet,
   and system-user (dashboard login) sessions are a separate, not-yet-started auth path. See
@@ -48,8 +54,7 @@ and vendor clients.
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Programs: program controls and capabilities | domain/programs | Paired with Move program_control |
 | Policies: versions and preview | domain/policies | Paired with Move policy_version |
-| Credits: reversal/cancellation | domain/credits/reversal.service.ts | Receipt-referenced |
-| Credits: expiry and clawback | domain/credits/expiry.service.ts + expiry worker | Chain-time expiry |
+| Credits: chain-time expiry buckets and worker | domain/credits/expiry.service.ts + expiry worker | Needs the Move `credit_account` bucket model mirrored into Postgres first; reversal/clawback-debt is implemented (see Implemented above), this row is only the bucket-expiry part |
 | Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists in operations.schema.ts |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
 | Developer: API keys, scopes, sandbox, request logs | domain/developer | |

@@ -1,0 +1,3 @@
+ALTER TABLE "loyalty_transactions" ADD COLUMN "reverses_transaction_id" uuid;--> statement-breakpoint
+ALTER TABLE "loyalty_transactions" ADD CONSTRAINT "loyalty_transactions_reverses_transaction_id_loyalty_transactions_id_fk" FOREIGN KEY ("reverses_transaction_id") REFERENCES "public"."loyalty_transactions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "loyalty_transactions" ADD CONSTRAINT "loyalty_transactions_reverses_transaction_id_unique" UNIQUE("reverses_transaction_id");

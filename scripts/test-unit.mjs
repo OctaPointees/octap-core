@@ -373,6 +373,154 @@ test('RewardsService: a voucher belonging to another organization is treated as 
 });
 
 // ==========================================
+// REVERSAL SERVICE TESTS (OCT-51)
+// ==========================================
+import { ReversalService } from '../api/dist/domain/credits/reversal.service.js';
+
+function confirmedEarn(overrides = {}) {
+  return {
+    id: 'tx-earn-1',
+    organizationId: 'org-1',
+    organizationEndUserId: 'user-1',
+    transactionType: 'EARN',
+    pointsAmount: 50,
+    status: 'CONFIRMED',
+    idempotencyKey: 'earn-1',
+    reversesTransactionId: null,
+    ...overrides,
+  };
+}
+
+test('ReversalService: reverses a CONFIRMED earn and can drive the balance negative (clawback debt)', async () => {
+  let reversedStatus;
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async (orgId, id) => (orgId === 'org-1' && id === 'tx-earn-1' ? confirmedEarn() : null),
+    recordReversalTransaction: async (params) => {
+      reversedStatus = 'REVERSED';
+      return {
+        reversal: { id: 'tx-reversal-1', idempotencyKey: params.idempotencyKey, pointsAmount: params.original.pointsAmount },
+        reversedOriginal: { ...params.original, status: 'REVERSED' },
+        // Already spent elsewhere: reversing this earn pushes the balance negative.
+        newBalance: -20,
+      };
+    },
+  };
+  const service = new ReversalService(repo);
+
+  const result = await service.reverseTransaction('org-1', {
+    transactionId: 'tx-earn-1',
+    idempotencyKey: 'reverse-1',
+    reason: 'Chargeback from payment provider',
+  });
+
+  assert.equal(reversedStatus, 'REVERSED');
+  assert.equal(result.reversedTransactionId, 'tx-earn-1');
+  assert.equal(result.newBalance, -20);
+  assert.equal(result.balanceWentNegative, true);
+});
+
+test('ReversalService: the same idempotency key replays the same result instead of reversing twice', async () => {
+  let recordCalls = 0;
+  const existingReversal = {
+    id: 'tx-reversal-1',
+    organizationEndUserId: 'user-1',
+    transactionType: 'REVERSAL',
+    pointsAmount: 50,
+    idempotencyKey: 'reverse-1',
+    reversesTransactionId: 'tx-earn-1',
+  };
+  const repo = {
+    findTransactionByIdempotency: async (orgId, key) => (key === 'reverse-1' ? existingReversal : null),
+    recordReversalTransaction: async () => {
+      recordCalls += 1;
+      throw new Error('should not be called on idempotent replay');
+    },
+    getOrCreateCreditOwnership: async () => ({ confirmedBalance: 30 }),
+  };
+  const service = new ReversalService(repo);
+
+  const result = await service.reverseTransaction('org-1', {
+    transactionId: 'tx-earn-1',
+    idempotencyKey: 'reverse-1',
+    reason: 'Chargeback from payment provider',
+  });
+
+  assert.equal(recordCalls, 0);
+  assert.equal(result.reversalTransactionId, 'tx-reversal-1');
+  assert.equal(result.newBalance, 30);
+});
+
+test('ReversalService: rejects reversing a transaction that is not CONFIRMED', async () => {
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async () => confirmedEarn({ status: 'REVERSED' }),
+  };
+  const service = new ReversalService(repo);
+
+  await assert.rejects(
+    () => service.reverseTransaction('org-1', { transactionId: 'tx-earn-1', idempotencyKey: 'reverse-2', reason: 'retry' }),
+    /already been reversed/,
+  );
+});
+
+test('ReversalService: rejects reversing a transaction belonging to another organization', async () => {
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async (orgId) => (orgId === 'org-1' ? confirmedEarn() : null),
+  };
+  const service = new ReversalService(repo);
+
+  await assert.rejects(
+    () => service.reverseTransaction('org-2', { transactionId: 'tx-earn-1', idempotencyKey: 'reverse-3', reason: 'x' }),
+    /was not found/,
+  );
+});
+
+test('ReversalService: a reversal cannot itself be reversed', async () => {
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async () => confirmedEarn({ transactionType: 'REVERSAL' }),
+  };
+  const service = new ReversalService(repo);
+
+  await assert.rejects(
+    () => service.reverseTransaction('org-1', { transactionId: 'tx-reversal-1', idempotencyKey: 'reverse-4', reason: 'x' }),
+    /cannot be reversed/,
+  );
+});
+
+test('ReversalService: requires a reason', async () => {
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async () => confirmedEarn(),
+  };
+  const service = new ReversalService(repo);
+
+  await assert.rejects(
+    () => service.reverseTransaction('org-1', { transactionId: 'tx-earn-1', idempotencyKey: 'reverse-5', reason: '  ' }),
+    /reason is required/,
+  );
+});
+
+test('ReversalService: a concurrent double reversal is rejected (race caught by the unique index)', async () => {
+  const repo = {
+    findTransactionByIdempotency: async () => null,
+    findTransactionByIdForOrganization: async () => confirmedEarn(),
+    recordReversalTransaction: async () => {
+      // What a unique-constraint violation on reverses_transaction_id surfaces as.
+      throw new Error('duplicate key value violates unique constraint "loyalty_transactions_reverses_transaction_id_unique"');
+    },
+  };
+  const service = new ReversalService(repo);
+
+  await assert.rejects(
+    () => service.reverseTransaction('org-1', { transactionId: 'tx-earn-1', idempotencyKey: 'reverse-6', reason: 'x' }),
+    /unique constraint/,
+  );
+});
+
+// ==========================================
 // SDK UNIT TESTS
 // ==========================================
 import {

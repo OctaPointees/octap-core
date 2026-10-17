@@ -64,6 +64,23 @@ export interface CreditBalanceSnapshot {
   asOfCheckpoint?: string | null;
 }
 
+export interface ReverseTransactionRequest {
+  transactionId: string;
+  idempotencyKey: string;
+  reason: string;
+}
+
+export interface ReverseTransactionResponse {
+  reversalTransactionId: string;
+  reversedTransactionId: string;
+  organizationEndUserId: string;
+  pointsAmount: number;
+  newBalance: number;
+  /** True when `newBalance` went negative — the member owes points back (clawback debt). */
+  balanceWentNegative: boolean;
+  idempotencyKey: string;
+}
+
 export interface LoyaltyTransactionDto {
   id: string;
   organizationId: string;
