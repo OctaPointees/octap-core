@@ -47,6 +47,19 @@ export class CreditsRepository {
     });
   }
 
+  async findTransactionByIdForOrganization(organizationId: string, transactionId: string) {
+    return this.db.query.loyaltyTransactions.findFirst({
+      where: (t, { and, eq }) => and(eq(t.id, transactionId), eq(t.organizationId, organizationId)),
+    });
+  }
+
+  /** Finds the REVERSAL row (if any) that already reverses the given transaction. */
+  async findReversalOf(transactionId: string) {
+    return this.db.query.loyaltyTransactions.findFirst({
+      where: eq(loyaltyTransactions.reversesTransactionId, transactionId),
+    });
+  }
+
   /**
    * Durably accepts an earn command: inserts the loyalty transaction as PENDING, moves
    * `pointsAmount` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
@@ -264,6 +277,67 @@ export class CreditsRepository {
         transaction,
         newBalance: newConfirmedBalance,
       };
+    });
+  }
+
+  /**
+   * Reverses a CONFIRMED EARN or REDEEM: marks the original REVERSED, inserts a REVERSAL row
+   * linked to it via `reversesTransactionId`, and applies the opposite balance effect. A
+   * reversed EARN that was already (partly) spent is allowed to drive `confirmedBalance`
+   * negative — that negative balance *is* the clawback debt, and it already blocks further
+   * redemptions via the balance check in `recordRedeemTransaction`.
+   *
+   * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
+   * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop
+   * if two reversal requests for the same original race each other.
+   */
+  async recordReversalTransaction(params: {
+    organizationId: string;
+    original: typeof loyaltyTransactions.$inferSelect;
+    idempotencyKey: string;
+    reason?: string;
+  }) {
+    return this.db.transaction(async (tx) => {
+      const [reversedOriginal] = await tx
+        .update(loyaltyTransactions)
+        .set({ status: 'REVERSED', updatedAt: new Date() })
+        .where(eq(loyaltyTransactions.id, params.original.id))
+        .returning();
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.original.organizationEndUserId),
+      });
+      if (!ownership) {
+        throw new Error('Credit ownership not found for this member');
+      }
+
+      const magnitude = Number(params.original.pointsAmount);
+      // EARN added to confirmedBalance -> reversing subtracts (may go negative: clawback debt).
+      // REDEEM subtracted from confirmedBalance -> reversing adds it back.
+      const balanceDelta = params.original.transactionType === 'EARN' ? -magnitude : magnitude;
+      const newConfirmedBalance = Number(ownership.confirmedBalance) + balanceDelta;
+
+      await tx
+        .update(creditOwnerships)
+        .set({ confirmedBalance: newConfirmedBalance, updatedAt: new Date() })
+        .where(eq(creditOwnerships.id, ownership.id));
+
+      const [reversal] = await tx
+        .insert(loyaltyTransactions)
+        .values({
+          organizationId: params.organizationId,
+          organizationEndUserId: params.original.organizationEndUserId,
+          transactionType: 'REVERSAL',
+          pointsAmount: magnitude,
+          idempotencyKey: params.idempotencyKey,
+          receiptReference: params.reason,
+          status: 'CONFIRMED',
+          reversesTransactionId: params.original.id,
+          metadata: { reversedTransactionType: params.original.transactionType },
+        })
+        .returning();
+
+      return { reversal, reversedOriginal, newBalance: newConfirmedBalance };
     });
   }
 

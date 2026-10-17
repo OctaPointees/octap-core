@@ -1,5 +1,16 @@
 import { sql } from 'drizzle-orm';
-import { bigint, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  bigint,
+  jsonb,
+  pgEnum,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 import { organizationEndUsers } from './members.schema.js';
@@ -93,6 +104,15 @@ export const loyaltyTransactions = pgTable(
     idempotencyKey: text('idempotency_key').notNull(),
     receiptReference: text('receipt_reference'),
     status: loyaltyTxStatusEnum('status').default('PENDING').notNull(),
+    /**
+     * Set only on a REVERSAL row, pointing back at the EARN/REDEEM it reverses. Unique (not
+     * just indexed) so the database itself rejects a second reversal of the same original,
+     * even under a concurrent retry — the app-level status check in ReversalService is the
+     * friendly error path, this is the backstop.
+     */
+    reversesTransactionId: uuid('reverses_transaction_id')
+      .unique()
+      .references((): AnyPgColumn => loyaltyTransactions.id),
     metadata: jsonb('metadata').default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
