@@ -2,7 +2,10 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-const app = await NestFactory.create(AppModule);
+// rawBody: true preserves the exact request bytes on request.rawBody — request signature
+// verification (infra/auth/request-signing.util.ts) must hash what was actually sent, not a
+// re-serialized JSON.stringify(request.body), which can differ in key order/whitespace.
+const app = await NestFactory.create(AppModule, { rawBody: true });
 app.enableShutdownHooks();
 // Permissive for now — there is no authentication/tenant check yet either (see docs/roadmap.md's
 // known gaps), so this isn't loosening a real security boundary. Scope this to an allowlist once

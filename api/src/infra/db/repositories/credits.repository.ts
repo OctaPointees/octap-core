@@ -4,6 +4,7 @@ import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { organizationEndUsers } from '../schema/members.schema.js';
+import { withRls } from '../rls.js';
 
 @Injectable()
 export class CreditsRepository {
@@ -76,7 +77,7 @@ export class CreditsRepository {
     receiptReference?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return this.db.transaction(async (tx) => {
+    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       let ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -238,7 +239,7 @@ export class CreditsRepository {
     receiptReference?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return this.db.transaction(async (tx) => {
+    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       const ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -297,7 +298,7 @@ export class CreditsRepository {
     idempotencyKey: string;
     reason?: string;
   }) {
-    return this.db.transaction(async (tx) => {
+    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       const [reversedOriginal] = await tx
         .update(loyaltyTransactions)
         .set({ status: 'REVERSED', updatedAt: new Date() })
