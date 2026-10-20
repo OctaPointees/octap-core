@@ -30,6 +30,11 @@ Add a vendor client under `infra/clients/<vendor>/` and a new infrastructure mod
 `infra/infrastructure.module.ts`) only when a feature actually calls that vendor. Add its
 environment variables to `.env.example` in the same change.
 
+Exception: if the vendor credential must never exist in the HTTP process's memory (a signer key,
+not an API key behind a read-only client), import that vendor module directly in
+`worker.module.ts` instead of `infra/infrastructure.module.ts`, and say so in both the client's
+module doc and its own `README.md`. `infra/clients/sui` does this for `SUI_ISSUER_PRIVATE_KEY`.
+
 ## Workers
 
 HTTP and worker share one package but run as separate processes. A job lives next to its

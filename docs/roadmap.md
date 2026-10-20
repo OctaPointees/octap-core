@@ -18,12 +18,31 @@ then move the row to **Implemented** in the same pull request.
 | Merchant Node client (REST) for points and vouchers | ts-sdks/packages/node |
 | Browser client for balance and voucher claim | ts-sdks/packages/browser |
 | Unit tests for credits/rewards services and SDK clients | scripts/test-unit.mjs |
+| Sui Move: capabilities, program_control, policy_version, credit_account (earn/redeem, expiry-bucket FIFO) | contracts/sui/sources; tests under contracts/sui/tests |
+| Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
+| Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
+| CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 
 ### Known gaps in implemented features
 
 - Controllers fall back to a hard-coded organization id when the `x-organization-id` header is
   missing. There is no authentication or tenant check yet (see Identity/Authorization below).
-- Points are written to PostgreSQL only; nothing is submitted to Sui yet.
+- Only **earn** is chain-dispatched. **Redeem stays PostgreSQL-only**: `credit_account::redeem`
+  requires the beneficiary's own signature (Move-enforced, not a bug), which needs zkLogin
+  (Identity, below) — a worker signing with the IssuerCap key would abort on-chain every time, so
+  it isn't wired rather than wired wrong. See `api/src/infra/clients/sui/sui.client.ts`.
+- The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
+  organization — those object ids are committed constants in
+  `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
+  doc comment for why object ids aren't env vars), not something `.env.example` configures. Real
+  per-organization program provisioning is the `domain/programs` row below, not built yet.
+- An end user has no real Sui address yet (no zkLogin/identity binding), so the worker opens each
+  `CreditAccount` under a placeholder address derived from the PG ownership row id
+  (`chain-submit.processor.ts`'s `demoBeneficiaryAddress`) — nobody holds its private key. Fine for
+  earn (no signature needed); must be replaced once Identity exists, since redeem will need it to
+  be a real controllable address.
+- `operation_key` anti-replay is PostgreSQL-only (idempotency key), not enforced on-chain yet; see
+  `contracts/sui/README.md`'s note on `OperationShard`.
 
 ## Not started
 
@@ -43,7 +62,7 @@ and vendor clients.
 | Policies: versions and preview | domain/policies | Paired with Move policy_version |
 | Credits: reversal/cancellation | domain/credits/reversal.service.ts | Receipt-referenced |
 | Credits: expiry and clawback | domain/credits/expiry.service.ts + expiry worker | Chain-time expiry |
-| Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists in operations.schema.ts |
+| Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists; a minimal claim/markSubmitted/markFailed slice exists as `infra/db/repositories/operations.repository.ts` for chain-submit dispatch only — no dedup beyond the idempotency key, no replay, no UNKNOWN recovery |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
 | Developer: API keys, scopes, sandbox, request logs | domain/developer | |
 | Merchant webhooks: signed delivery | domain/webhooks; infra/clients/merchant-webhooks | Node SDK verification helper |
@@ -62,7 +81,7 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 
 | Job | Feature |
 | --- | --- |
-| Transaction submission to Sui | credits |
+| Transaction submission to Sui (earn only — see known gaps) | credits (implemented: chain-submit.worker.ts) |
 | Bucket expiry | credits |
 | Projection from chain to PostgreSQL | operations |
 | Checkpoint ingestion/replay | indexer |
@@ -85,9 +104,10 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 
 ### Sui Move contracts (contracts/sui/sources)
 
-Object map from the design: `capabilities`, `program_control`, `policy_version`, `credit_account`,
-`budget_shard`, `operation_shard`, `operation_receipt`, `campaign_authorization`, `audit_manifest`.
-None exist yet. Add each module with its tests under `contracts/sui/tests`.
+Object map from the design: `capabilities`, `program_control`, `policy_version`, `credit_account`
+(**implemented**, see Implemented above and `contracts/sui/README.md`), `budget_shard`,
+`operation_shard`, `operation_receipt`, `campaign_authorization`, `audit_manifest` (not started).
+Add each remaining module with its tests under `contracts/sui/tests`.
 
 ### SDKs
 
