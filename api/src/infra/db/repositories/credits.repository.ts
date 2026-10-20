@@ -1,12 +1,22 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
+import { organizationEndUsers } from '../schema/members.schema.js';
 
 @Injectable()
 export class CreditsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+
+  /** Looks up which organization a member belongs to, for tenant-ownership checks. */
+  async findMemberOrganizationId(organizationEndUserId: string): Promise<string | null> {
+    const row = await this.db.query.organizationEndUsers.findFirst({
+      where: eq(organizationEndUsers.id, organizationEndUserId),
+      columns: { organizationId: true },
+    });
+    return row?.organizationId ?? null;
+  }
 
   async getOrCreateCreditOwnership(organizationEndUserId: string) {
     const existing = await this.db.query.creditOwnerships.findFirst({
@@ -257,9 +267,12 @@ export class CreditsRepository {
     });
   }
 
-  async listTransactionsByMember(organizationEndUserId: string, limit = 50) {
+  async listTransactionsByMember(organizationId: string, organizationEndUserId: string, limit = 50) {
     return this.db.query.loyaltyTransactions.findMany({
-      where: eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+      where: and(
+        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+        eq(loyaltyTransactions.organizationId, organizationId),
+      ),
       orderBy: [desc(loyaltyTransactions.createdAt)],
       limit,
       with: { blockchainTransaction: true },

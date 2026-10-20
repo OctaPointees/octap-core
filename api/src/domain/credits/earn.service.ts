@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 
@@ -9,6 +9,11 @@ export class EarnService {
   async executeEarn(organizationId: string, request: EarnPointsRequest): Promise<EarnPointsResponse> {
     if (request.pointsAmount <= 0) {
       throw new BadRequestException('Points amount must be greater than zero');
+    }
+
+    const memberOrgId = await this.creditsRepo.findMemberOrganizationId(request.organizationEndUserId);
+    if (memberOrgId !== organizationId) {
+      throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
 
     // Check idempotency

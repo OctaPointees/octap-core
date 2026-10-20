@@ -1,13 +1,20 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Reflector } from '@nestjs/core';
 import { EarnService } from '../api/dist/domain/credits/earn.service.js';
 import { RedemptionService } from '../api/dist/domain/credits/redemption.service.js';
 import { RewardsService } from '../api/dist/domain/rewards/rewards.service.js';
 import { ChainSubmitProcessor } from '../api/dist/domain/credits/chain-submit.processor.js';
+import { CreditsService } from '../api/dist/domain/credits/credits.service.js';
+import { ApiKeyGuard } from '../api/dist/infra/auth/api-key.guard.js';
+import { ApiCredentialsService } from '../api/dist/infra/auth/api-credentials.service.js';
+import { hashApiKey } from '../api/dist/infra/auth/api-key-hash.util.js';
+import { Scopes, SCOPES_KEY } from '../api/dist/infra/auth/scopes.decorator.js';
 
 test('EarnService: successfully records points and updates balance', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => null,
     recordEarnTransaction: async (params) => ({
       transaction: {
@@ -35,6 +42,7 @@ test('EarnService: successfully records points and updates balance', async () =>
 
 test('EarnService: respects idempotency', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => ({
       id: 'tx-1',
       organizationEndUserId: 'user-1',
@@ -60,6 +68,7 @@ test('EarnService: respects idempotency', async () => {
 
 test('RedemptionService: deducts points successfully', async () => {
   const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
     findTransactionByIdempotency: async () => null,
     recordRedeemTransaction: async (params) => ({
       transaction: {
@@ -137,7 +146,8 @@ test('RewardsService: creates and claims voucher with point redemption', async (
     },
   };
 
-  const service = new RewardsService(mockRewardsRepo, mockRedemptionService);
+  const mockCreditsRepo = { findMemberOrganizationId: async () => 'org-1' };
+  const service = new RewardsService(mockRewardsRepo, mockRedemptionService, mockCreditsRepo);
 
   const claimResult = await service.claimVoucher('org-1', 'v-1', {
     organizationEndUserId: 'user-1',
@@ -309,6 +319,263 @@ test('ChainSubmitProcessor: rejects an unsupported command type without touching
   await processor.process(fakeOperation({ commandType: 'SOMETHING_ELSE' }));
 
   assert.match(markedFailed.message, /Unsupported commandType/);
+});
+
+test('EarnService: rejects earning for a member belonging to another organization', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    findTransactionByIdempotency: async () => {
+      throw new Error('should not be reached: ownership check must happen first');
+    },
+  };
+  const service = new EarnService(mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.executeEarn('org-1', { organizationEndUserId: 'user-org2', pointsAmount: 50, idempotencyKey: 'k' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RedemptionService: rejects redeeming for a member belonging to another organization', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    findTransactionByIdempotency: async () => {
+      throw new Error('should not be reached: ownership check must happen first');
+    },
+  };
+  const service = new RedemptionService(mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.executeRedeem('org-1', { organizationEndUserId: 'user-org2', pointsAmount: 10, idempotencyKey: 'k' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RewardsService: claiming a free voucher (no redeem call) still rejects a cross-tenant member', async () => {
+  const freeVoucher = {
+    id: 'v-free',
+    organizationId: 'org-1',
+    code: 'FREEGIFT',
+    pointsCost: 0,
+    totalSupply: null,
+    claimedCount: 0,
+    status: 'ACTIVE',
+    expiresAt: null,
+  };
+  const mockRewardsRepo = {
+    findVoucherById: async () => freeVoucher,
+    claimVoucherInstance: async () => {
+      throw new Error('should not be reached: membership check must happen first');
+    },
+  };
+  const mockCreditsRepo = { findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2') };
+  const service = new RewardsService(mockRewardsRepo, {}, mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.claimVoucher('org-1', 'v-free', { organizationEndUserId: 'user-org2' }),
+    /was not found for this organization/,
+  );
+});
+
+test('RewardsService: listMemberVouchers rejects a cross-tenant member instead of silently returning an empty list', async () => {
+  const mockRewardsRepo = {
+    listOwnershipsByMember: async () => {
+      throw new Error('should not be reached: membership check must happen first');
+    },
+  };
+  const mockCreditsRepo = { findMemberOrganizationId: async () => 'org-2' };
+  const service = new RewardsService(mockRewardsRepo, {}, mockCreditsRepo);
+
+  await assert.rejects(
+    () => service.listMemberVouchers('org-1', 'user-org2'),
+    /was not found for this organization/,
+  );
+});
+
+// ==========================================
+// TENANT AUTHORIZATION TESTS (OCT-35)
+// ==========================================
+
+function mockExecutionContext({ headers, handler = () => {}, klass = class {} }) {
+  const request = { headers };
+  return {
+    switchToHttp: () => ({ getRequest: () => request }),
+    getHandler: () => handler,
+    getClass: () => klass,
+    _request: request,
+  };
+}
+
+test('ApiKeyGuard: valid key attaches tenant context and passes', async () => {
+  const credential = {
+    id: 'cred-1',
+    organizationId: 'org-1',
+    status: 'ACTIVE',
+    expiresAt: null,
+    scopes: ['read', 'write'],
+  };
+  let touched = false;
+  const repo = {
+    findByKeyHash: async (hash) => (hash === hashApiKey('octap_live_valid') ? credential : null),
+    touchLastUsed: async () => {
+      touched = true;
+    },
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector());
+
+  const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_valid' } });
+  const result = await guard.canActivate(ctx);
+
+  assert.equal(result, true);
+  assert.deepEqual(ctx._request.tenant, { organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write'] });
+  assert.equal(touched, true);
+});
+
+test('ApiKeyGuard: rejects a missing Authorization header', async () => {
+  const guard = new ApiKeyGuard({ findByKeyHash: async () => null }, new Reflector());
+  const ctx = mockExecutionContext({ headers: {} });
+  await assert.rejects(() => guard.canActivate(ctx), /Missing API credential/);
+});
+
+test('ApiKeyGuard: rejects an unknown or revoked key', async () => {
+  const repo = { findByKeyHash: async () => ({ status: 'REVOKED' }) };
+  const guard = new ApiKeyGuard(repo, new Reflector());
+  const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_revoked' } });
+  await assert.rejects(() => guard.canActivate(ctx), /invalid or has been revoked/);
+});
+
+test('ApiKeyGuard: rejects an expired key', async () => {
+  const repo = {
+    findByKeyHash: async () => ({
+      id: 'cred-2',
+      organizationId: 'org-1',
+      status: 'ACTIVE',
+      expiresAt: new Date(Date.now() - 1000),
+      scopes: ['read'],
+    }),
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector());
+  const ctx = mockExecutionContext({ headers: { authorization: 'Bearer octap_live_expired' } });
+  await assert.rejects(() => guard.canActivate(ctx), /expired/);
+});
+
+test('ApiKeyGuard: rejects a stolen key replayed with a different org header (anti cross-tenant spoofing)', async () => {
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-3', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector());
+  const ctx = mockExecutionContext({
+    headers: { authorization: 'Bearer octap_live_org1key', 'x-organization-id': 'org-2' },
+  });
+  await assert.rejects(() => guard.canActivate(ctx), /does not match this API credential/);
+});
+
+test('ApiKeyGuard: blocks a write attempt from a read-only credential (privilege escalation)', async () => {
+  const repo = {
+    findByKeyHash: async () => ({ id: 'cred-4', organizationId: 'org-1', status: 'ACTIVE', expiresAt: null, scopes: ['read'] }),
+    touchLastUsed: async () => {},
+  };
+  const guard = new ApiKeyGuard(repo, new Reflector());
+
+  // Applying the decorator factory manually (no TS decorator syntax in a plain .mjs test file)
+  // is equivalent to writing `@Scopes('write')` on this method.
+  function writeRoute() {}
+  Scopes('write')(writeRoute, 'writeRoute', { value: writeRoute });
+  assert.deepEqual(Reflect.getMetadata(SCOPES_KEY, writeRoute), ['write']);
+
+  const ctx = mockExecutionContext({
+    headers: { authorization: 'Bearer octap_live_readonly' },
+    handler: writeRoute,
+    klass: class Controller {},
+  });
+
+  await assert.rejects(() => guard.canActivate(ctx), /missing the required "write" scope/);
+});
+
+test('ApiCredentialsService: issues a key whose raw value is never persisted, then revoke/rotate lifecycle', async () => {
+  const store = new Map();
+  let nextId = 1;
+  const repo = {
+    create: async (data) => {
+      const row = { id: `cred-${nextId++}`, status: 'ACTIVE', ...data };
+      store.set(row.id, row);
+      return row;
+    },
+    findById: async (id) => store.get(id) ?? null,
+    revoke: async (id) => {
+      const row = store.get(id);
+      row.status = 'REVOKED';
+      return row;
+    },
+  };
+  const service = new ApiCredentialsService(repo);
+
+  const { credential, rawKey } = await service.issue('org-1', 'pos-terminal-1');
+  assert.ok(rawKey.startsWith('octap_live_'));
+  assert.notEqual(credential.keyHash, rawKey);
+  assert.equal(credential.status, 'ACTIVE');
+
+  // Cross-tenant revoke must fail closed, not silently no-op.
+  await assert.rejects(() => service.revoke('org-OTHER', credential.id), /not found/);
+
+  const revoked = await service.revoke('org-1', credential.id);
+  assert.equal(revoked.status, 'REVOKED');
+
+  const { credential: rotated, rawKey: rotatedKey } = await service.rotate('org-1', credential.id);
+  assert.notEqual(rotatedKey, rawKey);
+  assert.equal(store.get(credential.id).status, 'REVOKED');
+  assert.equal(rotated.status, 'ACTIVE');
+});
+
+test('CreditsService: a member from another organization is treated as not found', async () => {
+  const repo = {
+    findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    getOrCreateCreditOwnership: async () => ({
+      confirmedBalance: 100,
+      pendingEarn: 0,
+      pendingRedemption: 0,
+      lifetimeEarned: 100,
+      lifetimeRedeemed: 0,
+      asOfCheckpoint: null,
+    }),
+  };
+  const service = new CreditsService(repo);
+
+  const balance = await service.getBalance('org-1', 'user-org1');
+  assert.equal(balance.confirmedBalance, 100);
+
+  await assert.rejects(() => service.getBalance('org-1', 'user-org2'), /was not found for this organization/);
+});
+
+test('RewardsService: a voucher belonging to another organization is treated as not found', async () => {
+  const voucherOrg1 = {
+    id: 'v-1',
+    organizationId: 'org-1',
+    code: 'DISCOUNT10',
+    title: '10% Off',
+    description: 'Get 10% off',
+    pointsCost: 0,
+    discountType: 'PERCENTAGE',
+    discountValue: '10.00',
+    totalSupply: null,
+    claimedCount: 0,
+    status: 'ACTIVE',
+    startsAt: null,
+    expiresAt: null,
+    metadata: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const repo = {
+    findVoucherById: async (id) => (id === 'v-1' ? voucherOrg1 : null),
+  };
+  const service = new RewardsService(repo, {});
+
+  const voucher = await service.getVoucher('org-1', 'v-1');
+  assert.equal(voucher.id, 'v-1');
+
+  await assert.rejects(() => service.getVoucher('org-2', 'v-1'), /not found/);
 });
 
 // ==========================================
