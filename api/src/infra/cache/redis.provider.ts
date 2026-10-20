@@ -1,4 +1,4 @@
-import { type Provider } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type Provider } from '@nestjs/common';
 import { Redis } from 'ioredis';
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
@@ -19,3 +19,17 @@ export const redisClientProvider: Provider = {
     });
   },
 };
+
+/**
+ * A bare ioredis client has no Nest lifecycle hook of its own, so nothing ever called
+ * `.disconnect()` on `app.close()` — the open socket kept the event loop alive forever (seen
+ * live: CI's `check:bootstrap` hung for the full 6h job timeout). This is the hook that closes it.
+ */
+@Injectable()
+export class RedisLifecycle implements OnModuleDestroy {
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  onModuleDestroy(): void {
+    this.redis.disconnect();
+  }
+}
