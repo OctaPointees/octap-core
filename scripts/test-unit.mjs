@@ -183,7 +183,8 @@ test('RewardsService: a second claim of the same voucher by the same member is r
       throw new Error('Voucher has already been claimed by this member');
     },
   };
-  const service = new RewardsService(mockRewardsRepo, {});
+  const mockCreditsRepo = { findMemberOrganizationId: async () => 'org-1' };
+  const service = new RewardsService(mockRewardsRepo, {}, mockCreditsRepo);
 
   await assert.rejects(
     () => service.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1' }),
