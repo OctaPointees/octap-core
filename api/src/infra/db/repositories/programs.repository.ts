@@ -15,14 +15,28 @@ export class ProgramsRepository {
    * Claims `organizationId` as a `PROVISIONING` row before any chain call. Throws a unique
    * violation on `programs_organization_id_idx` if the organization already has a row.
    */
-  async reserve(params: { organizationId: string; policyVersion: number; earnBps: number; expiryMs: number }) {
+  async reserve(params: {
+    organizationId: string;
+    policyVersion: number;
+    earnBps: number;
+    expiryMs: number;
+    shardCount: number;
+    totalBudget: number;
+  }) {
     const [reserved] = await this.db.insert(programs).values(params).returning();
     return reserved;
   }
 
   async activate(
     id: string,
-    chainIds: { programControlId: string; adminCapId: string; policyVersionId: string; issuerCapId: string },
+    chainIds: {
+      programControlId: string;
+      adminCapId: string;
+      policyVersionId: string;
+      issuerCapId: string;
+      operationShardIds: string[];
+      budgetShardIds: string[];
+    },
   ) {
     const [activated] = await this.db
       .update(programs)

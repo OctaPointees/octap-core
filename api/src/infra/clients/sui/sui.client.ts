@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   OctapChainClient,
   eventField,
+  operationShardIndex,
   signerFromPrivateKey,
   TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
   MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
+  type OctapDemoProgramConfig,
   type OctapNetwork,
   type SubmittedChainTransaction,
 } from '@octap/chain';
@@ -77,13 +79,17 @@ export class SuiClientService {
   }
 
   async earn(params: { accountId: string; purchaseAmount: number; operationKey: string }): Promise<ChainCallResult> {
+    const operationKey = new TextEncoder().encode(params.operationKey);
+    const { operationShardId, budgetShardId } = selectShards(this.programConfig, operationKey);
     const tx = this.client.buildEarnTransaction({
       issuerCapId: this.programConfig.issuerCapId,
       programId: this.programConfig.programControlId,
       policyId: this.programConfig.policyVersionId,
       accountId: params.accountId,
+      operationShardId,
+      budgetShardId,
       purchaseAmount: params.purchaseAmount,
-      operationKey: new TextEncoder().encode(params.operationKey),
+      operationKey,
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(`earn ${params.purchaseAmount} purchase units -> account ${params.accountId}`);
@@ -99,4 +105,22 @@ export class SuiClientService {
   // unsigned transaction via `OctapChainClient.buildRedeemTransaction` for the client to sign is
   // an HTTP-request-shaped feature, not a worker job; add it there once zkLogin exists instead of
   // routing it through this service.
+}
+
+/**
+ * The operation/budget shard pair that owns `operationKey`. Both share one index by design (see
+ * `budget_shard.move`), so a program's two shard lists must be the same non-zero length.
+ */
+export function selectShards(
+  config: Pick<OctapDemoProgramConfig, 'operationShardIds' | 'budgetShardIds'>,
+  operationKey: Uint8Array,
+): { operationShardId: string; budgetShardId: string } {
+  const shardCount = config.operationShardIds.length;
+  if (shardCount === 0 || config.budgetShardIds.length !== shardCount) {
+    throw new Error(
+      `Sui chain adapter: program has ${shardCount} operation shard(s) and ${config.budgetShardIds.length} budget shard(s); expected the same non-zero count`,
+    );
+  }
+  const index = operationShardIndex(operationKey, shardCount);
+  return { operationShardId: config.operationShardIds[index], budgetShardId: config.budgetShardIds[index] };
 }

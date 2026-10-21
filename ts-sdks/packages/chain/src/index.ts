@@ -9,6 +9,7 @@ export {
   type RedeemParams,
   type PublishPolicyParams,
   type ActivatePolicyAndIssueCapParams,
+  type CreateShardsParams,
   type SubmittedChainTransaction,
 } from './client.js';
 export {
@@ -19,3 +20,4 @@ export {
   type OctapPackageConfig,
   type OctapDemoProgramConfig,
 } from './constants.js';
+export { operationShardIndex } from './shards.js';

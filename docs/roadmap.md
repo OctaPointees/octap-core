@@ -83,8 +83,11 @@ then move the row to **Implemented** in the same pull request.
   (`chain-submit.processor.ts`'s `demoBeneficiaryAddress`) — nobody holds its private key. Fine for
   earn (no signature needed); must be replaced once Identity exists, since redeem will need it to
   be a real controllable address.
-- `operation_key` anti-replay is PostgreSQL-only (idempotency key), not enforced on-chain yet; see
-  `contracts/sui/README.md`'s note on `OperationShard`.
+- `operation_key` anti-replay and the issuance budget are enforced on-chain by
+  `operation_shard`/`budget_shard` (OCT-41), but `SuiClientService.earn()` still reads shard ids
+  from the demo program constants, not the organization's `programs` row — same demo-scoping as
+  its program/policy/IssuerCap ids above. Every program runs `shard_count = 1` today; see
+  `contracts/sui/README.md`'s known gaps.
 - Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
   `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
   done here to keep this change reviewable. `emit()` is also not in the same DB transaction as the
@@ -177,8 +180,9 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 ### Sui Move contracts (contracts/sui/sources)
 
 Object map from the design: `capabilities`, `program_control`, `policy_version`, `credit_account`
-(**implemented**, see Implemented above and `contracts/sui/README.md`), `budget_shard`,
-`operation_shard`, `operation_receipt`, `campaign_authorization`, `audit_manifest` (not started).
+`budget_shard`, `operation_shard` (**implemented**, see Implemented above and
+`contracts/sui/README.md`), `operation_receipt`, `campaign_authorization`, `audit_manifest` (not
+started).
 Add each remaining module with its tests under `contracts/sui/tests`.
 
 ### SDKs

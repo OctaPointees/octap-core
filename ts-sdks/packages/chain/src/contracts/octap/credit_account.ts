@@ -9,11 +9,10 @@
  * of expiry buckets, consumed nearest-expiry first, because the business rule is
  * "use-it-or-lose-it by date," not "spend any credit you own."
  * 
- * Anti-replay for `operation_key` is intentionally not enforced here yet (see
- * docs/roadmap.md `OperationShard`): PostgreSQL's idempotency key already rejects
- * a duplicate command before it reaches this module, and a dedicated sharded
- * replay table is future work once issuance volume needs it. `operation_key` is
- * still threaded through so the emitted event can be correlated with the off-chain
+ * Anti-replay for `operation_key` is enforced on-chain by `earn` via the program's
+ * `OperationShard`s, on top of PostgreSQL's idempotency key, and every earn is
+ * debited from the program's `BudgetShard` for the same key. `operation_key` is
+ * also emitted on `CreditEarned` so the event can be correlated with the off-chain
  * command that caused it.
  */
 
@@ -97,6 +96,8 @@ export interface EarnArguments {
     program: RawTransactionArgument<string>;
     policy: RawTransactionArgument<string>;
     account: RawTransactionArgument<string>;
+    operationShard: RawTransactionArgument<string>;
+    budgetShard: RawTransactionArgument<string>;
     purchaseAmount: RawTransactionArgument<number | bigint>;
     operationKey: RawTransactionArgument<Array<number>>;
 }
@@ -107,6 +108,8 @@ export interface EarnOptions {
         program: RawTransactionArgument<string>,
         policy: RawTransactionArgument<string>,
         account: RawTransactionArgument<string>,
+        operationShard: RawTransactionArgument<string>,
+        budgetShard: RawTransactionArgument<string>,
         purchaseAmount: RawTransactionArgument<number | bigint>,
         operationKey: RawTransactionArgument<Array<number>>
     ];
@@ -116,6 +119,11 @@ export interface EarnOptions {
  * The amount is derived on-chain from `purchase_amount` and `policy`'s earn ratio
  * rather than trusted from the caller, which is what makes the policy an enforced
  * rule instead of a suggestion.
+ *
+ * `operation_shard` and `budget_shard` must be the program's shards that own
+ * `operation_key` (see `operation_shard::shard_index_for`): a replayed key aborts
+ * `operation_shard::EDuplicateOperation`, and an earn that would overdraw its
+ * budget shard aborts `budget_shard::EBudgetExceeded`.
  */
 export function earn(options: EarnOptions) {
     const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
@@ -124,11 +132,13 @@ export function earn(options: EarnOptions) {
         null,
         null,
         null,
+        null,
+        null,
         'u64',
         'vector<u8>',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["issuer", "program", "policy", "account", "purchaseAmount", "operationKey"];
+    const parameterNames = ["issuer", "program", "policy", "account", "operationShard", "budgetShard", "purchaseAmount", "operationKey"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'credit_account',

@@ -6,6 +6,7 @@ import {
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
+  type SubmittedChainTransaction,
 } from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
 import { requireEnv } from '../require-env.js';
@@ -16,11 +17,25 @@ export interface ProvisionedProgram {
   adminCapId: string;
   policyVersionId: string;
   issuerCapId: string;
+  /** `OperationShard` ids in shard-index order. */
+  operationShardIds: string[];
+  /** `BudgetShard` ids in shard-index order; same length as `operationShardIds`. */
+  budgetShardIds: string[];
+}
+
+/** Every `<eventSuffix>` event's `shard_id`, ordered by its `shard_index`. */
+function shardIdsByIndex(result: SubmittedChainTransaction, eventSuffix: string): string[] {
+  return result.events
+    .filter((e) => e.type.endsWith(`::${eventSuffix}`))
+    .map((e) => e.parsedJson as { shard_id: string; shard_index: string })
+    .sort((a, b) => Number(a.shard_index) - Number(b.shard_index))
+    .map((e) => e.shard_id);
 }
 
 /**
  * Worker-only: mints a new on-chain program (`ProgramControl` + `AdminCap`), publishes and
- * activates its policy, and issues an `IssuerCap` to `issuerRecipient` — a one-time
+ * activates its policy, issues an `IssuerCap` to `issuerRecipient`, and creates its operation and
+ * budget shards — a one-time
  * provisioning action per organization, not a per-request chain call (see `domain/programs`).
  *
  * Holds `SUI_PROGRAM_ADMIN_PRIVATE_KEY`, deliberately a different key from
@@ -59,13 +74,24 @@ export class ProgramAdminClient {
    * Three sequential transactions, not one PTB: `create_program` shares its `ProgramControl`
    * and `publish` freezes its `PolicyVersion` internally, without returning either to the
    * caller, so each one's id is only knowable from *this* transaction's effects — usable as an
-   * input to the *next* transaction, never within the same one.
+   * input to the *next* transaction, never within the same one. Shards ride along in the third
+   * transaction rather than a fourth, and their inputs are validated before the first, so adding
+   * them introduces no new point where a program can land on-chain half-provisioned.
    */
   async provisionProgram(params: {
     earnBps: number;
     expiryMs: number;
     issuerRecipient: string;
+    shardCount: number;
+    totalBudget: number;
   }): Promise<ProvisionedProgram> {
+    if (!Number.isSafeInteger(params.shardCount) || params.shardCount < 1) {
+      throw new Error(`shardCount must be a positive integer, got ${params.shardCount}`);
+    }
+    if (!Number.isSafeInteger(params.totalBudget) || params.totalBudget < 0) {
+      throw new Error(`totalBudget must be a non-negative integer, got ${params.totalBudget}`);
+    }
+
     const createTx = this.client.buildCreateProgramTransaction();
     createTx.setGasBudget(50_000_000);
     const created = await this.client.signAndExecute(createTx, this.adminSigner);
@@ -102,18 +128,28 @@ export class ProgramAdminClient {
       programId,
       policyVersionId,
       issuerRecipient: params.issuerRecipient,
+      shards: { shardCount: params.shardCount, totalBudget: params.totalBudget },
     });
     activateTx.setGasBudget(50_000_000);
     const activated = await this.client.signAndExecute(activateTx, this.adminSigner);
     if (activated.status !== 'success') {
-      throw new Error(activated.errorMessage ?? 'activate_policy/issue_cap failed on-chain');
+      throw new Error(activated.errorMessage ?? 'activate_policy/issue_cap/create_shards failed on-chain');
     }
     const issuerCapId = eventField<string>(activated, 'IssuerCapIssued', 'issuer_cap_id');
     if (!issuerCapId) {
       throw new Error('program_control::issue_cap did not emit IssuerCapIssued');
     }
-    this.logger.log(`activated policy and issued cap ${issuerCapId} for program ${programId}`);
+    const operationShardIds = shardIdsByIndex(activated, 'OperationShardCreated');
+    const budgetShardIds = shardIdsByIndex(activated, 'BudgetShardCreated');
+    if (operationShardIds.length !== params.shardCount || budgetShardIds.length !== params.shardCount) {
+      throw new Error(
+        `create_shards emitted ${operationShardIds.length} operation / ${budgetShardIds.length} budget shard event(s), expected ${params.shardCount} each`,
+      );
+    }
+    this.logger.log(
+      `activated policy, issued cap ${issuerCapId}, and created ${params.shardCount} shard pair(s) for program ${programId}`,
+    );
 
-    return { programId, adminCapId, policyVersionId, issuerCapId };
+    return { programId, adminCapId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds };
   }
 }

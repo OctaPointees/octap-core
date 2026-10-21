@@ -27,6 +27,14 @@ export const programs = pgTable(
     policyVersion: integer('policy_version').notNull(),
     earnBps: integer('earn_bps').notNull(),
     expiryMs: bigint('expiry_ms', { mode: 'number' }).notNull(),
+    /** Operation and budget shards always share one count and one index (see `budget_shard.move`). */
+    shardCount: integer('shard_count').notNull(),
+    /** Issuance budget in credits at provisioning time, split across `budgetShardIds`. */
+    totalBudget: bigint('total_budget', { mode: 'number' }).notNull(),
+    /** `OperationShard` object ids in shard-index order; null until `ACTIVE`, like the ids above. */
+    operationShardIds: text('operation_shard_ids').array(),
+    /** `BudgetShard` object ids in shard-index order; null until `ACTIVE`. */
+    budgetShardIds: text('budget_shard_ids').array(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

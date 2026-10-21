@@ -29,6 +29,13 @@ export interface OctapDemoProgramConfig extends OctapPackageConfig {
   policyVersionId: string;
   /** `octap::capabilities::IssuerCap` authorizing `earn` for this program. */
   issuerCapId: string;
+  /**
+   * Shared `octap::operation_shard::OperationShard` ids, in shard-index order. `earn` must be
+   * given `operationShardIds[operationShardIndex(key, operationShardIds.length)]`.
+   */
+  operationShardIds: readonly string[];
+  /** Shared `octap::budget_shard::BudgetShard` ids, in shard-index order; same length as above. */
+  budgetShardIds: readonly string[];
 }
 
 export const TESTNET_OCTAP_DEMO_PROGRAM_CONFIG: OctapDemoProgramConfig = {
@@ -36,6 +43,10 @@ export const TESTNET_OCTAP_DEMO_PROGRAM_CONFIG: OctapDemoProgramConfig = {
   programControlId: '0xa00660cbaf73253db7628ab3927f3234c6058ac0afa6d1fcb620d10fcf990434',
   policyVersionId: '0x627cc1e3152b501887ab05be1f24294abae34ea4135da658da3a47ddcddf0ba6',
   issuerCapId: '0xf0896fc57c6edd4ada51fd20ea561e24cb7d962d8920ac29db6105cedf7455cc',
+  // Filled in by the OCT-41 republish (shard_count = 1): the package above predates the shard
+  // modules, so this program has no shards and `earn` against it can't be submitted yet.
+  operationShardIds: [],
+  budgetShardIds: [],
 };
 
 /** Not deployed yet; see contracts/sui/DEPLOYMENTS.md. */
