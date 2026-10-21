@@ -189,6 +189,8 @@ export class PosRedemptionService {
       throw new BadRequestException(result.errorMessage ?? 'Redeem failed on-chain');
     }
 
+    // Null means `domain/indexer` saw this redeem's event and confirmed it first — same digest,
+    // same outcome, so the response and webhook below are unchanged (the indexer emits no webhooks).
     try {
       await this.creditsRepo.confirmPosRedemptionOnChain({
         loyaltyTransactionId: cached.loyaltyTransactionId,

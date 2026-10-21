@@ -6,6 +6,7 @@ import {
   type OctapNetwork,
   type OctapPackageConfig,
   type SubmittedChainTransaction,
+  type CreditAccountEventPage,
 } from '@octap/chain';
 
 function packageConfig(network: OctapNetwork): OctapPackageConfig {
@@ -58,5 +59,14 @@ export class SuiTransactionBuilderClient {
    */
   async waitForTransaction(digest: string): Promise<SubmittedChainTransaction> {
     return this.client.waitForTransaction(digest);
+  }
+
+  /** Read-only event stream for `domain/indexer` — no signer, same reasoning as the rest of this class. */
+  async listCreditAccountEvents(options: {
+    after?: string | null;
+    limit?: number;
+    order?: 'ascending' | 'descending';
+  }): Promise<CreditAccountEventPage> {
+    return this.client.listCreditAccountEvents(options);
   }
 }

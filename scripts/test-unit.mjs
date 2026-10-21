@@ -7,6 +7,7 @@ import { RedemptionService } from '../api/dist/domain/credits/redemption.service
 import { RewardsService } from '../api/dist/domain/rewards/rewards.service.js';
 import { ChainSubmitProcessor } from '../api/dist/domain/credits/chain-submit.processor.js';
 import { CreditsService } from '../api/dist/domain/credits/credits.service.js';
+import { CheckpointIndexerProcessor } from '../api/dist/domain/indexer/checkpoint-indexer.processor.js';
 import { ApiKeyGuard } from '../api/dist/infra/auth/api-key.guard.js';
 import { ApiCredentialsService } from '../api/dist/infra/auth/api-credentials.service.js';
 import { hashApiKey } from '../api/dist/infra/auth/api-key-hash.util.js';
@@ -733,10 +734,9 @@ test('CreditsService: a member from another organization is treated as not found
       pendingRedemption: 0,
       lifetimeEarned: 100,
       lifetimeRedeemed: 0,
-      asOfCheckpoint: null,
     }),
   };
-  const service = new CreditsService(repo);
+  const service = new CreditsService(repo, { getCursor: async () => undefined });
 
   const balance = await service.getBalance('org-1', 'user-org1');
   assert.equal(balance.confirmedBalance, 100);
@@ -1702,7 +1702,7 @@ test('PosRedemptionService: finalize confirms on-chain success and emits a webho
     }),
   );
   const mockSponsoredTx = { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) };
-  const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'success', events: [] }) };
+  const mockSuiBuilder = { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) };
   let confirmArgs = null;
   const mockCreditsRepo = {
     findBeneficiaryAddress: async () => '0xbeneficiary',
@@ -1722,6 +1722,7 @@ test('PosRedemptionService: finalize confirms on-chain success and emits a webho
   assert.equal(result.newBalance, 150);
   assert.equal(result.pointsRedeemed, 50);
   assert.equal(confirmArgs.sender, '0xbeneficiary');
+  assert.equal(result.blockchainDigest, 'digest-1');
   assert.equal(emitted.eventType, 'credits.redeemed');
   assert.equal(await redis.get('pos-redeem:reserve:digest-1'), null);
 });
@@ -1768,6 +1769,326 @@ test('PosRedemptionService: finalize releases the hold on a definitive on-chain 
   );
   assert.equal(failArgs.loyaltyTransactionId, 'tx-1');
   assert.equal(await redis.get('pos-redeem:reserve:digest-1'), null);
+});
+
+test('CreditsService: balance carries asOfCheckpoint/observedAt, and stale flips while anything is pending', async () => {
+  let ownership = { confirmedBalance: 100, pendingEarn: 0, pendingRedemption: 0, lifetimeEarned: 100, lifetimeRedeemed: 0 };
+  const repo = {
+    findMemberOrganizationId: async () => 'org-1',
+    getOrCreateCreditOwnership: async () => ownership,
+  };
+  const indexerRepo = { getCursor: async (stream) => (stream === 'octap::credit_account' ? { lastCheckpoint: '394761967' } : undefined) };
+  const service = new CreditsService(repo, indexerRepo);
+
+  const settled = await service.getBalance('org-1', 'user-1');
+  assert.equal(settled.asOfCheckpoint, '394761967');
+  assert.ok(!Number.isNaN(Date.parse(settled.observedAt)));
+  assert.equal(settled.stale, false);
+
+  ownership = { ...ownership, pendingEarn: 25 };
+  assert.equal((await service.getBalance('org-1', 'user-1')).stale, true);
+
+  ownership = { ...ownership, pendingEarn: 0, pendingRedemption: 10 };
+  assert.equal((await service.getBalance('org-1', 'user-1')).stale, true);
+});
+
+test('ChainSubmitProcessor: a PG failure after the earn landed leaves it UNKNOWN for the indexer, never FAILED', async () => {
+  let markedUnknown = null;
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' }),
+    confirmEarnOnChain: async () => {
+      throw new Error('connection reset');
+    },
+    failEarnOnChain: async () => assert.fail('must not release the hold for points that landed on-chain'),
+  };
+  const suiClient = {
+    earn: async () => fakeChainResult({ events: [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }] }),
+    issuerAddress: () => '0xissuer',
+  };
+  const operationsRepo = {
+    markFailed: async () => assert.fail('should not mark FAILED'),
+    markUnknown: async (id, message, digest) => { markedUnknown = { id, message, digest }; },
+  };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+
+  assert.equal(markedUnknown.digest, 'DIGEST1');
+  assert.match(markedUnknown.message, /connection reset/);
+});
+
+test('ChainSubmitProcessor: an earn call that throws (outcome unknown) keeps the hold and goes UNKNOWN, not FAILED', async () => {
+  let markedUnknown = null;
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' }),
+    confirmEarnOnChain: async () => assert.fail('nothing to confirm yet'),
+    failEarnOnChain: async () => assert.fail('the earn may have landed; the hold must stay'),
+  };
+  const suiClient = {
+    earn: async () => {
+      throw new Error('DEADLINE_EXCEEDED waiting for checkpoint');
+    },
+    issuerAddress: () => '0xissuer',
+  };
+  const operationsRepo = {
+    markFailed: async () => assert.fail('FAILED would invite a retry under a new key (double earn)'),
+    markUnknown: async (id, message, digest) => { markedUnknown = { id, message, digest }; },
+  };
+
+  const processor = new ChainSubmitProcessor(operationsRepo, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+
+  assert.match(markedUnknown.message, /outcome unknown: DEADLINE_EXCEEDED/);
+  assert.equal(markedUnknown.digest, undefined);
+});
+
+const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
+
+function earnedEvent(overrides = {}) {
+  return {
+    name: 'CreditEarned',
+    sender: '0xissuer',
+    json: { account_id: '0xacc1', amount: '100', operation_key: b64('idem-earn-1') },
+    checkpoint: '500',
+    transactionDigest: 'DIGEST-EARN',
+    eventIndex: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * In-memory stand-in for IndexerRepository with commitPage's real contract: `work`'s writes and the
+ * cursor advance become visible together, or (if `work` throws) neither does.
+ */
+function fakeIndexerStore(initial) {
+  const store = { row: initial, committedWrites: [] };
+  store.repo = {
+    getCursor: async () => store.row,
+    initCursor: async (streamName, cursor, lastCheckpoint) => {
+      store.row ??= { streamName, cursor, lastCheckpoint };
+      return store.row;
+    },
+    commitPage: async (streamName, page, work) => {
+      assert.equal(page.expectedCursor, store.row.cursor);
+      const tx = { writes: [] };
+      const result = await work(tx);
+      store.committedWrites.push(...tx.writes);
+      store.row = { ...store.row, cursor: page.nextCursor, lastCheckpoint: page.lastCheckpoint ?? store.row.lastCheckpoint };
+      return result;
+    },
+  };
+  return store;
+}
+
+function pendingEarnRow(overrides = {}) {
+  return {
+    id: 'ltx-earn-1',
+    organizationId: 'org-1',
+    organizationEndUserId: 'user-1',
+    transactionType: 'EARN',
+    status: 'PENDING',
+    pointsAmount: 10000,
+    idempotencyKey: 'idem-earn-1',
+    ...overrides,
+  };
+}
+
+test('CheckpointIndexerProcessor: first run starts from the stream head, not genesis', async () => {
+  const store = fakeIndexerStore(undefined);
+  let asked = null;
+  const sui = {
+    listCreditAccountEvents: async (options) => {
+      asked = options;
+      return { events: [earnedEvent({ checkpoint: '900' })], hasNextPage: true, startCursor: 'HEAD', endCursor: 'HEAD' };
+    },
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, {}, {}, sui);
+  assert.equal(await processor.processNextPage(), true);
+
+  assert.equal(asked.order, 'descending');
+  assert.equal(asked.limit, 1);
+  assert.deepEqual(store.row, { streamName: 'octap::credit_account', cursor: 'HEAD', lastCheckpoint: '900' });
+});
+
+test('CheckpointIndexerProcessor: a PENDING earn (operation UNKNOWN) is confirmed by the indexer alone', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: '400' });
+  let confirmArgs = null;
+  let markArgs = null;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async (accountId) => (accountId === '0xacc1' ? { organizationEndUserId: 'user-1' } : undefined),
+    findTransactionByMemberAndIdempotency: async (memberId, key) =>
+      memberId === 'user-1' && key === 'idem-earn-1' ? pendingEarnRow() : undefined,
+    confirmEarnOnChain: async (params, tx) => {
+      confirmArgs = params;
+      tx.writes.push('confirm');
+      return { id: 'btx-1' };
+    },
+  };
+  const operationsRepo = {
+    markSubmittedFromChain: async (params, tx) => {
+      markArgs = params;
+      tx.writes.push('operation');
+    },
+  };
+  const sui = {
+    listCreditAccountEvents: async ({ after }) => {
+      assert.equal(after, 'C0');
+      return {
+        events: [
+          { name: 'CreditAccountOpened', sender: '0xissuer', json: { account_id: '0xacc1' }, checkpoint: '499', transactionDigest: 'D0', eventIndex: 0 },
+          earnedEvent(),
+        ],
+        hasNextPage: false,
+        startCursor: 'C1',
+        endCursor: 'C2',
+      };
+    },
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, operationsRepo, sui);
+  assert.equal(await processor.processNextPage(), false);
+
+  assert.equal(confirmArgs.loyaltyTransactionId, 'ltx-earn-1');
+  assert.equal(confirmArgs.reservedPointsAmount, 10000);
+  assert.equal(confirmArgs.confirmedPointsAmount, 100);
+  assert.equal(confirmArgs.digest, 'DIGEST-EARN');
+  assert.deepEqual(markArgs, { tenantId: 'org-1', idempotencyKey: 'idem-earn-1', suiTxDigest: 'DIGEST-EARN' });
+  // Business writes and cursor advance landed in the same commit.
+  assert.deepEqual(store.committedWrites, ['confirm', 'operation']);
+  assert.equal(store.row.cursor, 'C2');
+  assert.equal(store.row.lastCheckpoint, '500');
+});
+
+test('CheckpointIndexerProcessor: rows the synchronous path already resolved are skipped, including a digest unique-violation', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
+  let confirmCalls = 0;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'user-1' }),
+    findTransactionByMemberAndIdempotency: async (_memberId, key) =>
+      key === 'already-confirmed' ? pendingEarnRow({ status: 'CONFIRMED' }) : pendingEarnRow({ idempotencyKey: key }),
+    confirmEarnOnChain: async () => {
+      confirmCalls += 1;
+      throw Object.assign(new Error('Failed query'), { cause: { code: '23505' } });
+    },
+  };
+  const operationsRepo = { markSubmittedFromChain: async () => assert.fail('nothing was confirmed') };
+  const sui = {
+    listCreditAccountEvents: async () => ({
+      events: [
+        earnedEvent({ json: { account_id: '0xacc1', amount: '100', operation_key: b64('already-confirmed') } }),
+        earnedEvent({ json: { account_id: '0xacc1', amount: '100', operation_key: b64('digest-recorded') } }),
+      ],
+      hasNextPage: false,
+      startCursor: 'C1',
+      endCursor: 'C2',
+    }),
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, operationsRepo, sui);
+  await processor.processNextPage();
+
+  assert.equal(confirmCalls, 1);
+  assert.equal(store.row.cursor, 'C2');
+});
+
+test('CheckpointIndexerProcessor: a crash mid-page commits nothing, and the restart resumes from the last committed cursor', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: '400' });
+  let crashOnSecond = true;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'user-1' }),
+    findTransactionByMemberAndIdempotency: async (_memberId, key) => pendingEarnRow({ idempotencyKey: key }),
+    confirmEarnOnChain: async (params, tx) => {
+      if (crashOnSecond && params.digest === 'D2') {
+        throw new Error('process killed');
+      }
+      tx.writes.push(params.digest);
+      return { id: params.digest };
+    },
+  };
+  const operationsRepo = { markSubmittedFromChain: async () => {} };
+  const afterSeen = [];
+  const sui = {
+    listCreditAccountEvents: async ({ after }) => {
+      afterSeen.push(after);
+      return {
+        events: [
+          earnedEvent({ transactionDigest: 'D1', json: { account_id: '0xacc1', amount: '1', operation_key: b64('k1') } }),
+          earnedEvent({ transactionDigest: 'D2', json: { account_id: '0xacc1', amount: '2', operation_key: b64('k2') } }),
+        ],
+        hasNextPage: false,
+        startCursor: 'C1',
+        endCursor: 'C2',
+      };
+    },
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, operationsRepo, sui);
+  await assert.rejects(() => processor.processNextPage(), /process killed/);
+  assert.equal(store.row.cursor, 'C0');
+  assert.deepEqual(store.committedWrites, []);
+
+  // "Restart": same page again from the committed cursor; each event is applied exactly once overall.
+  crashOnSecond = false;
+  await processor.processNextPage();
+  assert.deepEqual(afterSeen, ['C0', 'C0']);
+  assert.deepEqual(store.committedWrites, ['D1', 'D2']);
+  assert.equal(store.row.cursor, 'C2');
+});
+
+test('CheckpointIndexerProcessor: a PENDING POS redemption is confirmed from CreditRedeemed by its reference', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
+  const loyaltyId = '0b3c1f9e-6a55-4d0b-9a63-2f1d7d1e8c11';
+  let confirmArgs = null;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'user-1' }),
+    getLoyaltyTransactionById: async (id) =>
+      id === loyaltyId
+        ? { id, organizationId: 'org-1', organizationEndUserId: 'user-1', transactionType: 'REDEEM', status: 'PENDING', pointsAmount: 50, idempotencyKey: 'idem-pos-1' }
+        : undefined,
+    confirmPosRedemptionOnChain: async (params) => {
+      confirmArgs = params;
+      return { id: 'btx-2' };
+    },
+  };
+  let markArgs = null;
+  const operationsRepo = { markSubmittedFromChain: async (params) => { markArgs = params; } };
+  const sui = {
+    listCreditAccountEvents: async () => ({
+      events: [
+        {
+          name: 'CreditRedeemed',
+          sender: '0xbeneficiary',
+          json: { account_id: '0xacc1', amount: '50', reference: b64(loyaltyId) },
+          checkpoint: '700',
+          transactionDigest: 'DIGEST-REDEEM',
+          eventIndex: 0,
+        },
+      ],
+      hasNextPage: false,
+      startCursor: 'C1',
+      endCursor: 'C1',
+    }),
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, operationsRepo, sui);
+  await processor.processNextPage();
+
+  assert.equal(confirmArgs.loyaltyTransactionId, loyaltyId);
+  assert.equal(confirmArgs.pointsAmount, 50);
+  assert.equal(confirmArgs.sender, '0xbeneficiary');
+  assert.equal(markArgs.idempotencyKey, 'idem-pos-1');
+  assert.equal(store.row.lastCheckpoint, '700');
+});
+
+test('CheckpointIndexerProcessor: a terminal empty page leaves the cursor where it was', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C5', lastCheckpoint: '800' });
+  store.repo.commitPage = async () => assert.fail('nothing to commit');
+  const sui = { listCreditAccountEvents: async () => ({ events: [], hasNextPage: false, startCursor: null, endCursor: null }) };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, {}, {}, sui);
+  assert.equal(await processor.processNextPage(), false);
+  assert.equal(store.row.cursor, 'C5');
 });
 
 

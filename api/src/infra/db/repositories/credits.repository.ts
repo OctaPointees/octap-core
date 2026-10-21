@@ -7,6 +7,21 @@ import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
 
 /**
+ * Row-locks a loyalty transaction and reports whether it is still PENDING. Every chain-outcome
+ * writer (`confirm*OnChain`/`fail*OnChain`) calls this first, so the synchronous path (chain-submit
+ * worker, POS finalize) and `domain/indexer` can race on the same row and exactly one resolves it;
+ * the loser sees a non-PENDING row and does nothing instead of re-applying the balance effect.
+ */
+async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ status: loyaltyTransactions.status })
+    .from(loyaltyTransactions)
+    .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
+    .for('update');
+  return row?.status === 'PENDING';
+}
+
+/**
  * Row-locks a member's credit ownership. Callers compute absolute balances from this snapshot, so
  * it must be locked: two concurrent writers for the same member (e.g. two POS reserves) would
  * otherwise both read the same row and one delta would be lost.
@@ -177,6 +192,26 @@ export class CreditsRepository {
     });
   }
 
+  /** Maps an on-chain `CreditAccount` id (from an event's `account_id`) back to its member. */
+  async findCreditOwnershipBySuiAccountId(suiCreditAccountId: string) {
+    return this.db.query.creditOwnerships.findFirst({
+      where: eq(creditOwnerships.suiCreditAccountId, suiCreditAccountId),
+    });
+  }
+
+  /**
+   * Idempotency keys are only unique per organization; scoping by member (which belongs to exactly
+   * one organization) is at least as narrow, and is what a chain event identifies via its account.
+   */
+  async findTransactionByMemberAndIdempotency(organizationEndUserId: string, idempotencyKey: string) {
+    return this.db.query.loyaltyTransactions.findFirst({
+      where: and(
+        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+        eq(loyaltyTransactions.idempotencyKey, idempotencyKey),
+      ),
+    });
+  }
+
   async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
     await this.db
       .update(creditOwnerships)
@@ -193,16 +228,27 @@ export class CreditsRepository {
    * credits 1% of it, not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
    * the loyalty transaction is corrected to the confirmed figure here — Sui is authoritative for
    * confirmed points (docs/architecture.md), the PG row at insert time was only a request.
+   *
+   * Returns null (and writes nothing) if the row is no longer PENDING — the other of
+   * chain-submit worker / `domain/indexer` already resolved it. Pass `db` to run inside a
+   * caller's transaction (it becomes a savepoint there).
    */
-  async confirmEarnOnChain(params: {
-    loyaltyTransactionId: string;
-    organizationEndUserId: string;
-    reservedPointsAmount: number;
-    confirmedPointsAmount: number;
-    digest: string;
-    sender: string;
-  }) {
-    return this.db.transaction(async (tx) => {
+  async confirmEarnOnChain(
+    params: {
+      loyaltyTransactionId: string;
+      organizationEndUserId: string;
+      reservedPointsAmount: number;
+      confirmedPointsAmount: number;
+      digest: string;
+      sender: string;
+    },
+    db: DrizzleDb = this.db,
+  ) {
+    return db.transaction(async (tx) => {
+      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+        return null;
+      }
+
       const [blockchainTx] = await tx
         .insert(blockchainTransactions)
         .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
@@ -244,6 +290,10 @@ export class CreditsRepository {
     reservedPointsAmount: number;
   }) {
     return this.db.transaction(async (tx) => {
+      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+        return;
+      }
+
       await tx
         .update(loyaltyTransactions)
         .set({ status: 'FAILED', updatedAt: new Date() })
@@ -392,15 +442,24 @@ export class CreditsRepository {
    * `pointsAmount` out of `pendingRedemption` into `confirmedBalance`/`lifetimeRedeemed`. Unlike
    * earn, the confirmed amount always equals what was reserved — `credit_account::redeem` debits
    * exactly `cost` on-chain or aborts outright, there is no policy-derived conversion.
+   *
+   * Same null-if-already-resolved and `db` contract as `confirmEarnOnChain`.
    */
-  async confirmPosRedemptionOnChain(params: {
-    loyaltyTransactionId: string;
-    organizationEndUserId: string;
-    pointsAmount: number;
-    digest: string;
-    sender: string;
-  }) {
-    return this.db.transaction(async (tx) => {
+  async confirmPosRedemptionOnChain(
+    params: {
+      loyaltyTransactionId: string;
+      organizationEndUserId: string;
+      pointsAmount: number;
+      digest: string;
+      sender: string;
+    },
+    db: DrizzleDb = this.db,
+  ) {
+    return db.transaction(async (tx) => {
+      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+        return null;
+      }
+
       const [blockchainTx] = await tx
         .insert(blockchainTransactions)
         .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
@@ -437,6 +496,10 @@ export class CreditsRepository {
     pointsAmount: number;
   }) {
     return this.db.transaction(async (tx) => {
+      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+        return;
+      }
+
       await tx
         .update(loyaltyTransactions)
         .set({ status: 'FAILED', updatedAt: new Date() })
