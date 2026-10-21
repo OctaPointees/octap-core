@@ -15,9 +15,11 @@ export interface SponsoredRedeemPreview {
  * parameter anywhere on this class that could make it build or sponsor anything other than
  * `credit_account::redeem`: `allowedMoveCallTargets` is always exactly one hardcoded entry.
  *
- * Deliberately stops at "preview": executing the signed result and updating the PostgreSQL
- * ownership/balance rows is OCT-55's remaining scope (docs/roadmap.md), which calls this service
- * rather than duplicating it.
+ * `previewSponsoredRedeem` only builds and sponsors; `executeSponsoredRedeem` only submits a
+ * signature against an already-sponsored digest. Neither touches PostgreSQL ownership/balance
+ * rows — that orchestration (and the reserve/finalize lifecycle around these two calls) is
+ * `domain/credits/pos-redemption.service.ts` (OCT-55), which calls both rather than duplicating
+ * either.
  */
 @Injectable()
 export class SponsoredTransactionService {
@@ -39,5 +41,10 @@ export class SponsoredTransactionService {
       allowedMoveCallTargets: [this.builder.redeemMoveCallTarget],
     });
     return { transactionBytes: sponsored.bytes, digest: sponsored.digest };
+  }
+
+  /** Submits the beneficiary's signature over a digest `previewSponsoredRedeem` already sponsored. */
+  async executeSponsoredRedeem(params: { digest: string; signature: string }): Promise<{ digest: string }> {
+    return this.enoki.executeSponsoredTransaction(params);
   }
 }

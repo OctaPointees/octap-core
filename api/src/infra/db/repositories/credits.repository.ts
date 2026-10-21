@@ -3,7 +3,7 @@ import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
 import { acceptCommand } from './operations.repository.js';
-import { organizationEndUsers } from '../schema/members.schema.js';
+import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
 
 @Injectable()
@@ -17,6 +17,23 @@ export class CreditsRepository {
       columns: { organizationId: true },
     });
     return row?.organizationId ?? null;
+  }
+
+  /**
+   * The member's real zkLogin Sui address, via organization_end_users -> end_users. Always
+   * populated by the time a member can earn or redeem at all: `organization_end_users` can only
+   * be created by `IdentityService.enrollInOrganization`, which requires the end user to already
+   * exist, which only happens via `loginWithGoogle` — there is no "enrolled but never logged in"
+   * path in this codebase. A null here is a data integrity problem, not a normal pending state.
+   */
+  async findBeneficiaryAddress(organizationEndUserId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ suiAddress: endUsers.suiAddress })
+      .from(organizationEndUsers)
+      .innerJoin(endUsers, eq(organizationEndUsers.endUserId, endUsers.id))
+      .where(eq(organizationEndUsers.id, organizationEndUserId))
+      .limit(1);
+    return rows[0]?.suiAddress ?? null;
   }
 
   async getOrCreateCreditOwnership(organizationEndUserId: string) {
@@ -277,6 +294,150 @@ export class CreditsRepository {
         transaction,
         newBalance: newConfirmedBalance,
       };
+    });
+  }
+
+  /**
+   * Durably accepts a POS redemption request (OCT-55): moves `pointsAmount` into
+   * `pendingRedemption` rather than deducting `confirmedBalance` yet — Sui is authoritative for
+   * whether `credit_account::redeem` actually lands, not this request. Gated by OCT-43's
+   * `acceptCommand`, checked *before* any balance/account read, so a reused idempotency key with
+   * a different `organizationEndUserId`/`pointsAmount` is a clean conflict and never touches a
+   * balance. `isNew: false` means this exact command was already accepted in a prior call — the
+   * caller must not sponsor a new on-chain transaction for it, only resume reporting on the
+   * existing one.
+   */
+  async reservePosRedemption(params: {
+    organizationId: string;
+    organizationEndUserId: string;
+    pointsAmount: number;
+    idempotencyKey: string;
+  }): Promise<{ transaction: typeof loyaltyTransactions.$inferSelect; accountId: string | null; isNew: boolean }> {
+    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+      const { operation, isNew } = await acceptCommand(tx, {
+        tenantId: params.organizationId,
+        idempotencyKey: params.idempotencyKey,
+        commandType: 'CREDIT_POS_REDEEM_RESERVE',
+        payload: {
+          organizationEndUserId: params.organizationEndUserId,
+          pointsAmount: params.pointsAmount,
+        },
+      });
+
+      if (!isNew) {
+        const existing = await tx.query.loyaltyTransactions.findFirst({
+          where: and(
+            eq(loyaltyTransactions.organizationId, params.organizationId),
+            eq(loyaltyTransactions.idempotencyKey, params.idempotencyKey),
+          ),
+        });
+        if (!existing) {
+          throw new Error(`Operation ${operation.id} was already accepted but its loyalty transaction is missing`);
+        }
+        const ownership = await tx.query.creditOwnerships.findFirst({
+          where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+        });
+        return { transaction: existing, accountId: ownership?.suiCreditAccountId ?? null, isNew: false };
+      }
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      });
+
+      const available = ownership ? Number(ownership.confirmedBalance) - Number(ownership.pendingRedemption) : 0;
+      if (!ownership || available < params.pointsAmount) {
+        throw new Error(`Insufficient points: required ${params.pointsAmount}, available ${available}`);
+      }
+      if (!ownership.suiCreditAccountId) {
+        throw new Error(`Member ${params.organizationEndUserId} has no on-chain CreditAccount yet (no prior earn)`);
+      }
+
+      const [transaction] = await tx
+        .insert(loyaltyTransactions)
+        .values({
+          organizationId: params.organizationId,
+          organizationEndUserId: params.organizationEndUserId,
+          transactionType: 'REDEEM',
+          pointsAmount: params.pointsAmount,
+          idempotencyKey: params.idempotencyKey,
+          status: 'PENDING',
+          metadata: {},
+        })
+        .returning();
+
+      await tx
+        .update(creditOwnerships)
+        .set({ pendingRedemption: Number(ownership.pendingRedemption) + params.pointsAmount, updatedAt: new Date() })
+        .where(eq(creditOwnerships.id, ownership.id));
+
+      return { transaction, accountId: ownership.suiCreditAccountId, isNew: true };
+    });
+  }
+
+  /**
+   * Records a POS redemption's on-chain receipt and resolves its pending hold: moves
+   * `pointsAmount` out of `pendingRedemption` into `confirmedBalance`/`lifetimeRedeemed`. Unlike
+   * earn, the confirmed amount always equals what was reserved — `credit_account::redeem` debits
+   * exactly `cost` on-chain or aborts outright, there is no policy-derived conversion.
+   */
+  async confirmPosRedemptionOnChain(params: {
+    loyaltyTransactionId: string;
+    organizationEndUserId: string;
+    pointsAmount: number;
+    digest: string;
+    sender: string;
+  }) {
+    return this.db.transaction(async (tx) => {
+      const [blockchainTx] = await tx
+        .insert(blockchainTransactions)
+        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+        .returning();
+
+      await tx
+        .update(loyaltyTransactions)
+        .set({ status: 'CONFIRMED', blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
+        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      });
+      if (ownership) {
+        await tx
+          .update(creditOwnerships)
+          .set({
+            confirmedBalance: Number(ownership.confirmedBalance) - params.pointsAmount,
+            pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount,
+            lifetimeRedeemed: Number(ownership.lifetimeRedeemed) + params.pointsAmount,
+            updatedAt: new Date(),
+          })
+          .where(eq(creditOwnerships.id, ownership.id));
+      }
+
+      return blockchainTx;
+    });
+  }
+
+  /** Releases a POS redemption's pending hold (confirmedBalance untouched) and marks it FAILED. */
+  async failPosRedemptionOnChain(params: {
+    loyaltyTransactionId: string;
+    organizationEndUserId: string;
+    pointsAmount: number;
+  }) {
+    return this.db.transaction(async (tx) => {
+      await tx
+        .update(loyaltyTransactions)
+        .set({ status: 'FAILED', updatedAt: new Date() })
+        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+
+      const ownership = await tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      });
+      if (ownership) {
+        await tx
+          .update(creditOwnerships)
+          .set({ pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount, updatedAt: new Date() })
+          .where(eq(creditOwnerships.id, ownership.id));
+      }
     });
   }
 

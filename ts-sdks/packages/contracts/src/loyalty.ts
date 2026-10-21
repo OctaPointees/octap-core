@@ -54,6 +54,36 @@ export interface RedeemPointsResponse {
   idempotencyKey: string;
 }
 
+export interface ReservePosRedemptionRequest {
+  organizationEndUserId: string;
+  pointsAmount: number;
+  idempotencyKey: string;
+}
+
+export interface ReservePosRedemptionResponse {
+  transactionId: string;
+  /** Null only when `status` isn't PENDING — the command already settled on an earlier call. */
+  digest: string | null;
+  /** Base64 full transaction bytes for the member's device to sign. Null alongside `digest`. */
+  transactionBytes: string | null;
+  status: LoyaltyTxStatus;
+  idempotencyKey: string;
+}
+
+export interface FinalizePosRedemptionRequest {
+  digest: string;
+  signature: string;
+}
+
+export interface FinalizePosRedemptionResponse {
+  transactionId: string;
+  organizationEndUserId: string;
+  pointsRedeemed: number;
+  newBalance: number;
+  status: LoyaltyTxStatus;
+  blockchainDigest: string;
+}
+
 export interface CreditBalanceSnapshot {
   organizationEndUserId: string;
   confirmedBalance: number;

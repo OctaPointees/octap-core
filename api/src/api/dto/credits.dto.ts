@@ -18,3 +18,14 @@ export interface ReverseTransactionBodyDto {
   idempotencyKey: string;
   reason: string;
 }
+
+export interface ReservePosRedemptionBodyDto {
+  organizationEndUserId: string;
+  pointsAmount: number;
+  idempotencyKey: string;
+}
+
+export interface FinalizePosRedemptionBodyDto {
+  digest: string;
+  signature: string;
+}
