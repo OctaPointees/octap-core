@@ -1,0 +1,51 @@
+import { Injectable } from '@nestjs/common';
+import {
+  OctapChainClient,
+  TESTNET_OCTAP_PACKAGE_CONFIG,
+  MAINNET_OCTAP_PACKAGE_CONFIG,
+  type OctapNetwork,
+  type OctapPackageConfig,
+} from '@octap/chain';
+
+function packageConfig(network: OctapNetwork): OctapPackageConfig {
+  if (network === 'testnet') {
+    return TESTNET_OCTAP_PACKAGE_CONFIG;
+  }
+  if (network === 'mainnet' && MAINNET_OCTAP_PACKAGE_CONFIG) {
+    return MAINNET_OCTAP_PACKAGE_CONFIG;
+  }
+  throw new Error(`Sui transaction builder: no package configured for network "${network}"`);
+}
+
+/**
+ * HTTP-process-safe counterpart to `SuiClientService`: builds unsigned transaction *kind* bytes
+ * only. There is no signer anywhere in this class and it never reads `SUI_ISSUER_PRIVATE_KEY`,
+ * so — unlike `infra/clients/sui/sui.module.ts` — it's safe to register in
+ * `infra/infrastructure.module.ts` and reach from `AppModule`. See `sui.client.ts`'s `redeem()`
+ * doc comment for why building the redeem transaction kind lives here instead of there: it's an
+ * HTTP-request-shaped capability (the end user signs it), not a worker job.
+ */
+@Injectable()
+export class SuiTransactionBuilderClient {
+  private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
+  private readonly packageId = packageConfig(this.network).packageId;
+  private chainClient?: OctapChainClient;
+
+  private get client(): OctapChainClient {
+    if (!this.chainClient) {
+      this.chainClient = new OctapChainClient({ network: this.network, package: { packageId: this.packageId } });
+    }
+    return this.chainClient;
+  }
+
+  /** The only Move call this class's redeem builder can ever produce — for sponsorship allowlists. */
+  get redeemMoveCallTarget(): string {
+    return `${this.packageId}::credit_account::redeem`;
+  }
+
+  /** Builds `credit_account::redeem`'s transaction kind: no sender, no gas, nothing signed yet. */
+  async buildRedeemTransactionKind(params: { accountId: string; cost: bigint; reference: Uint8Array }): Promise<Uint8Array> {
+    const tx = this.client.buildRedeemTransaction(params);
+    return tx.build({ client: this.client.rpc, onlyTransactionKind: true });
+  }
+}

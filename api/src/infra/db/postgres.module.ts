@@ -5,6 +5,7 @@ import { RewardsRepository } from './repositories/rewards.repository.js';
 import { OperationsRepository } from './repositories/operations.repository.js';
 import { ApiCredentialsRepository } from './repositories/api-credentials.repository.js';
 import { WebhooksRepository } from './repositories/webhooks.repository.js';
+import { IdentityRepository } from './repositories/identity.repository.js';
 
 const repositories = [
   CreditsRepository,
@@ -12,6 +13,7 @@ const repositories = [
   OperationsRepository,
   ApiCredentialsRepository,
   WebhooksRepository,
+  IdentityRepository,
 ];
 
 @Module({

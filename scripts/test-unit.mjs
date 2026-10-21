@@ -1368,3 +1368,153 @@ test('OctaBrowserClient: retrieves balance and claims vouchers with auth token',
   }
 });
 
+import { IdentityService } from '../api/dist/domain/identity/identity.service.js';
+import { SponsoredTransactionService } from '../api/dist/domain/identity/sponsored-transaction.service.js';
+
+test('IdentityService: loginWithGoogle creates a new end user on first login', async () => {
+  let created = null;
+  const mockRepo = {
+    findEndUserBySuiAddress: async () => null,
+    createEndUser: async (params) => {
+      created = { id: 'end-user-1', ...params };
+      return created;
+    },
+  };
+  const mockEnoki = {
+    resolveZkLoginAddress: async (jwt) => {
+      assert.equal(jwt, 'google-id-token');
+      return { address: '0xabc', publicKey: 'pk', salt: 'salt' };
+    },
+  };
+
+  const service = new IdentityService(mockRepo, mockEnoki);
+  const result = await service.loginWithGoogle('google-id-token');
+
+  assert.equal(result.endUserId, 'end-user-1');
+  assert.equal(result.suiAddress, '0xabc');
+  assert.equal(result.isNewUser, true);
+  assert.equal(created.suiAddress, '0xabc');
+});
+
+test('IdentityService: loginWithGoogle returns the existing end user without creating a duplicate', async () => {
+  let createCalled = false;
+  const mockRepo = {
+    findEndUserBySuiAddress: async (address) => {
+      assert.equal(address, '0xabc');
+      return { id: 'end-user-1', suiAddress: '0xabc' };
+    },
+    createEndUser: async () => {
+      createCalled = true;
+      throw new Error('should not create');
+    },
+  };
+  const mockEnoki = { resolveZkLoginAddress: async () => ({ address: '0xabc', publicKey: 'pk', salt: 'salt' }) };
+
+  const service = new IdentityService(mockRepo, mockEnoki);
+  const result = await service.loginWithGoogle('google-id-token');
+
+  assert.equal(result.isNewUser, false);
+  assert.equal(result.endUserId, 'end-user-1');
+  assert.equal(createCalled, false);
+});
+
+test('IdentityService: loginWithGoogle requires an idToken', async () => {
+  const service = new IdentityService({}, {});
+  await assert.rejects(() => service.loginWithGoogle(''), /idToken is required/);
+});
+
+test('IdentityService: enrollInOrganization creates a new enrollment for a known end user', async () => {
+  const mockRepo = {
+    findEndUserById: async (id) => ({ id, suiAddress: '0xabc' }),
+    findEnrollment: async () => null,
+    enroll: async (params) => ({ id: 'org-end-user-1', ...params }),
+  };
+
+  const service = new IdentityService(mockRepo, {});
+  const result = await service.enrollInOrganization({ endUserId: 'end-user-1', organizationId: 'org-1' });
+
+  assert.equal(result.organizationEndUserId, 'org-end-user-1');
+  assert.equal(result.isNewEnrollment, true);
+});
+
+test('IdentityService: enrollInOrganization is idempotent for an existing enrollment', async () => {
+  const mockRepo = {
+    findEndUserById: async (id) => ({ id, suiAddress: '0xabc' }),
+    findEnrollment: async () => ({ id: 'org-end-user-1' }),
+    enroll: async () => {
+      throw new Error('should not enroll twice');
+    },
+  };
+
+  const service = new IdentityService(mockRepo, {});
+  const result = await service.enrollInOrganization({ endUserId: 'end-user-1', organizationId: 'org-1' });
+
+  assert.equal(result.organizationEndUserId, 'org-end-user-1');
+  assert.equal(result.isNewEnrollment, false);
+});
+
+test('IdentityService: enrollInOrganization rejects an unknown end user', async () => {
+  const mockRepo = { findEndUserById: async () => null };
+  const service = new IdentityService(mockRepo, {});
+  await assert.rejects(
+    () => service.enrollInOrganization({ endUserId: 'ghost', organizationId: 'org-1' }),
+    /No end user ghost/,
+  );
+});
+
+test('SponsoredTransactionService: previewSponsoredRedeem builds the kind and sponsors with exactly one allowed target', async () => {
+  let sponsoredArgs = null;
+  const mockEnoki = {
+    createSponsoredTransaction: async (params) => {
+      sponsoredArgs = params;
+      return { bytes: 'full-tx-bytes', digest: 'digest-1' };
+    },
+  };
+  const mockBuilder = {
+    redeemMoveCallTarget: '0xpkg::credit_account::redeem',
+    buildRedeemTransactionKind: async (params) => {
+      assert.equal(params.accountId, 'account-1');
+      assert.equal(params.cost, 50n);
+      return new Uint8Array([1, 2, 3]);
+    },
+  };
+
+  const service = new SponsoredTransactionService(mockEnoki, mockBuilder);
+  const result = await service.previewSponsoredRedeem({
+    beneficiaryAddress: '0xbeneficiary',
+    accountId: 'account-1',
+    cost: 50n,
+    reference: new Uint8Array([9]),
+  });
+
+  assert.equal(result.transactionBytes, 'full-tx-bytes');
+  assert.equal(result.digest, 'digest-1');
+  assert.equal(sponsoredArgs.sender, '0xbeneficiary');
+  assert.deepEqual(sponsoredArgs.allowedMoveCallTargets, ['0xpkg::credit_account::redeem']);
+  assert.deepEqual(Array.from(sponsoredArgs.transactionKindBytes), [1, 2, 3]);
+});
+
+test('SponsoredTransactionService: there is no parameter that can widen the sponsorship allowlist', async () => {
+  const mockEnoki = {
+    createSponsoredTransaction: async (params) => {
+      assert.deepEqual(params.allowedMoveCallTargets, ['0xpkg::credit_account::redeem']);
+      return { bytes: 'bytes', digest: 'digest' };
+    },
+  };
+  const mockBuilder = {
+    redeemMoveCallTarget: '0xpkg::credit_account::redeem',
+    buildRedeemTransactionKind: async () => new Uint8Array([]),
+  };
+
+  // `previewSponsoredRedeem`'s only parameters are domain values (account id, cost, reference) —
+  // there is no "target" argument anywhere on this class that a caller could use to sponsor
+  // anything other than `credit_account::redeem`.
+  const service = new SponsoredTransactionService(mockEnoki, mockBuilder);
+  await service.previewSponsoredRedeem({
+    beneficiaryAddress: '0xbeneficiary',
+    accountId: 'account-99',
+    cost: 1n,
+    reference: new Uint8Array([]),
+  });
+});
+
