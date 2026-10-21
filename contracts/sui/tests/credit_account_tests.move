@@ -12,6 +12,7 @@ const ADMIN: address = @0xA;
 const ISSUER: address = @0xB;
 const MEMBER: address = @0xC;
 const OTHER: address = @0xD;
+const ISSUER_B: address = @0xE;
 const DAY_MS: u64 = 86_400_000;
 
 /// Builds a program with an activated 100-bps / 1-day-expiry policy and an
@@ -155,6 +156,57 @@ fun expired_buckets_are_not_spendable() {
     ts::return_immutable(policy);
     ts::return_shared(program);
 
+    clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 0)] // credit_account::EWrongProgram
+fun earn_rejects_issuer_cap_scoped_to_a_different_program() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let program_a = ts::take_shared<ProgramControl>(&scenario);
+    let program_a_id = object::id(&program_a);
+    ts::return_shared(program_a);
+
+    // A second, fully independent program, with its own IssuerCap minted to ISSUER_B. It
+    // never touches program A's policy or account — only needs to exist so ISSUER_B holds a
+    // capability scoped elsewhere.
+    let admin_cap_b = program_control::create_program(ts::ctx(&mut scenario));
+    transfer::public_transfer(admin_cap_b, ADMIN);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let program_b = ts::take_shared<ProgramControl>(&scenario);
+    let admin_cap_b = ts::take_from_sender<AdminCap>(&scenario);
+    program_control::issue_cap(&admin_cap_b, &program_b, ISSUER_B, ts::ctx(&mut scenario));
+    ts::return_to_sender(&scenario, admin_cap_b);
+    ts::return_shared(program_b);
+
+    // ISSUER_B's cap is scoped to program B — using it against program A's account must abort
+    // with `EWrongProgram`, tenant isolation enforced by the chain itself, not application code.
+    ts::next_tx(&mut scenario, ISSUER_B);
+    let program_a = ts::take_shared_by_id<ProgramControl>(&scenario, program_a_id);
+    let policy_a = ts::take_immutable<PolicyVersion>(&scenario);
+    let issuer_cap_b = ts::take_from_sender<IssuerCap>(&scenario);
+    let mut account_a = ts::take_shared<CreditAccount>(&scenario);
+    let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
+    credit_account::earn(
+        &issuer_cap_b,
+        &program_a,
+        &policy_a,
+        &mut account_a,
+        10_000,
+        b"op-1",
+        &clock,
+        ts::ctx(&mut scenario),
+    );
+
+    ts::return_shared(account_a);
+    ts::return_to_sender(&scenario, issuer_cap_b);
+    ts::return_immutable(policy_a);
+    ts::return_shared(program_a);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
 }

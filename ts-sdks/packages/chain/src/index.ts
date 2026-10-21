@@ -6,6 +6,8 @@ export {
   type OpenAccountParams,
   type EarnParams,
   type RedeemParams,
+  type PublishPolicyParams,
+  type ActivatePolicyAndIssueCapParams,
   type SubmittedChainTransaction,
 } from './client.js';
 export {

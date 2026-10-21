@@ -6,5 +6,6 @@ export * from './rewards.schema.js';
 export * from './billing.schema.js';
 export * from './operations.schema.js';
 export * from './webhooks.schema.js';
+export * from './programs.schema.js';
 export * from './documents.schema.js';
 export * from './relations.js';

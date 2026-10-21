@@ -27,6 +27,7 @@ then move the row to **Implemented** in the same pull request.
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
+| Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
 ### Known gaps in implemented features
 
@@ -43,11 +44,24 @@ then move the row to **Implemented** in the same pull request.
   guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for
   signing is entirely client-side (this process only ever sees its public half); nonce/proof
   endpoints are thin Enoki passthroughs with no local cryptography.
+- `domain/programs` can provision a real per-organization program/policy/IssuerCap, but nothing
+  consumes it yet: `chain-submit.processor.ts` still dispatches every organization's `earn`
+  against the single hardcoded `TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`. Wiring it to look up
+  `ProgramsRepository` per organization instead is follow-up work, left out here to avoid
+  touching the already-working demo earn path in the same change that adds provisioning. There
+  is also no `domain/organizations` (org rows are inserted out of band) or standalone
+  `domain/policies` versioning/preview API yet — policy publish/activate are steps inside
+  `ProgramsService.provisionForOrganization`, not their own CRUD surface. Provisioning can't be
+  exercised live without a real `SUI_PROGRAM_ADMIN_PRIVATE_KEY` (checked `.env`: absent) — proven
+  instead by a new Move test, `credit_account_tests.move`'s
+  `earn_rejects_issuer_cap_scoped_to_a_different_program`, plus unit tests with a mocked
+  `ProgramAdminClient`.
 - The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
   organization — those object ids are committed constants in
   `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
-  doc comment for why object ids aren't env vars), not something `.env.example` configures. Real
-  per-organization program provisioning is the `domain/programs` row below, not built yet.
+  doc comment for why object ids aren't env vars), not something `.env.example` configures.
+  `domain/programs` (above) can now provision a real one per organization, but nothing routes
+  `earn` through it yet — see that bullet above for exactly what's left.
 - An end user has no real Sui address yet (no zkLogin/identity binding), so the worker opens each
   `CreditAccount` under a placeholder address derived from the PG ownership row id
   (`chain-submit.processor.ts`'s `demoBeneficiaryAddress`) — nobody holds its private key. Fine for
@@ -103,8 +117,7 @@ and vendor clients.
 | Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
 | Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
-| Programs: program controls and capabilities | domain/programs | Paired with Move program_control |
-| Policies: versions and preview | domain/policies | Paired with Move policy_version |
+| Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
 | Credits: chain-time expiry buckets and worker | domain/credits/expiry.service.ts + expiry worker | Needs the Move `credit_account` bucket model mirrored into Postgres first; reversal/clawback-debt is implemented (see Implemented above), this row is only the bucket-expiry part |
 | Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists; a minimal claim/markSubmitted/markFailed slice exists as `infra/db/repositories/operations.repository.ts` for chain-submit dispatch only — no dedup beyond the idempotency key, no replay, no UNKNOWN recovery |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |

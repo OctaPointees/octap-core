@@ -5,6 +5,8 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import type { Signer } from '@mysten/sui/cryptography';
 
 import * as creditAccount from './contracts/octap/credit_account.js';
+import * as programControl from './contracts/octap/program_control.js';
+import * as policyVersion from './contracts/octap/policy_version.js';
 import { TESTNET_OCTAP_PACKAGE_CONFIG, type OctapPackageConfig } from './constants.js';
 
 export type OctapNetwork = 'testnet' | 'devnet' | 'mainnet' | 'localnet';
@@ -45,6 +47,24 @@ export interface RedeemParams {
   cost: number | bigint;
   /** Opaque off-chain reference (e.g. a redemption id), for event correlation. */
   reference: Uint8Array;
+}
+
+export interface PublishPolicyParams {
+  adminCapId: string;
+  programId: string;
+  version: number | bigint;
+  /** Credits earned per 10,000 units of purchase amount (basis points). */
+  earnBps: number | bigint;
+  /** How long, in milliseconds from the moment of earning, a bucket stays spendable. */
+  expiryMs: number | bigint;
+}
+
+export interface ActivatePolicyAndIssueCapParams {
+  adminCapId: string;
+  programId: string;
+  policyVersionId: string;
+  /** The address backing the service signer that will call `earn` for this program. */
+  issuerRecipient: string;
 }
 
 export interface SubmittedChainTransaction {
@@ -119,6 +139,63 @@ export class OctapChainClient {
         account: params.accountId,
         cost: params.cost,
         reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  /**
+   * Creates a new program and mints its `AdminCap` to the signer — the only entry point in
+   * this file not scoped to an existing program, since there is no program yet to scope it to.
+   */
+  buildCreateProgramTransaction(): Transaction {
+    const tx = new Transaction();
+    programControl.createProgramEntry({ package: this.packageId })(tx);
+    return tx;
+  }
+
+  /**
+   * Publishes and freezes a new policy version for `params.programId`. Must be its own
+   * transaction: the `ProgramControl` this targets was shared (and its id only became known)
+   * in a prior transaction's effects, not a value this PTB can reference directly.
+   */
+  buildPublishPolicyTransaction(params: PublishPolicyParams): Transaction {
+    const tx = new Transaction();
+    policyVersion.publish({
+      package: this.packageId,
+      arguments: {
+        admin: params.adminCapId,
+        programId: params.programId,
+        version: params.version,
+        earnBps: params.earnBps,
+        expiryMs: params.expiryMs,
+      },
+    })(tx);
+    return tx;
+  }
+
+  /**
+   * Activates `params.policyVersionId` for `params.programId` and mints an `IssuerCap` for
+   * `params.issuerRecipient`, in one transaction — both commands only need objects that
+   * already exist on-chain from prior transactions, so there's no same-PTB ordering problem
+   * here the way there is between `create_program` and `publish`.
+   */
+  buildActivatePolicyAndIssueCapTransaction(params: ActivatePolicyAndIssueCapParams): Transaction {
+    const tx = new Transaction();
+    programControl.activatePolicy({
+      package: this.packageId,
+      arguments: {
+        admin: params.adminCapId,
+        program: params.programId,
+        policy: params.policyVersionId,
+      },
+    })(tx);
+    programControl.issueCap({
+      package: this.packageId,
+      arguments: {
+        admin: params.adminCapId,
+        program: params.programId,
+        recipient: params.issuerRecipient,
       },
     })(tx);
     return tx;

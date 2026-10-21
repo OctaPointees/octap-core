@@ -1518,3 +1518,70 @@ test('SponsoredTransactionService: there is no parameter that can widen the spon
   });
 });
 
+import { ProgramsService } from '../api/dist/domain/programs/programs.service.js';
+
+test('ProgramsService: provisions a new program for an organization that has none yet', async () => {
+  let createdRow = null;
+  const mockRepo = {
+    findByOrganization: async () => null,
+    create: async (params) => {
+      createdRow = { id: 'program-row-1', ...params };
+      return createdRow;
+    },
+  };
+  const mockAdmin = {
+    provisionProgram: async (params) => {
+      assert.equal(params.earnBps, 100);
+      assert.equal(params.expiryMs, 2_592_000_000);
+      assert.equal(params.issuerRecipient, '0xissuer');
+      return {
+        programId: '0xprogram',
+        adminCapId: '0xadmincap',
+        policyVersionId: '0xpolicy',
+        issuerCapId: '0xissuercap',
+      };
+    },
+  };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  const result = await service.provisionForOrganization({
+    organizationId: 'org-1',
+    earnBps: 100,
+    expiryMs: 2_592_000_000,
+    issuerRecipient: '0xissuer',
+  });
+
+  assert.equal(result.id, 'program-row-1');
+  assert.equal(createdRow.programControlId, '0xprogram');
+  assert.equal(createdRow.issuerCapId, '0xissuercap');
+  assert.equal(createdRow.policyVersion, 1);
+});
+
+test('ProgramsService: rejects provisioning a second program for the same organization without touching the chain', async () => {
+  let adminCalled = false;
+  const mockRepo = {
+    findByOrganization: async (organizationId) => {
+      assert.equal(organizationId, 'org-1');
+      return { id: 'program-row-1', programControlId: '0xprogram' };
+    },
+  };
+  const mockAdmin = {
+    provisionProgram: async () => {
+      adminCalled = true;
+      throw new Error('should not provision a second program on-chain');
+    },
+  };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  await assert.rejects(
+    () =>
+      service.provisionForOrganization({
+        organizationId: 'org-1',
+        earnBps: 100,
+        expiryMs: 2_592_000_000,
+        issuerRecipient: '0xissuer',
+      }),
+    /already has a program/,
+  );
+  assert.equal(adminCalled, false);
+});
