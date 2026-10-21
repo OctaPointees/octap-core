@@ -26,13 +26,23 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
+| Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 
 ### Known gaps in implemented features
 
 - Only **earn** is chain-dispatched. **Redeem stays PostgreSQL-only**: `credit_account::redeem`
-  requires the beneficiary's own signature (Move-enforced, not a bug), which needs zkLogin
-  (Identity, below) — a worker signing with the IssuerCap key would abort on-chain every time, so
-  it isn't wired rather than wired wrong. See `api/src/infra/clients/sui/sui.client.ts`.
+  requires the beneficiary's own signature (Move-enforced, not a bug) — a worker signing with the
+  IssuerCap key would abort on-chain every time, so it isn't wired rather than wired wrong. See
+  `api/src/infra/clients/sui/sui.client.ts`. Identity (below) now resolves a real zkLogin address
+  and can build+sponsor the redeem transaction kind, but nothing calls that from the actual
+  redemption flow yet — wiring it to `RedemptionService` plus the Postgres ownership/balance
+  update is OCT-55.
+- Identity's login/enroll endpoints are intentionally public (no `@Tenant()`/`@Scopes()`): the
+  Google id_token is the proof of identity, and Enoki validates it, not this process. No customer
+  session/bearer token is issued — balance and voucher reads still require the merchant API-key
+  guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for
+  signing is entirely client-side (this process only ever sees its public half); nonce/proof
+  endpoints are thin Enoki passthroughs with no local cryptography.
 - The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
   organization — those object ids are committed constants in
   `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
@@ -89,7 +99,7 @@ and vendor clients.
 
 | Feature | Suggested location | Notes |
 | --- | --- | --- |
-| Identity: login, sessions, Google zkLogin | domain/identity; infra/clients/enoki | Enoki keys stay backend-only |
+| Identity: system-user (dashboard login) sessions | domain/identity | Separate from the Google zkLogin flow implemented above; merchant/admin dashboard login, not the end-user customer identity |
 | Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
 | Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
@@ -146,7 +156,7 @@ Add each remaining module with its tests under `contracts/sui/tests`.
 
 | Feature | Package |
 | --- | --- |
-| Customer login (zkLogin) helper | browser |
+| Customer login (zkLogin) helper | browser — `loginWithGoogle()`/`enroll()` call the new identity endpoints, but obtaining the Google id_token itself (sign-in popup/button) is OctaP_Web's job, not this SDK's |
 | Customer transaction signing | browser |
 | Offline earn-intent buffering | browser |
 | Webhook signature verification | node |

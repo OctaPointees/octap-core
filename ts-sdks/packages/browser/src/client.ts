@@ -4,6 +4,8 @@ import type {
   VoucherDto,
   ClaimVoucherResponse,
   VoucherOwnershipDto,
+  GoogleLoginResponse,
+  EnrollMemberResponse,
 } from '@octap/contracts';
 
 export interface BrowserClientOptions {
@@ -130,6 +132,33 @@ export class OctaBrowserClient {
    */
   async listMemberVouchers(memberId: string): Promise<VoucherOwnershipDto[]> {
     return this.request<VoucherOwnershipDto[]>(`/v1/rewards/members/${memberId}/vouchers`, 'GET');
+  }
+
+  /**
+   * Resolves a Google id_token (obtained from the host app's own Google Sign-In; this SDK does
+   * not render a sign-in button) to a zkLogin Sui address and a global end-user identity.
+   */
+  async loginWithGoogle(idToken: string): Promise<GoogleLoginResponse> {
+    return this.request<GoogleLoginResponse>('/v1/identity/google-login', 'POST', { idToken });
+  }
+
+  /**
+   * Enrolls an already-logged-in end user into one organization's loyalty program.
+   */
+  async enroll(
+    endUserId: string,
+    organizationId?: string,
+    externalMemberId?: string,
+  ): Promise<EnrollMemberResponse> {
+    const orgId = organizationId ?? this.defaultOrganizationId;
+    if (!orgId) {
+      throw new Error('organizationId is required (pass it or set BrowserClientOptions.organizationId)');
+    }
+    return this.request<EnrollMemberResponse>(
+      `/v1/identity/organizations/${orgId}/enroll`,
+      'POST',
+      { endUserId, externalMemberId },
+    );
   }
 }
 
