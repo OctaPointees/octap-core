@@ -728,6 +728,7 @@ test('ApiCredentialsService: issues a key whose raw value is never persisted, th
 test('CreditsService: a member from another organization is treated as not found', async () => {
   const repo = {
     findMemberOrganizationId: async (id) => (id === 'user-org1' ? 'org-1' : 'org-2'),
+    expireDueBucketsForMember: async () => 0,
     getOrCreateCreditOwnership: async () => ({
       confirmedBalance: 100,
       pendingEarn: 0,
@@ -1775,6 +1776,7 @@ test('CreditsService: balance carries asOfCheckpoint/observedAt, and stale flips
   let ownership = { confirmedBalance: 100, pendingEarn: 0, pendingRedemption: 0, lifetimeEarned: 100, lifetimeRedeemed: 0 };
   const repo = {
     findMemberOrganizationId: async () => 'org-1',
+    expireDueBucketsForMember: async () => 0,
     getOrCreateCreditOwnership: async () => ownership,
   };
   const indexerRepo = { getCursor: async (stream) => (stream === 'octap::credit_account' ? { lastCheckpoint: '394761967' } : undefined) };
@@ -2374,3 +2376,107 @@ test('acceptCommand: a row accepted before payload hashes existed adopts the has
   assert.equal(updates.length, 1);
   assert.equal(updates[0].payloadHash, hashPayload({ amount: 10 }));
 });
+test('CreditsService: getBalance sweeps due buckets before reading the balance (lazy expiry)', async () => {
+  const order = [];
+  const repo = {
+    findMemberOrganizationId: async () => 'org-1',
+    expireDueBucketsForMember: async (member) => {
+      order.push(['expire', member]);
+      return 2500;
+    },
+    getOrCreateCreditOwnership: async () => {
+      order.push(['read']);
+      return { confirmedBalance: 0, pendingEarn: 0, pendingRedemption: 0, lifetimeEarned: 2500, lifetimeRedeemed: 0 };
+    },
+  };
+  const service = new CreditsService(repo, { getCursor: async () => undefined });
+
+  const balance = await service.getBalance('org-1', 'user-1');
+
+  assert.deepEqual(order, [['expire', { organizationId: 'org-1', organizationEndUserId: 'user-1' }], ['read']]);
+  assert.equal(balance.confirmedBalance, 0);
+});
+
+test('ChainSubmitProcessor: the confirmed earn carries its on-chain bucket expiry', async () => {
+  let confirmArgs = null;
+  const creditsRepo = {
+    getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' }),
+    confirmEarnOnChain: async (params) => {
+      confirmArgs = params;
+      return { id: 'btx-1' };
+    },
+  };
+  const suiClient = {
+    earn: async () =>
+      fakeChainResult({
+        events: [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100', bucket_expires_at_ms: '1794560971900' } }],
+      }),
+    issuerAddress: () => '0xissuer',
+  };
+  const processor = new ChainSubmitProcessor({ markSubmitted: async () => {} }, creditsRepo, suiClient);
+  await processor.process(fakeOperation());
+
+  assert.equal(confirmArgs.bucketExpiresAtMs, 1794560971900);
+});
+
+test('CheckpointIndexerProcessor: CreditExpired runs the member expiry sweep inside the page transaction', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
+  let sweep = null;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'user-1' }),
+    findMemberOrganizationId: async () => 'org-1',
+    expireDueBucketsForMember: async (member, tx) => {
+      sweep = member;
+      tx.writes.push('expire');
+      return 2500;
+    },
+  };
+  const sui = {
+    listCreditAccountEvents: async () => ({
+      events: [{ name: 'CreditExpired', sender: '0xbeneficiary', json: { account_id: '0xacc1', amount: '2500' }, checkpoint: '900', transactionDigest: 'D-EXP', eventIndex: 0 }],
+      hasNextPage: false,
+      startCursor: 'C1',
+      endCursor: 'C1',
+    }),
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, {}, sui);
+  await processor.processNextPage();
+
+  assert.deepEqual(sweep, { organizationId: 'org-1', organizationEndUserId: 'user-1' });
+  assert.deepEqual(store.committedWrites, ['expire']);
+});
+
+test('CheckpointIndexerProcessor: an already-CONFIRMED earn gets its bucket backfilled, PENDING earns get one on confirm', async () => {
+  const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
+  let backfill = null;
+  let confirmArgs = null;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'user-1' }),
+    findTransactionByMemberAndIdempotency: async (_memberId, key) =>
+      key === 'old-earn' ? pendingEarnRow({ id: 'ltx-old', status: 'CONFIRMED', idempotencyKey: key }) : pendingEarnRow(),
+    ensureEarnBucket: async (params) => { backfill = params; },
+    confirmEarnOnChain: async (params) => {
+      confirmArgs = params;
+      return { id: 'btx-1' };
+    },
+  };
+  const sui = {
+    listCreditAccountEvents: async () => ({
+      events: [
+        earnedEvent({ json: { account_id: '0xacc1', amount: '2500', operation_key: b64('old-earn'), bucket_expires_at_ms: '1794560971900' } }),
+        earnedEvent({ json: { account_id: '0xacc1', amount: '100', operation_key: b64('idem-earn-1'), bucket_expires_at_ms: '1794560999999' } }),
+      ],
+      hasNextPage: false,
+      startCursor: 'C1',
+      endCursor: 'C2',
+    }),
+  };
+
+  const processor = new CheckpointIndexerProcessor(store.repo, creditsRepo, { markSubmittedFromChain: async () => {} }, sui);
+  await processor.processNextPage();
+
+  assert.deepEqual(backfill, { organizationEndUserId: 'user-1', earnTransactionId: 'ltx-old', amount: 2500, expiresAtMs: 1794560971900 });
+  assert.equal(confirmArgs.bucketExpiresAtMs, 1794560999999);
+});
+

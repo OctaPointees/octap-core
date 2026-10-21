@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lte, inArray, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
+import {
+  blockchainTransactions,
+  creditBuckets,
+  creditOwnerships,
+  loyaltyTransactions,
+} from '../schema/credits.schema.js';
 import { acceptCommand } from './operations.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
@@ -34,6 +39,111 @@ async function lockOwnership(tx: DrizzleDb, organizationEndUserId: string) {
     .where(eq(creditOwnerships.organizationEndUserId, organizationEndUserId))
     .for('update');
   return row;
+}
+
+/** Records the bucket an EARN created on-chain. No-op if it exists, so indexer replays can backfill. */
+async function insertEarnBucket(
+  tx: DrizzleDb,
+  params: { creditOwnershipId: string; earnTransactionId: string; amount: number; expiresAtMs: number },
+): Promise<void> {
+  await tx
+    .insert(creditBuckets)
+    .values({ ...params, remaining: params.amount })
+    .onConflictDoNothing({ target: creditBuckets.earnTransactionId });
+}
+
+/**
+ * Debits `amount` from live buckets, nearest expiry first (same order as `redeem` on-chain). If
+ * buckets run out, the rest came from points that have no bucket (see `creditBuckets`).
+ */
+async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: number, nowMs = Date.now()) {
+  const live = await tx
+    .select()
+    .from(creditBuckets)
+    .where(
+      and(
+        eq(creditBuckets.creditOwnershipId, creditOwnershipId),
+        gt(creditBuckets.remaining, 0),
+        gt(creditBuckets.expiresAtMs, nowMs),
+      ),
+    )
+    .orderBy(asc(creditBuckets.expiresAtMs))
+    .for('update');
+
+  let left = amount;
+  for (const bucket of live) {
+    if (left <= 0) {
+      break;
+    }
+    const take = Math.min(left, Number(bucket.remaining));
+    await tx
+      .update(creditBuckets)
+      .set({ remaining: Number(bucket.remaining) - take })
+      .where(eq(creditBuckets.id, bucket.id));
+    left -= take;
+  }
+}
+
+/**
+ * Lazy expiry: forfeits every bucket of this member whose `expiresAtMs` has passed, takes it off
+ * `confirmedBalance`, and records one EXPIRY transaction. Called before anything reads or spends
+ * the balance, so a due bucket never counts even before the chain emits `CreditExpired` — no
+ * periodic sweep job needed. Idempotent: forfeited buckets are zeroed under a row lock.
+ *
+ * The forfeit is capped at the current balance (never below zero): a bucket can outlive points
+ * spent off-chain without a matching bucket debit (e.g. a voucher claim before buckets existed),
+ * and expiry must not invent debt — only a reversal can create clawback debt.
+ */
+export async function expireDueBuckets(
+  tx: DrizzleDb,
+  member: { organizationId: string; organizationEndUserId: string },
+  nowMs = Date.now(),
+): Promise<number> {
+  const ownership = await lockOwnership(tx, member.organizationEndUserId);
+  if (!ownership) {
+    return 0;
+  }
+
+  const due = await tx
+    .select()
+    .from(creditBuckets)
+    .where(
+      and(
+        eq(creditBuckets.creditOwnershipId, ownership.id),
+        gt(creditBuckets.remaining, 0),
+        lte(creditBuckets.expiresAtMs, nowMs),
+      ),
+    )
+    .orderBy(asc(creditBuckets.expiresAtMs))
+    .for('update');
+  if (due.length === 0) {
+    return 0;
+  }
+
+  await tx
+    .update(creditBuckets)
+    .set({ remaining: 0 })
+    .where(inArray(creditBuckets.id, due.map((b) => b.id)));
+
+  const total = due.reduce((sum, b) => sum + Number(b.remaining), 0);
+  const forfeited = Math.min(total, Math.max(Number(ownership.confirmedBalance), 0));
+  if (forfeited > 0) {
+    await tx
+      .update(creditOwnerships)
+      .set({ confirmedBalance: Number(ownership.confirmedBalance) - forfeited, updatedAt: new Date() })
+      .where(eq(creditOwnerships.id, ownership.id));
+    await tx.insert(loyaltyTransactions).values({
+      organizationId: member.organizationId,
+      organizationEndUserId: member.organizationEndUserId,
+      transactionType: 'EXPIRY',
+      pointsAmount: forfeited,
+      // Each bucket is swept exactly once, so the earliest one names this sweep uniquely.
+      idempotencyKey: `expiry:${due[0].id}`,
+      status: 'CONFIRMED',
+      metadata: { bucketIds: due.map((b) => b.id) },
+    });
+  }
+  return forfeited;
 }
 
 @Injectable()
@@ -213,6 +323,36 @@ export class CreditsRepository {
     });
   }
 
+  /** `expireDueBuckets` in its own transaction (or the caller's, as a savepoint, via `db`). */
+  async expireDueBucketsForMember(
+    member: { organizationId: string; organizationEndUserId: string },
+    db: DrizzleDb = this.db,
+  ): Promise<number> {
+    return db.transaction(async (tx) => expireDueBuckets(tx, member));
+  }
+
+  /**
+   * Indexer backfill: an EARN confirmed before buckets existed has none, so replaying its
+   * `CreditEarned` creates it. A no-op for every earn confirmed since (bucket already there).
+   */
+  async ensureEarnBucket(
+    params: { organizationEndUserId: string; earnTransactionId: string; amount: number; expiresAtMs: number },
+    db: DrizzleDb = this.db,
+  ): Promise<void> {
+    const ownership = await db.query.creditOwnerships.findFirst({
+      where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+      columns: { id: true },
+    });
+    if (ownership) {
+      await insertEarnBucket(db, {
+        creditOwnershipId: ownership.id,
+        earnTransactionId: params.earnTransactionId,
+        amount: params.amount,
+        expiresAtMs: params.expiresAtMs,
+      });
+    }
+  }
+
   async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
     await this.db
       .update(creditOwnerships)
@@ -242,6 +382,8 @@ export class CreditsRepository {
       confirmedPointsAmount: number;
       digest: string;
       sender: string;
+      /** The `CreditEarned` event's `bucket_expires_at_ms`; null skips the bucket (no expiry tracked). */
+      bucketExpiresAtMs: number | null;
     },
     db: DrizzleDb = this.db,
   ) {
@@ -276,6 +418,14 @@ export class CreditsRepository {
             updatedAt: new Date(),
           })
           .where(eq(creditOwnerships.id, ownership.id));
+        if (params.bucketExpiresAtMs !== null) {
+          await insertEarnBucket(tx, {
+            creditOwnershipId: ownership.id,
+            earnTransactionId: params.loyaltyTransactionId,
+            amount: params.confirmedPointsAmount,
+            expiresAtMs: params.bucketExpiresAtMs,
+          });
+        }
       }
 
       return blockchainTx;
@@ -317,6 +467,7 @@ export class CreditsRepository {
     metadata?: Record<string, unknown>;
   }) {
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+      await expireDueBuckets(tx, params);
       const ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -350,6 +501,7 @@ export class CreditsRepository {
           updatedAt: new Date(),
         })
         .where(eq(creditOwnerships.id, ownership.id));
+      await consumeBuckets(tx, ownership.id, params.pointsAmount);
 
       return {
         transaction,
@@ -401,6 +553,8 @@ export class CreditsRepository {
         return { transaction: existing, accountId: ownership?.suiCreditAccountId ?? null, isNew: false };
       }
 
+      // A bucket past its expiry is already gone on-chain; holding against it would only fail at `redeem`.
+      await expireDueBuckets(tx, params);
       // Locked: the balance check and the hold below must see every concurrent reserve's hold.
       const ownership = await lockOwnership(tx, params.organizationEndUserId);
 
@@ -478,6 +632,7 @@ export class CreditsRepository {
             updatedAt: new Date(),
           })
           .where(eq(creditOwnerships.id, ownership.id));
+        await consumeBuckets(tx, ownership.id, params.pointsAmount);
       }
 
       return blockchainTx;
@@ -551,6 +706,14 @@ export class CreditsRepository {
         .update(creditOwnerships)
         .set({ confirmedBalance: newConfirmedBalance, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
+      if (params.original.transactionType === 'EARN') {
+        // Clawed-back points must not be forfeited a second time when the earn's bucket expires.
+        // (A reversed REDEEM's add-back gets no bucket: it doesn't expire here — known gap.)
+        await tx
+          .update(creditBuckets)
+          .set({ remaining: sql`greatest(${creditBuckets.remaining} - ${magnitude}, 0)` })
+          .where(eq(creditBuckets.earnTransactionId, params.original.id));
+      }
 
       const [reversal] = await tx
         .insert(loyaltyTransactions)
