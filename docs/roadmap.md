@@ -56,6 +56,22 @@ then move the row to **Implemented** in the same pull request.
   instead by a new Move test, `credit_account_tests.move`'s
   `earn_rejects_issuer_cap_scoped_to_a_different_program`, plus unit tests with a mocked
   `ProgramAdminClient`.
+- `SUI_PROGRAM_ADMIN_PRIVATE_KEY` is a second raw private key sitting in `.env`, alongside
+  `SUI_ISSUER_PRIVATE_KEY` — adequate for a demo, but not how a comparable Sui backend we have
+  local access to (Walrus Console / Harbor, `D:\CommandOSS\harbor`) handles this at all: its
+  `SuiKmsSignerService` (`api/src/infra/clients/sui-kms-signer.client.ts`) holds **zero** raw
+  private keys. The actual signer lives in Google Cloud KMS; the app only holds a key reference
+  (`KMS_KEY_OMNIBUS_SIGNER`) and calls KMS's `asymmetricSign` RPC — the private key material
+  never exists in app memory, on disk, or in an env var, and production refuses to boot without
+  KMS configured (`config/env.ts`'s `"FATAL: production requires KMS"` guard). It also uses a
+  single omnibus signer rather than one raw key per capability type: per-tenant scoping is done
+  at the application/DB layer (`active-signers.repository.ts` tracks a `serviceSignerAddress`
+  per API key; granting access adds that address to an on-chain permissioned-group/ACL) instead
+  of minting a separate capability object under a separate backend-held key per tenant. Adopting
+  this here (a KMS-backed signer, one key instead of two, authorization via DB-tracked grants)
+  is real follow-up work, intentionally not done in this PR — it needs real cloud KMS
+  infrastructure this project doesn't have set up yet, which is a bigger decision than this
+  ticket's scope.
 - The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
   organization — those object ids are committed constants in
   `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
