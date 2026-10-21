@@ -1,7 +1,61 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
+
+/** Thrown by `acceptCommand` when an idempotency key is reused with a different payload. */
+export class OperationPayloadConflictError extends Error {
+  constructor(idempotencyKey: string) {
+    super(`Idempotency key "${idempotencyKey}" was already used with a different payload`);
+    this.name = 'OperationPayloadConflictError';
+  }
+}
+
+function hashPayload(payload: Record<string, unknown>): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+/**
+ * Durable-command acceptance, usable by any feature's repository inside its own transaction —
+ * not a repository method, because it must run on the caller's `tx` (same transaction as the
+ * business write it's paired with), never open its own. Today's only caller is
+ * `CreditsRepository.recordEarnTransaction`; a future feature (e.g. OCT-55's redeem) reuses this
+ * instead of hand-rolling its own `operations` insert.
+ *
+ * Same idempotency key + same payload -> returns the existing operation (`isNew: false`).
+ * Same idempotency key + a *different* payload -> throws `OperationPayloadConflictError`.
+ * Unseen idempotency key -> inserts a new PENDING operation (`isNew: true`).
+ */
+export async function acceptCommand(
+  tx: DrizzleDb,
+  params: { tenantId: string; idempotencyKey: string; commandType: string; payload: Record<string, unknown> },
+): Promise<{ operation: typeof operations.$inferSelect; isNew: boolean }> {
+  const payloadHash = hashPayload(params.payload);
+  const existing = await tx.query.operations.findFirst({
+    where: and(eq(operations.tenantId, params.tenantId), eq(operations.idempotencyKey, params.idempotencyKey)),
+  });
+
+  if (existing) {
+    if (existing.payloadHash !== payloadHash) {
+      throw new OperationPayloadConflictError(params.idempotencyKey);
+    }
+    return { operation: existing, isNew: false };
+  }
+
+  const [created] = await tx
+    .insert(operations)
+    .values({
+      tenantId: params.tenantId,
+      idempotencyKey: params.idempotencyKey,
+      commandType: params.commandType,
+      status: 'PENDING',
+      payload: params.payload,
+      payloadHash,
+    })
+    .returning();
+  return { operation: created, isNew: true };
+}
 
 /**
  * Minimal slice of the "operations" durable-command concern needed to dispatch an already-
@@ -53,5 +107,22 @@ export class OperationsRepository {
       .update(operations)
       .set({ status: 'FAILED', errorMessage, updatedAt: new Date() })
       .where(eq(operations.id, id));
+  }
+
+  /**
+   * Flips PROCESSING rows untouched for longer than `olderThanMs` to UNKNOWN: a worker claimed
+   * them, then died before calling `markSubmitted`/`markFailed`, so whether the chain effect
+   * happened was never learned. Never auto-retried from here — blindly resubmitting could create
+   * a second business effect, which is exactly what durable commands exist to prevent. Meant to
+   * run once at worker startup, before the first poll, so a crashed previous instance's rows
+   * are surfaced (not silently stuck forever) rather than reclaimed.
+   */
+  async recoverStaleProcessing(olderThanMs: number): Promise<(typeof operations.$inferSelect)[]> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    return this.db
+      .update(operations)
+      .set({ status: 'UNKNOWN', updatedAt: new Date() })
+      .where(and(eq(operations.status, 'PROCESSING'), lt(operations.updatedAt, cutoff)))
+      .returning();
   }
 }
