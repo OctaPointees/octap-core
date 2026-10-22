@@ -142,7 +142,7 @@ then move the row to **Implemented** in the same pull request.
   first; only the informational `newBalance` in earn/POS-finalize responses can show a
   pre-sweep figure until the next read. Uses the server clock, not the Sui `Clock` (the two agree to
   within seconds). The forfeit is capped at the current balance, so expiry never creates debt.
-  Earns confirmed before migration `0006` have no bucket until the indexer replays their
+  Earns confirmed before migration `0008` have no bucket until the indexer replays their
   `CreditEarned`: set the `octap::credit_account` row's `cursor` to null once after migrating.
 - No mTLS: deliberately not built at the app layer — there is no reverse proxy/Dockerfile in
   this repo yet to terminate TLS in front of it, and raw `https.Server` client-cert verification
