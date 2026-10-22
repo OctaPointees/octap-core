@@ -286,6 +286,24 @@ export class OctapChainClient {
       events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
     };
   }
+
+  /**
+   * Reads back a transaction this process did not sign or submit itself — e.g. one Enoki
+   * executed on a sponsored signer's behalf. Polls until checkpointed, same as the tail of
+   * `signAndExecute`, but starting from only a digest.
+   */
+  async waitForTransaction(digest: string): Promise<SubmittedChainTransaction> {
+    const waited = await this.rpc.core.waitForTransaction({ digest, include: { effects: true, events: true } });
+    const result = waited.$kind === 'Transaction' ? waited.Transaction : waited.FailedTransaction;
+
+    const status = result.status.success ? 'success' : 'failure';
+    return {
+      digest: result.digest,
+      status,
+      errorMessage: result.status.success ? undefined : result.status.error.message,
+      events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
+    };
+  }
 }
 
 /** Decodes a `suiprivkey1...` string into a signer. Only ed25519 is supported today. */

@@ -4,7 +4,16 @@ Loyalty points for an organization's end users.
 
 - `credits.service.ts`: balance snapshot and transaction history.
 - `earn.service.ts`: earn points, idempotent on `idempotencyKey`.
-- `redemption.service.ts`: redeem points, idempotent on `idempotencyKey`.
+- `redemption.service.ts`: redeem points, idempotent on `idempotencyKey`. Postgres-only, on
+  purpose — this is the voucher-claim path (an internal points-ledger debit), which never needed
+  the member's own signature.
+- `pos-redemption.service.ts`: real on-chain customer-signed redemption (OCT-55), a separate
+  action from the above — cashing points out requires `credit_account::redeem`'s
+  beneficiary-signature check, so it's a two-call `reserve()`/`finalize()` lifecycle instead of
+  one synchronous call: `reserve()` holds the amount in `pendingRedemption` and sponsors the
+  transaction (Enoki, via `domain/identity/sponsored-transaction.service.ts`); `finalize()` takes
+  the member's signature, executes it, and only then moves the hold into `confirmedBalance` or
+  releases it. Idempotent via OCT-43's `acceptCommand` inside `reservePosRedemption`.
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
   is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
   the clawback debt when an earn was already spent — there's no separate debt ledger.
@@ -15,5 +24,10 @@ The three write transactions (`recordEarnTransaction`/`recordRedeemTransaction`/
 `recordReversalTransaction`) run through `infra/db/rls.ts`'s `withRls()`, so Postgres RLS is a
 real second line of defense on `loyalty_transactions` here, not just the app-code tenant checks
 in `credits.service.ts`/`earn.service.ts`/etc. Read paths don't go through `withRls()` yet (see
-the roadmap's known gaps).
+the roadmap's known gaps). `reservePosRedemption` also runs through `withRls()`; `confirmPosRedemptionOnChain`/`failPosRedemptionOnChain` don't — same known gap as `confirmEarnOnChain`/`failEarnOnChain`, worker/callback-only paths not yet converted.
 Chain-time expiry buckets are not implemented yet (see the roadmap).
+
+`chain-submit.processor.ts` opens each member's `CreditAccount` under their real zkLogin address
+(`CreditsRepository.findBeneficiaryAddress`, via `domain/identity`) — not a placeholder, since a
+wrong address at open time can never be corrected later (`credit_account.move`'s `beneficiary` is
+set once, no entry point changes it).

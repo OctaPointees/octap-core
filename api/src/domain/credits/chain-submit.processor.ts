@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 // Not `import type`: NestJS DI resolves this constructor param by its runtime type (reflect-metadata),
 // which an erased type-only import would turn into a bare `Function` and break resolution.
@@ -11,18 +10,6 @@ interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
   pointsAmount: number;
-}
-
-/**
- * No zkLogin/identity-binding yet (docs/roadmap.md "Identity"), so an end user has no real Sui
- * address to open a `CreditAccount` under. Derives a stable, syntactically valid placeholder from
- * the ownership row id instead — nobody holds its private key, which is fine for `earn` (no
- * beneficiary signature required) and exactly why `redeem` is NOT wired to this path (see
- * `sui.client.ts`). Replace with the end user's real zkLogin address once that exists; this must
- * not be mistaken for a production identity mapping.
- */
-function demoBeneficiaryAddress(ownershipId: string): string {
-  return `0x${createHash('sha256').update(ownershipId).digest('hex')}`;
 }
 
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
@@ -54,7 +41,16 @@ export class ChainSubmitProcessor {
 
       let accountId: string | null | undefined = ownership.suiCreditAccountId;
       if (!accountId) {
-        const opened = await this.suiClient.openAccount(demoBeneficiaryAddress(ownership.id));
+        // Real zkLogin address, not a placeholder (OCT-55): `organization_end_users` can only
+        // exist via `IdentityService.enrollInOrganization`, which requires a prior Google login,
+        // so this is always populated by the time a member can earn at all. Opening the account
+        // under anything else would permanently block redeem later (credit_account.move's
+        // `beneficiary` field is set once at `open_account` and has no entry point to change it).
+        const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
+        if (!beneficiaryAddress) {
+          throw new Error(`No real Sui address on file for end user ${payload.organizationEndUserId}`);
+        }
+        const opened = await this.suiClient.openAccount(beneficiaryAddress);
         if (opened.status !== 'success') {
           throw new Error(opened.errorMessage ?? 'open_account failed on-chain');
         }

@@ -237,13 +237,15 @@ test('ChainSubmitProcessor: opens an account, earns, and confirms on success', a
   };
   const creditsRepo = {
     getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: null }),
+    findBeneficiaryAddress: async () => '0xbeneficiary',
     setSuiCreditAccountId: async (id, accountId) => { calls.setSuiCreditAccountId = { id, accountId }; },
     confirmEarnOnChain: async (params) => { calls.confirmEarnOnChain = params; },
     failEarnOnChain: async () => assert.fail('should not fail on success'),
   };
   const suiClient = {
-    openAccount: async () => {
+    openAccount: async (beneficiaryAddress) => {
       calls.openAccount += 1;
+      calls.openAccountBeneficiary = beneficiaryAddress;
       return fakeChainResult({
         events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc1' } }],
       });
@@ -261,6 +263,8 @@ test('ChainSubmitProcessor: opens an account, earns, and confirms on success', a
   await processor.process(fakeOperation());
 
   assert.equal(calls.openAccount, 1);
+  // OCT-55: must open under the member's real zkLogin address, never a placeholder.
+  assert.equal(calls.openAccountBeneficiary, '0xbeneficiary');
   assert.equal(calls.setSuiCreditAccountId.accountId, '0xacc1');
   assert.equal(calls.earn[0].accountId, '0xacc1');
   assert.equal(calls.earn[0].purchaseAmount, 10000);
@@ -1518,6 +1522,299 @@ test('SponsoredTransactionService: there is no parameter that can widen the spon
   });
 });
 
+import { PosRedemptionService } from '../api/dist/domain/credits/pos-redemption.service.js';
+import { OperationPayloadConflictError } from '../api/dist/infra/db/repositories/operations.repository.js';
+
+function mockRedis() {
+  const store = new Map();
+  return {
+    store,
+    get: async (key) => store.get(key) ?? null,
+    set: async (key, value) => {
+      store.set(key, value);
+      return 'OK';
+    },
+    del: async (key) => {
+      store.delete(key);
+      return 1;
+    },
+  };
+}
+
+test('PosRedemptionService: reserve builds, sponsors, and caches a new hold', async () => {
+  const redis = mockRedis();
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
+    reservePosRedemption: async (params) => ({
+      transaction: { id: 'tx-1', status: 'PENDING', idempotencyKey: params.idempotencyKey },
+      accountId: 'account-1',
+      isNew: true,
+    }),
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+  };
+  let sponsoredArgs = null;
+  const mockSponsoredTx = {
+    previewSponsoredRedeem: async (params) => {
+      sponsoredArgs = params;
+      return { transactionBytes: 'bytes-1', digest: 'digest-1' };
+    },
+  };
+
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, {}, {});
+  const result = await service.reserve('org-1', {
+    organizationEndUserId: 'user-1',
+    pointsAmount: 50,
+    idempotencyKey: 'idem-1',
+  });
+
+  assert.equal(result.digest, 'digest-1');
+  assert.equal(result.transactionBytes, 'bytes-1');
+  assert.equal(result.status, 'PENDING');
+  assert.equal(sponsoredArgs.beneficiaryAddress, '0xbeneficiary');
+  assert.equal(sponsoredArgs.accountId, 'account-1');
+  assert.equal(sponsoredArgs.cost, 50n);
+  assert.equal(await redis.get('pos-redeem:reserve:digest-1') !== null, true);
+  assert.equal(await redis.get('pos-redeem:idem:org-1:idem-1'), 'digest-1');
+});
+
+test('PosRedemptionService: reserve rejects a member from another organization', async () => {
+  const service = new PosRedemptionService(mockRedis(), { findMemberOrganizationId: async () => 'org-2' }, {}, {}, {});
+  await assert.rejects(
+    () => service.reserve('org-1', { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'idem-1' }),
+    /was not found for this organization/,
+  );
+});
+
+test('PosRedemptionService: reserve maps a payload conflict to a 409', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
+    reservePosRedemption: async () => {
+      throw new OperationPayloadConflictError('idem-1');
+    },
+  };
+  const service = new PosRedemptionService(mockRedis(), mockCreditsRepo, {}, {}, {});
+  await assert.rejects(
+    () => service.reserve('org-1', { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'idem-1' }),
+    (err) => err.constructor.name === 'ConflictException',
+  );
+});
+
+test('PosRedemptionService: reserve replays cached bytes instead of sponsoring twice', async () => {
+  const redis = mockRedis();
+  await redis.set('pos-redeem:idem:org-1:idem-1', 'digest-cached');
+  await redis.set(
+    'pos-redeem:reserve:digest-cached',
+    JSON.stringify({
+      organizationId: 'org-1',
+      organizationEndUserId: 'user-1',
+      loyaltyTransactionId: 'tx-1',
+      pointsAmount: 50,
+      transactionBytes: 'bytes-cached',
+    }),
+  );
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
+    reservePosRedemption: async () => ({
+      transaction: { id: 'tx-1', status: 'PENDING', idempotencyKey: 'idem-1' },
+      accountId: 'account-1',
+      isNew: false,
+    }),
+  };
+  let sponsorCalled = false;
+  const mockSponsoredTx = { previewSponsoredRedeem: async () => (sponsorCalled = true) };
+
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, {}, {});
+  const result = await service.reserve('org-1', {
+    organizationEndUserId: 'user-1',
+    pointsAmount: 50,
+    idempotencyKey: 'idem-1',
+  });
+
+  assert.equal(result.digest, 'digest-cached');
+  assert.equal(result.transactionBytes, 'bytes-cached');
+  assert.equal(sponsorCalled, false);
+});
+
+test('PosRedemptionService: reserve re-sponsors when the cache lapsed on a retry of an existing hold', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
+    reservePosRedemption: async () => ({
+      transaction: { id: 'tx-1', status: 'PENDING', idempotencyKey: 'idem-1' },
+      accountId: 'account-1',
+      isNew: false,
+    }),
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+  };
+  let sponsorCalled = false;
+  const mockSponsoredTx = {
+    previewSponsoredRedeem: async () => {
+      sponsorCalled = true;
+      return { transactionBytes: 'bytes-fresh', digest: 'digest-fresh' };
+    },
+  };
+
+  const service = new PosRedemptionService(mockRedis(), mockCreditsRepo, mockSponsoredTx, {}, {});
+  const result = await service.reserve('org-1', {
+    organizationEndUserId: 'user-1',
+    pointsAmount: 50,
+    idempotencyKey: 'idem-1',
+  });
+
+  assert.equal(sponsorCalled, true);
+  assert.equal(result.digest, 'digest-fresh');
+});
+
+test('PosRedemptionService: reserve on an already-settled idempotency key returns the final state without touching chain', async () => {
+  const mockCreditsRepo = {
+    findMemberOrganizationId: async () => 'org-1',
+    reservePosRedemption: async () => ({
+      transaction: { id: 'tx-1', status: 'CONFIRMED', idempotencyKey: 'idem-1' },
+      accountId: 'account-1',
+      isNew: false,
+    }),
+  };
+  let sponsorCalled = false;
+  const mockSponsoredTx = { previewSponsoredRedeem: async () => (sponsorCalled = true) };
+
+  const service = new PosRedemptionService(mockRedis(), mockCreditsRepo, mockSponsoredTx, {}, {});
+  const result = await service.reserve('org-1', {
+    organizationEndUserId: 'user-1',
+    pointsAmount: 50,
+    idempotencyKey: 'idem-1',
+  });
+
+  assert.equal(result.status, 'CONFIRMED');
+  assert.equal(result.digest, null);
+  assert.equal(result.transactionBytes, null);
+  assert.equal(sponsorCalled, false);
+});
+
+test('PosRedemptionService: finalize confirms on-chain success and emits a webhook', async () => {
+  const redis = mockRedis();
+  await redis.set(
+    'pos-redeem:reserve:digest-1',
+    JSON.stringify({
+      organizationId: 'org-1',
+      organizationEndUserId: 'user-1',
+      loyaltyTransactionId: 'tx-1',
+      pointsAmount: 50,
+      transactionBytes: 'bytes-1',
+    }),
+  );
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) };
+  const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'success', events: [] }) };
+  let confirmArgs = null;
+  const mockCreditsRepo = {
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+    confirmPosRedemptionOnChain: async (params) => {
+      confirmArgs = params;
+      return { id: 'btx-1', digest: params.digest };
+    },
+    getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
+  };
+  let emitted = null;
+  const mockWebhooks = { emit: async (organizationId, eventType, payload) => (emitted = { organizationId, eventType, payload }) };
+
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, mockSuiBuilder, mockWebhooks);
+  const result = await service.finalize({ digest: 'digest-1', signature: 'sig-1' });
+
+  assert.equal(result.status, 'CONFIRMED');
+  assert.equal(result.newBalance, 150);
+  assert.equal(result.pointsRedeemed, 50);
+  assert.equal(confirmArgs.sender, '0xbeneficiary');
+  assert.equal(emitted.eventType, 'credits.redeemed');
+  assert.equal(await redis.get('pos-redeem:reserve:digest-1'), null);
+});
+
+test('PosRedemptionService: finalize rejects an unknown or expired digest', async () => {
+  const service = new PosRedemptionService(mockRedis(), {}, {}, {}, {});
+  await assert.rejects(
+    () => service.finalize({ digest: 'ghost-digest', signature: 'sig-1' }),
+    /expired/,
+  );
+});
+
+test('PosRedemptionService: finalize leaves the reservation intact when Enoki execute fails', async () => {
+  const redis = mockRedis();
+  await redis.set('pos-redeem:reserve:digest-1', JSON.stringify({ organizationId: 'org-1', organizationEndUserId: 'user-1', loyaltyTransactionId: 'tx-1', pointsAmount: 50, transactionBytes: 'bytes-1' }));
+  const mockSponsoredTx = {
+    executeSponsoredRedeem: async () => {
+      throw new Error('signature expired');
+    },
+  };
+
+  const service = new PosRedemptionService(redis, { findBeneficiaryAddress: async () => '0xbeneficiary' }, mockSponsoredTx, {}, {});
+  await assert.rejects(() => service.finalize({ digest: 'digest-1', signature: 'bad-sig' }), /signature expired/);
+  assert.notEqual(await redis.get('pos-redeem:reserve:digest-1'), null);
+});
+
+test('PosRedemptionService: finalize releases the hold on a definitive on-chain failure', async () => {
+  const redis = mockRedis();
+  await redis.set('pos-redeem:reserve:digest-1', JSON.stringify({ organizationId: 'org-1', organizationEndUserId: 'user-1', loyaltyTransactionId: 'tx-1', pointsAmount: 50, transactionBytes: 'bytes-1' }));
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) };
+  const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'failure', errorMessage: 'EInsufficientBalance' }) };
+  let failArgs = null;
+  const mockCreditsRepo = {
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+    failPosRedemptionOnChain: async (params) => {
+      failArgs = params;
+    },
+  };
+
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, mockSuiBuilder, {});
+  await assert.rejects(
+    () => service.finalize({ digest: 'digest-1', signature: 'sig-1' }),
+    /EInsufficientBalance/,
+  );
+  assert.equal(failArgs.loyaltyTransactionId, 'tx-1');
+  assert.equal(await redis.get('pos-redeem:reserve:digest-1'), null);
+});
+
+
+function cachedReserveRedis() {
+  const redis = mockRedis();
+  return redis
+    .set(
+      'pos-redeem:reserve:digest-1',
+      JSON.stringify({
+        organizationId: 'org-1',
+        organizationEndUserId: 'user-1',
+        loyaltyTransactionId: 'tx-1',
+        pointsAmount: 50,
+        transactionBytes: 'bytes-1',
+      }),
+    )
+    .then(() => redis);
+}
+
+test('PosRedemptionService: finalize with no beneficiary address fails before executing anything', async () => {
+  const redis = await cachedReserveRedis();
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => assert.fail('must not execute') };
+  const mockCreditsRepo = { findBeneficiaryAddress: async () => null };
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, {}, {});
+  await assert.rejects(service.finalize({ digest: 'digest-1', signature: 'sig-1' }), /No real Sui address/);
+});
+
+test('PosRedemptionService: a concurrent finalize of the same digest answers CONFIRMED, not a 500', async () => {
+  const redis = await cachedReserveRedis();
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) };
+  const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'success', digest: 'digest-1', events: [] }) };
+  const mockCreditsRepo = {
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+    confirmPosRedemptionOnChain: async () => {
+      throw Object.assign(new Error('Failed query'), { cause: { code: '23505' } });
+    },
+    getOrCreateCreditOwnership: async () => ({ confirmedBalance: 100 }),
+  };
+  const mockWebhooks = { emit: async () => assert.fail('the first finalize owns the webhook') };
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, mockSuiBuilder, mockWebhooks);
+
+  const result = await service.finalize({ digest: 'digest-1', signature: 'sig-1' });
+  assert.equal(result.status, 'CONFIRMED');
+  assert.equal(result.blockchainDigest, 'digest-1');
+  assert.equal(result.newBalance, 100);
+});
+
 import { ProgramsService } from '../api/dist/domain/programs/programs.service.js';
 
 const PROVISION_PARAMS = {
@@ -1705,7 +2002,7 @@ test('selectShards: rejects a program with no shards or mismatched shard counts'
   );
 });
 
-import { acceptCommand, hashPayload, OperationPayloadConflictError } from '../api/dist/infra/db/repositories/operations.repository.js';
+import { acceptCommand, hashPayload } from '../api/dist/infra/db/repositories/operations.repository.js';
 
 function fakeCommandTx(existing) {
   const updates = [];

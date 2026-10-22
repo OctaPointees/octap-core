@@ -3,16 +3,25 @@ import { CreditsService } from '../../domain/credits/credits.service.js';
 import { EarnService } from '../../domain/credits/earn.service.js';
 import { RedemptionService } from '../../domain/credits/redemption.service.js';
 import { ReversalService } from '../../domain/credits/reversal.service.js';
+import { PosRedemptionService } from '../../domain/credits/pos-redemption.service.js';
 import { Scopes } from '../../infra/auth/scopes.decorator.js';
 import { Tenant } from '../../infra/auth/tenant.decorator.js';
 import type { TenantContext } from '../../infra/auth/tenant-context.js';
-import type { EarnPointsBodyDto, RedeemPointsBodyDto, ReverseTransactionBodyDto } from '../dto/credits.dto.js';
+import type {
+  EarnPointsBodyDto,
+  RedeemPointsBodyDto,
+  ReverseTransactionBodyDto,
+  ReservePosRedemptionBodyDto,
+  FinalizePosRedemptionBodyDto,
+} from '../dto/credits.dto.js';
 import type {
   EarnPointsResponse,
   RedeemPointsResponse,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   ReverseTransactionResponse,
+  ReservePosRedemptionResponse,
+  FinalizePosRedemptionResponse,
 } from '@octap/contracts';
 
 @Controller('v1/credits')
@@ -22,6 +31,7 @@ export class CreditsController {
     private readonly earnService: EarnService,
     private readonly redemptionService: RedemptionService,
     private readonly reversalService: ReversalService,
+    private readonly posRedemptionService: PosRedemptionService,
   ) {}
 
   @Post('earn')
@@ -40,6 +50,37 @@ export class CreditsController {
       throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
     }
     return this.redemptionService.executeRedeem(tenant.organizationId, body);
+  }
+
+  /**
+   * Real on-chain customer-signed redemption (OCT-55) — separate from `redeem` above, which
+   * stays Postgres-only for voucher claims. Merchant-authenticated: the POS, not the customer,
+   * initiates "redeem N points for this member"; the customer's own device signs afterward.
+   */
+  @Post('redeem/reserve')
+  @Scopes('write')
+  async reservePosRedemption(
+    @Tenant() tenant: TenantContext,
+    @Body() body: ReservePosRedemptionBodyDto,
+  ): Promise<ReservePosRedemptionResponse> {
+    if (!body.organizationEndUserId || !body.pointsAmount || !body.idempotencyKey) {
+      throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
+    }
+    return this.posRedemptionService.reserve(tenant.organizationId, body);
+  }
+
+  /**
+   * Deliberately not behind `@Tenant()`/`@Scopes()`, same reasoning as `IdentityController`: the
+   * caller here is the customer's own device, which never holds a merchant API credential. The
+   * signature over the cached digest is the proof of authorization — Enoki and the chain verify
+   * it, not an API key.
+   */
+  @Post('redeem/finalize')
+  async finalizePosRedemption(@Body() body: FinalizePosRedemptionBodyDto): Promise<FinalizePosRedemptionResponse> {
+    if (!body.digest || !body.signature) {
+      throw new BadRequestException('digest and signature are required');
+    }
+    return this.posRedemptionService.finalize(body);
   }
 
   @Post('transactions/:transactionId/reverse')

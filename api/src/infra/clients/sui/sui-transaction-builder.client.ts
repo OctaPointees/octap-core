@@ -5,6 +5,7 @@ import {
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
   type OctapPackageConfig,
+  type SubmittedChainTransaction,
 } from '@octap/chain';
 
 function packageConfig(network: OctapNetwork): OctapPackageConfig {
@@ -47,5 +48,15 @@ export class SuiTransactionBuilderClient {
   async buildRedeemTransactionKind(params: { accountId: string; cost: bigint; reference: Uint8Array }): Promise<Uint8Array> {
     const tx = this.client.buildRedeemTransaction(params);
     return tx.build({ client: this.client.rpc, onlyTransactionKind: true });
+  }
+
+  /**
+   * Reads back a transaction this process never signed — e.g. one Enoki executed on the
+   * beneficiary's behalf after `previewSponsoredRedeem` — so the caller can confirm it landed
+   * and read its events. No signer involved; safe here for the same reason the rest of this
+   * class is.
+   */
+  async waitForTransaction(digest: string): Promise<SubmittedChainTransaction> {
+    return this.client.waitForTransaction(digest);
   }
 }

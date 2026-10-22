@@ -28,17 +28,30 @@ then move the row to **Implemented** in the same pull request.
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
+| Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
 ### Known gaps in implemented features
 
-- Only **earn** is chain-dispatched. **Redeem stays PostgreSQL-only**: `credit_account::redeem`
-  requires the beneficiary's own signature (Move-enforced, not a bug) — a worker signing with the
-  IssuerCap key would abort on-chain every time, so it isn't wired rather than wired wrong. See
-  `api/src/infra/clients/sui/sui.client.ts`. Identity (below) now resolves a real zkLogin address
-  and can build+sponsor the redeem transaction kind, but nothing calls that from the actual
-  redemption flow yet — wiring it to `RedemptionService` plus the Postgres ownership/balance
-  update is OCT-55.
+- **Earn** is chain-dispatched (worker, IssuerCap-signed) and **POS redemption** is now also
+  chain-dispatched (customer-signed, Enoki-sponsored, see the row above) — but the *other* redeem
+  path, `RedemptionService`/`POST /v1/credits/redeem` (used for voucher claims — an internal
+  points-ledger debit, not a cash-out), is deliberately still Postgres-only and untouched: a
+  voucher claim was never meant to need the member's own signature, so there is nothing to wire
+  there. `credit_account::redeem` requires the beneficiary's own signature (Move-enforced, not a
+  bug) — a worker signing with the IssuerCap key would abort on-chain every time, which is why POS
+  redemption needed its own reserve/finalize flow instead of reusing the earn worker's pattern.
+- POS redemption's reserve/finalize split has no equivalent of Harbor's `/resume` endpoint for a
+  package-version cutover mid-reserve (not applicable yet — this repo has no published-package
+  migration story at all) and no admin/grant revocation race handling (POS redemption grants
+  nothing to revoke). Its Redis reserve cache TTL (600s) is a judgment call, not read from Enoki's
+  own sponsor-digest lifetime (undocumented at integration time) — may need tuning once exercised
+  against real Enoki responses, not just the mocked tests and the local-Postgres repository
+  checks this shipped with.
+- `PosRedemptionService.finalize()`'s webhook emit and the Redis cache deletion both happen after
+  `confirmPosRedemptionOnChain` commits but aren't in the same transaction as it — same
+  known, deliberate "not atomic with the triggering write" gap as `WebhookDeliveryService.emit()`
+  elsewhere (below), not a new one.
 - Identity's login/enroll endpoints are intentionally public (no `@Tenant()`/`@Scopes()`): the
   Google id_token is the proof of identity, and Enoki validates it, not this process. No customer
   session/bearer token is issued — balance and voucher reads still require the merchant API-key
@@ -79,11 +92,12 @@ then move the row to **Implemented** in the same pull request.
   doc comment for why object ids aren't env vars), not something `.env.example` configures.
   `domain/programs` (above) can now provision a real one per organization, but nothing routes
   `earn` through it yet — see that bullet above for exactly what's left.
-- An end user has no real Sui address yet (no zkLogin/identity binding), so the worker opens each
-  `CreditAccount` under a placeholder address derived from the PG ownership row id
-  (`chain-submit.processor.ts`'s `demoBeneficiaryAddress`) — nobody holds its private key. Fine for
-  earn (no signature needed); must be replaced once Identity exists, since redeem will need it to
-  be a real controllable address.
+- Fixed (OCT-55): the worker used to open every `CreditAccount` under a placeholder address
+  derived from the PG ownership row id, nobody's private key — written before Identity existed
+  and never updated, which would have permanently blocked POS redemption (`beneficiary` is set
+  once at `open_account` and `credit_account.move` has no entry point to change it). Now looks up
+  `end_users.suiAddress` via `CreditsRepository.findBeneficiaryAddress`, always populated by earn
+  time since `organization_end_users` can only exist after a prior Google login.
 - `operation_key` anti-replay and the issuance budget are enforced on-chain by
   `operation_shard`/`budget_shard` (OCT-41), but `SuiClientService.earn()` still reads shard ids
   from the demo program constants, not the organization's `programs` row — same demo-scoping as
