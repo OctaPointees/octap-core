@@ -49,7 +49,7 @@ export interface CreateProgramOptions {
  * before it can move credits.
  */
 export function createProgram(options: CreateProgramOptions = {}) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'program_control',
@@ -62,7 +62,7 @@ export interface CreateProgramEntryOptions {
     ];
 }
 export function createProgramEntry(options: CreateProgramEntryOptions = {}) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'program_control',
@@ -81,7 +81,7 @@ export interface AssertSameProgramOptions {
     ];
 }
 export function assertSameProgram(options: AssertSameProgramOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null,
         '0x2::object::ID'
@@ -104,7 +104,7 @@ export interface AssertActiveOptions {
     ];
 }
 export function assertActive(options: AssertActiveOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -133,7 +133,7 @@ export interface AssertPolicyActiveOptions {
  * not paused, and valid" (registration invariant).
  */
 export function assertPolicyActive(options: AssertPolicyActiveOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null,
         null
@@ -160,7 +160,7 @@ export interface ActivatePolicyOptions {
     ];
 }
 export function activatePolicy(options: ActivatePolicyOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null,
         null,
@@ -188,7 +188,7 @@ export interface SetPausedOptions {
     ];
 }
 export function setPaused(options: SetPausedOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null,
         null,
@@ -220,7 +220,7 @@ export interface IssueCapOptions {
  * address backing the service signer that will call `earn`).
  */
 export function issueCap(options: IssueCapOptions) {
-    const packageAddress = options.package ?? '0x52f0fbc38366047f14426a1401429e9f8c7d3c0945e54e411ef6bec911f8c392';
+    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
     const argumentsTypes = [
         null,
         null,

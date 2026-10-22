@@ -5,7 +5,7 @@ const config: SuiCodegenConfig = {
   output: './src/contracts',
   generateSummaries: true,
   prune: true,
-  includePhantomTypeParameters: true,
+  includePhantomTypeParameters: false,
   packages: [
     {
       // Generated from local source so an upgraded package keeps `octap` as

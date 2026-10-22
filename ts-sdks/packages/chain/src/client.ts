@@ -7,6 +7,8 @@ import type { Signer } from '@mysten/sui/cryptography';
 import * as creditAccount from './contracts/octap/credit_account.js';
 import * as programControl from './contracts/octap/program_control.js';
 import * as policyVersion from './contracts/octap/policy_version.js';
+import * as operationShard from './contracts/octap/operation_shard.js';
+import * as budgetShard from './contracts/octap/budget_shard.js';
 import { TESTNET_OCTAP_PACKAGE_CONFIG, type OctapPackageConfig } from './constants.js';
 
 export type OctapNetwork = 'testnet' | 'devnet' | 'mainnet' | 'localnet';
@@ -35,9 +37,13 @@ export interface EarnParams {
   programId: string;
   policyId: string;
   accountId: string;
+  /** The program's `OperationShard` that owns `operationKey` (see `operationShardIndex`). */
+  operationShardId: string;
+  /** The program's `BudgetShard` at the same index as `operationShardId`. */
+  budgetShardId: string;
   /** Smallest currency unit of the underlying purchase, not a credit amount. */
   purchaseAmount: number | bigint;
-  /** Off-chain command/idempotency key, for event correlation only (see credit_account.move docs). */
+  /** Off-chain command/idempotency key; recorded on-chain so a replay of it aborts. */
   operationKey: Uint8Array;
 }
 
@@ -65,6 +71,20 @@ export interface ActivatePolicyAndIssueCapParams {
   policyVersionId: string;
   /** The address backing the service signer that will call `earn` for this program. */
   issuerRecipient: string;
+  /**
+   * Also create the program's operation and budget shards in the same transaction, so a fresh
+   * program never ends up activated but shardless (and so unable to `earn`).
+   */
+  shards?: Pick<CreateShardsParams, 'shardCount' | 'totalBudget'>;
+}
+
+export interface CreateShardsParams {
+  adminCapId: string;
+  programId: string;
+  /** Number of operation shards and of budget shards — always equal, see `budget_shard.move`. */
+  shardCount: number | bigint;
+  /** Total issuance budget in credits, split evenly across budget shards (remainder to shard 0). */
+  totalBudget: number | bigint;
 }
 
 export interface SubmittedChainTransaction {
@@ -134,6 +154,8 @@ export class OctapChainClient {
         program: params.programId,
         policy: params.policyId,
         account: params.accountId,
+        operationShard: params.operationShardId,
+        budgetShard: params.budgetShardId,
         purchaseAmount: params.purchaseAmount,
         operationKey: Array.from(params.operationKey),
       },
@@ -208,7 +230,41 @@ export class OctapChainClient {
         recipient: params.issuerRecipient,
       },
     })(tx);
+    if (params.shards) {
+      this.addCreateShards(tx, { adminCapId: params.adminCapId, programId: params.programId, ...params.shards });
+    }
     return tx;
+  }
+
+  /**
+   * Creates and shares a program's operation and budget shards in one transaction — both only
+   * need the `AdminCap` and the program id, which already exist from prior transactions. Shard
+   * ids come back on the `OperationShardCreated`/`BudgetShardCreated` events.
+   */
+  buildCreateShardsTransaction(params: CreateShardsParams): Transaction {
+    const tx = new Transaction();
+    this.addCreateShards(tx, params);
+    return tx;
+  }
+
+  private addCreateShards(tx: Transaction, params: CreateShardsParams): void {
+    operationShard.createShards({
+      package: this.packageId,
+      arguments: {
+        admin: params.adminCapId,
+        programId: params.programId,
+        shardCount: params.shardCount,
+      },
+    })(tx);
+    budgetShard.createShards({
+      package: this.packageId,
+      arguments: {
+        admin: params.adminCapId,
+        programId: params.programId,
+        totalBudget: params.totalBudget,
+        shardCount: params.shardCount,
+      },
+    })(tx);
   }
 
   /** Signs and submits `tx`, waits for it to be checkpointed, and returns a normalized result. */

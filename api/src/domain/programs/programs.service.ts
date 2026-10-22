@@ -25,7 +25,8 @@ export class ProgramsService {
 
   /**
    * One-time per-organization on-chain provisioning: creates a program, publishes+activates a
-   * policy, and mints an `IssuerCap` for `params.issuerRecipient`.
+   * policy, mints an `IssuerCap` for `params.issuerRecipient`, and creates `params.shardCount`
+   * operation/budget shard pairs splitting `params.totalBudget`.
    *
    * Race-safe by reserving the organization's `programs` row *before* any chain call: the unique
    * index on `organization_id` lets exactly one concurrent caller through, and every other caller
@@ -39,6 +40,8 @@ export class ProgramsService {
     earnBps: number;
     expiryMs: number;
     issuerRecipient: string;
+    shardCount: number;
+    totalBudget: number;
   }) {
     let reservation: Awaited<ReturnType<ProgramsRepository['reserve']>>;
     try {
@@ -47,6 +50,8 @@ export class ProgramsService {
         policyVersion: 1,
         earnBps: params.earnBps,
         expiryMs: params.expiryMs,
+        shardCount: params.shardCount,
+        totalBudget: params.totalBudget,
       });
     } catch (err: unknown) {
       if (isUniqueViolation(err)) {
@@ -61,6 +66,8 @@ export class ProgramsService {
         earnBps: params.earnBps,
         expiryMs: params.expiryMs,
         issuerRecipient: params.issuerRecipient,
+        shardCount: params.shardCount,
+        totalBudget: params.totalBudget,
       });
     } catch (err: unknown) {
       await this.repo.release(reservation.id);
@@ -73,6 +80,8 @@ export class ProgramsService {
         adminCapId: provisioned.adminCapId,
         policyVersionId: provisioned.policyVersionId,
         issuerCapId: provisioned.issuerCapId,
+        operationShardIds: provisioned.operationShardIds,
+        budgetShardIds: provisioned.budgetShardIds,
       });
     } catch (err: unknown) {
       this.logger.error(

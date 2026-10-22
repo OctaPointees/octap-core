@@ -1525,6 +1525,8 @@ const PROVISION_PARAMS = {
   earnBps: 100,
   expiryMs: 2_592_000_000,
   issuerRecipient: '0xissuer',
+  shardCount: 2,
+  totalBudget: 1_000_000,
 };
 
 const PROVISIONED = {
@@ -1532,6 +1534,8 @@ const PROVISIONED = {
   adminCapId: '0xadmincap',
   policyVersionId: '0xpolicy',
   issuerCapId: '0xissuercap',
+  operationShardIds: ['0xop0', '0xop1'],
+  budgetShardIds: ['0xbudget0', '0xbudget1'],
 };
 
 test('ProgramsService: reserves the organization before minting, then activates the row with the on-chain ids', async () => {
@@ -1541,6 +1545,8 @@ test('ProgramsService: reserves the organization before minting, then activates 
       calls.push('reserve');
       assert.equal(params.organizationId, 'org-1');
       assert.equal(params.policyVersion, 1);
+      assert.equal(params.shardCount, 2);
+      assert.equal(params.totalBudget, 1_000_000);
       return { id: 'program-row-1', ...params, status: 'PROVISIONING' };
     },
     activate: async (id, chainIds) => {
@@ -1555,6 +1561,8 @@ test('ProgramsService: reserves the organization before minting, then activates 
       assert.equal(params.earnBps, 100);
       assert.equal(params.expiryMs, 2_592_000_000);
       assert.equal(params.issuerRecipient, '0xissuer');
+      assert.equal(params.shardCount, 2);
+      assert.equal(params.totalBudget, 1_000_000);
       return PROVISIONED;
     },
   };
@@ -1566,6 +1574,8 @@ test('ProgramsService: reserves the organization before minting, then activates 
   assert.equal(result.status, 'ACTIVE');
   assert.equal(result.programControlId, '0xprogram');
   assert.equal(result.issuerCapId, '0xissuercap');
+  assert.deepEqual(result.operationShardIds, ['0xop0', '0xop1']);
+  assert.deepEqual(result.budgetShardIds, ['0xbudget0', '0xbudget1']);
 });
 
 test('ProgramsService: a losing concurrent reservation is a ConflictException and never touches the chain', async () => {
@@ -1637,4 +1647,60 @@ test('ProgramsService: a DB failure after minting keeps the reservation, blockin
   const service = new ProgramsService(mockRepo, mockAdmin);
   await assert.rejects(() => service.provisionForOrganization(PROVISION_PARAMS), /connection reset/);
   assert.equal(released, false);
+});
+
+import { ProgramAdminClient } from '../api/dist/infra/clients/sui/program-admin.client.js';
+
+test('ProgramAdminClient: rejects bad shard inputs before sending any transaction', async () => {
+  const admin = new ProgramAdminClient();
+  // Any chain access would need SUI_PROGRAM_ADMIN_PRIVATE_KEY; these must fail before reaching it.
+  const base = { earnBps: 100, expiryMs: 2_592_000_000, issuerRecipient: '0xissuer' };
+  await assert.rejects(() => admin.provisionProgram({ ...base, shardCount: 0, totalBudget: 1 }), /shardCount/);
+  await assert.rejects(() => admin.provisionProgram({ ...base, shardCount: 1.5, totalBudget: 1 }), /shardCount/);
+  await assert.rejects(() => admin.provisionProgram({ ...base, shardCount: 1, totalBudget: -1 }), /totalBudget/);
+});
+
+import { operationShardIndex } from '../ts-sdks/packages/chain/dist/index.js';
+import { selectShards } from '../api/dist/infra/clients/sui/sui.client.js';
+
+// Same key/count -> index fixtures as `shard_index_matches_shared_fixture` and
+// `budget_shards_are_debited_independently` in contracts/sui/tests/credit_account_tests.move:
+// if either side's routing changes, one of the two suites breaks.
+const SHARD_INDEX_FIXTURES = [
+  ['earn:fixture-shard-key', 7, 4],
+  ['op-1', 16, 5],
+  ['op-5', 1, 0],
+  ['op-1', 2, 1],
+  ['op-4', 2, 0],
+];
+
+test('operationShardIndex: matches the Move side on shared fixtures', () => {
+  for (const [key, shardCount, expected] of SHARD_INDEX_FIXTURES) {
+    assert.equal(operationShardIndex(Buffer.from(key), shardCount), expected, `${key} mod ${shardCount}`);
+  }
+});
+
+test('operationShardIndex: rejects a non-positive shard count', () => {
+  assert.throws(() => operationShardIndex(Buffer.from('op-1'), 0), /positive integer/);
+});
+
+test('selectShards: picks the operation and budget shard at the key-owned index', () => {
+  const config = { operationShardIds: ['0xop0', '0xop1'], budgetShardIds: ['0xbudget0', '0xbudget1'] };
+  assert.deepEqual(selectShards(config, Buffer.from('op-1')), {
+    operationShardId: '0xop1',
+    budgetShardId: '0xbudget1',
+  });
+  assert.deepEqual(selectShards(config, Buffer.from('op-4')), {
+    operationShardId: '0xop0',
+    budgetShardId: '0xbudget0',
+  });
+});
+
+test('selectShards: rejects a program with no shards or mismatched shard counts', () => {
+  const key = Buffer.from('op-1');
+  assert.throws(() => selectShards({ operationShardIds: [], budgetShardIds: [] }, key), /same non-zero count/);
+  assert.throws(
+    () => selectShards({ operationShardIds: ['0xop0'], budgetShardIds: ['0xb0', '0xb1'] }, key),
+    /same non-zero count/,
+  );
 });
