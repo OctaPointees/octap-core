@@ -1,7 +1,8 @@
 # Programs domain
 
-Per-organization on-chain program provisioning — the real replacement for the single shared
-demo program every organization used to dispatch `earn` against.
+Per-organization on-chain programs: provisioning them, and resolving the calling organization's
+program for every chain dispatch. There is no shared or default program — an organization's earn
+only ever runs against the program provisioned for it.
 
 - `programs.service.ts`: `provisionForOrganization()` creates a new `ProgramControl`, publishes
   and activates a `PolicyVersion`, and mints an `IssuerCap` for a given recipient address, then
@@ -24,9 +25,22 @@ Tenant isolation is enforced on-chain, not here: `contracts/sui/tests/credit_acc
 program aborts (`EWrongProgram`) against another program's account, before this domain's code is
 even reached.
 
-**Known gap**: `domain/credits/chain-submit.processor.ts` still dispatches every organization's
-`earn` against the one hardcoded `TESTNET_OCTAP_DEMO_PROGRAM_CONFIG` (`ts-sdks/packages/chain`),
-not whatever this domain provisions. Provisioning a program here does not yet change which
-program an organization's `earn` calls actually use — wiring `chain-submit.processor.ts` to look
-up `ProgramsRepository` per organization instead of the shared constant is follow-up work, left
-out here to keep this change reviewable and avoid touching the already-working demo earn path.
+## Resolving an organization's program
+
+`program-config.ts`'s `resolveProgramConfig(repo, organizationId)` is the single lookup every
+chain dispatch path goes through (`ProgramsRepository.findByOrganization`, no second lookup). It
+returns the row's `OctapProgramConfig` (`programControlId`, `policyVersionId`, `issuerCapId`,
+`operationShardIds`, `budgetShardIds`) only for an `ACTIVE` row with all on-chain ids and a
+non-empty, equal-length shard pair; anything else throws `ProgramNotProvisionedError`:
+
+- `EarnService` checks it before reserving points and maps it to **HTTP 422**
+  (`Organization <id> has no on-chain program provisioned (<reason>)`) — the request is rejected,
+  nothing is recorded.
+- `ChainSubmitProcessor` resolves it again from the operation's `tenantId` before any chain call
+  (`openAccount` and `earn` both take the resolved config), so an operation that was accepted
+  before its program disappeared fails cleanly (`FAILED`, reservation released) instead of
+  writing into another organization's program.
+
+Reasons it rejects: no `programs` row, a row still `PROVISIONING`, a row missing on-chain ids, or
+a row provisioned before OCT-41's shards (migration `0005` backfilled those with no shards — they
+need re-provisioning). To onboard any organization, run `scripts/provision-program.mjs`.

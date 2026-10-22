@@ -12,7 +12,7 @@ const STALE_PROCESSING_MS = Number(process.env.CHAIN_SUBMIT_STALE_PROCESSING_MS 
  * Owns the poll loop's lifecycle and concurrency; `ChainSubmitProcessor` carries one claimed
  * operation through the domain services. Polls `operations` directly (conditional-update claim,
  * see `OperationsRepository.claimNextPending`) rather than a queue library — `infra/queue` is for
- * whichever feature needs one first, per docs/implementation-guide.md, and a single demo worker
+ * whichever feature needs one first, per docs/implementation-guide.md, and a single worker instance
  * doesn't.
  */
 @Injectable()

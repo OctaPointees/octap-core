@@ -26,6 +26,27 @@ export interface OctapChainClientOptions {
   package?: OctapPackageConfig;
 }
 
+/**
+ * One program's on-chain object ids — what `earn`/`open_account` need besides the package. Each
+ * organization has its own, provisioned once and persisted in the API's `programs` table; there
+ * is deliberately no committed default program.
+ */
+export interface OctapProgramConfig {
+  /** Shared `octap::program_control::ProgramControl` object id. */
+  programControlId: string;
+  /** Immutable `octap::policy_version::PolicyVersion` currently activated for this program. */
+  policyVersionId: string;
+  /** `octap::capabilities::IssuerCap` authorizing `earn` for this program. */
+  issuerCapId: string;
+  /**
+   * Shared `octap::operation_shard::OperationShard` ids, in shard-index order. `earn` must be
+   * given `operationShardIds[operationShardIndex(key, operationShardIds.length)]`.
+   */
+  operationShardIds: readonly string[];
+  /** Shared `octap::budget_shard::BudgetShard` ids, in shard-index order; same length as above. */
+  budgetShardIds: readonly string[];
+}
+
 export interface OpenAccountParams {
   issuerCapId: string;
   programId: string;

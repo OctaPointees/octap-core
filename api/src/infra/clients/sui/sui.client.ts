@@ -4,10 +4,10 @@ import {
   eventField,
   operationShardIndex,
   signerFromPrivateKey,
-  TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
-  MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
-  type OctapDemoProgramConfig,
+  TESTNET_OCTAP_PACKAGE_CONFIG,
+  MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
+  type OctapProgramConfig,
   type SubmittedChainTransaction,
 } from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
@@ -32,25 +32,25 @@ function toChainCallResult(result: SubmittedChainTransaction): ChainCallResult {
  * to hold `SUI_ISSUER_PRIVATE_KEY` in memory at all, only the worker process that actually
  * dispatches chain transactions does.
  *
- * Demo-scoped: one program/policy/IssuerCap (from `@octap/chain`'s committed constants, keyed
- * only by `SUI_NETWORK`), applied to every organization, until `domain/programs`
- * (docs/roadmap.md) exists to look these up per organization instead.
+ * Program-agnostic: every call takes the calling organization's `OctapProgramConfig`, resolved
+ * from its `programs` row by `domain/programs`' `resolveProgramConfig`. Only the package id is
+ * global (one published `octap` package per network).
  */
 @Injectable()
 export class SuiClientService {
   private readonly logger = new Logger(SuiClientService.name);
   private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
-  private readonly programConfig = configForNetwork(
-    this.network,
-    { testnet: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG, mainnet: MAINNET_OCTAP_DEMO_PROGRAM_CONFIG },
-    'demo program',
-  );
   private chainClient?: OctapChainClient;
   private signer?: Signer;
 
   private get client(): OctapChainClient {
     if (!this.chainClient) {
-      this.chainClient = new OctapChainClient({ network: this.network, package: this.programConfig });
+      const pkg = configForNetwork(
+        this.network,
+        { testnet: TESTNET_OCTAP_PACKAGE_CONFIG, mainnet: MAINNET_OCTAP_PACKAGE_CONFIG },
+        'octap package',
+      );
+      this.chainClient = new OctapChainClient({ network: this.network, package: pkg });
     }
     return this.chainClient;
   }
@@ -67,24 +67,27 @@ export class SuiClientService {
     return this.issuerSigner.getPublicKey().toSuiAddress();
   }
 
-  async openAccount(beneficiary: string): Promise<ChainCallResult> {
+  async openAccount(program: OctapProgramConfig, beneficiary: string): Promise<ChainCallResult> {
     const tx = this.client.buildOpenAccountTransaction({
-      issuerCapId: this.programConfig.issuerCapId,
-      programId: this.programConfig.programControlId,
+      issuerCapId: program.issuerCapId,
+      programId: program.programControlId,
       beneficiary,
     });
     tx.setGasBudget(50_000_000);
-    this.logger.log(`opening credit account for ${beneficiary}`);
+    this.logger.log(`opening credit account for ${beneficiary} in program ${program.programControlId}`);
     return toChainCallResult(await this.client.signAndExecute(tx, this.issuerSigner));
   }
 
-  async earn(params: { accountId: string; purchaseAmount: number; operationKey: string }): Promise<ChainCallResult> {
+  async earn(
+    program: OctapProgramConfig,
+    params: { accountId: string; purchaseAmount: number; operationKey: string },
+  ): Promise<ChainCallResult> {
     const operationKey = new TextEncoder().encode(params.operationKey);
-    const { operationShardId, budgetShardId } = selectShards(this.programConfig, operationKey);
+    const { operationShardId, budgetShardId } = selectShards(program, operationKey);
     const tx = this.client.buildEarnTransaction({
-      issuerCapId: this.programConfig.issuerCapId,
-      programId: this.programConfig.programControlId,
-      policyId: this.programConfig.policyVersionId,
+      issuerCapId: program.issuerCapId,
+      programId: program.programControlId,
+      policyId: program.policyVersionId,
       accountId: params.accountId,
       operationShardId,
       budgetShardId,
@@ -92,7 +95,9 @@ export class SuiClientService {
       operationKey,
     });
     tx.setGasBudget(50_000_000);
-    this.logger.log(`earn ${params.purchaseAmount} purchase units -> account ${params.accountId}`);
+    this.logger.log(
+      `earn ${params.purchaseAmount} purchase units -> account ${params.accountId} in program ${program.programControlId}`,
+    );
     return toChainCallResult(await this.client.signAndExecute(tx, this.issuerSigner));
   }
 
@@ -112,7 +117,7 @@ export class SuiClientService {
  * `budget_shard.move`), so a program's two shard lists must be the same non-zero length.
  */
 export function selectShards(
-  config: Pick<OctapDemoProgramConfig, 'operationShardIds' | 'budgetShardIds'>,
+  config: Pick<OctapProgramConfig, 'operationShardIds' | 'budgetShardIds'>,
   operationKey: Uint8Array,
 ): { operationShardId: string; budgetShardId: string } {
   const shardCount = config.operationShardIds.length;
