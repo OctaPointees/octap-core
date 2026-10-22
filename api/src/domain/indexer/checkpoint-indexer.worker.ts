@@ -38,16 +38,20 @@ export class CheckpointIndexerWorker implements OnModuleInit, OnModuleDestroy {
     this.polling = true;
     try {
       for (let pages = 0; pages < MAX_PAGES_PER_POLL && !this.stopped; pages++) {
-        if (!(await this.processor.processNextPage())) {
-          break;
+        try {
+          if (!(await this.processor.processNextPage())) {
+            break;
+          }
+        } catch (err: unknown) {
+          if (!(err instanceof IndexerCursorMovedError)) {
+            throw err;
+          }
+          // Another instance committed this page first; the next iteration re-reads its cursor.
+          this.logger.warn(err.message);
         }
       }
     } catch (err: unknown) {
-      if (err instanceof IndexerCursorMovedError) {
-        this.logger.warn(err.message);
-      } else {
-        this.logger.error(`poll failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      this.logger.error(`poll failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.polling = false;
     }

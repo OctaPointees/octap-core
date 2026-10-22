@@ -102,7 +102,7 @@ export class ChainSubmitProcessor {
         // Releasing the hold here could under-credit a member whose earn did land, and a FAILED
         // status invites the merchant to retry under a new key: a second on-chain earn.
         this.logger.error(`earn outcome unknown for operation ${operation.id}; left for the indexer: ${message}`);
-        await this.operationsRepo.markUnknown(operation.id, message);
+        await this.markUnknown(operation.id, message);
         return;
       }
       this.logger.error(`earn chain submit failed for operation ${operation.id}: ${message}`);
@@ -145,7 +145,13 @@ export class ChainSubmitProcessor {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`earn landed (digest=${digest}) but recording it failed; left for the indexer: ${message}`);
-      await this.operationsRepo.markUnknown(operation.id, message, digest);
+      await this.markUnknown(operation.id, message, digest);
+    }
+  }
+
+  private async markUnknown(operationId: string, message: string, digest?: string): Promise<void> {
+    if (!(await this.operationsRepo.markUnknown(operationId, message, digest))) {
+      this.logger.warn(`operation ${operationId} was no longer PROCESSING (already settled, likely by the indexer); left as is`);
     }
   }
 }

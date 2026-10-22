@@ -151,11 +151,14 @@ export class OperationsRepository {
    * The chain outcome is landed-but-unrecorded (`suiTxDigest` known) or simply unknown (no digest);
    * either way `domain/indexer` resolves it if the effect shows up on-chain.
    */
-  async markUnknown(id: string, errorMessage: string, suiTxDigest?: string) {
-    await this.db
+  /** Returns false when the row had already left PROCESSING (e.g. the indexer settled it first). */
+  async markUnknown(id: string, errorMessage: string, suiTxDigest?: string): Promise<boolean> {
+    const rows = await this.db
       .update(operations)
       .set({ status: 'UNKNOWN', errorMessage, ...(suiTxDigest ? { suiTxDigest } : {}), updatedAt: new Date() })
-      .where(and(eq(operations.id, id), eq(operations.status, 'PROCESSING')));
+      .where(and(eq(operations.id, id), eq(operations.status, 'PROCESSING')))
+      .returning({ id: operations.id });
+    return rows.length > 0;
   }
 
   async markFailed(id: string, errorMessage: string) {

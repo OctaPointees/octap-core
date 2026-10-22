@@ -22,9 +22,10 @@ async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: strin
 }
 
 /**
- * Row-locks a member's credit ownership. Callers compute absolute balances from this snapshot, so
- * it must be locked: two concurrent writers for the same member (e.g. two POS reserves) would
- * otherwise both read the same row and one delta would be lost.
+ * Row-locks a member's credit ownership. The confirm/fail writers compute absolute balances from
+ * this snapshot, so it must be locked: two transactions for the same member resolving at once
+ * (chain-submit worker confirming one while the indexer confirms another, or two POS reserves)
+ * would otherwise both read the same row and one delta would be lost.
  */
 async function lockOwnership(tx: DrizzleDb, organizationEndUserId: string) {
   const [row] = await tx
@@ -264,9 +265,7 @@ export class CreditsRepository {
         })
         .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
         await tx
           .update(creditOwnerships)
@@ -299,9 +298,7 @@ export class CreditsRepository {
         .set({ status: 'FAILED', updatedAt: new Date() })
         .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
         await tx
           .update(creditOwnerships)
@@ -470,9 +467,7 @@ export class CreditsRepository {
         .set({ status: 'CONFIRMED', blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
         .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
         await tx
           .update(creditOwnerships)
@@ -505,9 +500,7 @@ export class CreditsRepository {
         .set({ status: 'FAILED', updatedAt: new Date() })
         .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
         await tx
           .update(creditOwnerships)

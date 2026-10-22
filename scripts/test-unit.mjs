@@ -1960,7 +1960,7 @@ test('CheckpointIndexerProcessor: a PENDING earn (operation UNKNOWN) is confirme
   assert.equal(store.row.lastCheckpoint, '500');
 });
 
-test('CheckpointIndexerProcessor: rows the synchronous path already resolved are skipped, including a digest unique-violation', async () => {
+test('CheckpointIndexerProcessor: rows the synchronous path already resolved are skipped (their operation settled), including a digest unique-violation', async () => {
   const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
   let confirmCalls = 0;
   const creditsRepo = {
@@ -1972,7 +1972,8 @@ test('CheckpointIndexerProcessor: rows the synchronous path already resolved are
       throw Object.assign(new Error('Failed query'), { cause: { code: '23505' } });
     },
   };
-  const operationsRepo = { markSubmittedFromChain: async () => assert.fail('nothing was confirmed') };
+  const settled = [];
+  const operationsRepo = { markSubmittedFromChain: async (params) => { settled.push(params); } };
   const sui = {
     listCreditAccountEvents: async () => ({
       events: [
@@ -1989,6 +1990,9 @@ test('CheckpointIndexerProcessor: rows the synchronous path already resolved are
   await processor.processNextPage();
 
   assert.equal(confirmCalls, 1);
+  // The CONFIRMED row's operation may have been left UNKNOWN by a failed markSubmitted; the event settles it.
+  assert.equal(settled.length, 1);
+  assert.equal(settled[0].idempotencyKey, 'idem-earn-1');
   assert.equal(store.row.cursor, 'C2');
 });
 

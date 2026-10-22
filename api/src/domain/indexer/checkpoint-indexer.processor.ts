@@ -151,7 +151,14 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
     const loyaltyTx = await this.creditsRepo.findTransactionByMemberAndIdempotency(organizationEndUserId, operationKey);
-    if (!loyaltyTx || loyaltyTx.transactionType !== 'EARN' || loyaltyTx.status !== 'PENDING') {
+    if (!loyaltyTx || loyaltyTx.transactionType !== 'EARN') {
+      return 'skipped';
+    }
+    if (loyaltyTx.status === 'CONFIRMED') {
+      await this.settleOperation(loyaltyTx, event, tx);
+      return 'skipped';
+    }
+    if (loyaltyTx.status !== 'PENDING') {
       return 'skipped';
     }
 
@@ -188,12 +195,14 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
     const loyaltyTx = await this.creditsRepo.getLoyaltyTransactionById(loyaltyTransactionId);
-    if (
-      !loyaltyTx ||
-      loyaltyTx.transactionType !== 'REDEEM' ||
-      loyaltyTx.status !== 'PENDING' ||
-      loyaltyTx.organizationEndUserId !== organizationEndUserId
-    ) {
+    if (!loyaltyTx || loyaltyTx.transactionType !== 'REDEEM' || loyaltyTx.organizationEndUserId !== organizationEndUserId) {
+      return 'skipped';
+    }
+    if (loyaltyTx.status === 'CONFIRMED') {
+      await this.settleOperation(loyaltyTx, event, tx);
+      return 'skipped';
+    }
+    if (loyaltyTx.status !== 'PENDING') {
       return 'skipped';
     }
     if (Number(loyaltyTx.pointsAmount) !== amount) {
@@ -223,5 +232,21 @@ export class CheckpointIndexerProcessor {
       tx,
     );
     return 'confirmed';
+  }
+
+  /**
+   * The ledger row is already CONFIRMED, but the operation behind it may not be: the sync path
+   * can commit `confirm*OnChain` and then fail on `markSubmitted`, leaving it UNKNOWN. This
+   * event proves the effect landed, so settle the operation too. A no-op once it is SUBMITTED.
+   */
+  private async settleOperation(
+    loyaltyTx: { organizationId: string; idempotencyKey: string },
+    event: CreditAccountEvent,
+    tx: DrizzleDb,
+  ): Promise<void> {
+    await this.operationsRepo.markSubmittedFromChain(
+      { tenantId: loyaltyTx.organizationId, idempotencyKey: loyaltyTx.idempotencyKey, suiTxDigest: event.transactionDigest },
+      tx,
+    );
   }
 }

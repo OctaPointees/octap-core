@@ -166,8 +166,8 @@ export class OctaPointClient {
         pending_earn: String(snapshot.pendingEarn),
         pending_redemption: String(snapshot.pendingRedemption),
         as_of_checkpoint: snapshot.asOfCheckpoint ?? '0',
-        observed_at: new Date().toISOString(),
-        stale: false,
+        observed_at: snapshot.observedAt,
+        stale: snapshot.stale,
       };
     }
 
