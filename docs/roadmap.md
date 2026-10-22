@@ -134,7 +134,7 @@ then move the row to **Implemented** in the same pull request.
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
-  plan, or collections flow. Reversing an EARN shrinks that earn's expiry bucket so it can't be
+  plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
   forfeited again; reversing a REDEEM adds the points back *without* a bucket, so they never
   expire in Postgres. (Reversal is Postgres-only; it doesn't touch the chain at all.)
 - **Expiry** (OCT-49) is lazy: due buckets are swept whenever the balance is read or spent, not

@@ -9,8 +9,11 @@ of "an UNKNOWN operation stays UNKNOWN until someone checks the chain by hand" (
   signer). For each `CreditEarned` (matched by `operation_key` = the command's idempotency key) or
   `CreditRedeemed` (matched by `reference` = the loyalty transaction id) whose loyalty transaction
   is still PENDING, it calls the same `confirmEarnOnChain`/`confirmPosRedemptionOnChain` the
-  synchronous paths use, and moves the operation to SUBMITTED. A `CreditEarned` for an
-  already-CONFIRMED earn backfills its expiry bucket if it has none (OCT-49). `CreditExpired`
+  synchronous paths use, and moves the operation to SUBMITTED. For an already-CONFIRMED row it
+  still settles the operation (one left UNKNOWN by a failed `markSubmitted` after the ledger
+  commit), and a `CreditEarned` backfills the earn's expiry bucket if it has none (OCT-49),
+  then trims the member's buckets back to the balance, nearest expiry first, since points spent
+  before buckets existed were never debited from one. `CreditExpired`
   runs the member's expiry sweep — usually a no-op, since balance reads already expire due
   buckets by clock. `CreditAccountOpened` is ignored. Registered only in `api/src/worker.module.ts`.
 - **Cursor**: `indexer_cursors` holds one row per stream (`octap::credit_account`). Each page's

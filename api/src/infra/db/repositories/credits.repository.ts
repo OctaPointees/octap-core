@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and, asc, gt, lte, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lte, inArray } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -41,15 +41,48 @@ async function lockOwnership(tx: DrizzleDb, organizationEndUserId: string) {
   return row;
 }
 
-/** Records the bucket an EARN created on-chain. No-op if it exists, so indexer replays can backfill. */
+/**
+ * Records the bucket an EARN created on-chain. No-op if it exists, so indexer replays can backfill.
+ * Returns whether a bucket was inserted.
+ */
 async function insertEarnBucket(
   tx: DrizzleDb,
   params: { creditOwnershipId: string; earnTransactionId: string; amount: number; expiresAtMs: number },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const inserted = await tx
     .insert(creditBuckets)
     .values({ ...params, remaining: params.amount })
-    .onConflictDoNothing({ target: creditBuckets.earnTransactionId });
+    .onConflictDoNothing({ target: creditBuckets.earnTransactionId })
+    .returning({ id: creditBuckets.id });
+  return inserted.length > 0;
+}
+
+/**
+ * After a backfill, buckets must not hold more than the balance: points spent before the bucket
+ * existed were never debited from it. Trims the excess nearest-expiry first (expired buckets
+ * included), which is where FIFO spending would have taken it from, so the next expiry can't
+ * forfeit points that belong to a later bucket.
+ */
+async function trimBucketsToBalance(tx: DrizzleDb, ownership: { id: string; confirmedBalance: unknown }) {
+  const buckets = await tx
+    .select()
+    .from(creditBuckets)
+    .where(and(eq(creditBuckets.creditOwnershipId, ownership.id), gt(creditBuckets.remaining, 0)))
+    .orderBy(asc(creditBuckets.expiresAtMs))
+    .for('update');
+
+  let excess = buckets.reduce((sum, b) => sum + Number(b.remaining), 0) - Math.max(Number(ownership.confirmedBalance), 0);
+  for (const bucket of buckets) {
+    if (excess <= 0) {
+      break;
+    }
+    const take = Math.min(excess, Number(bucket.remaining));
+    await tx
+      .update(creditBuckets)
+      .set({ remaining: Number(bucket.remaining) - take })
+      .where(eq(creditBuckets.id, bucket.id));
+    excess -= take;
+  }
 }
 
 /**
@@ -339,18 +372,21 @@ export class CreditsRepository {
     params: { organizationEndUserId: string; earnTransactionId: string; amount: number; expiresAtMs: number },
     db: DrizzleDb = this.db,
   ): Promise<void> {
-    const ownership = await db.query.creditOwnerships.findFirst({
-      where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      columns: { id: true },
-    });
-    if (ownership) {
-      await insertEarnBucket(db, {
+    await db.transaction(async (tx) => {
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
+      if (!ownership) {
+        return;
+      }
+      const inserted = await insertEarnBucket(tx, {
         creditOwnershipId: ownership.id,
         earnTransactionId: params.earnTransactionId,
         amount: params.amount,
         expiresAtMs: params.expiresAtMs,
       });
-    }
+      if (inserted) {
+        await trimBucketsToBalance(tx, ownership);
+      }
+    });
   }
 
   async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
@@ -711,7 +747,7 @@ export class CreditsRepository {
         // (A reversed REDEEM's add-back gets no bucket: it doesn't expire here — known gap.)
         await tx
           .update(creditBuckets)
-          .set({ remaining: sql`greatest(${creditBuckets.remaining} - ${magnitude}, 0)` })
+          .set({ remaining: 0 })
           .where(eq(creditBuckets.earnTransactionId, params.original.id));
       }
 
