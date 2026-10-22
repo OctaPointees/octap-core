@@ -1,11 +1,14 @@
 export {
   OctapChainClient,
+  eventField,
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
   type OpenAccountParams,
   type EarnParams,
   type RedeemParams,
+  type PublishPolicyParams,
+  type ActivatePolicyAndIssueCapParams,
   type SubmittedChainTransaction,
 } from './client.js';
 export {

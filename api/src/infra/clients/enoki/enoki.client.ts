@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EnokiClient as MystenEnokiClient } from '@mysten/enoki/client';
 import { publicKeyFromSuiBytes } from '@mysten/sui/verify';
 import { toBase64 } from '@mysten/sui/utils';
+import { requireEnv } from '../require-env.js';
 
 export type EnokiNetwork = 'mainnet' | 'testnet' | 'devnet';
 
@@ -11,14 +12,6 @@ export type EnokiNetwork = 'mainnet' | 'testnet' | 'devnet';
  * from the method itself is the portable way to name it.
  */
 export type ZkLoginProofResult = Awaited<ReturnType<MystenEnokiClient['createZkLoginZkp']>>;
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var ${name} for the Enoki adapter`);
-  }
-  return value;
-}
 
 /**
  * Thin wrapper around `@mysten/enoki/client`'s low-level `EnokiClient`. `ENOKI_API_KEY` is an app
@@ -34,7 +27,7 @@ export class EnokiClient {
 
   private get sdk(): MystenEnokiClient {
     if (!this.client) {
-      this.client = new MystenEnokiClient({ apiKey: requireEnv('ENOKI_API_KEY') });
+      this.client = new MystenEnokiClient({ apiKey: requireEnv('ENOKI_API_KEY', 'Enoki adapter') });
     }
     return this.client;
   }

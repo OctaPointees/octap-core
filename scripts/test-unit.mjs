@@ -1518,3 +1518,123 @@ test('SponsoredTransactionService: there is no parameter that can widen the spon
   });
 });
 
+import { ProgramsService } from '../api/dist/domain/programs/programs.service.js';
+
+const PROVISION_PARAMS = {
+  organizationId: 'org-1',
+  earnBps: 100,
+  expiryMs: 2_592_000_000,
+  issuerRecipient: '0xissuer',
+};
+
+const PROVISIONED = {
+  programId: '0xprogram',
+  adminCapId: '0xadmincap',
+  policyVersionId: '0xpolicy',
+  issuerCapId: '0xissuercap',
+};
+
+test('ProgramsService: reserves the organization before minting, then activates the row with the on-chain ids', async () => {
+  const calls = [];
+  const mockRepo = {
+    reserve: async (params) => {
+      calls.push('reserve');
+      assert.equal(params.organizationId, 'org-1');
+      assert.equal(params.policyVersion, 1);
+      return { id: 'program-row-1', ...params, status: 'PROVISIONING' };
+    },
+    activate: async (id, chainIds) => {
+      calls.push('activate');
+      assert.equal(id, 'program-row-1');
+      return { id, status: 'ACTIVE', ...chainIds };
+    },
+  };
+  const mockAdmin = {
+    provisionProgram: async (params) => {
+      calls.push('provisionProgram');
+      assert.equal(params.earnBps, 100);
+      assert.equal(params.expiryMs, 2_592_000_000);
+      assert.equal(params.issuerRecipient, '0xissuer');
+      return PROVISIONED;
+    },
+  };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  const result = await service.provisionForOrganization(PROVISION_PARAMS);
+
+  assert.deepEqual(calls, ['reserve', 'provisionProgram', 'activate']);
+  assert.equal(result.status, 'ACTIVE');
+  assert.equal(result.programControlId, '0xprogram');
+  assert.equal(result.issuerCapId, '0xissuercap');
+});
+
+test('ProgramsService: a losing concurrent reservation is a ConflictException and never touches the chain', async () => {
+  let adminCalled = false;
+  const mockRepo = {
+    reserve: async () => {
+      // drizzle wraps the postgres-js error; the unique_violation code lives on `cause`
+      throw Object.assign(new Error('Failed query'), { cause: { code: '23505' } });
+    },
+  };
+  const mockAdmin = {
+    provisionProgram: async () => {
+      adminCalled = true;
+      throw new Error('should not provision a second program on-chain');
+    },
+  };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  await assert.rejects(() => service.provisionForOrganization(PROVISION_PARAMS), (err) => {
+    assert.equal(err.name, 'ConflictException');
+    assert.match(err.message, /already has a program/);
+    return true;
+  });
+  assert.equal(adminCalled, false);
+});
+
+test('ProgramsService: a non-unique reservation failure is rethrown as-is, not mapped to a conflict', async () => {
+  const mockRepo = {
+    reserve: async () => {
+      throw new Error('connection reset');
+    },
+  };
+  const service = new ProgramsService(mockRepo, {});
+  await assert.rejects(() => service.provisionForOrganization(PROVISION_PARAMS), /connection reset/);
+});
+
+test('ProgramsService: an on-chain failure releases the reservation so the organization can retry', async () => {
+  let releasedId = null;
+  const mockRepo = {
+    reserve: async (params) => ({ id: 'program-row-1', ...params }),
+    release: async (id) => {
+      releasedId = id;
+    },
+  };
+  const mockAdmin = {
+    provisionProgram: async () => {
+      throw new Error('create_program failed on-chain');
+    },
+  };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  await assert.rejects(() => service.provisionForOrganization(PROVISION_PARAMS), /create_program failed/);
+  assert.equal(releasedId, 'program-row-1');
+});
+
+test('ProgramsService: a DB failure after minting keeps the reservation, blocking a duplicate mint', async () => {
+  let released = false;
+  const mockRepo = {
+    reserve: async (params) => ({ id: 'program-row-1', ...params }),
+    activate: async () => {
+      throw new Error('connection reset');
+    },
+    release: async () => {
+      released = true;
+    },
+  };
+  const mockAdmin = { provisionProgram: async () => PROVISIONED };
+
+  const service = new ProgramsService(mockRepo, mockAdmin);
+  await assert.rejects(() => service.provisionForOrganization(PROVISION_PARAMS), /connection reset/);
+  assert.equal(released, false);
+});
