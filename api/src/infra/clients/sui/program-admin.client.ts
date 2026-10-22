@@ -1,43 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   OctapChainClient,
+  eventField,
   signerFromPrivateKey,
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
-  type OctapPackageConfig,
-  type SubmittedChainTransaction,
 } from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
+import { requireEnv } from '../require-env.js';
+import { configForNetwork } from './network-config.js';
 
 export interface ProvisionedProgram {
   programId: string;
   adminCapId: string;
   policyVersionId: string;
   issuerCapId: string;
-}
-
-function packageConfig(network: OctapNetwork): OctapPackageConfig {
-  if (network === 'testnet') {
-    return TESTNET_OCTAP_PACKAGE_CONFIG;
-  }
-  if (network === 'mainnet' && MAINNET_OCTAP_PACKAGE_CONFIG) {
-    return MAINNET_OCTAP_PACKAGE_CONFIG;
-  }
-  throw new Error(`Program admin: no package configured for network "${network}"`);
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var ${name} for the program admin adapter`);
-  }
-  return value;
-}
-
-function eventField<T>(result: SubmittedChainTransaction, eventSuffix: string, field: string): T | undefined {
-  const event = result.events.find((e) => e.type.endsWith(`::${eventSuffix}`));
-  return (event?.parsedJson as Record<string, unknown> | undefined)?.[field] as T | undefined;
 }
 
 /**
@@ -60,14 +38,19 @@ export class ProgramAdminClient {
 
   private get client(): OctapChainClient {
     if (!this.chainClient) {
-      this.chainClient = new OctapChainClient({ network: this.network, package: packageConfig(this.network) });
+      const pkg = configForNetwork(
+        this.network,
+        { testnet: TESTNET_OCTAP_PACKAGE_CONFIG, mainnet: MAINNET_OCTAP_PACKAGE_CONFIG },
+        'octap package',
+      );
+      this.chainClient = new OctapChainClient({ network: this.network, package: pkg });
     }
     return this.chainClient;
   }
 
   private get adminSigner(): Signer {
     if (!this.signer) {
-      this.signer = signerFromPrivateKey(requireEnv('SUI_PROGRAM_ADMIN_PRIVATE_KEY'));
+      this.signer = signerFromPrivateKey(requireEnv('SUI_PROGRAM_ADMIN_PRIVATE_KEY', 'program admin adapter'));
     }
     return this.signer;
   }

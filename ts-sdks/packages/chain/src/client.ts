@@ -74,6 +74,16 @@ export interface SubmittedChainTransaction {
   events: Array<{ type: string; parsedJson: unknown }>;
 }
 
+/** The first value of `field` on any event of `result` whose type ends in `::<eventSuffix>`. */
+export function eventField<T = unknown>(
+  result: SubmittedChainTransaction,
+  eventSuffix: string,
+  field: string,
+): T | undefined {
+  const event = result.events.find((e) => e.type.endsWith(`::${eventSuffix}`));
+  return (event?.parsedJson as Record<string, unknown> | undefined)?.[field] as T | undefined;
+}
+
 /**
  * Thin, backend-only wrapper around the generated `octap` Move bindings.
  *

@@ -1,5 +1,6 @@
 export {
   OctapChainClient,
+  eventField,
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
