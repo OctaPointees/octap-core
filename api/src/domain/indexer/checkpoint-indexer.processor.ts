@@ -40,7 +40,8 @@ function isUniqueViolation(err: unknown): boolean {
  * (including one whose operation went UNKNOWN after a worker crash, OCT-43) is confirmed through
  * the same `confirmEarnOnChain`/`confirmPosRedemptionOnChain` the synchronous paths use. Anything
  * already resolved is skipped. Events never create loyalty transactions — an on-chain effect with
- * no PG command behind it is not something this projection invents a row for.
+ * no PG command behind it is not something this projection invents a row for. (`CreditExpired`
+ * runs the same expiry sweep balance reads do, which may record an EXPIRY row; see `applyExpired`.)
  *
  * Sui only emits events for transactions that executed successfully (an aborted transaction's
  * events are discarded with the rest of its effects), so an event here is already proof of a
@@ -109,7 +110,7 @@ export class CheckpointIndexerProcessor {
   }
 
   async applyEvent(event: CreditAccountEvent, tx: DrizzleDb): Promise<EventOutcome> {
-    if (event.name !== 'CreditEarned' && event.name !== 'CreditRedeemed') {
+    if (event.name !== 'CreditEarned' && event.name !== 'CreditRedeemed' && event.name !== 'CreditExpired') {
       return 'skipped';
     }
 
@@ -127,6 +128,9 @@ export class CheckpointIndexerProcessor {
     }
 
     try {
+      if (event.name === 'CreditExpired') {
+        return await this.applyExpired(tx, ownership.organizationEndUserId);
+      }
       return event.name === 'CreditEarned'
         ? await this.applyEarned(event, tx, ownership.organizationEndUserId, amount)
         : await this.applyRedeemed(event, tx, ownership.organizationEndUserId, amount);
@@ -154,7 +158,17 @@ export class CheckpointIndexerProcessor {
     if (!loyaltyTx || loyaltyTx.transactionType !== 'EARN') {
       return 'skipped';
     }
+    const expiresAtMs = Number(event.json?.bucket_expires_at_ms);
+    const bucketExpiresAtMs = Number.isSafeInteger(expiresAtMs) ? expiresAtMs : null;
+
     if (loyaltyTx.status === 'CONFIRMED') {
+      // Confirmed before buckets existed (or by the sync path): make sure its bucket is there.
+      if (bucketExpiresAtMs !== null) {
+        await this.creditsRepo.ensureEarnBucket(
+          { organizationEndUserId, earnTransactionId: loyaltyTx.id, amount, expiresAtMs: bucketExpiresAtMs },
+          tx,
+        );
+      }
       await this.settleOperation(loyaltyTx, event, tx);
       return 'skipped';
     }
@@ -168,6 +182,7 @@ export class CheckpointIndexerProcessor {
         organizationEndUserId,
         reservedPointsAmount: Number(loyaltyTx.pointsAmount),
         confirmedPointsAmount: amount,
+        bucketExpiresAtMs,
         digest: event.transactionDigest,
         sender: event.sender,
       },
@@ -181,6 +196,20 @@ export class CheckpointIndexerProcessor {
       tx,
     );
     return 'confirmed';
+  }
+
+  /**
+   * The chain pruned this account's expired buckets. PG expires by clock already (lazily, on
+   * every balance read/spend), so this just runs the same sweep now — a no-op if a read got there
+   * first, which is what makes replaying the event harmless.
+   */
+  private async applyExpired(tx: DrizzleDb, organizationEndUserId: string): Promise<EventOutcome> {
+    const organizationId = await this.creditsRepo.findMemberOrganizationId(organizationEndUserId);
+    if (!organizationId) {
+      return 'skipped';
+    }
+    const forfeited = await this.creditsRepo.expireDueBucketsForMember({ organizationId, organizationEndUserId }, tx);
+    return forfeited > 0 ? 'confirmed' : 'skipped';
   }
 
   private async applyRedeemed(

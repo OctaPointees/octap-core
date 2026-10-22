@@ -17,6 +17,8 @@ export class CreditsService {
    */
   async getBalance(organizationId: string, organizationEndUserId: string): Promise<CreditBalanceSnapshot> {
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
+    // Lazy expiry: a bucket past its `expires_at_ms` must not count, even before the chain says so.
+    await this.creditsRepo.expireDueBucketsForMember({ organizationId, organizationEndUserId });
     const [ownership, cursor] = await Promise.all([
       this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId),
       this.indexerRepo.getCursor(CREDIT_ACCOUNT_STREAM),

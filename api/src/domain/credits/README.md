@@ -25,7 +25,11 @@ The three write transactions (`recordEarnTransaction`/`recordRedeemTransaction`/
 real second line of defense on `loyalty_transactions` here, not just the app-code tenant checks
 in `credits.service.ts`/`earn.service.ts`/etc. Read paths don't go through `withRls()` yet (see
 the roadmap's known gaps). `reservePosRedemption` also runs through `withRls()`; `confirmPosRedemptionOnChain`/`failPosRedemptionOnChain` don't — same known gap as `confirmEarnOnChain`/`failEarnOnChain`, worker/callback-only paths not yet converted.
-Chain-time expiry buckets are not implemented yet (see the roadmap).
+Expiry mirrors `credit_account.move`'s buckets (OCT-49): each confirmed earn writes a
+`credit_buckets` row with the chain's `bucket_expires_at_ms`; voucher and POS redemptions consume
+buckets nearest-expiry first; `expireDueBuckets` forfeits due ones (one EXPIRY transaction per
+sweep) before every balance read or spend, so an expired bucket never counts even before the
+chain emits `CreditExpired`.
 
 `chain-submit.processor.ts` opens each member's `CreditAccount` under their real zkLogin address
 (`CreditsRepository.findBeneficiaryAddress`, via `domain/identity`) — not a placeholder, since a

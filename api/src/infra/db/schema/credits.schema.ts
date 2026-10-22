@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
+  index,
   jsonb,
   pgEnum,
   pgPolicy,
@@ -124,4 +125,30 @@ export const loyaltyTransactions = pgTable(
       using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
     }),
   ],
+);
+
+/**
+ * CREDIT BUCKET: PostgreSQL mirror of `credit_account.move`'s `Bucket` — one per confirmed EARN,
+ * expiring at the chain's own `bucket_expires_at_ms`. `remaining` is what redemptions (FIFO,
+ * nearest expiry first, same as `redeem` on-chain) and reversals haven't consumed yet; an expiry
+ * sweep forfeits it. Points with no bucket (reversed-redeem add-backs, pre-bucket history) never
+ * expire here.
+ */
+export const creditBuckets = pgTable(
+  'credit_buckets',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    creditOwnershipId: uuid('credit_ownership_id')
+      .notNull()
+      .references(() => creditOwnerships.id, { onDelete: 'cascade' }),
+    earnTransactionId: uuid('earn_transaction_id')
+      .notNull()
+      .unique()
+      .references(() => loyaltyTransactions.id, { onDelete: 'cascade' }),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    remaining: bigint('remaining', { mode: 'number' }).notNull(),
+    expiresAtMs: bigint('expires_at_ms', { mode: 'number' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('credit_buckets_ownership_expiry_idx').on(t.creditOwnershipId, t.expiresAtMs)],
 );

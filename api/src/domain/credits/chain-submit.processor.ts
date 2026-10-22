@@ -95,7 +95,14 @@ export class ChainSubmitProcessor {
         throw new Error('earn succeeded but emitted no CreditEarned event');
       }
 
-      await this.recordLandedEarn(operation, payload, result.digest, Number(confirmedPointsAmount));
+      const bucketExpiresAtMs = result.eventField<string>('CreditEarned', 'bucket_expires_at_ms');
+      await this.recordLandedEarn(
+        operation,
+        payload,
+        result.digest,
+        Number(confirmedPointsAmount),
+        bucketExpiresAtMs === undefined ? null : Number(bucketExpiresAtMs),
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof EarnOutcomeUnknownError) {
@@ -126,6 +133,7 @@ export class ChainSubmitProcessor {
     payload: EarnChainSubmitPayload,
     digest: string,
     confirmedPointsAmount: number,
+    bucketExpiresAtMs: number | null,
   ): Promise<void> {
     try {
       const confirmed = await this.creditsRepo.confirmEarnOnChain({
@@ -133,6 +141,7 @@ export class ChainSubmitProcessor {
         organizationEndUserId: payload.organizationEndUserId,
         reservedPointsAmount: payload.pointsAmount,
         confirmedPointsAmount,
+        bucketExpiresAtMs,
         digest,
         sender: this.suiClient.issuerAddress(),
       });

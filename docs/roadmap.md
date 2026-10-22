@@ -29,6 +29,7 @@ then move the row to **Implemented** in the same pull request.
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
 | Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
+| Credits: chain-time expiry buckets mirrored into Postgres (FIFO consumption, lazy expiry sweep, `CreditExpired` projection) | api/src/infra/db/repositories/credits.repository.ts (`expireDueBuckets`); api/src/domain/indexer |
 | Indexer: `octap::credit_account` event projection with a committed cursor, reconciling PENDING/UNKNOWN earn and POS redeem from the chain; balance `asOfCheckpoint`/`observedAt`/`stale` | api/src/domain/indexer; api/src/infra/db/repositories/indexer.repository.ts |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
@@ -38,10 +39,8 @@ then move the row to **Implemented** in the same pull request.
   FAILED only on a returned on-chain `failure`; an `earn()` call that throws (outcome unknown)
   stays PENDING with its operation UNKNOWN, so the indexer confirms it if it landed. If it never
   landed, it stays PENDING (hold kept, balance never wrong) until resolved by hand — resolving it
-  automatically needs the digest computed before submission (OCT-52). The indexer projects only
-  `CreditEarned`/`CreditRedeemed`, not `CreditExpired`: PG has no expiry buckets yet, so from
-  2026-11-13 the testnet demo balances overstate what's spendable on-chain (**demo-blocker,
-  OCT-49**). It emits no webhooks for what it confirms (OCT-209); and `stale` is "anything
+  automatically needs the digest computed before submission (OCT-52). It emits no webhooks for
+  what it confirms (OCT-209); and `stale` is "anything
   pending", not "indexer behind the chain tip". First run starts at the stream head, not genesis
   (see `api/src/domain/indexer/README.md`).
 
@@ -135,9 +134,16 @@ then move the row to **Implemented** in the same pull request.
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
-  plan, or collections flow. There is also no expiry-bucket model in Postgres at all yet (that's
-  still Move-only, see `credit_account.move`), so "retain original bucket and deadline semantics"
-  does not apply to anything here: reversal only touches `confirmedBalance`/transaction status.
+  plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
+  forfeited again; reversing a REDEEM adds the points back *without* a bucket, so they never
+  expire in Postgres. (Reversal is Postgres-only; it doesn't touch the chain at all.)
+- **Expiry** (OCT-49) is lazy: due buckets are swept whenever the balance is read or spent, not
+  by a scheduled job. Every balance check (POS reserve, voucher claim) and `GET /balance` sweeps
+  first; only the informational `newBalance` in earn/POS-finalize responses can show a
+  pre-sweep figure until the next read. Uses the server clock, not the Sui `Clock` (the two agree to
+  within seconds). The forfeit is capped at the current balance, so expiry never creates debt.
+  Earns confirmed before migration `0008` have no bucket until the indexer replays their
+  `CreditEarned`: set the `octap::credit_account` row's `cursor` to null once after migrating.
 - No mTLS: deliberately not built at the app layer — there is no reverse proxy/Dockerfile in
   this repo yet to terminate TLS in front of it, and raw `https.Server` client-cert verification
   inside the Node process would be guessing at a deployment shape that doesn't exist. mTLS
@@ -176,7 +182,6 @@ and vendor clients.
 | Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
-| Credits: chain-time expiry buckets and worker | domain/credits/expiry.service.ts + expiry worker | Needs the Move `credit_account` bucket model mirrored into Postgres first; reversal/clawback-debt is implemented (see Implemented above), this row is only the bucket-expiry part |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
 | Developer: API keys, scopes, sandbox, request logs | domain/developer | |
 | Billing: Stripe test billing, reconciliation | domain/billing; infra/clients/stripe | Schema exists in billing.schema.ts; distinct from points |
@@ -194,7 +199,6 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 | Job | Feature |
 | --- | --- |
 | Transaction submission to Sui (earn only — see known gaps) | credits (implemented: chain-submit.worker.ts) |
-| Bucket expiry | credits |
 | Projection from chain to PostgreSQL | operations |
 | Webhook delivery | webhooks |
 | Analytics export | analytics |
