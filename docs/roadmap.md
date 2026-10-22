@@ -71,8 +71,8 @@ then move the row to **Implemented** in the same pull request.
   endpoints are thin Enoki passthroughs with no local cryptography.
 - Earn is dispatched against the calling organization's own provisioned program (OCT-73,
   `domain/programs`' `resolveProgramConfig`); there is no shared default program. An organization
-  without an `ACTIVE`, sharded `programs` row gets HTTP 422 on earn. Redeem doesn't resolve a
-  program yet — it lands with OCT-55's on-chain redeem path. There
+  without an `ACTIVE`, sharded `programs` row gets HTTP 422 on earn and on POS redeem reserve
+  (`credit_account::redeem` needs no program ids — the account records its own program). There
   is also no `domain/organizations` (org rows are inserted out of band) or standalone
   `domain/policies` versioning/preview API yet — policy publish/activate are steps inside
   `ProgramsService.provisionForOrganization`, not their own CRUD surface. Provisioning can't be

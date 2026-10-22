@@ -33,9 +33,11 @@ returns the row's `OctapProgramConfig` (`programControlId`, `policyVersionId`, `
 `operationShardIds`, `budgetShardIds`) only for an `ACTIVE` row with all on-chain ids and a
 non-empty, equal-length shard pair; anything else throws `ProgramNotProvisionedError`:
 
-- `EarnService` checks it before reserving points and maps it to **HTTP 422**
-  (`Organization <id> has no on-chain program provisioned (<reason>)`) — the request is rejected,
-  nothing is recorded.
+- `EarnService` and `PosRedemptionService.reserve` check it (via `requireProgramConfig`) before
+  holding any points and map it to **HTTP 422** (`Organization <id> has no on-chain program
+  provisioned (<reason>)`) — the request is rejected, nothing is recorded. Redeem resolves nothing
+  further: `credit_account::redeem` takes only the member's `CreditAccount`, which was opened in
+  (and records) its organization's program.
 - `ChainSubmitProcessor` resolves it again from the operation's `tenantId` before any chain call
   (`openAccount` and `earn` both take the resolved config), so an operation that was accepted
   before its program disappeared fails cleanly (`FAILED`, reservation released) instead of

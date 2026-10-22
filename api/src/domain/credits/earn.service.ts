@@ -1,8 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
-import { ProgramNotProvisionedError, resolveProgramConfig } from '../programs/program-config.js';
+import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 
 @Injectable()
@@ -43,14 +43,7 @@ export class EarnService {
 
     // Reject before reserving anything: the chain-submit worker would otherwise fail the earn
     // asynchronously, after the client was already told it was accepted.
-    try {
-      await resolveProgramConfig(this.programsRepo, organizationId);
-    } catch (err: unknown) {
-      if (err instanceof ProgramNotProvisionedError) {
-        throw new UnprocessableEntityException(err.message);
-      }
-      throw err;
-    }
+    await requireProgramConfig(this.programsRepo, organizationId);
 
     const { transaction, newBalance } = await this.creditsRepo.recordEarnTransaction({
       organizationId,

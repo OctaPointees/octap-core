@@ -34,7 +34,8 @@ plus the SDK clients for them. Earning points now really lands on Sui testnet: t
 durably accepts the command in Postgres and returns immediately, a worker dispatches it to the
 `octap` Move package, and confirmed amounts flow back into the PG projection — see
 `docs/roadmap.md`'s known gaps for what's still missing (each organization must be provisioned
-with `scripts/provision-program.mjs` before it can earn; redeem stays off-chain pending zkLogin). Everything else in the design is listed in
+with `scripts/provision-program.mjs` before it can earn or redeem at POS; voucher-claim redeem
+stays an off-chain ledger debit). Everything else in the design is listed in
 [the roadmap](docs/roadmap.md) and has no code yet. New features are added as new files; there are
 no empty slots to fill.
 
