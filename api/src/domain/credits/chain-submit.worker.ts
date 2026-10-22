@@ -5,6 +5,8 @@ import { ChainSubmitProcessor } from './chain-submit.processor.js';
 const POLL_INTERVAL_MS = Number(process.env.CHAIN_SUBMIT_POLL_INTERVAL_MS ?? 3000);
 const BATCH_SIZE = Number(process.env.CHAIN_SUBMIT_BATCH_SIZE ?? 5);
 const COMMAND_TYPES = ['CREDIT_EARN_CHAIN_SUBMIT'];
+/** A healthy chain submit resolves in seconds; stuck this long means the worker that claimed it died. */
+const STALE_PROCESSING_MS = Number(process.env.CHAIN_SUBMIT_STALE_PROCESSING_MS ?? 5 * 60 * 1000);
 
 /**
  * Owns the poll loop's lifecycle and concurrency; `ChainSubmitProcessor` carries one claimed
@@ -26,8 +28,29 @@ export class ChainSubmitWorker implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    // Fire-and-forget: a crashed previous instance's stuck rows get surfaced once the DB is
+    // reachable, but a slow/unavailable DB at the exact moment of startup must not delay or
+    // crash this process starting its own poll loop (and must not make constructing the Nest
+    // dependency graph — see scripts/check-bootstrap.mjs — require a live database).
+    void this.recoverStaleOperations();
+
     this.logger.log(`starting, polling every ${POLL_INTERVAL_MS}ms`);
     this.timer = setInterval(() => void this.pollOnce(), POLL_INTERVAL_MS);
+  }
+
+  private async recoverStaleOperations(): Promise<void> {
+    try {
+      const recovered = await this.operationsRepo.recoverStaleProcessing(COMMAND_TYPES, STALE_PROCESSING_MS);
+      if (recovered.length > 0) {
+        this.logger.warn(
+          `recovered ${recovered.length} operation(s) stuck in PROCESSING (likely a prior crash) -> UNKNOWN: ${recovered.map((o) => o.id).join(', ')}`,
+        );
+      }
+    } catch (err: unknown) {
+      this.logger.error(
+        `failed to recover stale PROCESSING operations at startup: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   onModuleDestroy(): void {

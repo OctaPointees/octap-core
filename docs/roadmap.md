@@ -27,6 +27,7 @@ then move the row to **Implemented** in the same pull request.
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
+| Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
 ### Known gaps in implemented features
@@ -88,6 +89,18 @@ then move the row to **Implemented** in the same pull request.
   from the demo program constants, not the organization's `programs` row — same demo-scoping as
   its program/policy/IssuerCap ids above. Every program runs `shard_count = 1` today; see
   `contracts/sui/README.md`'s known gaps.
+- `acceptCommand`'s payload-hash conflict only guards against this process accepting two
+  different payloads under one key — `EarnService` already short-circuits on a repeated
+  idempotency key earlier (at the `loyaltyTransactions` level), so in practice this conflict
+  path isn't reachable through today's one real caller; it exists for the next caller that
+  doesn't have its own equivalent check. A conflict also isn't mapped to a clean HTTP 409 yet —
+  it surfaces as an uncaught error, since no caller can trigger it through the HTTP layer today.
+- `recoverStaleProcessing` only *detects and surfaces* a stuck operation (flips it to UNKNOWN,
+  logged at worker startup) — there is no replay/resolution flow yet. An UNKNOWN operation stays
+  UNKNOWN until someone checks the chain by hand and updates the row; auto-resubmitting it would
+  risk the exact "second business effect" durable commands exist to prevent.
+- `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
+  comment), not a batched `SKIP LOCKED` claim — fine for today's single-worker demo only.
 - Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
   `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
   done here to keep this change reviewable. `emit()` is also not in the same DB transaction as the
@@ -138,7 +151,6 @@ and vendor clients.
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
 | Credits: chain-time expiry buckets and worker | domain/credits/expiry.service.ts + expiry worker | Needs the Move `credit_account` bucket model mirrored into Postgres first; reversal/clawback-debt is implemented (see Implemented above), this row is only the bucket-expiry part |
-| Operations: durable command, idempotency, outbox, UNKNOWN recovery | domain/operations; infra/db/repositories | Schema exists; a minimal claim/markSubmitted/markFailed slice exists as `infra/db/repositories/operations.repository.ts` for chain-submit dispatch only — no dedup beyond the idempotency key, no replay, no UNKNOWN recovery |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
 | Developer: API keys, scopes, sandbox, request logs | domain/developer | |
 | Billing: Stripe test billing, reconciliation | domain/billing; infra/clients/stripe | Schema exists in billing.schema.ts; distinct from points |

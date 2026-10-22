@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { blockchainTransactions, creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
-import { operations } from '../schema/operations.schema.js';
+import { acceptCommand } from './operations.repository.js';
 import { organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
 
@@ -117,11 +117,10 @@ export class CreditsRepository {
         .set({ pendingEarn: newPendingEarn, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
 
-      await tx.insert(operations).values({
+      await acceptCommand(tx, {
         tenantId: params.organizationId,
         idempotencyKey: params.idempotencyKey,
         commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
-        status: 'PENDING',
         payload: {
           loyaltyTransactionId: transaction.id,
           organizationEndUserId: params.organizationEndUserId,

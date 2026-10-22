@@ -43,6 +43,13 @@
       "when": 1792662844207,
       "tag": "0005_friendly_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792663270425,
+      "tag": "0006_mighty_black_bird",
+      "breakpoints": true
     }
   ]
 }

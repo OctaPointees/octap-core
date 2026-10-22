@@ -1704,3 +1704,51 @@ test('selectShards: rejects a program with no shards or mismatched shard counts'
     /same non-zero count/,
   );
 });
+
+import { acceptCommand, hashPayload, OperationPayloadConflictError } from '../api/dist/infra/db/repositories/operations.repository.js';
+
+function fakeCommandTx(existing) {
+  const updates = [];
+  const tx = {
+    query: { operations: { findFirst: async () => existing } },
+    update: () => ({
+      set: (values) => ({
+        where: () => ({
+          returning: async () => {
+            updates.push(values);
+            return [{ ...existing, ...values }];
+          },
+        }),
+      }),
+    }),
+  };
+  return { tx, updates };
+}
+
+test('acceptCommand: the payload hash ignores key order, so a rebuilt-but-identical payload is a replay', async () => {
+  assert.equal(hashPayload({ a: 1, b: { c: 2, d: [1, { e: 3, f: 4 }] } }), hashPayload({ b: { d: [1, { f: 4, e: 3 }], c: 2 }, a: 1 }));
+  assert.notEqual(hashPayload({ a: 1 }), hashPayload({ a: 2 }));
+
+  const existing = { id: 'op-1', payloadHash: hashPayload({ amount: 10, member: 'm1' }) };
+  const { tx } = fakeCommandTx(existing);
+  const result = await acceptCommand(tx, {
+    tenantId: 't1',
+    idempotencyKey: 'k1',
+    commandType: 'X',
+    payload: { member: 'm1', amount: 10 },
+  });
+  assert.equal(result.isNew, false);
+
+  await assert.rejects(
+    acceptCommand(tx, { tenantId: 't1', idempotencyKey: 'k1', commandType: 'X', payload: { member: 'm1', amount: 11 } }),
+    OperationPayloadConflictError,
+  );
+});
+
+test('acceptCommand: a row accepted before payload hashes existed adopts the hash instead of conflicting', async () => {
+  const { tx, updates } = fakeCommandTx({ id: 'op-legacy', payloadHash: null });
+  const result = await acceptCommand(tx, { tenantId: 't1', idempotencyKey: 'k1', commandType: 'X', payload: { amount: 10 } });
+  assert.equal(result.isNew, false);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].payloadHash, hashPayload({ amount: 10 }));
+});
