@@ -91,7 +91,12 @@ export interface CreditBalanceSnapshot {
   pendingRedemption: number;
   lifetimeEarned: number;
   lifetimeRedeemed: number;
-  asOfCheckpoint?: string | null;
+  /** Last Sui checkpoint the indexer has projected; null until the indexer has seen any event. */
+  asOfCheckpoint: string | null;
+  /** When this snapshot was read (ISO 8601). */
+  observedAt: string;
+  /** True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change. */
+  stale: boolean;
 }
 
 export interface ReverseTransactionRequest {

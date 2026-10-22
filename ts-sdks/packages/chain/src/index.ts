@@ -11,6 +11,8 @@ export {
   type ActivatePolicyAndIssueCapParams,
   type CreateShardsParams,
   type SubmittedChainTransaction,
+  type CreditAccountEvent,
+  type CreditAccountEventPage,
 } from './client.js';
 export {
   TESTNET_OCTAP_PACKAGE_CONFIG,

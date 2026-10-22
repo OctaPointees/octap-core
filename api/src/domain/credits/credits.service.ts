@@ -1,23 +1,39 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '../../infra/db/repositories/indexer.repository.js';
 import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contracts';
 
 @Injectable()
 export class CreditsService {
-  constructor(private readonly creditsRepo: CreditsRepository) {}
+  constructor(
+    private readonly creditsRepo: CreditsRepository,
+    private readonly indexerRepo: IndexerRepository,
+  ) {}
 
+  /**
+   * `asOfCheckpoint` is the indexer's stream-wide progress (last checkpoint it projected), not
+   * per-member. `stale` is the simple, literal rule: any pending amount means part of this balance
+   * can still change. Comparing the indexer against the chain's current tip is future work.
+   */
   async getBalance(organizationId: string, organizationEndUserId: string): Promise<CreditBalanceSnapshot> {
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
-    const ownership = await this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId);
+    const [ownership, cursor] = await Promise.all([
+      this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId),
+      this.indexerRepo.getCursor(CREDIT_ACCOUNT_STREAM),
+    ]);
+    const pendingEarn = Number(ownership.pendingEarn);
+    const pendingRedemption = Number(ownership.pendingRedemption);
 
     return {
       organizationEndUserId,
       confirmedBalance: Number(ownership.confirmedBalance),
-      pendingEarn: Number(ownership.pendingEarn),
-      pendingRedemption: Number(ownership.pendingRedemption),
+      pendingEarn,
+      pendingRedemption,
       lifetimeEarned: Number(ownership.lifetimeEarned),
       lifetimeRedeemed: Number(ownership.lifetimeRedeemed),
-      asOfCheckpoint: ownership.asOfCheckpoint,
+      asOfCheckpoint: cursor?.lastCheckpoint ?? null,
+      observedAt: new Date().toISOString(),
+      stale: pendingEarn > 0 || pendingRedemption > 0,
     };
   }
 

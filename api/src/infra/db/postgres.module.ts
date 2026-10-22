@@ -6,6 +6,7 @@ import { OperationsRepository } from './repositories/operations.repository.js';
 import { ApiCredentialsRepository } from './repositories/api-credentials.repository.js';
 import { WebhooksRepository } from './repositories/webhooks.repository.js';
 import { IdentityRepository } from './repositories/identity.repository.js';
+import { IndexerRepository } from './repositories/indexer.repository.js';
 import { ProgramsRepository } from './repositories/programs.repository.js';
 
 const repositories = [
@@ -15,6 +16,7 @@ const repositories = [
   ApiCredentialsRepository,
   WebhooksRepository,
   IdentityRepository,
+  IndexerRepository,
   ProgramsRepository,
 ];
 

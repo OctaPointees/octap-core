@@ -29,9 +29,21 @@ then move the row to **Implemented** in the same pull request.
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
 | Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
+| Indexer: `octap::credit_account` event projection with a committed cursor, reconciling PENDING/UNKNOWN earn and POS redeem from the chain; balance `asOfCheckpoint`/`observedAt`/`stale` | api/src/domain/indexer; api/src/infra/db/repositories/indexer.repository.ts |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
 ### Known gaps in implemented features
+
+- The **indexer** only reconciles rows still PENDING. The chain-submit worker now marks a row
+  FAILED only on a returned on-chain `failure`; an `earn()` call that throws (outcome unknown)
+  stays PENDING with its operation UNKNOWN, so the indexer confirms it if it landed. If it never
+  landed, it stays PENDING (hold kept, balance never wrong) until resolved by hand — resolving it
+  automatically needs the digest computed before submission (OCT-52). The indexer projects only
+  `CreditEarned`/`CreditRedeemed`, not `CreditExpired`: PG has no expiry buckets yet, so from
+  2026-11-13 the testnet demo balances overstate what's spendable on-chain (**demo-blocker,
+  OCT-49**). It emits no webhooks for what it confirms (OCT-209); and `stale` is "anything
+  pending", not "indexer behind the chain tip". First run starts at the stream head, not genesis
+  (see `api/src/domain/indexer/README.md`).
 
 - **Earn** is chain-dispatched (worker, IssuerCap-signed) and **POS redemption** is now also
   chain-dispatched (customer-signed, Enoki-sponsored, see the row above) — but the *other* redeem
@@ -172,7 +184,6 @@ and vendor clients.
 | Audit: export, Walrus/Seal evidence, verifier | domain/audit; infra/clients/walrus, seal | Outside checkout path |
 | Notifications | domain/notifications | |
 | Administration: platform governance | domain/administration | |
-| Indexer: Sui checkpoint ingestion, cursor, replay | domain/indexer; infra/clients/sui | |
 
 ### Workers
 
@@ -185,7 +196,6 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 | Transaction submission to Sui (earn only — see known gaps) | credits (implemented: chain-submit.worker.ts) |
 | Bucket expiry | credits |
 | Projection from chain to PostgreSQL | operations |
-| Checkpoint ingestion/replay | indexer |
 | Webhook delivery | webhooks |
 | Analytics export | analytics |
 | Audit export | audit |

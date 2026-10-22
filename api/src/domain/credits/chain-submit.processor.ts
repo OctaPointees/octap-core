@@ -12,6 +12,18 @@ interface EarnChainSubmitPayload {
   pointsAmount: number;
 }
 
+/**
+ * `earn()` threw instead of returning a chain verdict (gRPC timeout, connection drop while waiting
+ * for the checkpoint, ...): the transaction may or may not have landed. Only a returned
+ * `status: 'failure'` is a definitive on-chain failure.
+ */
+class EarnOutcomeUnknownError extends Error {
+  constructor(cause: unknown) {
+    super(`earn outcome unknown: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'EarnOutcomeUnknownError';
+  }
+}
+
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
 @Injectable()
 export class ChainSubmitProcessor {
@@ -63,11 +75,16 @@ export class ChainSubmitProcessor {
 
       // Demo policy is 100 bps: the chain treats `pointsAmount` as a purchase amount and credits
       // 1% of it (see docs in credits.repository.ts's confirmEarnOnChain), not the raw number.
-      const result = await this.suiClient.earn({
-        accountId,
-        purchaseAmount: payload.pointsAmount,
-        operationKey: operation.idempotencyKey,
-      });
+      let result: Awaited<ReturnType<SuiClientService['earn']>>;
+      try {
+        result = await this.suiClient.earn({
+          accountId,
+          purchaseAmount: payload.pointsAmount,
+          operationKey: operation.idempotencyKey,
+        });
+      } catch (err: unknown) {
+        throw new EarnOutcomeUnknownError(err);
+      }
 
       if (result.status !== 'success') {
         throw new Error(result.errorMessage ?? 'earn failed on-chain');
@@ -78,18 +95,16 @@ export class ChainSubmitProcessor {
         throw new Error('earn succeeded but emitted no CreditEarned event');
       }
 
-      await this.creditsRepo.confirmEarnOnChain({
-        loyaltyTransactionId: payload.loyaltyTransactionId,
-        organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.pointsAmount,
-        confirmedPointsAmount: Number(confirmedPointsAmount),
-        digest: result.digest,
-        sender: this.suiClient.issuerAddress(),
-      });
-      await this.operationsRepo.markSubmitted(operation.id, result.digest);
-      this.logger.log(`earn confirmed: tx=${payload.loyaltyTransactionId} digest=${result.digest}`);
+      await this.recordLandedEarn(operation, payload, result.digest, Number(confirmedPointsAmount));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof EarnOutcomeUnknownError) {
+        // Releasing the hold here could under-credit a member whose earn did land, and a FAILED
+        // status invites the merchant to retry under a new key: a second on-chain earn.
+        this.logger.error(`earn outcome unknown for operation ${operation.id}; left for the indexer: ${message}`);
+        await this.markUnknown(operation.id, message);
+        return;
+      }
       this.logger.error(`earn chain submit failed for operation ${operation.id}: ${message}`);
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
@@ -97,6 +112,46 @@ export class ChainSubmitProcessor {
         reservedPointsAmount: payload.pointsAmount,
       });
       await this.operationsRepo.markFailed(operation.id, message);
+    }
+  }
+
+  /**
+   * The earn already landed on-chain, so a PG error from here on must never reach
+   * `failEarnOnChain` — that would release a hold for points the member really has. Instead the
+   * row stays PENDING and the operation goes UNKNOWN, and `domain/indexer` confirms it from the
+   * `CreditEarned` event.
+   */
+  private async recordLandedEarn(
+    operation: typeof operations.$inferSelect,
+    payload: EarnChainSubmitPayload,
+    digest: string,
+    confirmedPointsAmount: number,
+  ): Promise<void> {
+    try {
+      const confirmed = await this.creditsRepo.confirmEarnOnChain({
+        loyaltyTransactionId: payload.loyaltyTransactionId,
+        organizationEndUserId: payload.organizationEndUserId,
+        reservedPointsAmount: payload.pointsAmount,
+        confirmedPointsAmount,
+        digest,
+        sender: this.suiClient.issuerAddress(),
+      });
+      await this.operationsRepo.markSubmitted(operation.id, digest);
+      this.logger.log(
+        confirmed
+          ? `earn confirmed: tx=${payload.loyaltyTransactionId} digest=${digest}`
+          : `earn already confirmed by the indexer: tx=${payload.loyaltyTransactionId} digest=${digest}`,
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`earn landed (digest=${digest}) but recording it failed; left for the indexer: ${message}`);
+      await this.markUnknown(operation.id, message, digest);
+    }
+  }
+
+  private async markUnknown(operationId: string, message: string, digest?: string): Promise<void> {
+    if (!(await this.operationsRepo.markUnknown(operationId, message, digest))) {
+      this.logger.warn(`operation ${operationId} was no longer PROCESSING (already settled, likely by the indexer); left as is`);
     }
   }
 }

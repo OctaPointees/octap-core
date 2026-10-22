@@ -71,7 +71,6 @@ export const creditOwnerships = pgTable(
     pendingRedemption: bigint('pending_redemption', { mode: 'number' }).default(0).notNull(),
     lifetimeEarned: bigint('lifetime_earned', { mode: 'number' }).default(0).notNull(),
     lifetimeRedeemed: bigint('lifetime_redeemed', { mode: 'number' }).default(0).notNull(),
-    asOfCheckpoint: text('as_of_checkpoint'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

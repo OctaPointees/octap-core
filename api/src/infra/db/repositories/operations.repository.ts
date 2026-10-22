@@ -125,6 +125,42 @@ export class OperationsRepository {
       .where(eq(operations.id, id));
   }
 
+  /**
+   * `domain/indexer`'s counterpart to `markSubmitted`: the chain itself showed this command's
+   * effect landed, so any still-unresolved state (PENDING, PROCESSING, or UNKNOWN after a crash)
+   * becomes SUBMITTED. Moving a PENDING row also stops the chain-submit worker from ever claiming
+   * and resubmitting it. Terminal rows (SUBMITTED/FAILED) are left alone.
+   */
+  async markSubmittedFromChain(
+    params: { tenantId: string; idempotencyKey: string; suiTxDigest: string },
+    db: DrizzleDb = this.db,
+  ) {
+    await db
+      .update(operations)
+      .set({ status: 'SUBMITTED', suiTxDigest: params.suiTxDigest, updatedAt: new Date() })
+      .where(
+        and(
+          eq(operations.tenantId, params.tenantId),
+          eq(operations.idempotencyKey, params.idempotencyKey),
+          inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+        ),
+      );
+  }
+
+  /**
+   * The chain outcome is landed-but-unrecorded (`suiTxDigest` known) or simply unknown (no digest);
+   * either way `domain/indexer` resolves it if the effect shows up on-chain.
+   */
+  /** Returns false when the row had already left PROCESSING (e.g. the indexer settled it first). */
+  async markUnknown(id: string, errorMessage: string, suiTxDigest?: string): Promise<boolean> {
+    const rows = await this.db
+      .update(operations)
+      .set({ status: 'UNKNOWN', errorMessage, ...(suiTxDigest ? { suiTxDigest } : {}), updatedAt: new Date() })
+      .where(and(eq(operations.id, id), eq(operations.status, 'PROCESSING')))
+      .returning({ id: operations.id });
+    return rows.length > 0;
+  }
+
   async markFailed(id: string, errorMessage: string) {
     await this.db
       .update(operations)

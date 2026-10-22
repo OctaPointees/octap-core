@@ -7,6 +7,8 @@ import { ChainSubmitWorker } from './domain/credits/chain-submit.worker.js';
 import { ChainSubmitProcessor } from './domain/credits/chain-submit.processor.js';
 import { WebhookDeliveryWorker } from './domain/webhooks/webhook-delivery.worker.js';
 import { WebhookDeliveryProcessor } from './domain/webhooks/webhook-delivery.processor.js';
+import { CheckpointIndexerWorker } from './domain/indexer/checkpoint-indexer.worker.js';
+import { CheckpointIndexerProcessor } from './domain/indexer/checkpoint-indexer.processor.js';
 import { ProgramsService } from './domain/programs/programs.service.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
@@ -21,6 +23,8 @@ import { ProgramsService } from './domain/programs/programs.service.js';
     ChainSubmitProcessor,
     WebhookDeliveryWorker,
     WebhookDeliveryProcessor,
+    CheckpointIndexerWorker,
+    CheckpointIndexerProcessor,
     ProgramsService,
   ],
 })

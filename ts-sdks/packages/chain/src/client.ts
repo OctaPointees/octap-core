@@ -55,6 +55,24 @@ export interface RedeemParams {
   reference: Uint8Array;
 }
 
+export interface CreditAccountEvent {
+  /** Struct name only (`CreditEarned`, `CreditRedeemed`, ...), package/module prefix stripped. */
+  name: string;
+  sender: string;
+  /** Move struct fields as the gRPC transport renders them: u64 as decimal strings, vector<u8> as base64. */
+  json: Record<string, unknown> | null;
+  checkpoint: string | null;
+  transactionDigest: string;
+  eventIndex: number;
+}
+
+export interface CreditAccountEventPage {
+  events: CreditAccountEvent[];
+  hasNextPage: boolean;
+  startCursor: string | null;
+  endCursor: string | null;
+}
+
 export interface PublishPolicyParams {
   adminCapId: string;
   programId: string;
@@ -174,6 +192,38 @@ export class OctapChainClient {
       },
     })(tx);
     return tx;
+  }
+
+  /**
+   * Pages through every event `octap::credit_account` emitted, in ledger order. A thin pass-through
+   * to `core.listEvents`: `after` is an opaque cursor from a previous page's `endCursor` (or, after
+   * a descending read, its `startCursor`), and a scan-limited page can come back empty with
+   * `hasNextPage: true` — continuing from its `endCursor` still makes progress.
+   */
+  async listCreditAccountEvents(options: {
+    after?: string | null;
+    limit?: number;
+    order?: 'ascending' | 'descending';
+  }): Promise<CreditAccountEventPage> {
+    const page = await this.rpc.core.listEvents({
+      filter: { emitModule: `${this.packageId}::credit_account` },
+      after: options.after ?? undefined,
+      limit: options.limit,
+      order: options.order,
+    });
+    return {
+      events: page.events.map((event) => ({
+        name: event.eventType.split('::').pop() ?? event.eventType,
+        sender: event.sender,
+        json: event.json,
+        checkpoint: event.checkpoint,
+        transactionDigest: event.transactionDigest,
+        eventIndex: event.eventIndex,
+      })),
+      hasNextPage: page.hasNextPage,
+      startCursor: page.startCursor,
+      endCursor: page.endCursor,
+    };
   }
 
   /**
