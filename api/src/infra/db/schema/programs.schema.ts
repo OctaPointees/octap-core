@@ -7,6 +7,10 @@ import { organizations } from './organizations.schema.js';
  * PROGRAM: one organization's on-chain loyalty program. Created once by `domain/programs`'
  * provisioning flow (`scripts/provision-program.mjs`) — a new policy version is a new on-chain
  * object and a new `policyVersionId`/`earnBps`/`expiryMs`, not a mutation of this row.
+ *
+ * The row is inserted as a `PROVISIONING` reservation *before* any chain call, so the unique
+ * index on `organization_id` is what serializes concurrent provisioning — the on-chain ids are
+ * null until the chain calls succeed and the row flips to `ACTIVE`.
  */
 export const programs = pgTable(
   'programs',
@@ -15,10 +19,11 @@ export const programs = pgTable(
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    programControlId: text('program_control_id').notNull(),
-    adminCapId: text('admin_cap_id').notNull(),
-    policyVersionId: text('policy_version_id').notNull(),
-    issuerCapId: text('issuer_cap_id').notNull(),
+    status: text('status').default('PROVISIONING').notNull(),
+    programControlId: text('program_control_id'),
+    adminCapId: text('admin_cap_id'),
+    policyVersionId: text('policy_version_id'),
+    issuerCapId: text('issuer_cap_id'),
     policyVersion: integer('policy_version').notNull(),
     earnBps: integer('earn_bps').notNull(),
     expiryMs: bigint('expiry_ms', { mode: 'number' }).notNull(),

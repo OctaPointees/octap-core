@@ -1,5 +1,5 @@
 {
-  "id": "6c5d5b39-e693-417d-9ec8-a826864072bb",
+  "id": "17eabd71-26e5-4df6-b3e7-9aeb694174cc",
   "prevId": "42991f53-6c80-49f1-94ae-58eed1a38dea",
   "version": "7",
   "dialect": "postgresql",
@@ -2581,29 +2581,36 @@
           "primaryKey": false,
           "notNull": true
         },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PROVISIONING'"
+        },
         "program_control_id": {
           "name": "program_control_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "admin_cap_id": {
           "name": "admin_cap_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "policy_version_id": {
           "name": "policy_version_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "issuer_cap_id": {
           "name": "issuer_cap_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "policy_version": {
           "name": "policy_version",

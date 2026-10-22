@@ -6,8 +6,11 @@ demo program every organization used to dispatch `earn` against.
 - `programs.service.ts`: `provisionForOrganization()` creates a new `ProgramControl`, publishes
   and activates a `PolicyVersion`, and mints an `IssuerCap` for a given recipient address, then
   records the resulting object ids in Postgres (`infra/db/repositories/programs.repository.ts`).
-  Idempotent at the Postgres level — a second call for an already-provisioned organization
-  rejects instead of minting a duplicate program on-chain.
+  Race-safe: the organization's `programs` row is reserved (`PROVISIONING`) *before* any chain
+  call, so the unique index on `organization_id` admits exactly one concurrent caller — every
+  other caller gets a `ConflictException` without minting anything. An on-chain failure releases
+  the reservation for a retry; a DB failure after minting leaves it `PROVISIONING` (no duplicate
+  mint) and logs the minted object ids for manual repair.
 - Worker-only, registered directly in `worker.module.ts` (not `domain/domain.module.ts`, which
   `AppModule` also imports): it depends on `infra/clients/sui/program-admin.client.ts`, which
   holds `SUI_PROGRAM_ADMIN_PRIVATE_KEY` — an `AdminCap` signer with a much larger blast radius
