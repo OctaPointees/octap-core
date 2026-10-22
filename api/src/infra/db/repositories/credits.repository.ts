@@ -6,6 +6,20 @@ import { acceptCommand } from './operations.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
 
+/**
+ * Row-locks a member's credit ownership. Callers compute absolute balances from this snapshot, so
+ * it must be locked: two concurrent writers for the same member (e.g. two POS reserves) would
+ * otherwise both read the same row and one delta would be lost.
+ */
+async function lockOwnership(tx: DrizzleDb, organizationEndUserId: string) {
+  const [row] = await tx
+    .select()
+    .from(creditOwnerships)
+    .where(eq(creditOwnerships.organizationEndUserId, organizationEndUserId))
+    .for('update');
+  return row;
+}
+
 @Injectable()
 export class CreditsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
@@ -340,9 +354,8 @@ export class CreditsRepository {
         return { transaction: existing, accountId: ownership?.suiCreditAccountId ?? null, isNew: false };
       }
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
+      // Locked: the balance check and the hold below must see every concurrent reserve's hold.
+      const ownership = await lockOwnership(tx, params.organizationEndUserId);
 
       const available = ownership ? Number(ownership.confirmedBalance) - Number(ownership.pendingRedemption) : 0;
       if (!ownership || available < params.pointsAmount) {

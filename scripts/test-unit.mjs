@@ -1743,7 +1743,7 @@ test('PosRedemptionService: finalize leaves the reservation intact when Enoki ex
     },
   };
 
-  const service = new PosRedemptionService(redis, {}, mockSponsoredTx, {}, {});
+  const service = new PosRedemptionService(redis, { findBeneficiaryAddress: async () => '0xbeneficiary' }, mockSponsoredTx, {}, {});
   await assert.rejects(() => service.finalize({ digest: 'digest-1', signature: 'bad-sig' }), /signature expired/);
   assert.notEqual(await redis.get('pos-redeem:reserve:digest-1'), null);
 });
@@ -1755,6 +1755,7 @@ test('PosRedemptionService: finalize releases the hold on a definitive on-chain 
   const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'failure', errorMessage: 'EInsufficientBalance' }) };
   let failArgs = null;
   const mockCreditsRepo = {
+    findBeneficiaryAddress: async () => '0xbeneficiary',
     failPosRedemptionOnChain: async (params) => {
       failArgs = params;
     },
@@ -1769,6 +1770,50 @@ test('PosRedemptionService: finalize releases the hold on a definitive on-chain 
   assert.equal(await redis.get('pos-redeem:reserve:digest-1'), null);
 });
 
+
+function cachedReserveRedis() {
+  const redis = mockRedis();
+  return redis
+    .set(
+      'pos-redeem:reserve:digest-1',
+      JSON.stringify({
+        organizationId: 'org-1',
+        organizationEndUserId: 'user-1',
+        loyaltyTransactionId: 'tx-1',
+        pointsAmount: 50,
+        transactionBytes: 'bytes-1',
+      }),
+    )
+    .then(() => redis);
+}
+
+test('PosRedemptionService: finalize with no beneficiary address fails before executing anything', async () => {
+  const redis = await cachedReserveRedis();
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => assert.fail('must not execute') };
+  const mockCreditsRepo = { findBeneficiaryAddress: async () => null };
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, {}, {});
+  await assert.rejects(service.finalize({ digest: 'digest-1', signature: 'sig-1' }), /No real Sui address/);
+});
+
+test('PosRedemptionService: a concurrent finalize of the same digest answers CONFIRMED, not a 500', async () => {
+  const redis = await cachedReserveRedis();
+  const mockSponsoredTx = { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) };
+  const mockSuiBuilder = { waitForTransaction: async () => ({ status: 'success', digest: 'digest-1', events: [] }) };
+  const mockCreditsRepo = {
+    findBeneficiaryAddress: async () => '0xbeneficiary',
+    confirmPosRedemptionOnChain: async () => {
+      throw Object.assign(new Error('Failed query'), { cause: { code: '23505' } });
+    },
+    getOrCreateCreditOwnership: async () => ({ confirmedBalance: 100 }),
+  };
+  const mockWebhooks = { emit: async () => assert.fail('the first finalize owns the webhook') };
+  const service = new PosRedemptionService(redis, mockCreditsRepo, mockSponsoredTx, mockSuiBuilder, mockWebhooks);
+
+  const result = await service.finalize({ digest: 'digest-1', signature: 'sig-1' });
+  assert.equal(result.status, 'CONFIRMED');
+  assert.equal(result.blockchainDigest, 'digest-1');
+  assert.equal(result.newBalance, 100);
+});
 
 import { ProgramsService } from '../api/dist/domain/programs/programs.service.js';
 

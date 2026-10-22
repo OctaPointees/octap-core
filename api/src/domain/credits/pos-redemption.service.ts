@@ -24,6 +24,12 @@ interface CachedReserve {
   transactionBytes: string;
 }
 
+/** postgres-js reports `code` directly; drizzle wraps it in an error whose `cause` carries it. */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (e: unknown) => (e as { code?: unknown } | null)?.code;
+  return code(err) === '23505' || code((err as { cause?: unknown } | null)?.cause) === '23505';
+}
+
 const reserveKey = (digest: string): string => `pos-redeem:reserve:${digest}`;
 const idemKey = (organizationId: string, idempotencyKey: string): string =>
   `pos-redeem:idem:${organizationId}:${idempotencyKey}`;
@@ -155,6 +161,12 @@ export class PosRedemptionService {
       throw new NotFoundException('Reserved redemption not found or expired; reserve again');
     }
     const cached = JSON.parse(raw) as CachedReserve;
+    // Same precondition reserve() enforced; checked before executing so a missing address fails
+    // loudly with no chain effect, instead of being papered over in the receipt.
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(cached.organizationEndUserId);
+    if (!beneficiaryAddress) {
+      throw new BadRequestException(`No real Sui address on file for member ${cached.organizationEndUserId}`);
+    }
 
     let executed: { digest: string };
     try {
@@ -177,14 +189,23 @@ export class PosRedemptionService {
       throw new BadRequestException(result.errorMessage ?? 'Redeem failed on-chain');
     }
 
-    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(cached.organizationEndUserId);
-    const blockchainTx = await this.creditsRepo.confirmPosRedemptionOnChain({
-      loyaltyTransactionId: cached.loyaltyTransactionId,
-      organizationEndUserId: cached.organizationEndUserId,
-      pointsAmount: cached.pointsAmount,
-      digest: result.digest,
-      sender: beneficiaryAddress ?? cached.organizationEndUserId,
-    });
+    try {
+      await this.creditsRepo.confirmPosRedemptionOnChain({
+        loyaltyTransactionId: cached.loyaltyTransactionId,
+        organizationEndUserId: cached.organizationEndUserId,
+        pointsAmount: cached.pointsAmount,
+        digest: result.digest,
+        sender: beneficiaryAddress,
+      });
+    } catch (err: unknown) {
+      if (!isUniqueViolation(err)) {
+        throw err;
+      }
+      // A concurrent finalize of this same digest (client retry) recorded it first: same
+      // outcome, so answer the retry the same way instead of a 500. It owns the webhook.
+      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);
+      return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
+    }
 
     await this.redis.del(reserveKey(request.digest));
 
@@ -196,16 +217,20 @@ export class PosRedemptionService {
       organizationEndUserId: cached.organizationEndUserId,
       pointsAmount: cached.pointsAmount,
       newBalance,
-      blockchainDigest: blockchainTx.digest,
+      blockchainDigest: result.digest,
     });
 
+    return this.confirmedResponse(cached, newBalance, result.digest);
+  }
+
+  private confirmedResponse(cached: CachedReserve, newBalance: number, digest: string): FinalizePosRedemptionResponse {
     return {
       transactionId: cached.loyaltyTransactionId,
       organizationEndUserId: cached.organizationEndUserId,
       pointsRedeemed: cached.pointsAmount,
       newBalance,
       status: 'CONFIRMED',
-      blockchainDigest: blockchainTx.digest,
+      blockchainDigest: digest,
     };
   }
 }
