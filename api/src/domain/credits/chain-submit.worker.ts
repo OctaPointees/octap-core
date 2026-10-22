@@ -40,7 +40,7 @@ export class ChainSubmitWorker implements OnModuleInit, OnModuleDestroy {
 
   private async recoverStaleOperations(): Promise<void> {
     try {
-      const recovered = await this.operationsRepo.recoverStaleProcessing(STALE_PROCESSING_MS);
+      const recovered = await this.operationsRepo.recoverStaleProcessing(COMMAND_TYPES, STALE_PROCESSING_MS);
       if (recovered.length > 0) {
         this.logger.warn(
           `recovered ${recovered.length} operation(s) stuck in PROCESSING (likely a prior crash) -> UNKNOWN: ${recovered.map((o) => o.id).join(', ')}`,

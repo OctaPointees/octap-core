@@ -12,8 +12,22 @@ export class OperationPayloadConflictError extends Error {
   }
 }
 
-function hashPayload(payload: Record<string, unknown>): string {
-  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+/** JSON with object keys sorted at every level, so the same logical payload always hashes the same. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function hashPayload(payload: Record<string, unknown>): string {
+  return createHash('sha256').update(canonicalJson(payload)).digest('hex');
 }
 
 /**
@@ -37,6 +51,15 @@ export async function acceptCommand(
   });
 
   if (existing) {
+    if (existing.payloadHash === null) {
+      // Accepted before payload hashes existed: nothing to compare against, so adopt this one.
+      const [adopted] = await tx
+        .update(operations)
+        .set({ payloadHash, updatedAt: new Date() })
+        .where(eq(operations.id, existing.id))
+        .returning();
+      return { operation: adopted, isNew: false };
+    }
     if (existing.payloadHash !== payloadHash) {
       throw new OperationPayloadConflictError(params.idempotencyKey);
     }
@@ -116,13 +139,25 @@ export class OperationsRepository {
    * a second business effect, which is exactly what durable commands exist to prevent. Meant to
    * run once at worker startup, before the first poll, so a crashed previous instance's rows
    * are surfaced (not silently stuck forever) rather than reclaimed.
+   *
+   * Scoped to `commandTypes` like `claimNextPending`: each worker only sweeps its own commands,
+   * with its own threshold, never another worker's still-running ones.
    */
-  async recoverStaleProcessing(olderThanMs: number): Promise<(typeof operations.$inferSelect)[]> {
+  async recoverStaleProcessing(
+    commandTypes: string[],
+    olderThanMs: number,
+  ): Promise<(typeof operations.$inferSelect)[]> {
     const cutoff = new Date(Date.now() - olderThanMs);
     return this.db
       .update(operations)
       .set({ status: 'UNKNOWN', updatedAt: new Date() })
-      .where(and(eq(operations.status, 'PROCESSING'), lt(operations.updatedAt, cutoff)))
+      .where(
+        and(
+          eq(operations.status, 'PROCESSING'),
+          inArray(operations.commandType, commandTypes),
+          lt(operations.updatedAt, cutoff),
+        ),
+      )
       .returning();
   }
 }

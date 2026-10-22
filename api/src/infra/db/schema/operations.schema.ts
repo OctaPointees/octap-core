@@ -21,8 +21,9 @@ export const operations = pgTable(
      * auto-retried — that could create a second business effect. */
     status: text('status').notNull().default('PENDING'),
     payload: jsonb('payload').default({}),
-    /** sha256 of `payload`'s canonical JSON, so a replayed idempotency key with a *different*
-     * payload is a conflict instead of silently returning (or overwriting) the original. */
+    /** sha256 of `payload`'s canonical JSON (keys sorted, see `hashPayload`), so a replayed
+     * idempotency key with a *different* payload is a conflict instead of silently returning (or
+     * overwriting) the original. */
     payloadHash: text('payload_hash'),
     suiTxDigest: text('sui_tx_digest'),
     errorMessage: text('error_message'),
