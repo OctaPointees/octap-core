@@ -1,14 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   OctapChainClient,
+  eventField,
+  operationShardIndex,
   signerFromPrivateKey,
   TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
   MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
-  type OctapNetwork,
   type OctapDemoProgramConfig,
+  type OctapNetwork,
   type SubmittedChainTransaction,
 } from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
+import { requireEnv } from '../require-env.js';
+import { configForNetwork } from './network-config.js';
 
 export interface ChainCallResult extends SubmittedChainTransaction {
   /** Convenience lookup: the first value of `field` on any event named `::<eventSuffix>`. */
@@ -18,27 +22,8 @@ export interface ChainCallResult extends SubmittedChainTransaction {
 function toChainCallResult(result: SubmittedChainTransaction): ChainCallResult {
   return {
     ...result,
-    eventField(eventSuffix, field) {
-      const event = result.events.find((e) => e.type.endsWith(`::${eventSuffix}`));
-      return (event?.parsedJson as Record<string, unknown> | undefined)?.[field] as never;
-    },
+    eventField: (eventSuffix, field) => eventField(result, eventSuffix, field) as never,
   };
-}
-
-/**
- * Picks the demo program config for `network` — object ids, not secrets, so they're committed
- * constants in `@octap/chain` (same reasoning as `@walrus-console/bucket-groups`'
- * `TESTNET_BUCKET_GROUP_PACKAGE_CONFIG`), not individual env vars. `SUI_NETWORK` is the only env
- * knob this depends on.
- */
-function demoProgramConfig(network: OctapNetwork): OctapDemoProgramConfig {
-  if (network === 'testnet') {
-    return TESTNET_OCTAP_DEMO_PROGRAM_CONFIG;
-  }
-  if (network === 'mainnet' && MAINNET_OCTAP_DEMO_PROGRAM_CONFIG) {
-    return MAINNET_OCTAP_DEMO_PROGRAM_CONFIG;
-  }
-  throw new Error(`Sui chain adapter: no demo program configured for network "${network}"`);
 }
 
 /**
@@ -55,7 +40,11 @@ function demoProgramConfig(network: OctapNetwork): OctapDemoProgramConfig {
 export class SuiClientService {
   private readonly logger = new Logger(SuiClientService.name);
   private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
-  private readonly programConfig = demoProgramConfig(this.network);
+  private readonly programConfig = configForNetwork(
+    this.network,
+    { testnet: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG, mainnet: MAINNET_OCTAP_DEMO_PROGRAM_CONFIG },
+    'demo program',
+  );
   private chainClient?: OctapChainClient;
   private signer?: Signer;
 
@@ -68,7 +57,7 @@ export class SuiClientService {
 
   private get issuerSigner(): Signer {
     if (!this.signer) {
-      this.signer = signerFromPrivateKey(requireEnv('SUI_ISSUER_PRIVATE_KEY'));
+      this.signer = signerFromPrivateKey(requireEnv('SUI_ISSUER_PRIVATE_KEY', 'Sui chain adapter'));
     }
     return this.signer;
   }
@@ -90,13 +79,17 @@ export class SuiClientService {
   }
 
   async earn(params: { accountId: string; purchaseAmount: number; operationKey: string }): Promise<ChainCallResult> {
+    const operationKey = new TextEncoder().encode(params.operationKey);
+    const { operationShardId, budgetShardId } = selectShards(this.programConfig, operationKey);
     const tx = this.client.buildEarnTransaction({
       issuerCapId: this.programConfig.issuerCapId,
       programId: this.programConfig.programControlId,
       policyId: this.programConfig.policyVersionId,
       accountId: params.accountId,
+      operationShardId,
+      budgetShardId,
       purchaseAmount: params.purchaseAmount,
-      operationKey: new TextEncoder().encode(params.operationKey),
+      operationKey,
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(`earn ${params.purchaseAmount} purchase units -> account ${params.accountId}`);
@@ -114,10 +107,20 @@ export class SuiClientService {
   // routing it through this service.
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var ${name} for the Sui chain adapter`);
+/**
+ * The operation/budget shard pair that owns `operationKey`. Both share one index by design (see
+ * `budget_shard.move`), so a program's two shard lists must be the same non-zero length.
+ */
+export function selectShards(
+  config: Pick<OctapDemoProgramConfig, 'operationShardIds' | 'budgetShardIds'>,
+  operationKey: Uint8Array,
+): { operationShardId: string; budgetShardId: string } {
+  const shardCount = config.operationShardIds.length;
+  if (shardCount === 0 || config.budgetShardIds.length !== shardCount) {
+    throw new Error(
+      `Sui chain adapter: program has ${shardCount} operation shard(s) and ${config.budgetShardIds.length} budget shard(s); expected the same non-zero count`,
+    );
   }
-  return value;
+  const index = operationShardIndex(operationKey, shardCount);
+  return { operationShardId: config.operationShardIds[index], budgetShardId: config.budgetShardIds[index] };
 }

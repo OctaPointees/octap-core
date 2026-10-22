@@ -1,11 +1,15 @@
 export {
   OctapChainClient,
+  eventField,
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
   type OpenAccountParams,
   type EarnParams,
   type RedeemParams,
+  type PublishPolicyParams,
+  type ActivatePolicyAndIssueCapParams,
+  type CreateShardsParams,
   type SubmittedChainTransaction,
 } from './client.js';
 export {
@@ -16,3 +20,4 @@ export {
   type OctapPackageConfig,
   type OctapDemoProgramConfig,
 } from './constants.js';
+export { operationShardIndex } from './shards.js';

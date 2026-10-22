@@ -4,15 +4,16 @@
 /// first, because the business rule is "use-it-or-lose-it by date," not
 /// "spend any credit you own."
 ///
-/// Anti-replay for `operation_key` is intentionally not enforced here yet
-/// (see docs/roadmap.md `OperationShard`): PostgreSQL's idempotency key
-/// already rejects a duplicate command before it reaches this module, and
-/// a dedicated sharded replay table is future work once issuance volume
-/// needs it. `operation_key` is still threaded through so the emitted
-/// event can be correlated with the off-chain command that caused it.
+/// Anti-replay for `operation_key` is enforced on-chain by `earn` via the
+/// program's `OperationShard`s, on top of PostgreSQL's idempotency key, and
+/// every earn is debited from the program's `BudgetShard` for the same key.
+/// `operation_key` is also emitted on `CreditEarned` so the event can be
+/// correlated with the off-chain command that caused it.
 module octap::credit_account;
 
+use octap::budget_shard::{Self, BudgetShard};
 use octap::capabilities::{Self, IssuerCap};
+use octap::operation_shard::{Self, OperationShard};
 use octap::program_control::{Self, ProgramControl};
 use octap::policy_version::{Self, PolicyVersion};
 use sui::clock::{Self, Clock};
@@ -94,11 +95,18 @@ entry fun open_account(issuer: &IssuerCap, program: &ProgramControl, beneficiary
 /// active policy. The amount is derived on-chain from `purchase_amount`
 /// and `policy`'s earn ratio rather than trusted from the caller, which
 /// is what makes the policy an enforced rule instead of a suggestion.
+///
+/// `operation_shard` and `budget_shard` must be the program's shards that
+/// own `operation_key` (see `operation_shard::shard_index_for`): a replayed
+/// key aborts `operation_shard::EDuplicateOperation`, and an earn that
+/// would overdraw its budget shard aborts `budget_shard::EBudgetExceeded`.
 entry fun earn(
     issuer: &IssuerCap,
     program: &ProgramControl,
     policy: &PolicyVersion,
     account: &mut CreditAccount,
+    operation_shard: &mut OperationShard,
+    budget_shard: &mut BudgetShard,
     purchase_amount: u64,
     operation_key: vector<u8>,
     clock: &Clock,
@@ -111,6 +119,9 @@ entry fun earn(
 
     let amount = (((purchase_amount as u128) * (policy_version::earn_bps(policy) as u128)) / 10_000) as u64;
     assert!(amount > 0, EZeroEarn);
+
+    operation_shard::check_and_record(operation_shard, account.program_id, copy operation_key);
+    budget_shard::debit(budget_shard, account.program_id, &operation_key, amount);
 
     let expires_at_ms = clock::timestamp_ms(clock) + policy_version::expiry_ms(policy);
     vector::push_back(&mut account.buckets, Bucket { expires_at_ms, amount });

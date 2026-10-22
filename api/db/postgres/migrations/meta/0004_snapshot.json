@@ -1,5 +1,5 @@
 {
-  "id": "12764b68-e769-4dc4-8aa6-2354903453f8",
+  "id": "17eabd71-26e5-4df6-b3e7-9aeb694174cc",
   "prevId": "42991f53-6c80-49f1-94ae-58eed1a38dea",
   "version": "7",
   "dialect": "postgresql",
@@ -2264,12 +2264,6 @@
           "notNull": false,
           "default": "'{}'::jsonb"
         },
-        "payload_hash": {
-          "name": "payload_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "sui_tx_digest": {
           "name": "sui_tx_digest",
           "type": "text",
@@ -2565,6 +2559,128 @@
             "authenticated"
           ],
           "using": "\"webhook_endpoints\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.programs": {
+      "name": "programs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PROVISIONING'"
+        },
+        "program_control_id": {
+          "name": "program_control_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admin_cap_id": {
+          "name": "admin_cap_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_version_id": {
+          "name": "policy_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issuer_cap_id": {
+          "name": "issuer_cap_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_version": {
+          "name": "policy_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "earn_bps": {
+          "name": "earn_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_ms": {
+          "name": "expiry_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "programs_organization_id_idx": {
+          "name": "programs_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "programs_organization_id_organizations_id_fk": {
+          "name": "programs_organization_id_organizations_id_fk",
+          "tableFrom": "programs",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_can_view_own_program": {
+          "name": "tenant_can_view_own_program",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "authenticated"
+          ],
+          "using": "\"programs\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
         }
       },
       "checkConstraints": {},
