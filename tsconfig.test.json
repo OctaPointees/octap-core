@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "paths": {
+      "@octap/contracts": ["./ts-sdks/packages/contracts/src/index.ts"],
+      "@octap/chain": ["./ts-sdks/packages/chain/src/index.ts"],
+      "@octap/sdk": ["./ts-sdks/packages/node/src/index.ts"],
+      "@octap/browser-sdk": ["./ts-sdks/packages/browser/src/index.ts"]
+    }
+  },
+  "include": ["vitest.config.ts", "api/tests/**/*.ts", "ts-sdks/packages/*/tests/**/*.ts"]
+}

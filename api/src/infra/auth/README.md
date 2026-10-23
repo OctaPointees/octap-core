@@ -20,6 +20,11 @@ Server-to-server authentication and tenant resolution for the REST API.
   `Authorization: Bearer` aren't broken by it.
 - `api-credentials.service.ts` / `api-credentials.repository.ts`: issue, list, revoke, rotate.
   The raw key is returned exactly once, on issue/rotate; only its SHA-256 hash is persisted.
+- `public.decorator.ts`: `@Public()` opts a route or controller out of the guard entirely. Only
+  for customer-device endpoints whose caller never holds a merchant credential and where
+  something else proves authorization: `IdentityController` (Google id_token, validated by Enoki)
+  and `POST /v1/credits/redeem/finalize` (the customer's zkLogin signature over the sponsored
+  digest). A public route has no `request.tenant`.
 - `scopes.decorator.ts`, `tenant.decorator.ts`, `tenant-context.ts`: route-level plumbing.
 
 Not implemented yet: mTLS (deliberately — see `docs/roadmap.md` for why) and system-user

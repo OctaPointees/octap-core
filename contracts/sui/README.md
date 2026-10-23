@@ -58,7 +58,7 @@ ProgramAdminCap must stay outside API workers. Points are non-transferable and t
 non-beneficiary redeem rejection, overspend rejection, expired-bucket exclusion from `spendable`,
 earn rejection while a program is paused or with a cross-program `IssuerCap`, replayed
 `operation_key` and wrong-shard rejection, budget-shard overdraw and per-shard isolation, and a
-shard-index fixture shared with `scripts/test-unit.mjs`. Run with:
+shard-index fixture shared with `api/tests/unit/infra/clients/sui.client.test.ts`. Run with:
 
 ```sh
 sui move test

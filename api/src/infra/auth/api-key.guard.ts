@@ -13,6 +13,7 @@ import { REDIS_CLIENT } from '../cache/redis.provider.js';
 import { ApiCredentialsRepository } from '../db/repositories/api-credentials.repository.js';
 import { hashApiKey } from './api-key-hash.util.js';
 import { claimNonce } from './nonce-store.util.js';
+import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { checkRateLimit } from './rate-limit.util.js';
 import { buildCanonicalRequest, isTimestampFresh, verifyCanonicalSignature } from './request-signing.util.js';
 import { REQUIRE_SIGNED_REQUEST_KEY } from './signed-request.decorator.js';
@@ -31,7 +32,8 @@ interface SignableRequest {
  * Authenticates server-to-server requests via `Authorization: Bearer <api key>`, resolving
  * the tenant strictly from the matched credential — never from a client-supplied header.
  * Also enforces any `@Scopes(...)`, a per-credential rate limit, and — on routes marked
- * `@RequireSignedRequest()` — HMAC request signing with replay protection.
+ * `@RequireSignedRequest()` — HMAC request signing with replay protection. Routes marked
+ * `@Public()` (customer-device endpoints) skip all of it.
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -42,6 +44,12 @@ export class ApiKeyGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic =
+      this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()]) ?? false;
+    if (isPublic) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const authHeader: string | undefined = request.headers['authorization'];
     const rawKey = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : undefined;
