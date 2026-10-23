@@ -61,6 +61,15 @@ export class SuiTransactionBuilderClient {
     return this.client.waitForTransaction(digest);
   }
 
+  /** One lookup by digest, no polling; null if the chain has no such transaction. Read-only. */
+  async findTransaction(digest: string): Promise<SubmittedChainTransaction | null> {
+    return this.client.findTransaction(digest);
+  }
+
+  async currentEpoch(): Promise<bigint> {
+    return this.client.currentEpoch();
+  }
+
   /** Read-only event stream for `domain/indexer` — no signer, same reasoning as the rest of this class. */
   async listCreditAccountEvents(options: {
     after?: string | null;

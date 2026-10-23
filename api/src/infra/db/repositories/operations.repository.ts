@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, lt } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
 
@@ -116,6 +116,82 @@ export class OperationsRepository {
       }
     }
     return claimed;
+  }
+
+  /**
+   * Records the digest of a transaction about to be sent, before it is sent: from here on an
+   * outcome-unknown submit can be resolved by asking the chain about exactly this digest
+   * (`ChainOutcomeReconciler`). Settled rows (SUBMITTED/FAILED) are left alone.
+   */
+  async recordSubmitDigest(id: string, suiTxDigest: string, expirationEpoch: bigint | null) {
+    await this.db
+      .update(operations)
+      .set({ suiTxDigest, suiTxExpirationEpoch: expirationEpoch, updatedAt: new Date() })
+      .where(and(eq(operations.id, id), inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN'])));
+  }
+
+  /**
+   * `recordSubmitDigest` for a command known by its idempotency key rather than its id. Returns the
+   * operation's id, or null if it was already settled.
+   */
+  async recordSubmitDigestForCommand(
+    params: { tenantId: string; idempotencyKey: string; suiTxDigest: string; expirationEpoch: bigint | null },
+  ): Promise<string | null> {
+    const rows = await this.db
+      .update(operations)
+      .set({ suiTxDigest: params.suiTxDigest, suiTxExpirationEpoch: params.expirationEpoch, updatedAt: new Date() })
+      .where(
+        and(
+          eq(operations.tenantId, params.tenantId),
+          eq(operations.idempotencyKey, params.idempotencyKey),
+          inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+        ),
+      )
+      .returning({ id: operations.id });
+    return rows[0]?.id ?? null;
+  }
+
+  /**
+   * Commands whose chain outcome nobody has learned, untouched for `olderThanMs`, oldest first:
+   * UNKNOWN chain-submit earns, and POS redemptions whose finalize recorded a digest but never
+   * settled (`executeSponsoredRedeem` or the wait after it threw). A POS reserve with no digest was
+   * never finalized, so there is nothing on-chain to ask about.
+   */
+  async listUnresolvedChainOutcomes(params: { earnCommandType: string; posCommandType: string; olderThanMs: number; limit: number }) {
+    const cutoff = new Date(Date.now() - params.olderThanMs);
+    return this.db.query.operations.findMany({
+      where: and(
+        lt(operations.updatedAt, cutoff),
+        or(
+          and(eq(operations.commandType, params.earnCommandType), eq(operations.status, 'UNKNOWN')),
+          and(
+            eq(operations.commandType, params.posCommandType),
+            inArray(operations.status, ['PENDING', 'UNKNOWN']),
+            isNotNull(operations.suiTxDigest),
+          ),
+        ),
+      ),
+      orderBy: [asc(operations.updatedAt)],
+      limit: params.limit,
+    });
+  }
+
+  /**
+   * Settles a command from its chain outcome, unless someone else (the indexer, the synchronous
+   * path) already did. Returns whether this call settled it.
+   */
+  async settleFromChain(id: string, status: 'SUBMITTED' | 'FAILED', errorMessage?: string): Promise<boolean> {
+    const rows = await this.db
+      .update(operations)
+      .set({ status, ...(errorMessage ? { errorMessage } : {}), updatedAt: new Date() })
+      .where(and(eq(operations.id, id), inArray(operations.status, ['PENDING', 'UNKNOWN'])))
+      .returning({ id: operations.id });
+    return rows.length > 0;
+  }
+
+  /** Pushes a still-undecidable command to the back of `listUnresolvedChainOutcomes`' queue. */
+  async touch(id: string) {
+    await this.db.update(operations).set({ updatedAt: new Date() }).where(eq(operations.id, id));
   }
 
   async markSubmitted(id: string, suiTxDigest: string) {
