@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CreditAccountEvent, CreditAccountEventPage } from '@octap/chain';
-import { CheckpointIndexerProcessor } from '../../../../src/domain/indexer/checkpoint-indexer.processor.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { IndexerRepository } from '../../../../src/infra/db/repositories/indexer.repository.js';
-import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import type { DrizzleDb } from '../../../../src/infra/db/postgres.provider.js';
+import { CheckpointIndexerProcessor } from '#domain/indexer/checkpoint-indexer.processor.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
+import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { stub } from '../../../helpers/stub.js';
 import { b64, buildLoyaltyTransaction, earnedEvent } from '../../../helpers/fixtures.js';
 
@@ -33,7 +33,11 @@ function fakeIndexerStore(initial: CursorRow | undefined) {
       const tx: FakeTx = { writes: [] };
       const result = await work(tx);
       store.committedWrites.push(...tx.writes);
-      store.row = { ...store.row!, cursor: page.nextCursor, lastCheckpoint: page.lastCheckpoint ?? store.row!.lastCheckpoint };
+      store.row = {
+        ...store.row!,
+        cursor: page.nextCursor,
+        lastCheckpoint: page.lastCheckpoint ?? store.row!.lastCheckpoint,
+      };
       return result;
     },
   };
@@ -41,9 +45,18 @@ function fakeIndexerStore(initial: CursorRow | undefined) {
 }
 
 const pendingEarnRow = (overrides: Parameters<typeof buildLoyaltyTransaction>[0] = {}) =>
-  buildLoyaltyTransaction({ id: 'ltx-earn-1', status: 'PENDING', pointsAmount: 10000, idempotencyKey: 'idem-earn-1', ...overrides });
+  buildLoyaltyTransaction({
+    id: 'ltx-earn-1',
+    status: 'PENDING',
+    pointsAmount: 10000,
+    idempotencyKey: 'idem-earn-1',
+    ...overrides,
+  });
 
-const page = (events: CreditAccountEvent[], overrides: Partial<CreditAccountEventPage> = {}): CreditAccountEventPage => ({
+const page = (
+  events: CreditAccountEvent[],
+  overrides: Partial<CreditAccountEventPage> = {},
+): CreditAccountEventPage => ({
   events,
   hasNextPage: false,
   startCursor: 'C1',
@@ -78,12 +91,21 @@ const redeemedEvent = (reference: unknown, overrides: Partial<CreditAccountEvent
 });
 const LOYALTY_ID = '0b3c1f9e-6a55-4d0b-9a63-2f1d7d1e8c11';
 const pendingRedeemRow = (overrides: Parameters<typeof buildLoyaltyTransaction>[0] = {}) =>
-  buildLoyaltyTransaction({ id: LOYALTY_ID, transactionType: 'REDEEM', status: 'PENDING', pointsAmount: 50, idempotencyKey: 'idem-pos-1', ...overrides });
+  buildLoyaltyTransaction({
+    id: LOYALTY_ID,
+    transactionType: 'REDEEM',
+    status: 'PENDING',
+    pointsAmount: 50,
+    idempotencyKey: 'idem-pos-1',
+    ...overrides,
+  });
 
 describe('CheckpointIndexerProcessor.processNextPage', () => {
   it('first run starts from the stream head, not genesis', async () => {
     const store = fakeIndexerStore(undefined);
-    const listCreditAccountEvents = vi.fn(async () => page([earnedEvent({ checkpoint: '900' })], { hasNextPage: true, startCursor: 'HEAD', endCursor: 'HEAD' }));
+    const listCreditAccountEvents = vi.fn(async () =>
+      page([earnedEvent({ checkpoint: '900' })], { hasNextPage: true, startCursor: 'HEAD', endCursor: 'HEAD' }),
+    );
 
     expect(await processor(store.repo, {}, {}, { listCreditAccountEvents }).processNextPage()).toBe(true);
 
@@ -94,7 +116,12 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
   it('first run on an empty stream starts from a null cursor', async () => {
     const store = fakeIndexerStore(undefined);
 
-    await processor(store.repo, {}, {}, { listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }) }).processNextPage();
+    await processor(
+      store.repo,
+      {},
+      {},
+      { listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }) },
+    ).processNextPage();
 
     expect(store.row).toEqual({ streamName: 'octap::credit_account', cursor: null, lastCheckpoint: null });
   });
@@ -110,7 +137,14 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     });
     const listCreditAccountEvents = vi.fn(async () =>
       page([
-        { name: 'CreditAccountOpened', sender: '0xissuer', json: { account_id: '0xacc1' }, checkpoint: '499', transactionDigest: 'D0', eventIndex: 0 },
+        {
+          name: 'CreditAccountOpened',
+          sender: '0xissuer',
+          json: { account_id: '0xacc1' },
+          checkpoint: '499',
+          transactionDigest: 'D0',
+          eventIndex: 0,
+        },
         earnedEvent(),
       ]),
     );
@@ -118,7 +152,8 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     const more = await processor(
       store.repo,
       {
-        findCreditOwnershipBySuiAccountId: async (accountId: string) => (accountId === '0xacc1' ? { organizationEndUserId: 'user-1' } : undefined),
+        findCreditOwnershipBySuiAccountId: async (accountId: string) =>
+          accountId === '0xacc1' ? { organizationEndUserId: 'user-1' } : undefined,
         findTransactionByMemberAndIdempotency: async (memberId: string, key: string) =>
           memberId === 'user-1' && key === 'idem-earn-1' ? pendingEarnRow() : undefined,
         confirmEarnOnChain,
@@ -162,7 +197,9 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       {
         findCreditOwnershipBySuiAccountId: ownedAccount,
         findTransactionByMemberAndIdempotency: async (_memberId: string, key: string) =>
-          key === 'already-confirmed' ? pendingEarnRow({ status: 'CONFIRMED' }) : pendingEarnRow({ idempotencyKey: key }),
+          key === 'already-confirmed'
+            ? pendingEarnRow({ status: 'CONFIRMED' })
+            : pendingEarnRow({ idempotencyKey: key }),
         confirmEarnOnChain,
       },
       { markSubmittedFromChain },
@@ -178,7 +215,10 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     expect(confirmEarnOnChain).toHaveBeenCalledOnce();
     // The CONFIRMED row's operation may have been left UNKNOWN by a failed markSubmitted; the event settles it.
     expect(markSubmittedFromChain).toHaveBeenCalledOnce();
-    expect(markSubmittedFromChain).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'idem-earn-1' }), expect.anything());
+    expect(markSubmittedFromChain).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: 'idem-earn-1' }),
+      expect.anything(),
+    );
     expect(store.row?.cursor).toBe('C2');
   });
 
@@ -190,7 +230,8 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       store.repo,
       {
         findCreditOwnershipBySuiAccountId: ownedAccount,
-        findTransactionByMemberAndIdempotency: async (_memberId: string, key: string) => pendingEarnRow({ idempotencyKey: key }),
+        findTransactionByMemberAndIdempotency: async (_memberId: string, key: string) =>
+          pendingEarnRow({ idempotencyKey: key }),
         confirmEarnOnChain: async (params: { digest: string }, t: FakeTx) => {
           if (crashOnSecond && params.digest === 'D2') {
             throw new Error('process killed');
@@ -204,8 +245,14 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
         listCreditAccountEvents: async ({ after }: { after: string }) => {
           afterSeen.push(after);
           return page([
-            earnedEvent({ transactionDigest: 'D1', json: { account_id: '0xacc1', amount: '1', operation_key: b64('k1') } }),
-            earnedEvent({ transactionDigest: 'D2', json: { account_id: '0xacc1', amount: '2', operation_key: b64('k2') } }),
+            earnedEvent({
+              transactionDigest: 'D1',
+              json: { account_id: '0xacc1', amount: '1', operation_key: b64('k1') },
+            }),
+            earnedEvent({
+              transactionDigest: 'D2',
+              json: { account_id: '0xacc1', amount: '2', operation_key: b64('k2') },
+            }),
           ]);
         },
       },
@@ -240,10 +287,19 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     ).processNextPage();
 
     expect(confirmPosRedemptionOnChain).toHaveBeenCalledWith(
-      { loyaltyTransactionId: LOYALTY_ID, organizationEndUserId: 'user-1', pointsAmount: 50, digest: 'DIGEST-REDEEM', sender: '0xbeneficiary' },
+      {
+        loyaltyTransactionId: LOYALTY_ID,
+        organizationEndUserId: 'user-1',
+        pointsAmount: 50,
+        digest: 'DIGEST-REDEEM',
+        sender: '0xbeneficiary',
+      },
       expect.anything(),
     );
-    expect(markSubmittedFromChain).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'idem-pos-1' }), expect.anything());
+    expect(markSubmittedFromChain).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: 'idem-pos-1' }),
+      expect.anything(),
+    );
     expect(store.row?.lastCheckpoint).toBe('700');
   });
 
@@ -251,9 +307,14 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C5', lastCheckpoint: '800' });
     store.repo.commitPage = async () => expect.fail('nothing to commit');
 
-    const more = await processor(store.repo, {}, {}, {
-      listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }),
-    }).processNextPage();
+    const more = await processor(
+      store.repo,
+      {},
+      {},
+      {
+        listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }),
+      },
+    ).processNextPage();
 
     expect(more).toBe(false);
     expect(store.row?.cursor).toBe('C5');
@@ -262,9 +323,14 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
   it('a scan-limited empty page still advances the cursor and keeps the last checkpoint', async () => {
     const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C5', lastCheckpoint: '800' });
 
-    const more = await processor(store.repo, {}, {}, {
-      listCreditAccountEvents: async () => page([], { hasNextPage: true, endCursor: 'C6' }),
-    }).processNextPage();
+    const more = await processor(
+      store.repo,
+      {},
+      {},
+      {
+        listCreditAccountEvents: async () => page([], { hasNextPage: true, endCursor: 'C6' }),
+      },
+    ).processNextPage();
 
     expect(more).toBe(true);
     expect(store.row).toMatchObject({ cursor: 'C6', lastCheckpoint: '800' });
@@ -279,18 +345,34 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
 
     await processor(
       store.repo,
-      { findCreditOwnershipBySuiAccountId: ownedAccount, findMemberOrganizationId: async () => 'org-1', expireDueBucketsForMember },
+      {
+        findCreditOwnershipBySuiAccountId: ownedAccount,
+        findMemberOrganizationId: async () => 'org-1',
+        expireDueBucketsForMember,
+      },
       {},
       {
         listCreditAccountEvents: async () =>
           page(
-            [{ name: 'CreditExpired', sender: '0xbeneficiary', json: { account_id: '0xacc1', amount: '2500' }, checkpoint: '900', transactionDigest: 'D-EXP', eventIndex: 0 }],
+            [
+              {
+                name: 'CreditExpired',
+                sender: '0xbeneficiary',
+                json: { account_id: '0xacc1', amount: '2500' },
+                checkpoint: '900',
+                transactionDigest: 'D-EXP',
+                eventIndex: 0,
+              },
+            ],
             { endCursor: 'C1' },
           ),
       },
     ).processNextPage();
 
-    expect(expireDueBucketsForMember).toHaveBeenCalledWith({ organizationId: 'org-1', organizationEndUserId: 'user-1' }, expect.anything());
+    expect(expireDueBucketsForMember).toHaveBeenCalledWith(
+      { organizationId: 'org-1', organizationEndUserId: 'user-1' },
+      expect.anything(),
+    );
     expect(store.committedWrites).toEqual(['expire']);
   });
 
@@ -304,7 +386,9 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       {
         findCreditOwnershipBySuiAccountId: ownedAccount,
         findTransactionByMemberAndIdempotency: async (_memberId: string, key: string) =>
-          key === 'old-earn' ? pendingEarnRow({ id: 'ltx-old', status: 'CONFIRMED', idempotencyKey: key }) : pendingEarnRow(),
+          key === 'old-earn'
+            ? pendingEarnRow({ id: 'ltx-old', status: 'CONFIRMED', idempotencyKey: key })
+            : pendingEarnRow(),
         ensureEarnBucket,
         confirmEarnOnChain,
       },
@@ -312,8 +396,22 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       {
         listCreditAccountEvents: async () =>
           page([
-            earnedEvent({ json: { account_id: '0xacc1', amount: '2500', operation_key: b64('old-earn'), bucket_expires_at_ms: '1794560971900' } }),
-            earnedEvent({ json: { account_id: '0xacc1', amount: '100', operation_key: b64('idem-earn-1'), bucket_expires_at_ms: '1794560999999' } }),
+            earnedEvent({
+              json: {
+                account_id: '0xacc1',
+                amount: '2500',
+                operation_key: b64('old-earn'),
+                bucket_expires_at_ms: '1794560971900',
+              },
+            }),
+            earnedEvent({
+              json: {
+                account_id: '0xacc1',
+                amount: '100',
+                operation_key: b64('idem-earn-1'),
+                bucket_expires_at_ms: '1794560999999',
+              },
+            }),
           ]),
       },
     ).processNextPage();
@@ -322,7 +420,10 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       { organizationEndUserId: 'user-1', earnTransactionId: 'ltx-old', amount: 2500, expiresAtMs: 1794560971900 },
       expect.anything(),
     );
-    expect(confirmEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ bucketExpiresAtMs: 1794560999999 }), expect.anything());
+    expect(confirmEarnOnChain).toHaveBeenCalledWith(
+      expect.objectContaining({ bucketExpiresAtMs: 1794560999999 }),
+      expect.anything(),
+    );
   });
 });
 
@@ -336,7 +437,10 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
     ['a non-numeric amount', { account_id: '0xacc1', amount: 'lots' }],
     ['a null payload', null],
   ])('skips an event with %s', async (_label, json) => {
-    const indexer = processor({}, { findCreditOwnershipBySuiAccountId: () => expect.fail('nothing usable to look up') });
+    const indexer = processor(
+      {},
+      { findCreditOwnershipBySuiAccountId: () => expect.fail('nothing usable to look up') },
+    );
     expect(await indexer.applyEvent(earnedEvent({ json: json as Record<string, unknown> | null }), tx)).toBe('skipped');
   });
 
@@ -346,32 +450,43 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
   });
 
   it('rethrows an error that is not a unique violation', async () => {
-    const indexer = processor({}, {
-      findCreditOwnershipBySuiAccountId: ownedAccount,
-      findTransactionByMemberAndIdempotency: async () => {
-        throw new Error('connection reset');
+    const indexer = processor(
+      {},
+      {
+        findCreditOwnershipBySuiAccountId: ownedAccount,
+        findTransactionByMemberAndIdempotency: async () => {
+          throw new Error('connection reset');
+        },
       },
-    });
+    );
     await expect(indexer.applyEvent(earnedEvent(), tx)).rejects.toThrow('connection reset');
   });
 
   it('treats a raw postgres-js unique violation as already applied', async () => {
-    const indexer = processor({}, {
-      findCreditOwnershipBySuiAccountId: ownedAccount,
-      findTransactionByMemberAndIdempotency: async () => {
-        throw Object.assign(new Error('duplicate key'), { code: '23505' });
+    const indexer = processor(
+      {},
+      {
+        findCreditOwnershipBySuiAccountId: ownedAccount,
+        findTransactionByMemberAndIdempotency: async () => {
+          throw Object.assign(new Error('duplicate key'), { code: '23505' });
+        },
       },
-    });
+    );
     expect(await indexer.applyEvent(earnedEvent(), tx)).toBe('skipped');
   });
 
   describe('CreditEarned', () => {
     it('decodes a JSON-RPC style number-array operation key too', async () => {
       const findTransactionByMemberAndIdempotency = vi.fn(async () => undefined);
-      const indexer = processor({}, { findCreditOwnershipBySuiAccountId: ownedAccount, findTransactionByMemberAndIdempotency });
+      const indexer = processor(
+        {},
+        { findCreditOwnershipBySuiAccountId: ownedAccount, findTransactionByMemberAndIdempotency },
+      );
 
       await indexer.applyEvent(
-        earnedEvent({ json: { account_id: '0xacc1', amount: '1', operation_key: Array.from(Buffer.from('idem-arr')) } }),
+        earnedEvent({
+          json: { account_id: '0xacc1', amount: '1', operation_key: Array.from(Buffer.from('idem-arr')) },
+        }),
         tx,
       );
 
@@ -383,22 +498,31 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       ['an operation key of the wrong shape', { not: 'bytes' }],
       ['an array containing non-numbers', ['a', 'b']],
     ])('skips %s', async (_label, operationKey) => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        findTransactionByMemberAndIdempotency: () => expect.fail('no key to look up'),
-      });
-      expect(await indexer.applyEvent(earnedEvent({ json: { account_id: '0xacc1', amount: '1', operation_key: operationKey } }), tx)).toBe(
-        'skipped',
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          findTransactionByMemberAndIdempotency: () => expect.fail('no key to look up'),
+        },
       );
+      expect(
+        await indexer.applyEvent(
+          earnedEvent({ json: { account_id: '0xacc1', amount: '1', operation_key: operationKey } }),
+          tx,
+        ),
+      ).toBe('skipped');
     });
 
     it('skips when no loyalty transaction (or a non-EARN one) has that key', async () => {
       for (const row of [undefined, pendingEarnRow({ transactionType: 'REDEEM' })]) {
-        const indexer = processor({}, {
-          findCreditOwnershipBySuiAccountId: ownedAccount,
-          findTransactionByMemberAndIdempotency: async () => row,
-          confirmEarnOnChain: () => expect.fail('nothing to confirm'),
-        });
+        const indexer = processor(
+          {},
+          {
+            findCreditOwnershipBySuiAccountId: ownedAccount,
+            findTransactionByMemberAndIdempotency: async () => row,
+            confirmEarnOnChain: () => expect.fail('nothing to confirm'),
+          },
+        );
         expect(await indexer.applyEvent(earnedEvent(), tx)).toBe('skipped');
       }
     });
@@ -420,11 +544,14 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
     });
 
     it.each(['FAILED', 'REVERSED'] as const)('skips a %s earn', async (status) => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        findTransactionByMemberAndIdempotency: async () => pendingEarnRow({ status }),
-        confirmEarnOnChain: () => expect.fail('a terminal row is never re-confirmed'),
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          findTransactionByMemberAndIdempotency: async () => pendingEarnRow({ status }),
+          confirmEarnOnChain: () => expect.fail('a terminal row is never re-confirmed'),
+        },
+      );
       expect(await indexer.applyEvent(earnedEvent(), tx)).toBe('skipped');
     });
 
@@ -460,10 +587,13 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       ['a missing reference', undefined],
       ['a reference that is not a uuid', b64('not-a-uuid')],
     ])('skips %s', async (_label, reference) => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        getLoyaltyTransactionById: () => expect.fail('nothing to look up'),
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          getLoyaltyTransactionById: () => expect.fail('nothing to look up'),
+        },
+      );
       expect(await indexer.applyEvent(redeemedEvent(reference), tx)).toBe('skipped');
     });
 
@@ -474,11 +604,14 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       ['a FAILED transaction', pendingRedeemRow({ status: 'FAILED' })],
       ['an amount mismatch', pendingRedeemRow({ pointsAmount: 49 })],
     ])('skips %s', async (_label, row) => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        getLoyaltyTransactionById: async () => row,
-        confirmPosRedemptionOnChain: () => expect.fail('must not confirm'),
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          getLoyaltyTransactionById: async () => row,
+          confirmPosRedemptionOnChain: () => expect.fail('must not confirm'),
+        },
+      );
       expect(await indexer.applyEvent(redeemedEvent(b64(LOYALTY_ID)), tx)).toBe('skipped');
     });
 
@@ -486,7 +619,10 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       const markSubmittedFromChain = vi.fn(async () => {});
       const indexer = processor(
         {},
-        { findCreditOwnershipBySuiAccountId: ownedAccount, getLoyaltyTransactionById: async () => pendingRedeemRow({ status: 'CONFIRMED' }) },
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          getLoyaltyTransactionById: async () => pendingRedeemRow({ status: 'CONFIRMED' }),
+        },
         { markSubmittedFromChain },
       );
 
@@ -535,29 +671,38 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
     };
 
     it('skips a member whose organization can no longer be found', async () => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        findMemberOrganizationId: async () => null,
-        expireDueBucketsForMember: () => expect.fail('no member to sweep'),
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          findMemberOrganizationId: async () => null,
+          expireDueBucketsForMember: () => expect.fail('no member to sweep'),
+        },
+      );
       expect(await indexer.applyEvent(expired, tx)).toBe('skipped');
     });
 
     it('a sweep that forfeits nothing (a read got there first) is a skip', async () => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        findMemberOrganizationId: async () => 'org-1',
-        expireDueBucketsForMember: async () => 0,
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          findMemberOrganizationId: async () => 'org-1',
+          expireDueBucketsForMember: async () => 0,
+        },
+      );
       expect(await indexer.applyEvent(expired, tx)).toBe('skipped');
     });
 
     it('a sweep that forfeits points is a confirmation', async () => {
-      const indexer = processor({}, {
-        findCreditOwnershipBySuiAccountId: ownedAccount,
-        findMemberOrganizationId: async () => 'org-1',
-        expireDueBucketsForMember: async () => 10,
-      });
+      const indexer = processor(
+        {},
+        {
+          findCreditOwnershipBySuiAccountId: ownedAccount,
+          findMemberOrganizationId: async () => 'org-1',
+          expireDueBucketsForMember: async () => 10,
+        },
+      );
       expect(await indexer.applyEvent(expired, tx)).toBe('confirmed');
     });
   });

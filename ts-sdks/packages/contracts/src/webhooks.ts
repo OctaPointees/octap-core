@@ -36,10 +36,7 @@ export interface WebhookDeliveryDto {
 
 /** Every event OctaP delivers; sent as `x-octap-event-type` and as the body's `type`. */
 export type WebhookEventType =
-  | 'credits.earned'
-  | 'credits.redeemed'
-  | 'credits.earn.confirmed'
-  | 'credits.redemption.confirmed';
+  'credits.earned' | 'credits.redeemed' | 'credits.earn.confirmed' | 'credits.redemption.confirmed';
 
 /**
  * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).

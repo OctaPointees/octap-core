@@ -5,7 +5,7 @@ import {
   generateWebhookSecret,
   signWebhookPayload,
   verifyWebhookSignature,
-} from '../../../../src/domain/webhooks/webhook-signing.util.js';
+} from '#domain/webhooks/webhook-signing.util.js';
 
 describe('webhook-signing', () => {
   it('generates distinct, prefixed secrets', () => {

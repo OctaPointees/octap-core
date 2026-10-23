@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RedemptionService } from '../../../../src/domain/credits/redemption.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
+import { RedemptionService } from '#domain/credits/redemption.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
@@ -47,7 +47,12 @@ describe('RedemptionService', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       findTransactionByIdempotency: async () =>
-        buildLoyaltyTransaction({ id: 'tx-redeem-1', transactionType: 'REDEEM', pointsAmount: 30, idempotencyKey: 'idem-redeem-1' }),
+        buildLoyaltyTransaction({
+          id: 'tx-redeem-1',
+          transactionType: 'REDEEM',
+          pointsAmount: 30,
+          idempotencyKey: 'idem-redeem-1',
+        }),
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: 70 }),
       recordRedeemTransaction: () => expect.fail('must not redeem twice'),
     });

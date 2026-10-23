@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
-import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '../../infra/db/repositories/indexer.repository.js';
-import type { DrizzleDb } from '../../infra/db/postgres.provider.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 const PAGE_SIZE = Number(process.env.INDEXER_PAGE_SIZE ?? 50);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,7 +87,9 @@ export class CheckpointIndexerProcessor {
 
     const confirmed = outcomes.filter((o) => o === 'confirmed').length;
     if (confirmed > 0) {
-      this.logger.log(`confirmed ${confirmed} transaction(s) from ${page.events.length} event(s), checkpoint ${lastCheckpoint}`);
+      this.logger.log(
+        `confirmed ${confirmed} transaction(s) from ${page.events.length} event(s), checkpoint ${lastCheckpoint}`,
+      );
     }
     return page.hasNextPage;
   }
@@ -106,7 +108,9 @@ export class CheckpointIndexerProcessor {
       latest ? head.startCursor : null,
       latest?.checkpoint ?? null,
     );
-    this.logger.log(`initialized ${CREDIT_ACCOUNT_STREAM} cursor at checkpoint ${latest?.checkpoint ?? '(empty stream)'}`);
+    this.logger.log(
+      `initialized ${CREDIT_ACCOUNT_STREAM} cursor at checkpoint ${latest?.checkpoint ?? '(empty stream)'}`,
+    );
   }
 
   async applyEvent(event: CreditAccountEvent, tx: DrizzleDb): Promise<EventOutcome> {
@@ -192,7 +196,11 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
     await this.operationsRepo.markSubmittedFromChain(
-      { tenantId: loyaltyTx.organizationId, idempotencyKey: loyaltyTx.idempotencyKey, suiTxDigest: event.transactionDigest },
+      {
+        tenantId: loyaltyTx.organizationId,
+        idempotencyKey: loyaltyTx.idempotencyKey,
+        suiTxDigest: event.transactionDigest,
+      },
       tx,
     );
     return 'confirmed';
@@ -224,7 +232,11 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
     const loyaltyTx = await this.creditsRepo.getLoyaltyTransactionById(loyaltyTransactionId);
-    if (!loyaltyTx || loyaltyTx.transactionType !== 'REDEEM' || loyaltyTx.organizationEndUserId !== organizationEndUserId) {
+    if (
+      !loyaltyTx ||
+      loyaltyTx.transactionType !== 'REDEEM' ||
+      loyaltyTx.organizationEndUserId !== organizationEndUserId
+    ) {
       return 'skipped';
     }
     if (loyaltyTx.status === 'CONFIRMED') {
@@ -257,7 +269,11 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
     await this.operationsRepo.markSubmittedFromChain(
-      { tenantId: loyaltyTx.organizationId, idempotencyKey: loyaltyTx.idempotencyKey, suiTxDigest: event.transactionDigest },
+      {
+        tenantId: loyaltyTx.organizationId,
+        idempotencyKey: loyaltyTx.idempotencyKey,
+        suiTxDigest: event.transactionDigest,
+      },
       tx,
     );
     return 'confirmed';
@@ -274,7 +290,11 @@ export class CheckpointIndexerProcessor {
     tx: DrizzleDb,
   ): Promise<void> {
     await this.operationsRepo.markSubmittedFromChain(
-      { tenantId: loyaltyTx.organizationId, idempotencyKey: loyaltyTx.idempotencyKey, suiTxDigest: event.transactionDigest },
+      {
+        tenantId: loyaltyTx.organizationId,
+        idempotencyKey: loyaltyTx.idempotencyKey,
+        suiTxDigest: event.transactionDigest,
+      },
       tx,
     );
   }

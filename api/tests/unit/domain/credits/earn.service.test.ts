@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UnprocessableEntityException } from '@nestjs/common';
-import { EarnService } from '../../../../src/domain/credits/earn.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
+import { EarnService } from '#domain/credits/earn.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
 
@@ -58,11 +58,20 @@ describe('EarnService', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       findTransactionByIdempotency: async () =>
-        buildLoyaltyTransaction({ id: 'tx-1', organizationEndUserId: 'user-1', pointsAmount: 50, idempotencyKey: 'idem-1' }),
+        buildLoyaltyTransaction({
+          id: 'tx-1',
+          organizationEndUserId: 'user-1',
+          pointsAmount: 50,
+          idempotencyKey: 'idem-1',
+        }),
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
       recordEarnTransaction: () => expect.fail('must not record twice'),
     });
-    const service = new EarnService(repo, stub<WebhookDeliveryService>({ emit: () => expect.fail('must not emit twice') }), PROGRAMS_REPO);
+    const service = new EarnService(
+      repo,
+      stub<WebhookDeliveryService>({ emit: () => expect.fail('must not emit twice') }),
+      PROGRAMS_REPO,
+    );
 
     const result = await service.executeEarn('org-1', request);
 

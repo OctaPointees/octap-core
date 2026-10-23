@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CheckpointIndexerWorker } from '../../../../src/domain/indexer/checkpoint-indexer.worker.js';
-import type { CheckpointIndexerProcessor } from '../../../../src/domain/indexer/checkpoint-indexer.processor.js';
-import { IndexerCursorMovedError } from '../../../../src/infra/db/repositories/indexer.repository.js';
+import { CheckpointIndexerWorker } from '#domain/indexer/checkpoint-indexer.worker.js';
+import type { CheckpointIndexerProcessor } from '#domain/indexer/checkpoint-indexer.processor.js';
+import { IndexerCursorMovedError } from '#infra/db/repositories/indexer.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 const POLL_INTERVAL_MS = 5000;

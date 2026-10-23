@@ -134,9 +134,12 @@ export class OperationsRepository {
    * `recordSubmitDigest` for a command known by its idempotency key rather than its id. Returns the
    * operation's id, or null if it was already settled.
    */
-  async recordSubmitDigestForCommand(
-    params: { tenantId: string; idempotencyKey: string; suiTxDigest: string; expirationEpoch: bigint | null },
-  ): Promise<string | null> {
+  async recordSubmitDigestForCommand(params: {
+    tenantId: string;
+    idempotencyKey: string;
+    suiTxDigest: string;
+    expirationEpoch: bigint | null;
+  }): Promise<string | null> {
     const rows = await this.db
       .update(operations)
       .set({ suiTxDigest: params.suiTxDigest, suiTxExpirationEpoch: params.expirationEpoch, updatedAt: new Date() })
@@ -157,7 +160,12 @@ export class OperationsRepository {
    * settled (`executeSponsoredRedeem` or the wait after it threw). A POS reserve with no digest was
    * never finalized, so there is nothing on-chain to ask about.
    */
-  async listUnresolvedChainOutcomes(params: { earnCommandType: string; posCommandType: string; olderThanMs: number; limit: number }) {
+  async listUnresolvedChainOutcomes(params: {
+    earnCommandType: string;
+    posCommandType: string;
+    olderThanMs: number;
+    limit: number;
+  }) {
     const cutoff = new Date(Date.now() - params.olderThanMs);
     return this.db.query.operations.findMany({
       where: and(

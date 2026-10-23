@@ -1,9 +1,9 @@
 import { Controller, Post, Get, Delete, Body, Param } from '@nestjs/common';
-import { ApiCredentialsService } from '../../infra/auth/api-credentials.service.js';
-import { Scopes } from '../../infra/auth/scopes.decorator.js';
-import { RequireSignedRequest } from '../../infra/auth/signed-request.decorator.js';
-import { Tenant } from '../../infra/auth/tenant.decorator.js';
-import type { TenantContext } from '../../infra/auth/tenant-context.js';
+import { ApiCredentialsService } from '#infra/auth/api-credentials.service.js';
+import { Scopes } from '#infra/auth/scopes.decorator.js';
+import { RequireSignedRequest } from '#infra/auth/signed-request.decorator.js';
+import { Tenant } from '#infra/auth/tenant.decorator.js';
+import type { TenantContext } from '#infra/auth/tenant-context.js';
 
 /**
  * Self-service credential management for a tenant that already holds an "admin"-scoped

@@ -133,4 +133,3 @@ export interface LoyaltyTransactionDto {
   createdAt: string;
   updatedAt: string;
 }
-

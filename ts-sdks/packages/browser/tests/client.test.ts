@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { OctaBrowserClient, createBrowserClient } from '../src/index.js';
 
 /** Stubs global fetch (the browser SDK takes no fetchFn) and records every call. */
-function stubFetch(respond: (url: string) => { ok?: boolean; status?: number; statusText?: string; body?: unknown; text?: string } = () => ({})) {
+function stubFetch(
+  respond: (url: string) => {
+    ok?: boolean;
+    status?: number;
+    statusText?: string;
+    body?: unknown;
+    text?: string;
+  } = () => ({}),
+) {
   const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: unknown }> = [];
   vi.stubGlobal(
     'fetch',
@@ -42,7 +50,11 @@ describe('OctaBrowserClient', () => {
     expect(last()).toEqual({
       url: 'https://api.octap.network/v1/credits/members/user-1/balance',
       method: 'GET',
-      headers: { accept: 'application/json', 'x-organization-id': 'org-browser', authorization: 'Bearer user-jwt-token-123' },
+      headers: {
+        accept: 'application/json',
+        'x-organization-id': 'org-browser',
+        authorization: 'Bearer user-jwt-token-123',
+      },
       body: undefined,
     });
   });
@@ -86,18 +98,28 @@ describe('OctaBrowserClient', () => {
     expect(last()).toMatchObject({ url: 'https://a/v1/identity/google-login', body: { idToken: 'google-jwt' } });
 
     await client.enroll('eu-1');
-    expect(last()).toMatchObject({ url: 'https://a/v1/identity/organizations/org-1/enroll', body: { endUserId: 'eu-1' } });
+    expect(last()).toMatchObject({
+      url: 'https://a/v1/identity/organizations/org-1/enroll',
+      body: { endUserId: 'eu-1' },
+    });
     await client.enroll('eu-1', 'org-9', 'ext-1');
-    expect(last()).toMatchObject({ url: 'https://a/v1/identity/organizations/org-9/enroll', body: { endUserId: 'eu-1', externalMemberId: 'ext-1' } });
+    expect(last()).toMatchObject({
+      url: 'https://a/v1/identity/organizations/org-9/enroll',
+      body: { endUserId: 'eu-1', externalMemberId: 'ext-1' },
+    });
   });
 
   it('enroll needs an organization from somewhere', async () => {
-    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).enroll('eu-1')).rejects.toThrow(/organizationId is required/);
+    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).enroll('eu-1')).rejects.toThrow(
+      /organizationId is required/,
+    );
   });
 
   it('surfaces the server’s message, or a status line for a non-JSON error body', async () => {
     stubFetch(() => ({ ok: false, status: 404, statusText: 'Not Found', body: { message: 'Voucher not found' } }));
-    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).getVoucher('v-x')).rejects.toThrow('Voucher not found');
+    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).getVoucher('v-x')).rejects.toThrow(
+      'Voucher not found',
+    );
 
     stubFetch(() => ({ ok: false, status: 502, statusText: 'Bad Gateway', text: '<html>' }));
     await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).getVoucher('v-x')).rejects.toThrow(

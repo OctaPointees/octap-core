@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ReversalService } from '../../../../src/domain/credits/reversal.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
+import { ReversalService } from '#domain/credits/reversal.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
@@ -14,16 +14,18 @@ const reverse = (overrides: Partial<{ transactionId: string; idempotencyKey: str
 
 describe('ReversalService', () => {
   it('reverses a CONFIRMED earn and can drive the balance negative (clawback debt)', async () => {
-    const recordReversalTransaction = vi.fn(async (params: { idempotencyKey: string; original: { pointsAmount: number } }) => ({
-      reversal: buildLoyaltyTransaction({
-        id: 'tx-reversal-1',
-        transactionType: 'REVERSAL',
-        idempotencyKey: params.idempotencyKey,
-        pointsAmount: params.original.pointsAmount,
+    const recordReversalTransaction = vi.fn(
+      async (params: { idempotencyKey: string; original: { pointsAmount: number } }) => ({
+        reversal: buildLoyaltyTransaction({
+          id: 'tx-reversal-1',
+          transactionType: 'REVERSAL',
+          idempotencyKey: params.idempotencyKey,
+          pointsAmount: params.original.pointsAmount,
+        }),
+        reversedOriginal: confirmedEarn({ status: 'REVERSED' }),
+        newBalance: -20,
       }),
-      reversedOriginal: confirmedEarn({ status: 'REVERSED' }),
-      newBalance: -20,
-    }));
+    );
     const repo = stub<CreditsRepository>({
       findTransactionByIdempotency: async () => undefined,
       findTransactionByIdForOrganization: async (orgId: string, id: string) =>
@@ -121,9 +123,9 @@ describe('ReversalService', () => {
       findTransactionByIdForOrganization: async () => confirmedEarn({ status: 'REVERSED' }),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-2' }))).rejects.toThrow(
-      /already been reversed/,
-    );
+    await expect(
+      new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-2' })),
+    ).rejects.toThrow(/already been reversed/);
   });
 
   it('rejects reversing a PENDING transaction with its current status in the message', async () => {
@@ -143,9 +145,9 @@ describe('ReversalService', () => {
       findTransactionByIdForOrganization: async (orgId: string) => (orgId === 'org-1' ? confirmedEarn() : undefined),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-2', reverse({ idempotencyKey: 'reverse-3' }))).rejects.toThrow(
-      /was not found/,
-    );
+    await expect(
+      new ReversalService(repo).reverseTransaction('org-2', reverse({ idempotencyKey: 'reverse-3' })),
+    ).rejects.toThrow(/was not found/);
   });
 
   it.each(['REVERSAL', 'EXPIRY'] as const)('a %s transaction cannot itself be reversed', async (transactionType) => {
@@ -154,9 +156,9 @@ describe('ReversalService', () => {
       findTransactionByIdForOrganization: async () => confirmedEarn({ transactionType }),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse({ transactionId: 'tx-reversal-1' }))).rejects.toThrow(
-      /cannot be reversed/,
-    );
+    await expect(
+      new ReversalService(repo).reverseTransaction('org-1', reverse({ transactionId: 'tx-reversal-1' })),
+    ).rejects.toThrow(/cannot be reversed/);
   });
 
   it('requires a non-blank reason', async () => {
@@ -175,11 +177,15 @@ describe('ReversalService', () => {
       findTransactionByIdempotency: async () => undefined,
       findTransactionByIdForOrganization: async () => confirmedEarn(),
       recordReversalTransaction: async () => {
-        throw new Error('duplicate key value violates unique constraint "loyalty_transactions_reverses_transaction_id_unique"');
+        throw new Error(
+          'duplicate key value violates unique constraint "loyalty_transactions_reverses_transaction_id_unique"',
+        );
       },
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-6' }))).rejects.toMatchObject({
+    await expect(
+      new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-6' })),
+    ).rejects.toMatchObject({
       name: 'ConflictException',
       message: expect.stringMatching(/unique constraint/),
     });
@@ -194,6 +200,8 @@ describe('ReversalService', () => {
       },
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toThrow('Failed to reverse transaction');
+    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toThrow(
+      'Failed to reverse transaction',
+    );
   });
 });

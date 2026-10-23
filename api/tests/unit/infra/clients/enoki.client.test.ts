@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { toBase64 } from '@mysten/sui/utils';
-import { EnokiClient } from '../../../../src/infra/clients/enoki/enoki.client.js';
+import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 
 /** Swaps the lazily-built Mysten SDK client for a double. */
 function withSdk(sdk: Record<string, unknown>) {
@@ -18,8 +18,17 @@ describe('EnokiClient', () => {
     const createSponsoredTransaction = vi.fn(async () => ({ bytes: 'b', digest: 'd' }));
     const enoki = withSdk({ createSponsoredTransaction });
 
-    await enoki.createSponsoredTransaction({ transactionKindBytes: new Uint8Array([1]), sender: '0xsender', allowedMoveCallTargets: ['t'] });
-    await enoki.createSponsoredTransaction({ network: 'devnet', transactionKindBytes: new Uint8Array([1]), sender: '0xsender', allowedMoveCallTargets: [] });
+    await enoki.createSponsoredTransaction({
+      transactionKindBytes: new Uint8Array([1]),
+      sender: '0xsender',
+      allowedMoveCallTargets: ['t'],
+    });
+    await enoki.createSponsoredTransaction({
+      network: 'devnet',
+      transactionKindBytes: new Uint8Array([1]),
+      sender: '0xsender',
+      allowedMoveCallTargets: [],
+    });
 
     expect(createSponsoredTransaction).toHaveBeenNthCalledWith(1, {
       network: 'testnet',
@@ -52,15 +61,32 @@ describe('EnokiClient', () => {
     const enoki = withSdk({ createZkLoginNonce, createZkLoginZkp });
 
     await enoki.createZkLoginNonce({ ephemeralPublicKey: key.toSuiPublicKey(), additionalEpochs: 2 });
-    await enoki.createZkLoginProof({ network: 'devnet', jwt: 'jwt', ephemeralPublicKey: key.toSuiPublicKey(), randomness: 'r', maxEpoch: 9 });
+    await enoki.createZkLoginProof({
+      network: 'devnet',
+      jwt: 'jwt',
+      ephemeralPublicKey: key.toSuiPublicKey(),
+      randomness: 'r',
+      maxEpoch: 9,
+    });
 
-    const nonceArgs = createZkLoginNonce.mock.calls[0][0] as unknown as { network: string; ephemeralPublicKey: { toSuiAddress(): string }; additionalEpochs: number };
+    const nonceArgs = createZkLoginNonce.mock.calls[0][0] as unknown as {
+      network: string;
+      ephemeralPublicKey: { toSuiAddress(): string };
+      additionalEpochs: number;
+    };
     expect(nonceArgs.network).toBe('testnet');
     expect(nonceArgs.additionalEpochs).toBe(2);
     expect(nonceArgs.ephemeralPublicKey.toSuiAddress()).toBe(key.toSuiAddress());
-    expect(createZkLoginZkp).toHaveBeenCalledWith(expect.objectContaining({ network: 'devnet', jwt: 'jwt', randomness: 'r', maxEpoch: 9 }));
+    expect(createZkLoginZkp).toHaveBeenCalledWith(
+      expect.objectContaining({ network: 'devnet', jwt: 'jwt', randomness: 'r', maxEpoch: 9 }),
+    );
 
-    await enoki.createZkLoginProof({ jwt: 'jwt', ephemeralPublicKey: key.toSuiPublicKey(), randomness: 'r', maxEpoch: 9 });
+    await enoki.createZkLoginProof({
+      jwt: 'jwt',
+      ephemeralPublicKey: key.toSuiPublicKey(),
+      randomness: 'r',
+      maxEpoch: 9,
+    });
     expect(createZkLoginZkp).toHaveBeenLastCalledWith(expect.objectContaining({ network: 'testnet' }));
 
     await enoki.createZkLoginNonce({ network: 'devnet', ephemeralPublicKey: key.toSuiPublicKey() });
@@ -79,7 +105,9 @@ describe('EnokiClient', () => {
 
   it('builds the SDK lazily from ENOKI_API_KEY, and names the variable when it is missing', async () => {
     vi.stubEnv('ENOKI_API_KEY', '');
-    await expect(new EnokiClient().resolveZkLoginAddress('jwt')).rejects.toThrow(/Missing required env var ENOKI_API_KEY for the Enoki adapter/);
+    await expect(new EnokiClient().resolveZkLoginAddress('jwt')).rejects.toThrow(
+      /Missing required env var ENOKI_API_KEY for the Enoki adapter/,
+    );
 
     vi.stubEnv('ENOKI_API_KEY', 'enoki_public_test');
     const enoki = new EnokiClient();

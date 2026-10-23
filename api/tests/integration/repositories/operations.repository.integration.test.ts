@@ -5,7 +5,7 @@ import {
   OperationsRepository,
   acceptCommand,
   hashPayload,
-} from '../../../src/infra/db/repositories/operations.repository.js';
+} from '#infra/db/repositories/operations.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
@@ -30,7 +30,8 @@ async function insertOperation(values: Partial<typeof schema.operations.$inferIn
   return row;
 }
 
-const statusOf = async (id: string) => (await db.select().from(schema.operations).where(eq(schema.operations.id, id)))[0];
+const statusOf = async (id: string) =>
+  (await db.select().from(schema.operations).where(eq(schema.operations.id, id)))[0];
 
 describe('acceptCommand (live)', () => {
   const accept = (payload: Record<string, unknown>) =>
@@ -50,7 +51,10 @@ describe('acceptCommand (live)', () => {
 
     const result = await accept({ amount: 10 });
 
-    expect(result).toMatchObject({ isNew: false, operation: { id: legacy.id, payloadHash: hashPayload({ amount: 10 }) } });
+    expect(result).toMatchObject({
+      isNew: false,
+      operation: { id: legacy.id, payloadHash: hashPayload({ amount: 10 }) },
+    });
     expect((await statusOf(legacy.id)).payloadHash).toBe(hashPayload({ amount: 10 }));
   });
 });
@@ -105,18 +109,28 @@ describe('OperationsRepository', () => {
     expect(await repo.markUnknown(noDigest.id, 'outcome unknown')).toBe(true);
     expect(await repo.markUnknown(settled.id, 'late', 'D-2')).toBe(false);
 
-    expect(await statusOf(processing.id)).toMatchObject({ status: 'UNKNOWN', errorMessage: 'PG down after landing', suiTxDigest: 'D-1' });
+    expect(await statusOf(processing.id)).toMatchObject({
+      status: 'UNKNOWN',
+      errorMessage: 'PG down after landing',
+      suiTxDigest: 'D-1',
+    });
     expect(await statusOf(noDigest.id)).toMatchObject({ status: 'UNKNOWN', suiTxDigest: null });
     expect(await statusOf(settled.id)).toMatchObject({ status: 'SUBMITTED', suiTxDigest: 'D-INDEXER' });
   });
 
   it('markSubmittedFromChain settles any unresolved state but never a terminal one', async () => {
     const rows = await Promise.all(
-      (['PENDING', 'PROCESSING', 'UNKNOWN', 'FAILED', 'SUBMITTED'] as const).map((status) => insertOperation({ idempotencyKey: status, status })),
+      (['PENDING', 'PROCESSING', 'UNKNOWN', 'FAILED', 'SUBMITTED'] as const).map((status) =>
+        insertOperation({ idempotencyKey: status, status }),
+      ),
     );
 
     for (const row of rows) {
-      await repo.markSubmittedFromChain({ tenantId: orgId, idempotencyKey: row.idempotencyKey, suiTxDigest: 'D-CHAIN' });
+      await repo.markSubmittedFromChain({
+        tenantId: orgId,
+        idempotencyKey: row.idempotencyKey,
+        suiTxDigest: 'D-CHAIN',
+      });
     }
 
     const after = await Promise.all(rows.map((r) => statusOf(r.id)));
@@ -141,7 +155,11 @@ describe('OperationsRepository', () => {
   it('recoverStaleProcessing flips only its own command type’s rows older than the threshold', async () => {
     const stale = await insertOperation({ idempotencyKey: 'stale', status: 'PROCESSING' });
     const fresh = await insertOperation({ idempotencyKey: 'fresh', status: 'PROCESSING' });
-    const otherType = await insertOperation({ idempotencyKey: 'other', status: 'PROCESSING', commandType: 'SOMETHING_ELSE' });
+    const otherType = await insertOperation({
+      idempotencyKey: 'other',
+      status: 'PROCESSING',
+      commandType: 'SOMETHING_ELSE',
+    });
     const pending = await insertOperation({ idempotencyKey: 'pending', status: 'PENDING' });
     await db
       .update(schema.operations)
@@ -168,7 +186,11 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     await repo.recordSubmitDigest(open.id, 'D-PRE', 1262n);
     await repo.recordSubmitDigest(settled.id, 'D-OTHER', 1262n);
 
-    expect(await statusOf(open.id)).toMatchObject({ status: 'PROCESSING', suiTxDigest: 'D-PRE', suiTxExpirationEpoch: 1262n });
+    expect(await statusOf(open.id)).toMatchObject({
+      status: 'PROCESSING',
+      suiTxDigest: 'D-PRE',
+      suiTxExpirationEpoch: 1262n,
+    });
     expect(await statusOf(settled.id)).toMatchObject({ suiTxDigest: 'LANDED', suiTxExpirationEpoch: null });
   });
 
@@ -178,20 +200,39 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     const other = await seedOrganization(db);
 
     await expect(
-      repo.recordSubmitDigestForCommand({ tenantId: orgId, idempotencyKey: 'pos-1', suiTxDigest: 'D-POS', expirationEpoch: null }),
+      repo.recordSubmitDigestForCommand({
+        tenantId: orgId,
+        idempotencyKey: 'pos-1',
+        suiTxDigest: 'D-POS',
+        expirationEpoch: null,
+      }),
     ).resolves.toBe(pending.id);
     await expect(
-      repo.recordSubmitDigestForCommand({ tenantId: orgId, idempotencyKey: 'pos-done', suiTxDigest: 'D-POS', expirationEpoch: null }),
+      repo.recordSubmitDigestForCommand({
+        tenantId: orgId,
+        idempotencyKey: 'pos-done',
+        suiTxDigest: 'D-POS',
+        expirationEpoch: null,
+      }),
     ).resolves.toBeNull();
     await expect(
-      repo.recordSubmitDigestForCommand({ tenantId: other.id, idempotencyKey: 'pos-1', suiTxDigest: 'D-X', expirationEpoch: null }),
+      repo.recordSubmitDigestForCommand({
+        tenantId: other.id,
+        idempotencyKey: 'pos-1',
+        suiTxDigest: 'D-X',
+        expirationEpoch: null,
+      }),
     ).resolves.toBeNull();
     expect(await statusOf(pending.id)).toMatchObject({ status: 'PENDING', suiTxDigest: 'D-POS' });
   });
 
   it('listUnresolvedChainOutcomes returns old UNKNOWN earns and POS finalizes with a digest, oldest first', async () => {
     const old = ago(10 * 60 * 1000);
-    const earnUnknown = await insertOperation({ idempotencyKey: 'e-unknown', status: 'UNKNOWN', updatedAt: ago(20 * 60 * 1000) });
+    const earnUnknown = await insertOperation({
+      idempotencyKey: 'e-unknown',
+      status: 'UNKNOWN',
+      updatedAt: ago(20 * 60 * 1000),
+    });
     const posWithDigest = await insertOperation({
       idempotencyKey: 'pos-digest',
       commandType: 'CREDIT_POS_REDEEM_RESERVE',
@@ -201,8 +242,18 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     await insertOperation({ idempotencyKey: 'e-fresh', status: 'UNKNOWN' });
     await insertOperation({ idempotencyKey: 'e-pending', status: 'PENDING', updatedAt: old });
     await insertOperation({ idempotencyKey: 'e-submitted', status: 'SUBMITTED', updatedAt: old });
-    await insertOperation({ idempotencyKey: 'pos-no-digest', commandType: 'CREDIT_POS_REDEEM_RESERVE', updatedAt: old });
-    await insertOperation({ idempotencyKey: 'pos-done', commandType: 'CREDIT_POS_REDEEM_RESERVE', status: 'SUBMITTED', suiTxDigest: 'D', updatedAt: old });
+    await insertOperation({
+      idempotencyKey: 'pos-no-digest',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      updatedAt: old,
+    });
+    await insertOperation({
+      idempotencyKey: 'pos-done',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      status: 'SUBMITTED',
+      suiTxDigest: 'D',
+      updatedAt: old,
+    });
     await insertOperation({ idempotencyKey: 'other', commandType: 'X', status: 'UNKNOWN', updatedAt: old });
 
     const due = await repo.listUnresolvedChainOutcomes({
@@ -237,4 +288,3 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     expect(after.updatedAt.getTime()).toBeGreaterThan(Date.now() - 60 * 1000);
   });
 });
-

@@ -1,8 +1,4 @@
-export {
-  OctaBrowserClient,
-  createBrowserClient,
-  type BrowserClientOptions,
-} from './client.js';
+export { OctaBrowserClient, createBrowserClient, type BrowserClientOptions } from './client.js';
 
 export type {
   CreditBalanceSnapshot,

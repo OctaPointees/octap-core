@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IdentityService } from '../../../../src/domain/identity/identity.service.js';
-import type { IdentityRepository } from '../../../../src/infra/db/repositories/identity.repository.js';
-import type { EnokiClient } from '../../../../src/infra/clients/enoki/enoki.client.js';
+import { IdentityService } from '#domain/identity/identity.service.js';
+import type { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import type { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 import { stub } from '../../../helpers/stub.js';
 
 const enokiResolving = (address = '0xabc') =>
@@ -54,9 +54,17 @@ describe('IdentityService.enrollInOrganization', () => {
       stub<EnokiClient>(),
     );
 
-    const result = await service.enrollInOrganization({ endUserId: 'end-user-1', organizationId: 'org-1', externalMemberId: 'ext-1' });
+    const result = await service.enrollInOrganization({
+      endUserId: 'end-user-1',
+      organizationId: 'org-1',
+      externalMemberId: 'ext-1',
+    });
 
-    expect(enroll).toHaveBeenCalledWith({ endUserId: 'end-user-1', organizationId: 'org-1', externalMemberId: 'ext-1' });
+    expect(enroll).toHaveBeenCalledWith({
+      endUserId: 'end-user-1',
+      organizationId: 'org-1',
+      externalMemberId: 'ext-1',
+    });
     expect(result).toEqual({ organizationEndUserId: 'org-end-user-1', isNewEnrollment: true });
   });
 
@@ -77,14 +85,25 @@ describe('IdentityService.enrollInOrganization', () => {
   });
 
   it('rejects an unknown end user', async () => {
-    const service = new IdentityService(stub<IdentityRepository>({ findEndUserById: async () => undefined }), stub<EnokiClient>());
-    await expect(service.enrollInOrganization({ endUserId: 'ghost', organizationId: 'org-1' })).rejects.toThrow(/No end user ghost/);
+    const service = new IdentityService(
+      stub<IdentityRepository>({ findEndUserById: async () => undefined }),
+      stub<EnokiClient>(),
+    );
+    await expect(service.enrollInOrganization({ endUserId: 'ghost', organizationId: 'org-1' })).rejects.toThrow(
+      /No end user ghost/,
+    );
   });
 });
 
 describe('IdentityService zkLogin passthroughs', () => {
   it('createZkLoginNonce forwards to Enoki', async () => {
-    const createZkLoginNonce = vi.fn(async () => ({ nonce: 'n', randomness: 'r', epoch: 1, maxEpoch: 3, estimatedExpiration: 0 }));
+    const createZkLoginNonce = vi.fn(async () => ({
+      nonce: 'n',
+      randomness: 'r',
+      epoch: 1,
+      maxEpoch: 3,
+      estimatedExpiration: 0,
+    }));
     const service = new IdentityService(stub<IdentityRepository>(), stub<EnokiClient>({ createZkLoginNonce }));
 
     const result = await service.createZkLoginNonce({ ephemeralPublicKey: 'epk', additionalEpochs: 2 });
@@ -95,14 +114,22 @@ describe('IdentityService zkLogin passthroughs', () => {
 
   it('createZkLoginNonce requires an ephemeral public key', async () => {
     const service = new IdentityService(stub<IdentityRepository>(), stub<EnokiClient>());
-    await expect(service.createZkLoginNonce({ ephemeralPublicKey: '' })).rejects.toThrow(/ephemeralPublicKey is required/);
+    await expect(service.createZkLoginNonce({ ephemeralPublicKey: '' })).rejects.toThrow(
+      /ephemeralPublicKey is required/,
+    );
   });
 
   it('createZkLoginProof renames idToken to Enoki’s jwt', async () => {
     const createZkLoginProof = vi.fn(async () => ({ proofPoints: {} }));
     const service = new IdentityService(stub<IdentityRepository>(), stub<EnokiClient>({ createZkLoginProof }));
 
-    await service.createZkLoginProof({ network: 'devnet', idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 0 });
+    await service.createZkLoginProof({
+      network: 'devnet',
+      idToken: 'jwt',
+      ephemeralPublicKey: 'epk',
+      randomness: 'r',
+      maxEpoch: 0,
+    });
 
     expect(createZkLoginProof).toHaveBeenCalledWith({
       network: 'devnet',

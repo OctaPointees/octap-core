@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { IdentityRepository } from '../../infra/db/repositories/identity.repository.js';
-import { EnokiClient, type EnokiNetwork, type ZkLoginProofResult } from '../../infra/clients/enoki/enoki.client.js';
+import { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import { EnokiClient, type EnokiNetwork, type ZkLoginProofResult } from '#infra/clients/enoki/enoki.client.js';
 
 @Injectable()
 export class IdentityService {

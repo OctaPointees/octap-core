@@ -17,9 +17,5 @@ export {
   type CreditAccountEvent,
   type CreditAccountEventPage,
 } from './client.js';
-export {
-  TESTNET_OCTAP_PACKAGE_CONFIG,
-  MAINNET_OCTAP_PACKAGE_CONFIG,
-  type OctapPackageConfig,
-} from './constants.js';
+export { TESTNET_OCTAP_PACKAGE_CONFIG, MAINNET_OCTAP_PACKAGE_CONFIG, type OctapPackageConfig } from './constants.js';
 export { operationShardIndex } from './shards.js';

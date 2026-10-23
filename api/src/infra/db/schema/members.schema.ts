@@ -3,11 +3,7 @@ import { jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } 
 import { authenticatedRole, authUid } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 
-export const endUserStatusEnum = pgEnum('end_user_status', [
-  'ACTIVE',
-  'BLOCKED',
-  'PENDING_VERIFICATION',
-]);
+export const endUserStatusEnum = pgEnum('end_user_status', ['ACTIVE', 'BLOCKED', 'PENDING_VERIFICATION']);
 
 /**
  * END USER: Global customer identities (zkLogin address, phone, email).

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProgramsService } from '../../../../src/domain/programs/programs.service.js';
-import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
-import type { ProgramAdminClient } from '../../../../src/infra/clients/sui/program-admin.client.js';
+import { ProgramsService } from '#domain/programs/programs.service.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import type { ProgramAdminClient } from '#infra/clients/sui/program-admin.client.js';
 import { stub } from '../../../helpers/stub.js';
 
 const PROVISION_PARAMS = {
@@ -86,7 +86,10 @@ describe('ProgramsService.provisionForOrganization', () => {
       stub<ProgramAdminClient>({ provisionProgram }),
     ).provisionForOrganization(PROVISION_PARAMS);
 
-    await expect(provision).rejects.toMatchObject({ name: 'ConflictException', message: expect.stringMatching(/already has a program/) });
+    await expect(provision).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/already has a program/),
+    });
     expect(provisionProgram).not.toHaveBeenCalled();
   });
 

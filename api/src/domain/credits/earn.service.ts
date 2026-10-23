@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
@@ -24,10 +24,7 @@ export class EarnService {
     }
 
     // Check idempotency
-    const existingTx = await this.creditsRepo.findTransactionByIdempotency(
-      organizationId,
-      request.idempotencyKey,
-    );
+    const existingTx = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
 
     if (existingTx) {
       const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PosRedemptionService } from '../../../../src/domain/credits/pos-redemption.service.js';
+import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import {
   OperationPayloadConflictError,
   type OperationsRepository,
-} from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
+} from '#infra/db/repositories/operations.repository.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { SponsoredTransactionService } from '#domain/identity/sponsored-transaction.service.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
 import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
@@ -22,7 +22,11 @@ const cachedReserve = {
   transactionBytes: 'bytes-1',
 };
 
-function pendingHold(status: 'PENDING' | 'CONFIRMED' | 'FAILED' = 'PENDING', isNew = true, accountId: string | null = 'account-1') {
+function pendingHold(
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED' = 'PENDING',
+  isNew = true,
+  accountId: string | null = 'account-1',
+) {
   return async () => ({
     transaction: buildLoyaltyTransaction({ id: 'tx-1', transactionType: 'REDEEM', status, idempotencyKey: 'idem-1' }),
     accountId,
@@ -98,7 +102,9 @@ describe('PosRedemptionService.reserve', () => {
   });
 
   it('rejects a non-positive amount', async () => {
-    await expect(service().reserve('org-1', { ...reserveRequest, pointsAmount: 0 })).rejects.toThrow(/greater than zero/);
+    await expect(service().reserve('org-1', { ...reserveRequest, pointsAmount: 0 })).rejects.toThrow(
+      /greater than zero/,
+    );
   });
 
   it('rejects a member from another organization', async () => {
@@ -117,7 +123,10 @@ describe('PosRedemptionService.reserve', () => {
       },
     }).reserve('org-1', reserveRequest);
 
-    await expect(reserve).rejects.toMatchObject({ name: 'ConflictException', message: expect.stringMatching(/different payload/) });
+    await expect(reserve).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/different payload/),
+    });
   });
 
   it('maps any other reservation failure (insufficient points) to a 400', async () => {
@@ -130,7 +139,10 @@ describe('PosRedemptionService.reserve', () => {
       },
     }).reserve('org-1', reserveRequest);
 
-    await expect(reserve).rejects.toMatchObject({ name: 'BadRequestException', message: expect.stringMatching(/Insufficient/) });
+    await expect(reserve).rejects.toMatchObject({
+      name: 'BadRequestException',
+      message: expect.stringMatching(/Insufficient/),
+    });
   });
 
   it('uses a generic message for a non-Error reservation failure', async () => {
@@ -149,11 +161,17 @@ describe('PosRedemptionService.reserve', () => {
   it('replays cached bytes instead of sponsoring twice', async () => {
     const redis = fakeRedis();
     await redis.set('pos-redeem:idem:org-1:idem-1', 'digest-cached');
-    await redis.set('pos-redeem:reserve:digest-cached', JSON.stringify({ ...cachedReserve, transactionBytes: 'bytes-cached' }));
+    await redis.set(
+      'pos-redeem:reserve:digest-cached',
+      JSON.stringify({ ...cachedReserve, transactionBytes: 'bytes-cached' }),
+    );
 
     const result = await service({
       redis,
-      creditsRepo: { findMemberOrganizationId: async () => 'org-1', reservePosRedemption: pendingHold('PENDING', false) },
+      creditsRepo: {
+        findMemberOrganizationId: async () => 'org-1',
+        reservePosRedemption: pendingHold('PENDING', false),
+      },
       sponsoredTx: { previewSponsoredRedeem: () => expect.fail('must not sponsor twice') },
     }).reserve('org-1', reserveRequest);
 
@@ -172,7 +190,9 @@ describe('PosRedemptionService.reserve', () => {
         reservePosRedemption: pendingHold('PENDING', false),
         findBeneficiaryAddress: async () => '0xbeneficiary',
       },
-      sponsoredTx: { previewSponsoredRedeem: async () => ({ transactionBytes: 'bytes-fresh', digest: 'digest-fresh' }) },
+      sponsoredTx: {
+        previewSponsoredRedeem: async () => ({ transactionBytes: 'bytes-fresh', digest: 'digest-fresh' }),
+      },
     }).reserve('org-1', reserveRequest);
 
     expect(result.digest).toBe('digest-fresh');
@@ -198,17 +218,29 @@ describe('PosRedemptionService.reserve', () => {
     'an already-settled (%s) idempotency key returns the final state without touching chain',
     async (status) => {
       const result = await service({
-        creditsRepo: { findMemberOrganizationId: async () => 'org-1', reservePosRedemption: pendingHold(status, false) },
+        creditsRepo: {
+          findMemberOrganizationId: async () => 'org-1',
+          reservePosRedemption: pendingHold(status, false),
+        },
         sponsoredTx: { previewSponsoredRedeem: () => expect.fail('nothing left to sign') },
       }).reserve('org-1', reserveRequest);
 
-      expect(result).toEqual({ transactionId: 'tx-1', digest: null, transactionBytes: null, status, idempotencyKey: 'idem-1' });
+      expect(result).toEqual({
+        transactionId: 'tx-1',
+        digest: null,
+        transactionBytes: null,
+        status,
+        idempotencyKey: 'idem-1',
+      });
     },
   );
 
   it('rejects a hold for a member with no on-chain CreditAccount', async () => {
     const reserve = service({
-      creditsRepo: { findMemberOrganizationId: async () => 'org-1', reservePosRedemption: pendingHold('PENDING', true, null) },
+      creditsRepo: {
+        findMemberOrganizationId: async () => 'org-1',
+        reservePosRedemption: pendingHold('PENDING', true, null),
+      },
     }).reserve('org-1', reserveRequest);
 
     await expect(reserve).rejects.toThrow(/has no on-chain CreditAccount yet/);
@@ -406,7 +438,10 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
           throw new Error('ETIMEDOUT');
         },
       },
-      operationsRepo: { recordSubmitDigestForCommand, settleFromChain: () => expect.fail('nothing settles while unknown') },
+      operationsRepo: {
+        recordSubmitDigestForCommand,
+        settleFromChain: () => expect.fail('nothing settles while unknown'),
+      },
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 
     await expect(finalize).rejects.toThrow(/ETIMEDOUT/);
@@ -442,7 +477,14 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
         redis: await redisWithCachedReserve(),
         creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary', failPosRedemptionOnChain: async () => {} },
         sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
-        suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', errorMessage: 'EInsufficientBalance', events: [] }) },
+        suiBuilder: {
+          waitForTransaction: async () => ({
+            digest: 'digest-1',
+            status: 'failure',
+            errorMessage: 'EInsufficientBalance',
+            events: [],
+          }),
+        },
         operationsRepo,
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
     ).rejects.toThrow(/EInsufficientBalance/);
@@ -459,7 +501,10 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
       },
       sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
       suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
-      operationsRepo: { recordSubmitDigestForCommand: async () => null, settleFromChain: () => expect.fail('nothing to settle') },
+      operationsRepo: {
+        recordSubmitDigestForCommand: async () => null,
+        settleFromChain: () => expect.fail('nothing to settle'),
+      },
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 
     await expect(
@@ -468,7 +513,10 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
         creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary', failPosRedemptionOnChain: async () => {} },
         sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
         suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', events: [] }) },
-        operationsRepo: { recordSubmitDigestForCommand: async () => null, settleFromChain: () => expect.fail('nothing to settle') },
+        operationsRepo: {
+          recordSubmitDigestForCommand: async () => null,
+          settleFromChain: () => expect.fail('nothing to settle'),
+        },
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
     ).rejects.toThrow(/Redeem failed on-chain/);
   });
@@ -492,7 +540,11 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
       service({
         redis,
         creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary' },
-        sponsoredTx: { executeSponsoredRedeem: async () => { throw new Error('ETIMEDOUT'); } },
+        sponsoredTx: {
+          executeSponsoredRedeem: async () => {
+            throw new Error('ETIMEDOUT');
+          },
+        },
         operationsRepo: { recordSubmitDigestForCommand },
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
     ).rejects.toThrow();
@@ -504,7 +556,10 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
     const reserve = service({
       creditsRepo: {
         findMemberOrganizationId: async () => 'org-1',
-        reservePosRedemption: async () => ({ ...(await pendingHold('PENDING', false)()), submittedDigest: 'digest-sent-before' }),
+        reservePosRedemption: async () => ({
+          ...(await pendingHold('PENDING', false)()),
+          submittedDigest: 'digest-sent-before',
+        }),
       },
       sponsoredTx: { previewSponsoredRedeem: () => expect.fail('must not sponsor a second redeem') },
     }).reserve('org-1', reserveRequest);

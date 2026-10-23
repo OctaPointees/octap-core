@@ -1,24 +1,10 @@
 import { relations } from 'drizzle-orm';
-import {
-  systemUsers,
-  invitations,
-  organizationMemberships,
-  organizationChangeRequests,
-} from './auth.schema.js';
+import { systemUsers, invitations, organizationMemberships, organizationChangeRequests } from './auth.schema.js';
 import { organizations, apiCredentials } from './organizations.schema.js';
 import { endUsers, organizationEndUsers } from './members.schema.js';
-import {
-  creditOwnerships,
-  blockchainTransactions,
-  loyaltyTransactions,
-} from './credits.schema.js';
+import { creditOwnerships, blockchainTransactions, loyaltyTransactions } from './credits.schema.js';
 import { vouchers, voucherOwnerships } from './rewards.schema.js';
-import {
-  billingPlans,
-  paymentMethods,
-  subscriptions,
-  invoices,
-} from './billing.schema.js';
+import { billingPlans, paymentMethods, subscriptions, invoices } from './billing.schema.js';
 import { webhookEndpoints, webhookDeliveries } from './webhooks.schema.js';
 
 // SYSTEM USERS RELATIONS
@@ -42,20 +28,17 @@ export const invitationsRelations = relations(invitations, ({ one }) => ({
 }));
 
 // ORGANIZATION MEMBERSHIPS RELATIONS
-export const organizationMembershipsRelations = relations(
-  organizationMemberships,
-  ({ one, many }) => ({
-    organization: one(organizations, {
-      fields: [organizationMemberships.organizationId],
-      references: [organizations.id],
-    }),
-    systemUser: one(systemUsers, {
-      fields: [organizationMemberships.systemUserId],
-      references: [systemUsers.id],
-    }),
-    loyaltyTransactionsCreated: many(loyaltyTransactions),
+export const organizationMembershipsRelations = relations(organizationMemberships, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [organizationMemberships.organizationId],
+    references: [organizations.id],
   }),
-);
+  systemUser: one(systemUsers, {
+    fields: [organizationMemberships.systemUserId],
+    references: [systemUsers.id],
+  }),
+  loyaltyTransactionsCreated: many(loyaltyTransactions),
+}));
 
 // ORGANIZATIONS RELATIONS
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -74,25 +57,22 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
 }));
 
 // ORGANIZATION CHANGE REQUESTS RELATIONS
-export const organizationChangeRequestsRelations = relations(
-  organizationChangeRequests,
-  ({ one }) => ({
-    organization: one(organizations, {
-      fields: [organizationChangeRequests.organizationId],
-      references: [organizations.id],
-    }),
-    requestedBy: one(systemUsers, {
-      fields: [organizationChangeRequests.requestedById],
-      references: [systemUsers.id],
-      relationName: 'requestedBy',
-    }),
-    reviewedBy: one(systemUsers, {
-      fields: [organizationChangeRequests.reviewedById],
-      references: [systemUsers.id],
-      relationName: 'reviewedBy',
-    }),
+export const organizationChangeRequestsRelations = relations(organizationChangeRequests, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationChangeRequests.organizationId],
+    references: [organizations.id],
   }),
-);
+  requestedBy: one(systemUsers, {
+    fields: [organizationChangeRequests.requestedById],
+    references: [systemUsers.id],
+    relationName: 'requestedBy',
+  }),
+  reviewedBy: one(systemUsers, {
+    fields: [organizationChangeRequests.reviewedById],
+    references: [systemUsers.id],
+    relationName: 'reviewedBy',
+  }),
+}));
 
 // API CREDENTIALS RELATIONS
 export const apiCredentialsRelations = relations(apiCredentials, ({ one }) => ({
@@ -108,22 +88,19 @@ export const endUsersRelations = relations(endUsers, ({ many }) => ({
 }));
 
 // ORGANIZATION END USERS RELATIONS
-export const organizationEndUsersRelations = relations(
-  organizationEndUsers,
-  ({ one, many }) => ({
-    organization: one(organizations, {
-      fields: [organizationEndUsers.organizationId],
-      references: [organizations.id],
-    }),
-    endUser: one(endUsers, {
-      fields: [organizationEndUsers.endUserId],
-      references: [endUsers.id],
-    }),
-    creditOwnership: one(creditOwnerships),
-    voucherOwnerships: many(voucherOwnerships),
-    loyaltyTransactions: many(loyaltyTransactions),
+export const organizationEndUsersRelations = relations(organizationEndUsers, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [organizationEndUsers.organizationId],
+    references: [organizations.id],
   }),
-);
+  endUser: one(endUsers, {
+    fields: [organizationEndUsers.endUserId],
+    references: [endUsers.id],
+  }),
+  creditOwnership: one(creditOwnerships),
+  voucherOwnerships: many(voucherOwnerships),
+  loyaltyTransactions: many(loyaltyTransactions),
+}));
 
 // CREDIT OWNERSHIPS RELATIONS
 export const creditOwnershipsRelations = relations(creditOwnerships, ({ one }) => ({
@@ -134,41 +111,35 @@ export const creditOwnershipsRelations = relations(creditOwnerships, ({ one }) =
 }));
 
 // BLOCKCHAIN TRANSACTIONS RELATIONS
-export const blockchainTransactionsRelations = relations(
-  blockchainTransactions,
-  ({ many }) => ({
-    loyaltyTransactions: many(loyaltyTransactions),
-  }),
-);
+export const blockchainTransactionsRelations = relations(blockchainTransactions, ({ many }) => ({
+  loyaltyTransactions: many(loyaltyTransactions),
+}));
 
 // LOYALTY TRANSACTIONS RELATIONS
-export const loyaltyTransactionsRelations = relations(
-  loyaltyTransactions,
-  ({ one, many }) => ({
-    organization: one(organizations, {
-      fields: [loyaltyTransactions.organizationId],
-      references: [organizations.id],
-    }),
-    organizationEndUser: one(organizationEndUsers, {
-      fields: [loyaltyTransactions.organizationEndUserId],
-      references: [organizationEndUsers.id],
-    }),
-    createdByMembership: one(organizationMemberships, {
-      fields: [loyaltyTransactions.createdByMembershipId],
-      references: [organizationMemberships.id],
-    }),
-    blockchainTransaction: one(blockchainTransactions, {
-      fields: [loyaltyTransactions.blockchainTransactionId],
-      references: [blockchainTransactions.id],
-    }),
-    reversesTransaction: one(loyaltyTransactions, {
-      fields: [loyaltyTransactions.reversesTransactionId],
-      references: [loyaltyTransactions.id],
-      relationName: 'reversal',
-    }),
-    voucherOwnerships: many(voucherOwnerships),
+export const loyaltyTransactionsRelations = relations(loyaltyTransactions, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [loyaltyTransactions.organizationId],
+    references: [organizations.id],
   }),
-);
+  organizationEndUser: one(organizationEndUsers, {
+    fields: [loyaltyTransactions.organizationEndUserId],
+    references: [organizationEndUsers.id],
+  }),
+  createdByMembership: one(organizationMemberships, {
+    fields: [loyaltyTransactions.createdByMembershipId],
+    references: [organizationMemberships.id],
+  }),
+  blockchainTransaction: one(blockchainTransactions, {
+    fields: [loyaltyTransactions.blockchainTransactionId],
+    references: [blockchainTransactions.id],
+  }),
+  reversesTransaction: one(loyaltyTransactions, {
+    fields: [loyaltyTransactions.reversesTransactionId],
+    references: [loyaltyTransactions.id],
+    relationName: 'reversal',
+  }),
+  voucherOwnerships: many(voucherOwnerships),
+}));
 
 // VOUCHERS RELATIONS
 export const vouchersRelations = relations(vouchers, ({ one, many }) => ({

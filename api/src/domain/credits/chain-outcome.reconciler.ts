@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eventField, type SubmittedChainTransaction } from '@octap/chain';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
-import type { operations } from '../../infra/db/schema/operations.schema.js';
-import { SuiClientService } from '../../infra/clients/sui/sui.client.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { operations } from '#infra/db/schema/operations.schema.js';
+import { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 export const EARN_COMMAND_TYPE = 'CREDIT_EARN_CHAIN_SUBMIT';
 export const POS_REDEEM_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
@@ -105,7 +105,9 @@ export class ChainOutcomeReconciler {
       return this.fail(operation, `${operation.suiTxDigest} never landed and expired after epoch ${expiration}`);
     }
     if (expiration === null) {
-      this.logger.warn(`${operation.suiTxDigest} (operation ${operation.id}) is not on-chain and has no expiration; needs a human`);
+      this.logger.warn(
+        `${operation.suiTxDigest} (operation ${operation.id}) is not on-chain and has no expiration; needs a human`,
+      );
     }
     await this.operationsRepo.touch(operation.id);
     return 'waiting';
@@ -115,7 +117,9 @@ export class ChainOutcomeReconciler {
     const payload = operation.payload as unknown as EarnPayload;
     const amount = eventField<string>(outcome, 'CreditEarned', 'amount');
     if (amount === undefined) {
-      this.logger.error(`${outcome.digest} succeeded but emitted no CreditEarned; operation ${operation.id} left for a human`);
+      this.logger.error(
+        `${outcome.digest} succeeded but emitted no CreditEarned; operation ${operation.id} left for a human`,
+      );
       await this.operationsRepo.touch(operation.id);
       return 'waiting';
     }
@@ -167,7 +171,10 @@ export class ChainOutcomeReconciler {
       });
     } else {
       const payload = operation.payload as unknown as PosRedeemPayload;
-      const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(operation.tenantId, operation.idempotencyKey);
+      const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(
+        operation.tenantId,
+        operation.idempotencyKey,
+      );
       if (loyaltyTx) {
         await this.creditsRepo.failPosRedemptionOnChain({
           loyaltyTransactionId: loyaltyTx.id,

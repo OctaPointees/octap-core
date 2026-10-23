@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
-import * as schema from '../../../src/infra/db/schema/index.js';
-import type { DrizzleDb } from '../../../src/infra/db/postgres.provider.js';
-import { generateApiKey } from '../../../src/infra/auth/api-key-hash.util.js';
+import * as schema from '#infra/db/schema/index.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { generateApiKey } from '#infra/auth/api-key-hash.util.js';
 
 export { schema };
 
@@ -23,11 +23,16 @@ export async function resetDb(target: postgres.Sql | DrizzleDb): Promise<void> {
   const client: postgres.Sql = '$client' in target ? (target.$client as postgres.Sql) : (target as postgres.Sql);
   const tables = await client<{ tablename: string }[]>`select tablename from pg_tables where schemaname = 'public'`;
   if (tables.length > 0) {
-    await client.unsafe(`truncate table ${tables.map((t) => `"public"."${t.tablename}"`).join(', ')} restart identity cascade`);
+    await client.unsafe(
+      `truncate table ${tables.map((t) => `"public"."${t.tablename}"`).join(', ')} restart identity cascade`,
+    );
   }
 }
 
-export async function seedOrganization(db: DrizzleDb, overrides: Partial<typeof schema.organizations.$inferInsert> = {}) {
+export async function seedOrganization(
+  db: DrizzleDb,
+  overrides: Partial<typeof schema.organizations.$inferInsert> = {},
+) {
   const suffix = randomUUID().slice(0, 8);
   const [org] = await db
     .insert(schema.organizations)
@@ -68,13 +73,19 @@ export async function seedProgram(
 export async function seedMember(
   db: DrizzleDb,
   organizationId: string,
-  { suiAddress = `0x${randomUUID().replaceAll('-', '')}`, withAddress = true }: { suiAddress?: string; withAddress?: boolean } = {},
+  {
+    suiAddress = `0x${randomUUID().replaceAll('-', '')}`,
+    withAddress = true,
+  }: { suiAddress?: string; withAddress?: boolean } = {},
 ) {
   const [endUser] = await db
     .insert(schema.endUsers)
     .values({ suiAddress: withAddress ? suiAddress : null })
     .returning();
-  const [member] = await db.insert(schema.organizationEndUsers).values({ organizationId, endUserId: endUser.id }).returning();
+  const [member] = await db
+    .insert(schema.organizationEndUsers)
+    .values({ organizationId, endUserId: endUser.id })
+    .returning();
   return { endUser, member, memberId: member.id };
 }
 
@@ -96,7 +107,10 @@ export async function setOwnership(
       .returning();
     return updated;
   }
-  const [created] = await db.insert(schema.creditOwnerships).values({ organizationEndUserId, ...values }).returning();
+  const [created] = await db
+    .insert(schema.creditOwnerships)
+    .values({ organizationEndUserId, ...values })
+    .returning();
   return created;
 }
 
@@ -122,12 +136,24 @@ export async function getLoyaltyTransaction(db: DrizzleDb, id: string) {
 export async function seedCredential(
   db: DrizzleDb,
   organizationId: string,
-  { scopes = ['read', 'write', 'admin'], expiresAt, status }: { scopes?: string[]; expiresAt?: Date; status?: 'ACTIVE' | 'REVOKED' } = {},
+  {
+    scopes = ['read', 'write', 'admin'],
+    expiresAt,
+    status,
+  }: { scopes?: string[]; expiresAt?: Date; status?: 'ACTIVE' | 'REVOKED' } = {},
 ) {
   const { raw, prefix, hash } = generateApiKey();
   const [credential] = await db
     .insert(schema.apiCredentials)
-    .values({ organizationId, name: 'test', keyPrefix: prefix, keyHash: hash, scopes, expiresAt, ...(status ? { status } : {}) })
+    .values({
+      organizationId,
+      name: 'test',
+      keyPrefix: prefix,
+      keyHash: hash,
+      scopes,
+      expiresAt,
+      ...(status ? { status } : {}),
+    })
     .returning();
   return { credential, rawKey: raw };
 }

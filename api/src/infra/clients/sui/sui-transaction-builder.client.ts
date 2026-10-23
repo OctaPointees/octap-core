@@ -46,7 +46,11 @@ export class SuiTransactionBuilderClient {
   }
 
   /** Builds `credit_account::redeem`'s transaction kind: no sender, no gas, nothing signed yet. */
-  async buildRedeemTransactionKind(params: { accountId: string; cost: bigint; reference: Uint8Array }): Promise<Uint8Array> {
+  async buildRedeemTransactionKind(params: {
+    accountId: string;
+    cost: bigint;
+    reference: Uint8Array;
+  }): Promise<Uint8Array> {
     const tx = this.client.buildRedeemTransaction(params);
     return tx.build({ client: this.client.rpc, onlyTransactionKind: true });
   }

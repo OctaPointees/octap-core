@@ -12,12 +12,14 @@ export default defineConfig({
   },
   resolve: {
     // Tests run against workspace sources directly, so nothing has to be built first.
-    alias: {
-      '@octap/contracts': fromRoot('./ts-sdks/packages/contracts/src/index.ts'),
-      '@octap/chain': fromRoot('./ts-sdks/packages/chain/src/index.ts'),
-      '@octap/sdk': fromRoot('./ts-sdks/packages/node/src/index.ts'),
-      '@octap/browser-sdk': fromRoot('./ts-sdks/packages/browser/src/index.ts'),
-    },
+    alias: [
+      { find: '@octap/contracts', replacement: fromRoot('./ts-sdks/packages/contracts/src/index.ts') },
+      { find: '@octap/chain', replacement: fromRoot('./ts-sdks/packages/chain/src/index.ts') },
+      { find: '@octap/sdk', replacement: fromRoot('./ts-sdks/packages/node/src/index.ts') },
+      { find: '@octap/browser-sdk', replacement: fromRoot('./ts-sdks/packages/browser/src/index.ts') },
+      // api/package.json's `imports` map #api/#domain/#infra to dist/ for Node; tests want src/.
+      { find: /^#(api|domain|infra)\//, replacement: `${fromRoot('./api/src/')}$1/` },
+    ],
   },
   test: {
     globals: false,

@@ -1,11 +1,11 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import { REDIS_CLIENT } from '../../infra/cache/redis.provider.js';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
-import { OperationPayloadConflictError, OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
+import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { transactionExpirationEpoch } from '@octap/chain';
 import type {
@@ -207,7 +207,10 @@ export class PosRedemptionService {
 
     let executed: { digest: string };
     try {
-      executed = await this.sponsoredTx.executeSponsoredRedeem({ digest: request.digest, signature: request.signature });
+      executed = await this.sponsoredTx.executeSponsoredRedeem({
+        digest: request.digest,
+        signature: request.signature,
+      });
     } catch (err: unknown) {
       // Reservation and cache stay in place: a bad/stale signature is retryable with a fixed one,
       // not a reason to release the hold or force the caller back through /reserve.
@@ -223,7 +226,11 @@ export class PosRedemptionService {
         pointsAmount: cached.pointsAmount,
       });
       if (operationId) {
-        await this.operationsRepo.settleFromChain(operationId, 'FAILED', result.errorMessage ?? 'redeem failed on-chain');
+        await this.operationsRepo.settleFromChain(
+          operationId,
+          'FAILED',
+          result.errorMessage ?? 'redeem failed on-chain',
+        );
       }
       await this.redis.del(reserveKey(request.digest));
       throw new BadRequestException(result.errorMessage ?? 'Redeem failed on-chain');

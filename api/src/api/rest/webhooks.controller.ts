@@ -1,9 +1,9 @@
 import { Controller, Post, Get, Body, Param, BadRequestException } from '@nestjs/common';
-import { WebhookEndpointsService } from '../../domain/webhooks/webhook-endpoints.service.js';
-import { WebhookDeliveryService } from '../../domain/webhooks/webhook-delivery.service.js';
-import { Scopes } from '../../infra/auth/scopes.decorator.js';
-import { Tenant } from '../../infra/auth/tenant.decorator.js';
-import type { TenantContext } from '../../infra/auth/tenant-context.js';
+import { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
+import { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
+import { Scopes } from '#infra/auth/scopes.decorator.js';
+import { Tenant } from '#infra/auth/tenant.decorator.js';
+import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type { RegisterWebhookEndpointBodyDto } from '../dto/webhooks.dto.js';
 
 @Controller('v1/webhooks')

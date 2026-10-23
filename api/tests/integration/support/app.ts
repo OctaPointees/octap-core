@@ -3,17 +3,25 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module.js';
-import { EnokiClient } from '../../../src/infra/clients/enoki/enoki.client.js';
-import { SuiTransactionBuilderClient } from '../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import { DRIZZLE_DB, type DrizzleDb } from '../../../src/infra/db/postgres.provider.js';
-import { hashApiKey } from '../../../src/infra/auth/api-key-hash.util.js';
-import { buildCanonicalRequest, signCanonicalRequest } from '../../../src/infra/auth/request-signing.util.js';
+import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import { DRIZZLE_DB, type DrizzleDb } from '#infra/db/postgres.provider.js';
+import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
+import { buildCanonicalRequest, signCanonicalRequest } from '#infra/auth/request-signing.util.js';
 
 /** Stand-ins for the two external services the HTTP process talks to; everything else is real. */
 export function fakeChainAdapters() {
   const enoki = {
-    resolveZkLoginAddress: vi.fn<(jwt: string) => Promise<{ address: string; publicKey: string; salt: string }>>(async () => ({ address: '0xzklogin', publicKey: 'pk', salt: 'salt' })),
-    createZkLoginNonce: vi.fn(async () => ({ nonce: 'nonce', randomness: 'rand', epoch: 1, maxEpoch: 3, estimatedExpiration: 0 })),
+    resolveZkLoginAddress: vi.fn<(jwt: string) => Promise<{ address: string; publicKey: string; salt: string }>>(
+      async () => ({ address: '0xzklogin', publicKey: 'pk', salt: 'salt' }),
+    ),
+    createZkLoginNonce: vi.fn(async () => ({
+      nonce: 'nonce',
+      randomness: 'rand',
+      epoch: 1,
+      maxEpoch: 3,
+      estimatedExpiration: 0,
+    })),
     createZkLoginProof: vi.fn(async () => ({ proofPoints: { a: [], b: [], c: [] } })),
     createSponsoredTransaction: vi.fn(async () => ({ bytes: 'sponsored-bytes', digest: 'SPONSORED-DIGEST' })),
     executeSponsoredTransaction: vi.fn(async ({ digest }: { digest: string }) => ({ digest })),
@@ -22,7 +30,12 @@ export function fakeChainAdapters() {
     redeemMoveCallTarget: '0xpkg::credit_account::redeem',
     buildRedeemTransactionKind: vi.fn(async () => new Uint8Array([1, 2, 3])),
     waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
-    listCreditAccountEvents: vi.fn(async () => ({ events: [], hasNextPage: false, startCursor: null, endCursor: null })),
+    listCreditAccountEvents: vi.fn(async () => ({
+      events: [],
+      hasNextPage: false,
+      startCursor: null,
+      endCursor: null,
+    })),
   };
   return { enoki, suiBuilder };
 }

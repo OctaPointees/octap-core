@@ -22,7 +22,10 @@ export class IdentityRepository {
 
   async findEnrollment(organizationId: string, endUserId: string) {
     return this.db.query.organizationEndUsers.findFirst({
-      where: and(eq(organizationEndUsers.organizationId, organizationId), eq(organizationEndUsers.endUserId, endUserId)),
+      where: and(
+        eq(organizationEndUsers.organizationId, organizationId),
+        eq(organizationEndUsers.endUserId, endUserId),
+      ),
     });
   }
 

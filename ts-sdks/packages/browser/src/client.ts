@@ -26,15 +26,10 @@ export class OctaBrowserClient {
     this.getAuthToken = options.getAuthToken;
   }
 
-  private async request<T>(
-    path: string,
-    method: 'GET' | 'POST' = 'GET',
-    body?: unknown,
-    orgId?: string,
-  ): Promise<T> {
+  private async request<T>(path: string, method: 'GET' | 'POST' = 'GET', body?: unknown, orgId?: string): Promise<T> {
     const url = `${this.apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const headers: Record<string, string> = {
-      'accept': 'application/json',
+      accept: 'application/json',
     };
 
     if (body !== undefined) {
@@ -87,10 +82,7 @@ export class OctaBrowserClient {
    * List loyalty transactions for a member.
    */
   async listTransactions(memberId: string, limit = 50): Promise<LoyaltyTransactionDto[]> {
-    return this.request<LoyaltyTransactionDto[]>(
-      `/v1/credits/members/${memberId}/transactions?limit=${limit}`,
-      'GET',
-    );
+    return this.request<LoyaltyTransactionDto[]>(`/v1/credits/members/${memberId}/transactions?limit=${limit}`, 'GET');
   }
 
   /**
@@ -145,20 +137,15 @@ export class OctaBrowserClient {
   /**
    * Enrolls an already-logged-in end user into one organization's loyalty program.
    */
-  async enroll(
-    endUserId: string,
-    organizationId?: string,
-    externalMemberId?: string,
-  ): Promise<EnrollMemberResponse> {
+  async enroll(endUserId: string, organizationId?: string, externalMemberId?: string): Promise<EnrollMemberResponse> {
     const orgId = organizationId ?? this.defaultOrganizationId;
     if (!orgId) {
       throw new Error('organizationId is required (pass it or set BrowserClientOptions.organizationId)');
     }
-    return this.request<EnrollMemberResponse>(
-      `/v1/identity/organizations/${orgId}/enroll`,
-      'POST',
-      { endUserId, externalMemberId },
-    );
+    return this.request<EnrollMemberResponse>(`/v1/identity/organizations/${orgId}/enroll`, 'POST', {
+      endUserId,
+      externalMemberId,
+    });
   }
 }
 

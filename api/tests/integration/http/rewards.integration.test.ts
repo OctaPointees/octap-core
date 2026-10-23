@@ -27,7 +27,13 @@ const createVoucher = (body: Record<string, unknown>) => ctx.http().post('/v1/re
 
 describe('rewards over HTTP', () => {
   it('create -> list/get -> claim (deducting points) -> redeem the serial -> member’s vouchers', async () => {
-    const created = await createVoucher({ code: 'coffee', title: 'Free coffee', discountType: 'FREE_ITEM', pointsCost: 60, totalSupply: 2 }).expect(201);
+    const created = await createVoucher({
+      code: 'coffee',
+      title: 'Free coffee',
+      discountType: 'FREE_ITEM',
+      pointsCost: 60,
+      totalSupply: 2,
+    }).expect(201);
     expect(created.body).toMatchObject({ code: 'coffee', pointsCost: 60, status: 'ACTIVE', claimedCount: 0 });
     await createVoucher({ code: 'coffee', title: 'dup', discountType: 'FREE_ITEM' }).expect(400);
 
@@ -40,24 +46,55 @@ describe('rewards over HTTP', () => {
       .set(auth)
       .send({ organizationEndUserId: memberId, idempotencyKey: 'claim-1' })
       .expect(201);
-    expect(claimed.body).toMatchObject({ pointsDeducted: 60, status: 'AVAILABLE', serialCode: expect.stringMatching(/^COFFEE-[0-9A-F]{8}$/) });
-    expect((await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance).toBe(40);
+    expect(claimed.body).toMatchObject({
+      pointsDeducted: 60,
+      status: 'AVAILABLE',
+      serialCode: expect.stringMatching(/^COFFEE-[0-9A-F]{8}$/),
+    });
+    expect(
+      (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance,
+    ).toBe(40);
 
     // Same member again: refused by the per-member uniqueness rule.
-    await ctx.http().post(`/v1/rewards/vouchers/${created.body.id}/claim`).set(auth).send({ organizationEndUserId: memberId, idempotencyKey: 'claim-2' }).expect(400);
+    await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${created.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'claim-2' })
+      .expect(400);
 
-    const redeemed = await ctx.http().post('/v1/rewards/vouchers/redeem').set(auth).send({ serialCode: claimed.body.serialCode }).expect(201);
+    const redeemed = await ctx
+      .http()
+      .post('/v1/rewards/vouchers/redeem')
+      .set(auth)
+      .send({ serialCode: claimed.body.serialCode })
+      .expect(201);
     expect(redeemed.body).toMatchObject({ status: 'REDEEMED', voucherTitle: 'Free coffee', discountType: 'FREE_ITEM' });
-    await ctx.http().post('/v1/rewards/vouchers/redeem').set(auth).send({ serialCode: claimed.body.serialCode }).expect(400);
+    await ctx
+      .http()
+      .post('/v1/rewards/vouchers/redeem')
+      .set(auth)
+      .send({ serialCode: claimed.body.serialCode })
+      .expect(400);
 
     const mine = (await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200)).body;
     expect(mine).toMatchObject([{ status: 'REDEEMED', voucher: { code: 'coffee' } }]);
   });
 
   it('a claim the member can’t afford is refused and changes nothing', async () => {
-    const created = await createVoucher({ code: 'big', title: 'Big', discountType: 'FIXED_AMOUNT', pointsCost: 500 }).expect(201);
+    const created = await createVoucher({
+      code: 'big',
+      title: 'Big',
+      discountType: 'FIXED_AMOUNT',
+      pointsCost: 500,
+    }).expect(201);
 
-    await ctx.http().post(`/v1/rewards/vouchers/${created.body.id}/claim`).set(auth).send({ organizationEndUserId: memberId }).expect(400);
+    await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${created.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId })
+      .expect(400);
 
     expect((await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200)).body).toEqual([]);
   });

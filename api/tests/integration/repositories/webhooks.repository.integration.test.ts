@@ -4,7 +4,7 @@ import {
   DELIVERY_CLAIM_LEASE_MS,
   WebhooksRepository,
   enqueueWebhookEvent,
-} from '../../../src/infra/db/repositories/webhooks.repository.js';
+} from '#infra/db/repositories/webhooks.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
@@ -16,15 +16,24 @@ let endpointId: string;
 beforeEach(async () => {
   await resetDb(client);
   orgId = (await seedOrganization(db)).id;
-  endpointId = (await repo.createEndpoint({ organizationId: orgId, url: 'https://merchant.example/hooks', secret: 'whsec_1', description: 'pos' })).id;
+  endpointId = (
+    await repo.createEndpoint({
+      organizationId: orgId,
+      url: 'https://merchant.example/hooks',
+      secret: 'whsec_1',
+      description: 'pos',
+    })
+  ).id;
 });
 
 afterAll(async () => {
   await client.end();
 });
 
-const deliveryRow = async (id: string) => (await db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.id, id)))[0];
-const enqueue = (eventType = 'credits.earned') => repo.enqueueDelivery({ organizationId: orgId, endpointId, eventType, payload: { a: 1 } });
+const deliveryRow = async (id: string) =>
+  (await db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.id, id)))[0];
+const enqueue = (eventType = 'credits.earned') =>
+  repo.enqueueDelivery({ organizationId: orgId, endpointId, eventType, payload: { a: 1 } });
 
 describe('endpoints', () => {
   it('lists, finds (tenant-scoped), toggles, and rotates', async () => {
@@ -48,7 +57,12 @@ describe('endpoints', () => {
 describe('deliveries', () => {
   it('enqueues PENDING, due now, with no attempts yet; listing is tenant-scoped', async () => {
     const delivery = await enqueue();
-    expect(delivery).toMatchObject({ status: 'PENDING', attemptCount: 0, eventType: 'credits.earned', payload: { a: 1 } });
+    expect(delivery).toMatchObject({
+      status: 'PENDING',
+      attemptCount: 0,
+      eventType: 'credits.earned',
+      payload: { a: 1 },
+    });
 
     const other = await seedOrganization(db);
     expect((await repo.listDeliveries(orgId)).map((d) => d.id)).toEqual([delivery.id]);
@@ -77,7 +91,10 @@ describe('deliveries', () => {
     expect(await repo.claimDueDeliveries(10)).toEqual([]);
 
     // The claiming worker died mid-attempt: once the lease lapses, the delivery is retried.
-    await db.update(schema.webhookDeliveries).set({ nextAttemptAt: new Date(Date.now() - 1) }).where(eq(schema.webhookDeliveries.id, d.id));
+    await db
+      .update(schema.webhookDeliveries)
+      .set({ nextAttemptAt: new Date(Date.now() - 1) })
+      .where(eq(schema.webhookDeliveries.id, d.id));
     expect((await repo.claimDueDeliveries(10)).map((r) => [r.id, r.attemptCount])).toEqual([[d.id, 2]]);
   });
 
@@ -95,10 +112,18 @@ describe('deliveries', () => {
     const d = await enqueue();
 
     await repo.scheduleRetry(d.id, new Date(Date.now() + 1000), null, 'ECONNREFUSED');
-    expect(await deliveryRow(d.id)).toMatchObject({ status: 'PENDING', lastResponseStatus: null, lastError: 'ECONNREFUSED' });
+    expect(await deliveryRow(d.id)).toMatchObject({
+      status: 'PENDING',
+      lastResponseStatus: null,
+      lastError: 'ECONNREFUSED',
+    });
 
     await repo.markDeadLetter(d.id, 500, 'HTTP 500');
-    expect(await deliveryRow(d.id)).toMatchObject({ status: 'DEAD_LETTER', lastResponseStatus: 500, lastError: 'HTTP 500' });
+    expect(await deliveryRow(d.id)).toMatchObject({
+      status: 'DEAD_LETTER',
+      lastResponseStatus: 500,
+      lastError: 'HTTP 500',
+    });
 
     const replayed = await repo.resetForReplay(d.id);
     expect(replayed).toMatchObject({ id: d.id, status: 'PENDING', attemptCount: 0, lastError: null });
@@ -110,14 +135,26 @@ describe('deliveries', () => {
 
 describe('enqueueWebhookEvent (OCT-209 outbox)', () => {
   it('queues one delivery per ACTIVE endpoint of the organization, on the caller’s transaction', async () => {
-    const second = await repo.createEndpoint({ organizationId: orgId, url: 'https://merchant.example/b', secret: 'whsec_2' });
-    const disabled = await repo.createEndpoint({ organizationId: orgId, url: 'https://merchant.example/c', secret: 'whsec_3' });
+    const second = await repo.createEndpoint({
+      organizationId: orgId,
+      url: 'https://merchant.example/b',
+      secret: 'whsec_2',
+    });
+    const disabled = await repo.createEndpoint({
+      organizationId: orgId,
+      url: 'https://merchant.example/c',
+      secret: 'whsec_3',
+    });
     await repo.setEndpointStatus(disabled.id, 'DISABLED');
     const other = await seedOrganization(db);
     await repo.createEndpoint({ organizationId: other.id, url: 'https://other.example', secret: 'whsec_4' });
 
     const queued = await db.transaction((tx) =>
-      enqueueWebhookEvent(tx, { organizationId: orgId, eventType: 'credits.earn.confirmed', payload: { transactionId: 't' } }),
+      enqueueWebhookEvent(tx, {
+        organizationId: orgId,
+        eventType: 'credits.earn.confirmed',
+        payload: { transactionId: 't' },
+      }),
     );
 
     expect(queued).toBe(2);

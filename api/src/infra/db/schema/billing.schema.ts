@@ -11,13 +11,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'INCOMPLETE',
 ]);
 
-export const invoiceStatusEnum = pgEnum('invoice_status', [
-  'DRAFT',
-  'OPEN',
-  'PAID',
-  'UNCOLLECTIBLE',
-  'VOID',
-]);
+export const invoiceStatusEnum = pgEnum('invoice_status', ['DRAFT', 'OPEN', 'PAID', 'UNCOLLECTIBLE', 'VOID']);
 
 /**
  * BILLING PLAN: SaaS pricing plans and tiers for Organizations.

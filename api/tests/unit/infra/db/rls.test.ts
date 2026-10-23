@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { withRls } from '../../../../src/infra/db/rls.js';
-import type { DrizzleDb } from '../../../../src/infra/db/postgres.provider.js';
+import { withRls } from '#infra/db/rls.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 
 const dialect = new PgDialect();
 
@@ -46,7 +46,10 @@ describe('withRls', () => {
 
   it('a user-only context sets the subject claim but no tenant', async () => {
     const { statements } = await statementsFor({ userId: 'user-1' });
-    expect(statements.map((s) => s.sql)).toEqual(['SET LOCAL ROLE authenticated', "SELECT set_config('request.jwt.claim.sub', $1, true)"]);
+    expect(statements.map((s) => s.sql)).toEqual([
+      'SET LOCAL ROLE authenticated',
+      "SELECT set_config('request.jwt.claim.sub', $1, true)",
+    ]);
   });
 
   it('an empty context changes nothing', async () => {

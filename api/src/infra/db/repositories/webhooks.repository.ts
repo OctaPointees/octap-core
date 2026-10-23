@@ -166,7 +166,13 @@ export class WebhooksRepository {
   async scheduleRetry(id: string, nextAttemptAt: Date, responseStatus: number | null, error: string) {
     await this.db
       .update(webhookDeliveries)
-      .set({ status: 'PENDING', nextAttemptAt, lastResponseStatus: responseStatus, lastError: error, updatedAt: new Date() })
+      .set({
+        status: 'PENDING',
+        nextAttemptAt,
+        lastResponseStatus: responseStatus,
+        lastError: error,
+        updatedAt: new Date(),
+      })
       .where(eq(webhookDeliveries.id, id));
   }
 

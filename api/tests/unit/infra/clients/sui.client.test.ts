@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { operationShardIndex, type OctapChainClient } from '@octap/chain';
-import { SuiClientService, selectShards } from '../../../../src/infra/clients/sui/sui.client.js';
+import { SuiClientService, selectShards } from '#infra/clients/sui/sui.client.js';
 import { programConfigFor } from '../../../helpers/fixtures.js';
 
 const PROGRAM = programConfigFor('org-1');
@@ -13,7 +13,11 @@ function withChainClient(service: SuiClientService, client: Partial<Record<keyof
 }
 
 const fakeTx = () => ({ setGasBudget: vi.fn() });
-const submitted = (events: Array<{ type: string; parsedJson: unknown }> = []) => ({ digest: 'D1', status: 'success' as const, events });
+const submitted = (events: Array<{ type: string; parsedJson: unknown }> = []) => ({
+  digest: 'D1',
+  status: 'success' as const,
+  events,
+});
 
 // Same key/count -> index fixtures as `shard_index_matches_shared_fixture` and
 // `budget_shards_are_debited_independently` in contracts/sui/tests/credit_account_tests.move:
@@ -42,14 +46,22 @@ describe('selectShards', () => {
   const config = { operationShardIds: ['0xop0', '0xop1'], budgetShardIds: ['0xbudget0', '0xbudget1'] };
 
   it('picks the operation and budget shard at the key-owned index', () => {
-    expect(selectShards(config, Buffer.from('op-1'))).toEqual({ operationShardId: '0xop1', budgetShardId: '0xbudget1' });
-    expect(selectShards(config, Buffer.from('op-4'))).toEqual({ operationShardId: '0xop0', budgetShardId: '0xbudget0' });
+    expect(selectShards(config, Buffer.from('op-1'))).toEqual({
+      operationShardId: '0xop1',
+      budgetShardId: '0xbudget1',
+    });
+    expect(selectShards(config, Buffer.from('op-4'))).toEqual({
+      operationShardId: '0xop0',
+      budgetShardId: '0xbudget0',
+    });
   });
 
   it('rejects a program with no shards or mismatched shard counts', () => {
     const key = Buffer.from('op-1');
     expect(() => selectShards({ operationShardIds: [], budgetShardIds: [] }, key)).toThrow(/same non-zero count/);
-    expect(() => selectShards({ operationShardIds: ['0xop0'], budgetShardIds: ['0xb0', '0xb1'] }, key)).toThrow(/same non-zero count/);
+    expect(() => selectShards({ operationShardIds: ['0xop0'], budgetShardIds: ['0xb0', '0xb1'] }, key)).toThrow(
+      /same non-zero count/,
+    );
   });
 });
 
@@ -64,7 +76,9 @@ describe('SuiClientService', () => {
 
   it('issuerAddress derives from SUI_ISSUER_PRIVATE_KEY, and fails loudly without it', () => {
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', '');
-    expect(() => new SuiClientService().issuerAddress()).toThrow(/Missing required env var SUI_ISSUER_PRIVATE_KEY for the Sui chain adapter/);
+    expect(() => new SuiClientService().issuerAddress()).toThrow(
+      /Missing required env var SUI_ISSUER_PRIVATE_KEY for the Sui chain adapter/,
+    );
 
     const keypair = Ed25519Keypair.generate();
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', keypair.getSecretKey());
@@ -107,7 +121,9 @@ describe('SuiClientService', () => {
       signAndExecute: () => expect.fail('signing an earn must not send it'),
     });
 
-    await expect(service.signEarn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' })).resolves.toBe(signed);
+    await expect(
+      service.signEarn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' }),
+    ).resolves.toBe(signed);
 
     expect(buildEarnTransaction).toHaveBeenCalledWith({
       issuerCapId: PROGRAM.issuerCapId,
@@ -125,7 +141,9 @@ describe('SuiClientService', () => {
 
   it('execute sends a signed earn and exposes eventField on the result', async () => {
     const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D1', expirationEpoch: 7n };
-    const executeSigned = vi.fn(async () => submitted([{ type: '0xpkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }]));
+    const executeSigned = vi.fn(async () =>
+      submitted([{ type: '0xpkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }]),
+    );
     const service = withChainClient(new SuiClientService(), { executeSigned });
 
     const result = await service.execute(signed);

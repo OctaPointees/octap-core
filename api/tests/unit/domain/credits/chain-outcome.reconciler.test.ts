@@ -4,11 +4,11 @@ import {
   ChainOutcomeReconciler,
   EARN_COMMAND_TYPE,
   POS_REDEEM_COMMAND_TYPE,
-} from '../../../../src/domain/credits/chain-outcome.reconciler.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { SuiClientService } from '../../../../src/infra/clients/sui/sui.client.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
+} from '#domain/credits/chain-outcome.reconciler.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction, buildOperation } from '../../../helpers/fixtures.js';
 
@@ -56,7 +56,9 @@ function fixture({
     failEarnOnChain: vi.fn(async () => {}),
     confirmPosRedemptionOnChain: vi.fn(async () => ({ id: 'btx' })),
     failPosRedemptionOnChain: vi.fn(async () => {}),
-    findTransactionByIdempotency: vi.fn(async () => buildLoyaltyTransaction({ id: 'tx-pos-1', transactionType: 'REDEEM' })),
+    findTransactionByIdempotency: vi.fn(async () =>
+      buildLoyaltyTransaction({ id: 'tx-pos-1', transactionType: 'REDEEM' }),
+    ),
     findBeneficiaryAddress: vi.fn(async () => '0xbeneficiary'),
     ...creditsRepo,
   };
@@ -92,7 +94,10 @@ describe('ChainOutcomeReconciler', () => {
       operations: [unknownEarn()],
       outcomes: {
         'DIGEST-E': landed('DIGEST-E', [
-          { type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100', bucket_expires_at_ms: '1700000000000' } },
+          {
+            type: 'pkg::credit_account::CreditEarned',
+            parsedJson: { amount: '100', bucket_expires_at_ms: '1700000000000' },
+          },
         ]),
       },
     });
@@ -114,7 +119,9 @@ describe('ChainOutcomeReconciler', () => {
   it('a landed earn without a bucket expiry confirms with no bucket', async () => {
     const { credits, reconciler } = fixture({
       operations: [unknownEarn()],
-      outcomes: { 'DIGEST-E': landed('DIGEST-E', [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }]) },
+      outcomes: {
+        'DIGEST-E': landed('DIGEST-E', [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }]),
+      },
     });
 
     await reconciler.reconcileOnce();
@@ -122,7 +129,10 @@ describe('ChainOutcomeReconciler', () => {
   });
 
   it('a landed earn with no CreditEarned event is left for a human, not guessed', async () => {
-    const { ops, credits, reconciler } = fixture({ operations: [unknownEarn()], outcomes: { 'DIGEST-E': landed('DIGEST-E') } });
+    const { ops, credits, reconciler } = fixture({
+      operations: [unknownEarn()],
+      outcomes: { 'DIGEST-E': landed('DIGEST-E') },
+    });
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['waiting']);
     expect(credits.confirmEarnOnChain).not.toHaveBeenCalled();
@@ -133,11 +143,17 @@ describe('ChainOutcomeReconciler', () => {
   it('a digest that failed on-chain releases the hold and goes FAILED', async () => {
     const { ops, credits, reconciler } = fixture({
       operations: [unknownEarn()],
-      outcomes: { 'DIGEST-E': { digest: 'DIGEST-E', status: 'failure', errorMessage: 'MoveAbort EBudgetExhausted', events: [] } },
+      outcomes: {
+        'DIGEST-E': { digest: 'DIGEST-E', status: 'failure', errorMessage: 'MoveAbort EBudgetExhausted', events: [] },
+      },
     });
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed']);
-    expect(credits.failEarnOnChain).toHaveBeenCalledWith({ loyaltyTransactionId: 'tx-1', organizationEndUserId: 'user-1', reservedPointsAmount: 10000 });
+    expect(credits.failEarnOnChain).toHaveBeenCalledWith({
+      loyaltyTransactionId: 'tx-1',
+      organizationEndUserId: 'user-1',
+      reservedPointsAmount: 10000,
+    });
     expect(ops.settleFromChain).toHaveBeenCalledWith('op-1', 'FAILED', 'MoveAbort EBudgetExhausted');
   });
 
@@ -159,7 +175,11 @@ describe('ChainOutcomeReconciler', () => {
 
     const expired = fixture({ operations: [unknownEarn({ suiTxExpirationEpoch: 10n })], epoch: 11n });
     await expect(expired.reconciler.reconcileOnce()).resolves.toEqual(['failed']);
-    expect(expired.ops.settleFromChain).toHaveBeenCalledWith('op-1', 'FAILED', 'DIGEST-E never landed and expired after epoch 10');
+    expect(expired.ops.settleFromChain).toHaveBeenCalledWith(
+      'op-1',
+      'FAILED',
+      'DIGEST-E never landed and expired after epoch 10',
+    );
   });
 
   it('a digest with no expiration is never declared dead; it waits for a human', async () => {
@@ -171,7 +191,9 @@ describe('ChainOutcomeReconciler', () => {
   });
 
   it('an UNKNOWN earn with no digest never sent anything and is released', async () => {
-    const { ops, credits, reader, reconciler } = fixture({ operations: [unknownEarn({ suiTxDigest: null, suiTxExpirationEpoch: null })] });
+    const { ops, credits, reader, reconciler } = fixture({
+      operations: [unknownEarn({ suiTxDigest: null, suiTxExpirationEpoch: null })],
+    });
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed']);
     expect(reader.findTransaction).not.toHaveBeenCalled();
@@ -190,7 +212,10 @@ describe('ChainOutcomeReconciler', () => {
   });
 
   it('confirms a POS finalize that landed against its loyalty row and beneficiary', async () => {
-    const { ops, credits, reconciler } = fixture({ operations: [posFinalize()], outcomes: { 'DIGEST-P': landed('DIGEST-P') } });
+    const { ops, credits, reconciler } = fixture({
+      operations: [posFinalize()],
+      outcomes: { 'DIGEST-P': landed('DIGEST-P') },
+    });
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['confirmed']);
     expect(credits.findTransactionByIdempotency).toHaveBeenCalledWith('org-1', 'pos-idem-1');

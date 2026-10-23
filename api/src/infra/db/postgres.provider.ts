@@ -11,8 +11,7 @@ export type DrizzleDb = PostgresJsDatabase<typeof schema>;
 export const postgresClientProvider: Provider = {
   provide: POSTGRES_CLIENT,
   useFactory: () => {
-    const databaseUrl =
-      process.env.DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:5432/octap_dev';
+    const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:5432/octap_dev';
     return postgres(databaseUrl, {
       prepare: false, // Required for Supabase transaction pooler (port 6543)
       max: Number(process.env.DB_MAX_CONNECTIONS ?? 10),

@@ -1,13 +1,13 @@
 import { Controller, Post, Get, Body, Param, Query, BadRequestException } from '@nestjs/common';
-import { CreditsService } from '../../domain/credits/credits.service.js';
-import { EarnService } from '../../domain/credits/earn.service.js';
-import { RedemptionService } from '../../domain/credits/redemption.service.js';
-import { ReversalService } from '../../domain/credits/reversal.service.js';
-import { PosRedemptionService } from '../../domain/credits/pos-redemption.service.js';
-import { Public } from '../../infra/auth/public.decorator.js';
-import { Scopes } from '../../infra/auth/scopes.decorator.js';
-import { Tenant } from '../../infra/auth/tenant.decorator.js';
-import type { TenantContext } from '../../infra/auth/tenant-context.js';
+import { CreditsService } from '#domain/credits/credits.service.js';
+import { EarnService } from '#domain/credits/earn.service.js';
+import { RedemptionService } from '#domain/credits/redemption.service.js';
+import { ReversalService } from '#domain/credits/reversal.service.js';
+import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { Public } from '#infra/auth/public.decorator.js';
+import { Scopes } from '#infra/auth/scopes.decorator.js';
+import { Tenant } from '#infra/auth/tenant.decorator.js';
+import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type {
   EarnPointsBodyDto,
   RedeemPointsBodyDto,

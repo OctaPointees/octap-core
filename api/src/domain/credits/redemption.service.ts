@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type { RedeemPointsRequest, RedeemPointsResponse } from '@octap/contracts';
 
@@ -20,10 +20,7 @@ export class RedemptionService {
       throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
 
-    const existingTx = await this.creditsRepo.findTransactionByIdempotency(
-      organizationId,
-      request.idempotencyKey,
-    );
+    const existingTx = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
 
     if (existingTx) {
       const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);

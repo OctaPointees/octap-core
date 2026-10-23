@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FactoryProvider } from '@nestjs/common';
 import type { Redis, RedisOptions } from 'ioredis';
-import { RedisLifecycle, redisClientProvider } from '../../../../src/infra/cache/redis.provider.js';
+import { RedisLifecycle, redisClientProvider } from '#infra/cache/redis.provider.js';
 import { stub } from '../../../helpers/stub.js';
 
 describe('redisClientProvider', () => {

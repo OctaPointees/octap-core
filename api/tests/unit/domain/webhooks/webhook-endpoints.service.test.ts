@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WebhookEndpointsService } from '../../../../src/domain/webhooks/webhook-endpoints.service.js';
-import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
+import { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
+import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
-type Endpoint = { id: string; organizationId: string; url: string; secret: string; description?: string; status: string };
+type Endpoint = {
+  id: string;
+  organizationId: string;
+  url: string;
+  secret: string;
+  description?: string;
+  status: string;
+};
 
 /** Minimal in-memory endpoint store with the repository's tenant-scoped lookup semantics. */
 function inMemoryRepo() {
@@ -16,7 +23,8 @@ function inMemoryRepo() {
       return row;
     },
     listEndpoints: async (orgId: string) => [...store.values()].filter((e) => e.organizationId === orgId),
-    findEndpointForOrganization: async (orgId: string, id: string) => (store.get(id)?.organizationId === orgId ? store.get(id) : undefined),
+    findEndpointForOrganization: async (orgId: string, id: string) =>
+      store.get(id)?.organizationId === orgId ? store.get(id) : undefined,
     setEndpointStatus: async (id: string, status: string) => Object.assign(store.get(id)!, { status }),
     rotateEndpointSecret: async (id: string, secret: string) => Object.assign(store.get(id)!, { secret }),
   });
@@ -38,7 +46,9 @@ describe('WebhookEndpointsService', () => {
   });
 
   it.each(['', 'not-a-url', 'ftp://merchant.example'])('rejects an invalid URL (%j)', async (url) => {
-    const service = new WebhookEndpointsService(stub<WebhooksRepository>({ createEndpoint: () => expect.fail('should not be called') }));
+    const service = new WebhookEndpointsService(
+      stub<WebhooksRepository>({ createEndpoint: () => expect.fail('should not be called') }),
+    );
     await expect(service.register('org-1', url)).rejects.toThrow(/valid http/);
   });
 
@@ -57,7 +67,11 @@ describe('WebhookEndpointsService', () => {
   it('rejects managing another organization’s endpoint', async () => {
     const setEndpointStatus = vi.fn();
     const service = new WebhookEndpointsService(
-      stub<WebhooksRepository>({ findEndpointForOrganization: async () => undefined, setEndpointStatus, rotateEndpointSecret: setEndpointStatus }),
+      stub<WebhooksRepository>({
+        findEndpointForOrganization: async () => undefined,
+        setEndpointStatus,
+        rotateEndpointSecret: setEndpointStatus,
+      }),
     );
 
     await expect(service.disable('org-2', 'ep-1')).rejects.toThrow(/was not found/);
