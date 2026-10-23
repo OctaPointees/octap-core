@@ -1,6 +1,7 @@
 export {
   OctapChainClient,
   eventField,
+  transactionExpirationEpoch,
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
@@ -12,6 +13,7 @@ export {
   type ActivatePolicyAndIssueCapParams,
   type CreateShardsParams,
   type SubmittedChainTransaction,
+  type SignedChainTransaction,
   type CreditAccountEvent,
   type CreditAccountEventPage,
 } from './client.js';
