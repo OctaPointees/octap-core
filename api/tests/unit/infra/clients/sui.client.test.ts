@@ -95,12 +95,19 @@ describe('SuiClientService', () => {
     expect(result.eventField('Nope', 'account_id')).toBeUndefined();
   });
 
-  it('earn routes to the key-owned shard pair and encodes the operation key', async () => {
+  it('signEarn routes to the key-owned shard pair, encodes the operation key, and only signs', async () => {
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', Ed25519Keypair.generate().getSecretKey());
-    const buildEarnTransaction = vi.fn(() => fakeTx());
-    const service = withChainClient(new SuiClientService(), { buildEarnTransaction, signAndExecute: async () => submitted() });
+    const tx = fakeTx();
+    const buildEarnTransaction = vi.fn(() => tx);
+    const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D-PRE', expirationEpoch: 7n };
+    const sign = vi.fn(async () => signed);
+    const service = withChainClient(new SuiClientService(), {
+      buildEarnTransaction,
+      sign,
+      signAndExecute: () => expect.fail('signing an earn must not send it'),
+    });
 
-    await service.earn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' });
+    await expect(service.signEarn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' })).resolves.toBe(signed);
 
     expect(buildEarnTransaction).toHaveBeenCalledWith({
       issuerCapId: PROGRAM.issuerCapId,
@@ -112,6 +119,19 @@ describe('SuiClientService', () => {
       purchaseAmount: 10_000,
       operationKey: new TextEncoder().encode('idem-1'),
     });
+    expect(tx.setGasBudget).toHaveBeenCalledWith(50_000_000);
+    expect(sign).toHaveBeenCalledWith(tx, expect.anything());
+  });
+
+  it('execute sends a signed earn and exposes eventField on the result', async () => {
+    const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D1', expirationEpoch: 7n };
+    const executeSigned = vi.fn(async () => submitted([{ type: '0xpkg::credit_account::CreditEarned', parsedJson: { amount: '100' } }]));
+    const service = withChainClient(new SuiClientService(), { executeSigned });
+
+    const result = await service.execute(signed);
+
+    expect(executeSigned).toHaveBeenCalledWith(signed);
+    expect(result.eventField('CreditEarned', 'amount')).toBe('100');
   });
 
   it('builds a real OctapChainClient lazily, once', () => {

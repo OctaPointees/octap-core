@@ -19,16 +19,32 @@ const earned = (amount = '100', extra: Record<string, unknown> = {}) =>
 
 const existingAccount = async () => ({ id: 'ownership-1', suiCreditAccountId: '0xexisting' });
 
+type SuiDouble = { [K in keyof SuiClientService]?: unknown } & {
+  /**
+   * A one-shot earn, the shape most cases want: `signEarn` captures the call (digest `DIGEST1`,
+   * expiration epoch 7) and `execute` runs it, the way the processor sends a signed earn (OCT-52).
+   */
+  earn?: (program: unknown, params: unknown) => unknown;
+};
+
 function processor(
   operationsRepo: { [K in keyof OperationsRepository]?: unknown },
   creditsRepo: { [K in keyof CreditsRepository]?: unknown },
-  suiClient: { [K in keyof SuiClientService]?: unknown },
+  suiClient: SuiDouble,
   programsRepo: ProgramsRepository = PROGRAMS_REPO,
 ) {
+  const { earn, ...rest } = suiClient;
+  const sui = earn
+    ? {
+        signEarn: async (program: unknown, params: unknown) => ({ program, params, digest: 'DIGEST1', expirationEpoch: 7n }),
+        execute: async (signed: { program: unknown; params: unknown }) => earn(signed.program, signed.params),
+        ...rest,
+      }
+    : rest;
   return new ChainSubmitProcessor(
-    stub<OperationsRepository>(operationsRepo),
+    stub<OperationsRepository>({ recordSubmitDigest: async () => {}, ...operationsRepo }),
     stub<CreditsRepository>(creditsRepo),
-    stub<SuiClientService>({ issuerAddress: () => '0xissuer', ...suiClient }),
+    stub<SuiClientService>({ issuerAddress: () => '0xissuer', ...sui }),
     programsRepo,
   );
 }
@@ -322,5 +338,53 @@ describe('ChainSubmitProcessor per-organization programs (OCT-73)', () => {
 
     expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
     expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/org-unprovisioned has no on-chain program provisioned/));
+  });
+});
+
+describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
+  it('records the digest and expiration before sending, and keeps it when execute throws', async () => {
+    const order: string[] = [];
+    const markUnknown = vi.fn(async () => true);
+
+    await processor(
+      {
+        recordSubmitDigest: async (id: string, digest: string, epoch: bigint) => order.push(`record:${id}:${digest}:${epoch}`),
+        markUnknown,
+        markFailed: () => expect.fail('an outcome-unknown execute is not FAILED'),
+      },
+      { getCreditOwnershipByEndUserId: existingAccount, failEarnOnChain: () => expect.fail('the earn may have landed') },
+      {
+        signEarn: async () => {
+          order.push('sign');
+          return { digest: 'DIGEST-PRE', expirationEpoch: 42n };
+        },
+        execute: async () => {
+          order.push('execute');
+          throw new Error('connection reset');
+        },
+      },
+    ).process(buildOperation());
+
+    expect(order).toEqual(['sign', 'record:op-1:DIGEST-PRE:42', 'execute']);
+    expect(markUnknown).toHaveBeenCalledWith('op-1', 'earn outcome unknown: connection reset', undefined);
+  });
+
+  it('a build/sign error is definitive: nothing recorded, nothing sent, hold released', async () => {
+    const failEarnOnChain = vi.fn(async () => {});
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { recordSubmitDigest: () => expect.fail('nothing was built'), markFailed, markUnknown: () => expect.fail('not ambiguous') },
+      { getCreditOwnershipByEndUserId: existingAccount, failEarnOnChain },
+      {
+        signEarn: async () => {
+          throw new Error('InsufficientGas while resolving');
+        },
+        execute: () => expect.fail('nothing may be sent after a build error'),
+      },
+    ).process(buildOperation());
+
+    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
+    expect(markFailed).toHaveBeenCalledWith('op-1', 'InsufficientGas while resolving');
   });
 });

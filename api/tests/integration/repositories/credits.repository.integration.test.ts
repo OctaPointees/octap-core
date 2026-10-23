@@ -280,6 +280,18 @@ describe('POS redemption', () => {
     await expect(reserve(31)).rejects.toThrow(OperationPayloadConflictError);
   });
 
+  it('a replay reports the digest a finalize already sent for the hold (OCT-52), so no fresh bytes are sponsored', async () => {
+    expect((await reserve(30)).submittedDigest).toBeNull();
+    expect((await reserve(30)).submittedDigest).toBeNull();
+
+    await db
+      .update(schema.operations)
+      .set({ suiTxDigest: 'D-SENT' })
+      .where(and(eq(schema.operations.tenantId, orgId), eq(schema.operations.idempotencyKey, 'pos-1')));
+
+    expect(await reserve(30)).toMatchObject({ isNew: false, submittedDigest: 'D-SENT' });
+  });
+
   it('available = confirmed - already held; concurrent reserves can’t both spend the same points', async () => {
     const results = await Promise.allSettled([reserve(60, 'pos-a'), reserve(60, 'pos-b')]);
 

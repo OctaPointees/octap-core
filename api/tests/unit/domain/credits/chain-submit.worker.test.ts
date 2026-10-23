@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChainSubmitWorker } from '../../../../src/domain/credits/chain-submit.worker.js';
 import type { ChainSubmitProcessor } from '../../../../src/domain/credits/chain-submit.processor.js';
+import type { ChainOutcomeReconciler } from '../../../../src/domain/credits/chain-outcome.reconciler.js';
 import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildOperation } from '../../../helpers/fixtures.js';
 
 const POLL_INTERVAL_MS = 3000;
+const RECONCILE_INTERVAL_MS = 60_000;
+const idleReconciler = () => stub<ChainOutcomeReconciler>({ reconcileOnce: async () => [] });
 
 describe('ChainSubmitWorker', () => {
   beforeEach(() => {
@@ -20,6 +23,7 @@ describe('ChainSubmitWorker', () => {
     const worker = new ChainSubmitWorker(
       stub<OperationsRepository>({ recoverStaleProcessing, claimNextPending: async () => [] }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -39,6 +43,7 @@ describe('ChainSubmitWorker', () => {
         claimNextPending,
       }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -57,6 +62,7 @@ describe('ChainSubmitWorker', () => {
         claimNextPending: async () => [],
       }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -72,6 +78,7 @@ describe('ChainSubmitWorker', () => {
         claimNextPending: async () => [buildOperation({ id: 'op-1' }), buildOperation({ id: 'op-2' })],
       }),
       stub<ChainSubmitProcessor>({ process }),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -92,6 +99,7 @@ describe('ChainSubmitWorker', () => {
     const worker = new ChainSubmitWorker(
       stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -113,6 +121,7 @@ describe('ChainSubmitWorker', () => {
     const worker = new ChainSubmitWorker(
       stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -127,6 +136,7 @@ describe('ChainSubmitWorker', () => {
     const worker = new ChainSubmitWorker(
       stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending }),
       stub<ChainSubmitProcessor>(),
+      idleReconciler(),
     );
 
     worker.onModuleInit();
@@ -137,7 +147,55 @@ describe('ChainSubmitWorker', () => {
   });
 
   it('onModuleDestroy before init is a no-op', () => {
-    const worker = new ChainSubmitWorker(stub<OperationsRepository>(), stub<ChainSubmitProcessor>());
+    const worker = new ChainSubmitWorker(stub<OperationsRepository>(), stub<ChainSubmitProcessor>(), idleReconciler());
     expect(() => worker.onModuleDestroy()).not.toThrow();
+  });
+
+  describe('outcome reconciliation (OCT-52)', () => {
+    const quietOps = () => stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending: async () => [] });
+
+    it('runs the reconciler on its own interval', async () => {
+      const reconcileOnce = vi.fn(async () => []);
+      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+
+      worker.onModuleInit();
+      await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS - 1);
+      expect(reconcileOnce).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS + 1);
+      worker.onModuleDestroy();
+
+      expect(reconcileOnce).toHaveBeenCalledTimes(2);
+    });
+
+    it('never runs two passes at once, and a failed pass is logged and retried', async () => {
+      let release!: () => void;
+      const reconcileOnce = vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve([]))))
+        .mockRejectedValueOnce(new Error('rpc down'))
+        .mockRejectedValueOnce('string failure')
+        .mockResolvedValue([]);
+      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+
+      worker.onModuleInit();
+      await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS * 3);
+      expect(reconcileOnce).toHaveBeenCalledOnce();
+
+      release();
+      await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS * 3);
+      worker.onModuleDestroy();
+      expect(reconcileOnce).toHaveBeenCalledTimes(4);
+    });
+
+    it('stops reconciling after onModuleDestroy', async () => {
+      const reconcileOnce = vi.fn(async () => []);
+      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+
+      worker.onModuleInit();
+      worker.onModuleDestroy();
+      await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS * 3);
+
+      expect(reconcileOnce).not.toHaveBeenCalled();
+    });
   });
 });

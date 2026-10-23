@@ -44,6 +44,7 @@ export function buildOperation(overrides: Partial<typeof operations.$inferSelect
     payload: { loyaltyTransactionId: 'tx-1', organizationEndUserId: 'user-1', pointsAmount: 10000 },
     payloadHash: null,
     suiTxDigest: null,
+    suiTxExpirationEpoch: null,
     errorMessage: null,
     createdAt: new Date(),
     updatedAt: new Date(),

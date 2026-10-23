@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Secp256k1Keypair } from '@mysten/sui/keypairs/secp256k1';
-import type { Transaction } from '@mysten/sui/transactions';
-import { OctapChainClient, TESTNET_OCTAP_PACKAGE_CONFIG, eventField, operationShardIndex, signerFromPrivateKey } from '../src/index.js';
+import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
+import { TransactionError } from '@mysten/sui/client';
+import { verifyTransactionSignature } from '@mysten/sui/verify';
+import {
+  OctapChainClient,
+  TESTNET_OCTAP_PACKAGE_CONFIG,
+  eventField,
+  operationShardIndex,
+  signerFromPrivateKey,
+  transactionExpirationEpoch,
+} from '../src/index.js';
 
 const PKG = '0x' + 'ab'.repeat(32);
 const ID = (n: number) => '0x' + n.toString(16).padStart(64, '0');
@@ -74,10 +83,12 @@ describe('OctapChainClient RPC wrappers', () => {
   const okTx = { digest: 'D1', status: { success: true }, events: [{ eventType: `${PKG}::credit_account::CreditEarned`, json: { amount: '1' } }] };
   const failedTx = { digest: 'D2', status: { success: false, error: { message: 'MoveAbort 7' } }, events: undefined };
 
-  it('signAndExecute waits for the checkpoint and normalizes success and failure', async () => {
+  it('signAndExecute signs first, then sends, waits for the checkpoint, and normalizes success and failure', async () => {
     const c = client();
-    const signAndExecuteTransaction = vi
-      .spyOn(c.rpc.core, 'signAndExecuteTransaction')
+    const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D1', expirationEpoch: 7n };
+    const sign = vi.spyOn(c, 'sign').mockResolvedValue(signed);
+    const executeTransaction = vi
+      .spyOn(c.rpc.core, 'executeTransaction')
       .mockResolvedValueOnce({ $kind: 'Transaction', Transaction: okTx } as never)
       .mockResolvedValueOnce({ $kind: 'FailedTransaction', FailedTransaction: failedTx } as never);
     const waitForTransaction = vi.spyOn(c.rpc.core, 'waitForTransaction').mockResolvedValue({} as never);
@@ -90,7 +101,12 @@ describe('OctapChainClient RPC wrappers', () => {
       errorMessage: undefined,
       events: [{ type: `${PKG}::credit_account::CreditEarned`, parsedJson: { amount: '1' } }],
     });
-    expect(signAndExecuteTransaction).toHaveBeenCalledWith({ transaction: tx, signer, include: { effects: true, events: true } });
+    expect(sign).toHaveBeenCalledWith(tx, signer);
+    expect(executeTransaction).toHaveBeenCalledWith({
+      transaction: signed.bytes,
+      signatures: ['sig'],
+      include: { effects: true, events: true },
+    });
     expect(waitForTransaction).toHaveBeenCalledWith({ digest: 'D1', include: { effects: true, events: true } });
 
     expect(await c.signAndExecute(tx, signer)).toEqual({ digest: 'D2', status: 'failure', errorMessage: 'MoveAbort 7', events: [] });
@@ -157,5 +173,81 @@ describe('chain helpers', () => {
   it('operationShardIndex is sha256(key)[0..8] big-endian mod shardCount', () => {
     expect(operationShardIndex(new TextEncoder().encode('op-1'), 2)).toBe(1);
     expect(() => operationShardIndex(new Uint8Array(), 0)).toThrow(/positive integer/);
+  });
+});
+
+/** Real, fully resolved transaction bytes (no network): fixed gas, one argument-less Move call. */
+async function offlineBytes(expiration?: Parameters<Transaction['setExpiration']>[0]): Promise<Uint8Array<ArrayBuffer>> {
+  const tx = new Transaction();
+  tx.setSender(ID(1));
+  tx.setGasPrice(1000);
+  tx.setGasBudget(10_000_000);
+  tx.setGasPayment([{ objectId: ID(9), version: '1', digest: '11111111111111111111111111111111' }]);
+  tx.moveCall({ target: '0x2::clock::timestamp_ms', arguments: [] });
+  if (expiration) {
+    tx.setExpiration(expiration);
+  }
+  return new Uint8Array(await tx.build());
+}
+
+describe('digest-first submission (OCT-52)', () => {
+  it('transactionExpirationEpoch reads Epoch and ValidDuring, and null when the bytes never expire', async () => {
+    expect(transactionExpirationEpoch(await offlineBytes())).toBeNull();
+    expect(transactionExpirationEpoch(await offlineBytes({ Epoch: 5 }))).toBe(5n);
+    const validDuring = { minEpoch: '4', maxEpoch: '5', minTimestamp: null, maxTimestamp: null, chain: '11111111111111111111111111111111', nonce: 1 };
+    expect(transactionExpirationEpoch(await offlineBytes({ ValidDuring: validDuring }))).toBe(5n);
+    expect(transactionExpirationEpoch(await offlineBytes({ ValidDuring: { ...validDuring, maxEpoch: null } }))).toBeNull();
+    expect(transactionExpirationEpoch(Buffer.from(await offlineBytes({ Epoch: 6 })).toString('base64'))).toBe(6n);
+  });
+
+  it('sign keeps an expiration the build already set (address-balance gas), and signs exactly those bytes', async () => {
+    const c = client();
+    const signer = Ed25519Keypair.generate();
+    const bytes = await offlineBytes({ Epoch: 12 });
+    const tx = c.buildCreateProgramTransaction();
+    const build = vi.spyOn(tx, 'build').mockResolvedValue(bytes);
+    const getCurrentSystemState = vi.spyOn(c.rpc.core, 'getCurrentSystemState');
+
+    const signed = await c.sign(tx, signer);
+
+    expect(build).toHaveBeenCalledOnce();
+    expect(getCurrentSystemState).not.toHaveBeenCalled();
+    expect(tx.getData().sender).toBe(signer.toSuiAddress());
+    expect(signed).toMatchObject({ bytes, digest: TransactionDataBuilder.getDigestFromBytes(bytes), expirationEpoch: 12n });
+    await expect(verifyTransactionSignature(bytes, signed.signature)).resolves.toBeDefined();
+  });
+
+  it('sign pins a never-expiring build to the current epoch and rebuilds', async () => {
+    const c = client();
+    const tx = c.buildCreateProgramTransaction();
+    const pinned = await offlineBytes({ Epoch: 1261 });
+    vi.spyOn(tx, 'build').mockResolvedValueOnce(await offlineBytes()).mockResolvedValueOnce(pinned);
+    vi.spyOn(c.rpc.core, 'getCurrentSystemState').mockResolvedValue({ systemState: { epoch: '1261' } } as never);
+    const setExpiration = vi.spyOn(tx, 'setExpiration');
+
+    const signed = await c.sign(tx, Ed25519Keypair.generate());
+
+    expect(setExpiration).toHaveBeenCalledWith({ Epoch: '1261' });
+    expect(signed).toMatchObject({ bytes: pinned, expirationEpoch: 1261n });
+  });
+
+  it('findTransaction normalizes a found digest, returns null for an unknown one, and rethrows anything else', async () => {
+    const c = client();
+    const boom = new Error('UNAVAILABLE');
+    const found = { digest: 'D1', status: { success: true }, events: [] };
+    vi.spyOn(c.rpc.core, 'getTransaction')
+      .mockResolvedValueOnce({ $kind: 'Transaction', Transaction: found } as never)
+      .mockRejectedValueOnce(new TransactionError('notFound', 'D404'))
+      .mockRejectedValueOnce(boom);
+
+    await expect(c.findTransaction('D1')).resolves.toMatchObject({ digest: 'D1', status: 'success' });
+    await expect(c.findTransaction('D404')).resolves.toBeNull();
+    await expect(c.findTransaction('D500')).rejects.toBe(boom);
+  });
+
+  it('currentEpoch reads the system state', async () => {
+    const c = client();
+    vi.spyOn(c.rpc.core, 'getCurrentSystemState').mockResolvedValue({ systemState: { epoch: '1261' } } as never);
+    await expect(c.currentEpoch()).resolves.toBe(1261n);
   });
 });
