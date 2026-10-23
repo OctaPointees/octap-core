@@ -8,22 +8,24 @@ import {
   loyaltyTransactions,
 } from '../schema/credits.schema.js';
 import { acceptCommand } from './operations.repository.js';
+import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
 
 /**
- * Row-locks a loyalty transaction and reports whether it is still PENDING. Every chain-outcome
- * writer (`confirm*OnChain`/`fail*OnChain`) calls this first, so the synchronous path (chain-submit
- * worker, POS finalize) and `domain/indexer` can race on the same row and exactly one resolves it;
- * the loser sees a non-PENDING row and does nothing instead of re-applying the balance effect.
+ * Row-locks a loyalty transaction and returns it if it is still PENDING (null otherwise). Every
+ * chain-outcome writer (`confirm*OnChain`/`fail*OnChain`) calls this first, so the synchronous
+ * path (chain-submit worker, POS finalize, `ChainOutcomeReconciler`) and `domain/indexer` can race
+ * on the same row and exactly one resolves it; the loser sees a non-PENDING row and does nothing
+ * instead of re-applying the balance effect or queueing a second confirmation webhook.
  */
-async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: string): Promise<boolean> {
+async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: string) {
   const [row] = await tx
-    .select({ status: loyaltyTransactions.status })
+    .select({ status: loyaltyTransactions.status, organizationId: loyaltyTransactions.organizationId })
     .from(loyaltyTransactions)
     .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
     .for('update');
-  return row?.status === 'PENDING';
+  return row?.status === 'PENDING' ? row : null;
 }
 
 /**
@@ -424,7 +426,8 @@ export class CreditsRepository {
     db: DrizzleDb = this.db,
   ) {
     return db.transaction(async (tx) => {
-      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+      if (!pending) {
         return null;
       }
 
@@ -445,10 +448,11 @@ export class CreditsRepository {
 
       const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
+        const newBalance = Number(ownership.confirmedBalance) + params.confirmedPointsAmount;
         await tx
           .update(creditOwnerships)
           .set({
-            confirmedBalance: Number(ownership.confirmedBalance) + params.confirmedPointsAmount,
+            confirmedBalance: newBalance,
             pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount,
             lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
             updatedAt: new Date(),
@@ -462,6 +466,19 @@ export class CreditsRepository {
             expiresAtMs: params.bucketExpiresAtMs,
           });
         }
+        // Outbox (OCT-209): commits or rolls back with the confirm itself, and only the one caller
+        // that got past the PENDING guard above ever reaches it.
+        await enqueueWebhookEvent(tx, {
+          organizationId: pending.organizationId,
+          eventType: 'credits.earn.confirmed',
+          payload: {
+            transactionId: params.loyaltyTransactionId,
+            organizationEndUserId: params.organizationEndUserId,
+            pointsAmount: params.confirmedPointsAmount,
+            newBalance,
+            blockchainDigest: params.digest,
+          },
+        });
       }
 
       return blockchainTx;
@@ -654,7 +671,8 @@ export class CreditsRepository {
     db: DrizzleDb = this.db,
   ) {
     return db.transaction(async (tx) => {
-      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+      if (!pending) {
         return null;
       }
 
@@ -670,16 +688,29 @@ export class CreditsRepository {
 
       const ownership = await lockOwnership(tx, params.organizationEndUserId);
       if (ownership) {
+        const newBalance = Number(ownership.confirmedBalance) - params.pointsAmount;
         await tx
           .update(creditOwnerships)
           .set({
-            confirmedBalance: Number(ownership.confirmedBalance) - params.pointsAmount,
+            confirmedBalance: newBalance,
             pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount,
             lifetimeRedeemed: Number(ownership.lifetimeRedeemed) + params.pointsAmount,
             updatedAt: new Date(),
           })
           .where(eq(creditOwnerships.id, ownership.id));
         await consumeBuckets(tx, ownership.id, params.pointsAmount);
+        // Same outbox contract as `confirmEarnOnChain`.
+        await enqueueWebhookEvent(tx, {
+          organizationId: pending.organizationId,
+          eventType: 'credits.redemption.confirmed',
+          payload: {
+            transactionId: params.loyaltyTransactionId,
+            organizationEndUserId: params.organizationEndUserId,
+            pointsAmount: params.pointsAmount,
+            newBalance,
+            blockchainDigest: params.digest,
+          },
+        });
       }
 
       return blockchainTx;

@@ -9,6 +9,34 @@ import { webhookEndpoints, webhookDeliveries } from '../schema/webhooks.schema.j
  */
 export const DELIVERY_CLAIM_LEASE_MS = 60_000;
 
+/**
+ * Outbox form of `WebhookDeliveryService.emit()`: queues `eventType` for every ACTIVE endpoint of
+ * the organization on the caller's `tx`, so the deliveries commit or roll back with the write that
+ * caused them. A function, not a repository method, for the same reason as `acceptCommand`: it
+ * must never open its own transaction. Returns how many deliveries were queued.
+ */
+export async function enqueueWebhookEvent(
+  tx: DrizzleDb,
+  params: { organizationId: string; eventType: string; payload: Record<string, unknown> },
+): Promise<number> {
+  const endpoints = await tx
+    .select({ id: webhookEndpoints.id })
+    .from(webhookEndpoints)
+    .where(and(eq(webhookEndpoints.organizationId, params.organizationId), eq(webhookEndpoints.status, 'ACTIVE')));
+  if (endpoints.length === 0) {
+    return 0;
+  }
+  await tx.insert(webhookDeliveries).values(
+    endpoints.map((endpoint) => ({
+      organizationId: params.organizationId,
+      endpointId: endpoint.id,
+      eventType: params.eventType,
+      payload: params.payload,
+    })),
+  );
+  return endpoints.length;
+}
+
 @Injectable()
 export class WebhooksRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}

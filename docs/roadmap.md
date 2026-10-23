@@ -24,7 +24,8 @@ then move the row to **Implemented** in the same pull request.
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
-| Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
+| Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
+| Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
@@ -41,8 +42,7 @@ then move the row to **Implemented** in the same pull request.
   stays PENDING with its operation UNKNOWN, so the indexer confirms it if it landed. If it never
   landed, `ChainOutcomeReconciler` (OCT-52) releases it once the chain is past the transaction's
   expiration epoch — for address-balance gas that is the SDK's `ValidDuring` window, so up to two
-  epochs (~2 days on testnet) of a held, `stale` balance first. It emits no webhooks for
-  what it confirms (OCT-209); and `stale` is "anything
+  epochs (~2 days on testnet) of a held, `stale` balance first. `stale` is "anything
   pending", not "indexer behind the chain tip". First run starts at the stream head, not genesis
   (see `api/src/domain/indexer/README.md`).
 
@@ -61,10 +61,10 @@ then move the row to **Implemented** in the same pull request.
   own sponsor-digest lifetime (undocumented at integration time) — may need tuning once exercised
   against real Enoki responses, not just the mocked tests and the local-Postgres repository
   checks this shipped with.
-- `PosRedemptionService.finalize()`'s webhook emit and the Redis cache deletion both happen after
-  `confirmPosRedemptionOnChain` commits but aren't in the same transaction as it — same
-  known, deliberate "not atomic with the triggering write" gap as `WebhookDeliveryService.emit()`
-  elsewhere (below), not a new one.
+- `PosRedemptionService.finalize()`'s Redis cache deletion happens after
+  `confirmPosRedemptionOnChain` commits, not in the same transaction (harmless: the entry expires
+  on its own). Its webhook is no longer emitted there: `credits.redemption.confirmed` is queued
+  inside the confirm itself (OCT-209), and POS redemptions no longer send `credits.redeemed`.
 - Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`): the
   Google id_token is the proof of identity, and Enoki validates it, not this process. No customer
   session/bearer token is issued — balance and voucher reads still require the merchant API-key
@@ -132,8 +132,10 @@ then move the row to **Implemented** in the same pull request.
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
 - Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
   `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
-  done here to keep this change reviewable. `emit()` is also not in the same DB transaction as the
-  write that triggers it (a crash in between would silently drop the event), and the endpoint
+  done here to keep this change reviewable. `emit()` (the accept-time `credits.earned` and the
+  voucher `credits.redeemed`) is also not in the same DB transaction as the write that triggers it
+  (a crash in between would silently drop the event) — the chain-confirmation events already use
+  the outbox form, `enqueueWebhookEvent(tx, ...)`, and these two could move to it too. The endpoint
   `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks

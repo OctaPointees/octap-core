@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { CreditsRepository, expireDueBuckets } from '../../../src/infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError } from '../../../src/infra/db/repositories/operations.repository.js';
+import { WebhooksRepository } from '../../../src/infra/db/repositories/webhooks.repository.js';
 import {
   connectTestDb,
   getLoyaltyTransaction,
@@ -490,5 +491,95 @@ describe('tenant scoping', () => {
 
     const history = await repo.listTransactionsByMember(orgId, memberId, 2);
     expect(history.map((t) => t.idempotencyKey)).toEqual(['c', 'b']);
+  });
+});
+
+describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
+  const deliveries = () => db.select().from(schema.webhookDeliveries);
+
+  beforeEach(async () => {
+    await new WebhooksRepository(db).createEndpoint({ organizationId: orgId, url: 'https://merchant.example/hooks', secret: 'whsec_1' });
+  });
+
+  const acceptEarn = async (key: string) =>
+    (await repo.recordEarnTransaction({ organizationId: orgId, organizationEndUserId: memberId, pointsAmount: 10_000, idempotencyKey: key })).transaction;
+  const confirmEarn = (transactionId: string, digest: string, db_ = db) =>
+    repo.confirmEarnOnChain(
+      {
+        loyaltyTransactionId: transactionId,
+        organizationEndUserId: memberId,
+        reservedPointsAmount: 10_000,
+        confirmedPointsAmount: 100,
+        bucketExpiresAtMs: null,
+        digest,
+        sender: '0xissuer',
+      },
+      db_,
+    );
+
+  it('a confirmed earn queues exactly one credits.earn.confirmed carrying the on-chain amount, balance and digest', async () => {
+    const tx = await acceptEarn('e');
+
+    await confirmEarn(tx.id, 'D-EARN');
+
+    expect(await deliveries()).toMatchObject([
+      {
+        eventType: 'credits.earn.confirmed',
+        payload: { transactionId: tx.id, organizationEndUserId: memberId, pointsAmount: 100, newBalance: 100, blockchainDigest: 'D-EARN' },
+      },
+    ]);
+  });
+
+  it('when the sync path and the indexer confirm concurrently, only the winner queues a webhook', async () => {
+    const tx = await acceptEarn('e');
+
+    const results = await Promise.all([confirmEarn(tx.id, 'D-SYNC'), db.transaction((t) => confirmEarn(tx.id, 'D-IDX', t))]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await deliveries()).toHaveLength(1);
+    expect(await confirmEarn(tx.id, 'D-LATE')).toBeNull();
+    expect(await deliveries()).toHaveLength(1);
+  });
+
+  it('a confirm whose surrounding transaction rolls back (indexer crash mid-page) queues nothing', async () => {
+    const tx = await acceptEarn('e');
+
+    await expect(
+      db.transaction(async (t) => {
+        await confirmEarn(tx.id, 'D-PAGE', t);
+        throw new Error('crash mid-page');
+      }),
+    ).rejects.toThrow('crash mid-page');
+
+    expect(await deliveries()).toEqual([]);
+    expect((await getLoyaltyTransaction(db, tx.id))?.status).toBe('PENDING');
+    await confirmEarn(tx.id, 'D-PAGE');
+    expect(await deliveries()).toHaveLength(1);
+  });
+
+  it('a failed earn queues no confirmation', async () => {
+    const tx = await acceptEarn('e');
+    await repo.failEarnOnChain({ loyaltyTransactionId: tx.id, organizationEndUserId: memberId, reservedPointsAmount: 10_000 });
+    expect(await deliveries()).toEqual([]);
+  });
+
+  it('a confirmed POS redemption queues exactly one credits.redemption.confirmed', async () => {
+    await confirmedEarn(100);
+    const ownership = await getOwnership(db, memberId);
+    await repo.setSuiCreditAccountId(ownership.id, '0xacc');
+    await db.delete(schema.webhookDeliveries);
+    const { transaction } = await repo.reservePosRedemption({ organizationId: orgId, organizationEndUserId: memberId, pointsAmount: 30, idempotencyKey: 'pos' });
+
+    const confirm = () =>
+      repo.confirmPosRedemptionOnChain({ loyaltyTransactionId: transaction.id, organizationEndUserId: memberId, pointsAmount: 30, digest: 'D-POS', sender: '0xbeneficiary' });
+    await confirm();
+    await expect(confirm()).resolves.toBeNull();
+
+    expect(await deliveries()).toMatchObject([
+      {
+        eventType: 'credits.redemption.confirmed',
+        payload: { transactionId: transaction.id, organizationEndUserId: memberId, pointsAmount: 30, newBalance: 70, blockchainDigest: 'D-POS' },
+      },
+    ]);
   });
 });

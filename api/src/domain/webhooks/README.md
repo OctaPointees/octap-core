@@ -15,5 +15,19 @@ Signed event delivery to merchant-registered endpoints.
   `ts-sdks/packages/node/src/webhooks.ts` has the receiver-side equivalent for merchants.
 
 Persistence is `infra/db/repositories/webhooks.repository.ts`; HTTP is
-`api/rest/webhooks.controller.ts`. Only `EarnService`/`RedemptionService` call `emit()` today;
-`ReversalService`/`RewardsService` don't yet (see the roadmap).
+`api/rest/webhooks.controller.ts`.
+
+Events (types in `@octap/contracts`' `WebhookEvent`):
+
+| Event | When | Sent by |
+| --- | --- | --- |
+| `credits.earned` | an earn is accepted (still PENDING on-chain) | `EarnService`, via `emit()` |
+| `credits.redeemed` | a voucher-claim debit (ledger-only, no chain step) | `RedemptionService`, via `emit()` |
+| `credits.earn.confirmed` | the chain confirmed an earn | `CreditsRepository.confirmEarnOnChain` |
+| `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
+
+The two `*.confirmed` events are queued with `enqueueWebhookEvent(tx, ...)` inside the confirm's
+own transaction (OCT-209): they commit or roll back with it, and only the caller that wins the
+PENDING guard reaches them, so a transaction gets exactly one whether the chain-submit worker,
+POS finalize, `ChainOutcomeReconciler` or the indexer confirmed it. `ReversalService`/
+`RewardsService` emit nothing yet (see the roadmap).
