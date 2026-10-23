@@ -7,7 +7,6 @@ import {
 import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
 import type { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
 import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
 import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
@@ -37,7 +36,6 @@ function service({
   creditsRepo = {},
   sponsoredTx = {},
   suiBuilder = {},
-  webhooks = {},
   programsRepo = PROGRAMS_REPO,
   operationsRepo = { recordSubmitDigestForCommand: async () => 'op-pos-1', settleFromChain: async () => true },
 }: {
@@ -45,7 +43,6 @@ function service({
   creditsRepo?: { [K in keyof CreditsRepository]?: unknown };
   sponsoredTx?: { [K in keyof SponsoredTransactionService]?: unknown };
   suiBuilder?: { [K in keyof SuiTransactionBuilderClient]?: unknown };
-  webhooks?: { [K in keyof WebhookDeliveryService]?: unknown };
   programsRepo?: ProgramsRepository;
   operationsRepo?: { [K in keyof OperationsRepository]?: unknown };
 } = {}) {
@@ -54,7 +51,6 @@ function service({
     stub<CreditsRepository>(creditsRepo),
     stub<SponsoredTransactionService>(sponsoredTx),
     stub<SuiTransactionBuilderClient>(suiBuilder),
-    stub<WebhookDeliveryService>(webhooks),
     programsRepo,
     stub<OperationsRepository>(operationsRepo),
   );
@@ -232,11 +228,9 @@ describe('PosRedemptionService.reserve', () => {
 });
 
 describe('PosRedemptionService.finalize', () => {
-  it('confirms on-chain success, clears the cache, and emits a webhook', async () => {
+  it('confirms on-chain success and clears the cache, leaving the webhook to the confirm itself (OCT-209)', async () => {
     const redis = await redisWithCachedReserve();
     const confirmPosRedemptionOnChain = vi.fn(async () => ({ id: 'btx-1' }));
-    const emit = vi.fn(async () => {});
-
     const result = await service({
       redis,
       creditsRepo: {
@@ -246,7 +240,6 @@ describe('PosRedemptionService.finalize', () => {
       },
       sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
       suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
-      webhooks: { emit },
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 
     expect(result).toEqual({
@@ -263,13 +256,6 @@ describe('PosRedemptionService.finalize', () => {
       pointsAmount: 50,
       digest: 'digest-1',
       sender: '0xbeneficiary',
-    });
-    expect(emit).toHaveBeenCalledWith('org-1', 'credits.redeemed', {
-      transactionId: 'tx-1',
-      organizationEndUserId: 'user-1',
-      pointsAmount: 50,
-      newBalance: 150,
-      blockchainDigest: 'digest-1',
     });
     expect(await redis.get('pos-redeem:reserve:digest-1')).toBeNull();
   });
@@ -364,7 +350,6 @@ describe('PosRedemptionService.finalize', () => {
       },
       sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
       suiBuilder: { waitForTransaction: async () => ({ status: 'success', digest: 'digest-1', events: [] }) },
-      webhooks: { emit: () => expect.fail('the first finalize owns the webhook') },
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 
     expect(result).toMatchObject({ status: 'CONFIRMED', blockchainDigest: 'digest-1', newBalance: 100 });
@@ -448,7 +433,6 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
       },
       sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
       suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
-      webhooks: { emit: async () => {} },
       operationsRepo,
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
     expect(settleFromChain).toHaveBeenLastCalledWith('op-pos-1', 'SUBMITTED');
@@ -475,7 +459,6 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
       },
       sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
       suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
-      webhooks: { emit: async () => {} },
       operationsRepo: { recordSubmitDigestForCommand: async () => null, settleFromChain: () => expect.fail('nothing to settle') },
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 

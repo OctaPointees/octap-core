@@ -1,6 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { DELIVERY_CLAIM_LEASE_MS, WebhooksRepository } from '../../../src/infra/db/repositories/webhooks.repository.js';
+import {
+  DELIVERY_CLAIM_LEASE_MS,
+  WebhooksRepository,
+  enqueueWebhookEvent,
+} from '../../../src/infra/db/repositories/webhooks.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
@@ -101,5 +105,40 @@ describe('deliveries', () => {
 
     await repo.markDelivered(d.id, 204);
     expect(await deliveryRow(d.id)).toMatchObject({ status: 'DELIVERED', lastResponseStatus: 204, lastError: null });
+  });
+});
+
+describe('enqueueWebhookEvent (OCT-209 outbox)', () => {
+  it('queues one delivery per ACTIVE endpoint of the organization, on the caller’s transaction', async () => {
+    const second = await repo.createEndpoint({ organizationId: orgId, url: 'https://merchant.example/b', secret: 'whsec_2' });
+    const disabled = await repo.createEndpoint({ organizationId: orgId, url: 'https://merchant.example/c', secret: 'whsec_3' });
+    await repo.setEndpointStatus(disabled.id, 'DISABLED');
+    const other = await seedOrganization(db);
+    await repo.createEndpoint({ organizationId: other.id, url: 'https://other.example', secret: 'whsec_4' });
+
+    const queued = await db.transaction((tx) =>
+      enqueueWebhookEvent(tx, { organizationId: orgId, eventType: 'credits.earn.confirmed', payload: { transactionId: 't' } }),
+    );
+
+    expect(queued).toBe(2);
+    const rows = await db.select().from(schema.webhookDeliveries);
+    expect(rows.map((r) => r.endpointId).sort()).toEqual([endpointId, second.id].sort());
+    expect(rows.every((r) => r.status === 'PENDING' && r.eventType === 'credits.earn.confirmed')).toBe(true);
+  });
+
+  it('queues nothing for an organization without active endpoints, and rolls back with its transaction', async () => {
+    const bare = await seedOrganization(db);
+    await expect(
+      db.transaction((tx) => enqueueWebhookEvent(tx, { organizationId: bare.id, eventType: 'x', payload: {} })),
+    ).resolves.toBe(0);
+
+    await expect(
+      db.transaction(async (tx) => {
+        await enqueueWebhookEvent(tx, { organizationId: orgId, eventType: 'credits.earn.confirmed', payload: {} });
+        throw new Error('rolled back');
+      }),
+    ).rejects.toThrow('rolled back');
+
+    expect(await db.select().from(schema.webhookDeliveries)).toEqual([]);
   });
 });
