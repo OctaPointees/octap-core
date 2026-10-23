@@ -2480,3 +2480,19 @@ test('CheckpointIndexerProcessor: an already-CONFIRMED earn gets its bucket back
   assert.equal(confirmArgs.bucketExpiresAtMs, 1794560999999);
 });
 
+
+import { EnokiClient } from '../api/dist/infra/clients/enoki/enoki.client.js';
+
+test('EnokiClient: sponsorship and zkLogin calls default to the deployment network, not Enoki\'s mainnet default', async () => {
+  const seen = [];
+  const enoki = new EnokiClient();
+  enoki.client = {
+    createSponsoredTransaction: async (params) => { seen.push(params.network); return { bytes: 'b', digest: 'd' }; },
+    createZkLoginNonce: async (params) => { seen.push(params.network); return {}; },
+  };
+
+  await enoki.createSponsoredTransaction({ transactionKindBytes: new Uint8Array([1]), sender: '0xsender', allowedMoveCallTargets: [] });
+  await enoki.createSponsoredTransaction({ network: 'devnet', transactionKindBytes: new Uint8Array([1]), sender: '0xsender', allowedMoveCallTargets: [] });
+
+  assert.deepEqual(seen, [process.env.SUI_NETWORK ?? 'testnet', 'devnet']);
+});

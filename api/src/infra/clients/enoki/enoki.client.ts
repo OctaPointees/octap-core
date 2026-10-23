@@ -24,6 +24,11 @@ export type ZkLoginProofResult = Awaited<ReturnType<MystenEnokiClient['createZkL
 @Injectable()
 export class EnokiClient {
   private client?: MystenEnokiClient;
+  /**
+   * Enoki defaults a request without `network` to mainnet, so every network-scoped call falls back
+   * to the network this deployment builds transactions for, never Enoki's default.
+   */
+  private readonly network: EnokiNetwork = (process.env.SUI_NETWORK as EnokiNetwork | undefined) ?? 'testnet';
 
   private get sdk(): MystenEnokiClient {
     if (!this.client) {
@@ -52,7 +57,7 @@ export class EnokiClient {
     additionalEpochs?: number;
   }): Promise<{ nonce: string; randomness: string; epoch: number; maxEpoch: number; estimatedExpiration: number }> {
     return this.sdk.createZkLoginNonce({
-      network: params.network,
+      network: params.network ?? this.network,
       ephemeralPublicKey: publicKeyFromSuiBytes(params.ephemeralPublicKey),
       additionalEpochs: params.additionalEpochs,
     });
@@ -67,7 +72,7 @@ export class EnokiClient {
     maxEpoch: number;
   }): Promise<ZkLoginProofResult> {
     return this.sdk.createZkLoginZkp({
-      network: params.network,
+      network: params.network ?? this.network,
       jwt: params.jwt,
       ephemeralPublicKey: publicKeyFromSuiBytes(params.ephemeralPublicKey),
       randomness: params.randomness,
@@ -87,7 +92,7 @@ export class EnokiClient {
     allowedMoveCallTargets: string[];
   }): Promise<{ bytes: string; digest: string }> {
     return this.sdk.createSponsoredTransaction({
-      network: params.network,
+      network: params.network ?? this.network,
       transactionKindBytes: toBase64(params.transactionKindBytes),
       sender: params.sender,
       allowedAddresses: [params.sender],
