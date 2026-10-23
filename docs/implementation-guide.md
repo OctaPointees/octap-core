@@ -23,7 +23,9 @@ Paths are relative to `api/src`.
    Register the controller in `api/rest/rest.module.ts`. Controllers only map protocol details.
 6. **SDK**: add client methods in `ts-sdks/packages/node/src/client.ts` (and the browser client if
    customers call it directly).
-7. **Tests**: add unit tests with mocked repositories/fetch to `scripts/test-unit.mjs`.
+7. **Tests**: a unit spec per service/processor under `api/tests/unit/<same path as src>`, and an
+   integration spec for every new repository method or route under `api/tests/integration` (real
+   Postgres/Redis). See [api/tests/README.md](../api/tests/README.md).
 8. **Docs**: add a short `README.md` in the domain folder and update [the roadmap](roadmap.md).
 
 Add a vendor client under `infra/clients/<vendor>/` and a new infrastructure module (imported by
@@ -63,7 +65,7 @@ permission checks remain required even when Web hides a surface.
 Run before opening a pull request:
 
 ```sh
-npm run lint && npm run build && npm run typecheck && npm test && npm run check:bootstrap
+npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap
 ```
 
 Add runtime dependencies with the feature that uses them, not ahead of time.

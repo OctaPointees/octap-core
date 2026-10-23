@@ -8,13 +8,15 @@ import type {
 } from '../dto/identity.dto.js';
 import type { GoogleLoginResponse, EnrollMemberResponse } from '@octap/contracts';
 import type { ZkLoginProofResult } from '../../infra/clients/enoki/enoki.client.js';
+import { Public } from '../../infra/auth/public.decorator.js';
 
 /**
- * Deliberately not gated by `@Tenant()`/`@Scopes()` (the merchant API-key guard): the caller here
- * is the end customer authenticating with their own Google identity, who never holds an API
- * credential. The Google id_token (validated by Enoki, not by us) is the proof of identity;
- * `organizationId` is a path parameter, not a secret.
+ * `@Public()`: opted out of the merchant API-key guard, because the caller here is the end customer
+ * authenticating with their own Google identity, who never holds an API credential. The Google
+ * id_token (validated by Enoki, not by us) is the proof of identity; `organizationId` is a path
+ * parameter, not a secret.
  */
+@Public()
 @Controller('v1/identity')
 export class IdentityController {
   constructor(private readonly identity: IdentityService) {}

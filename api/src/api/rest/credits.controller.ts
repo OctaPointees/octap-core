@@ -4,6 +4,7 @@ import { EarnService } from '../../domain/credits/earn.service.js';
 import { RedemptionService } from '../../domain/credits/redemption.service.js';
 import { ReversalService } from '../../domain/credits/reversal.service.js';
 import { PosRedemptionService } from '../../domain/credits/pos-redemption.service.js';
+import { Public } from '../../infra/auth/public.decorator.js';
 import { Scopes } from '../../infra/auth/scopes.decorator.js';
 import { Tenant } from '../../infra/auth/tenant.decorator.js';
 import type { TenantContext } from '../../infra/auth/tenant-context.js';
@@ -70,11 +71,11 @@ export class CreditsController {
   }
 
   /**
-   * Deliberately not behind `@Tenant()`/`@Scopes()`, same reasoning as `IdentityController`: the
-   * caller here is the customer's own device, which never holds a merchant API credential. The
-   * signature over the cached digest is the proof of authorization — Enoki and the chain verify
-   * it, not an API key.
+   * `@Public()`, same reasoning as `IdentityController`: the caller here is the customer's own
+   * device, which never holds a merchant API credential. The signature over the cached digest is
+   * the proof of authorization — Enoki and the chain verify it, not an API key.
    */
+  @Public()
   @Post('redeem/finalize')
   async finalizePosRedemption(@Body() body: FinalizePosRedemptionBodyDto): Promise<FinalizePosRedemptionResponse> {
     if (!body.digest || !body.signature) {

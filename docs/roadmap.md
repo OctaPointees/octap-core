@@ -17,7 +17,7 @@ then move the row to **Implemented** in the same pull request.
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for points and vouchers | ts-sdks/packages/node |
 | Browser client for balance and voucher claim | ts-sdks/packages/browser |
-| Unit tests for credits/rewards services and SDK clients | scripts/test-unit.mjs |
+| Test layer: Vitest unit specs per domain/infra/SDK + integration specs against real Postgres/Redis (testcontainers), coverage-gated in CI | api/tests; ts-sdks/packages/*/tests; vitest.config.ts |
 | Sui Move: capabilities, program_control, policy_version, credit_account (earn/redeem, expiry-bucket FIFO) | contracts/sui/sources; tests under contracts/sui/tests |
 | Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
@@ -63,7 +63,7 @@ then move the row to **Implemented** in the same pull request.
   `confirmPosRedemptionOnChain` commits but aren't in the same transaction as it — same
   known, deliberate "not atomic with the triggering write" gap as `WebhookDeliveryService.emit()`
   elsewhere (below), not a new one.
-- Identity's login/enroll endpoints are intentionally public (no `@Tenant()`/`@Scopes()`): the
+- Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`): the
   Google id_token is the proof of identity, and Enoki validates it, not this process. No customer
   session/bearer token is issued — balance and voucher reads still require the merchant API-key
   guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for

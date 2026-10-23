@@ -51,7 +51,9 @@ npm ci
 npm run lint
 npm run build
 npm run typecheck
-npm test
+npm test                  # unit tests (no infrastructure needed)
+npm run test:integration  # real Postgres/Redis via testcontainers (Docker or Podman)
+npm run test:coverage     # both, with the coverage gate CI enforces
 npm run check:bootstrap
 npm run start:api
 npm run start:worker
@@ -73,5 +75,6 @@ See [the package handoff guide](docs/package-handoff.md) for regeneration and fu
 
 ## Verification scope
 
-Lint, build, typecheck, unit tests (`npm test`) and the Nest bootstrap check run in CI.
-Unit tests mock the database; there are no integration tests against PostgreSQL yet.
+Lint, build, typecheck, unit tests, integration tests against real PostgreSQL/Redis (with a
+coverage gate) and the Nest bootstrap check run in CI. See [api/tests/README.md](api/tests/README.md).
+Chain and Enoki calls are faked in tests; nothing in CI touches Sui testnet.

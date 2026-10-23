@@ -8,7 +8,8 @@ import { createHash } from 'node:crypto';
  *   sha2_256(operationKey), first 8 bytes read as a big-endian u64, mod shardCount.
  *
  * `contracts/sui/tests/credit_account_tests.move`'s `shard_index_matches_shared_fixture` and
- * `scripts/test-unit.mjs` assert the same key/count -> index fixtures, so the two can't drift.
+ * `api/tests/unit/infra/clients/sui.client.test.ts` assert the same key/count -> index fixtures, so the
+ * two can't drift.
  */
 export function operationShardIndex(operationKey: Uint8Array, shardCount: number): number {
   if (!Number.isSafeInteger(shardCount) || shardCount <= 0) {

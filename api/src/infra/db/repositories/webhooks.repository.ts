@@ -3,6 +3,12 @@ import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { webhookEndpoints, webhookDeliveries } from '../schema/webhooks.schema.js';
 
+/**
+ * How long a claimed delivery stays invisible to other pollers. Comfortably above the delivery
+ * HTTP timeout, so it only lapses if the claiming worker died mid-attempt — then it's retried.
+ */
+export const DELIVERY_CLAIM_LEASE_MS = 60_000;
+
 @Injectable()
 export class WebhooksRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
@@ -85,7 +91,11 @@ export class WebhooksRepository {
    * Claims up to `limit` PENDING deliveries whose `nextAttemptAt` is due, bumping
    * `attemptCount` with a conditional update so two worker instances racing on the same
    * row only ever have one succeed (same pattern as `OperationsRepository.claimNextPending`
-   * on the chain-submit path).
+   * on the chain-submit path). A claim leaves the row PENDING, so the condition is on the
+   * `attemptCount` that was read, not just the status — otherwise both racers' updates match —
+   * and it pushes `nextAttemptAt` out by `DELIVERY_CLAIM_LEASE_MS` so a poll that starts after
+   * the claim committed doesn't see the row as due again. The processor's own outcome
+   * (`markDelivered`/`scheduleRetry`/`markDeadLetter`) replaces the lease.
    */
   async claimDueDeliveries(limit = 10) {
     const candidates = await this.db.query.webhookDeliveries.findMany({
@@ -98,8 +108,18 @@ export class WebhooksRepository {
     for (const candidate of candidates) {
       const [row] = await this.db
         .update(webhookDeliveries)
-        .set({ attemptCount: candidate.attemptCount + 1, updatedAt: new Date() })
-        .where(and(eq(webhookDeliveries.id, candidate.id), eq(webhookDeliveries.status, 'PENDING')))
+        .set({
+          attemptCount: candidate.attemptCount + 1,
+          nextAttemptAt: new Date(Date.now() + DELIVERY_CLAIM_LEASE_MS),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(webhookDeliveries.id, candidate.id),
+            eq(webhookDeliveries.status, 'PENDING'),
+            eq(webhookDeliveries.attemptCount, candidate.attemptCount),
+          ),
+        )
         .returning();
       if (row) {
         claimed.push(row);
