@@ -33,3 +33,60 @@ export interface WebhookDeliveryDto {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Every event OctaP delivers; sent as `x-octap-event-type` and as the body's `type`. */
+export type WebhookEventType =
+  | 'credits.earned'
+  | 'credits.redeemed'
+  | 'credits.earn.confirmed'
+  | 'credits.redemption.confirmed';
+
+/**
+ * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).
+ * `newBalance` is the confirmed balance, which does not include it yet; wait for
+ * `credits.earn.confirmed` before treating the points as spendable.
+ */
+export interface CreditsEarnedEventData {
+  transactionId: string;
+  organizationEndUserId: string;
+  /** The requested amount (a purchase amount; the chain applies the program's earn rate). */
+  pointsAmount: number;
+  newBalance: number;
+}
+
+/** `credits.redeemed`: a voucher-claim debit, settled in the ledger immediately (no chain step). */
+export interface CreditsRedeemedEventData {
+  transactionId: string;
+  organizationEndUserId: string;
+  pointsAmount: number;
+  newBalance: number;
+}
+
+/**
+ * `credits.earn.confirmed` / `credits.redemption.confirmed`: the chain confirmed the transaction.
+ * Sent exactly once per transaction, however it was confirmed (the submitting worker, POS
+ * finalize, or the indexer catching up).
+ */
+export interface CreditsChainConfirmedEventData {
+  transactionId: string;
+  organizationEndUserId: string;
+  /** For an earn, the amount actually credited on-chain, not the requested purchase amount. */
+  pointsAmount: number;
+  /** The confirmed balance right after this transaction. */
+  newBalance: number;
+  blockchainDigest: string;
+}
+
+interface WebhookEventOf<T extends WebhookEventType, D> {
+  /** Stable across retries and replays (`x-octap-event-id`): dedupe on it. */
+  id: string;
+  type: T;
+  data: D;
+}
+
+/** A delivered webhook body, discriminated on `type`. */
+export type WebhookEvent =
+  | WebhookEventOf<'credits.earned', CreditsEarnedEventData>
+  | WebhookEventOf<'credits.redeemed', CreditsRedeemedEventData>
+  | WebhookEventOf<'credits.earn.confirmed', CreditsChainConfirmedEventData>
+  | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>;

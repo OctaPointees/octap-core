@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { WebhookEvent } from '@octap/contracts';
+import { OctaSdkError } from './errors/index.js';
 
 /**
  * Verifies an OctaP webhook's `x-octap-signature` header against the exact raw request body
@@ -36,3 +38,21 @@ export function verifyWebhookSignature(rawBody: string, signature: string, secre
  * });
  * ```
  */
+
+/**
+ * Verifies `x-octap-signature` and returns the typed event; throws `OctaSdkError` if the signature
+ * is missing or wrong. Switch on `event.type` to get the matching `data` shape.
+ *
+ * ```ts
+ * const event = constructWebhookEvent(req.rawBody, req.headers['x-octap-signature'], secret);
+ * if (event.type === 'credits.earn.confirmed') {
+ *   creditCustomer(event.data.organizationEndUserId, event.data.pointsAmount);
+ * }
+ * ```
+ */
+export function constructWebhookEvent(rawBody: string, signature: string | undefined, secret: string): WebhookEvent {
+  if (!signature || !verifyWebhookSignature(rawBody, signature, secret)) {
+    throw new OctaSdkError('Invalid OctaP webhook signature');
+  }
+  return JSON.parse(rawBody) as WebhookEvent;
+}
