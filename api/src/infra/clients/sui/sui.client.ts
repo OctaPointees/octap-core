@@ -8,6 +8,7 @@ import {
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
   type OctapProgramConfig,
+  type SignedChainTransaction,
   type SubmittedChainTransaction,
 } from '@octap/chain';
 import type { Signer } from '@mysten/sui/cryptography';
@@ -78,10 +79,15 @@ export class SuiClientService {
     return toChainCallResult(await this.client.signAndExecute(tx, this.issuerSigner));
   }
 
-  async earn(
+  /**
+   * Builds and signs an `earn` without sending it, so the caller can persist `digest` first and
+   * resolve an outcome-unknown `execute` by digest later (OCT-52). Throwing here is definitive:
+   * nothing was sent.
+   */
+  async signEarn(
     program: OctapProgramConfig,
     params: { accountId: string; purchaseAmount: number; operationKey: string },
-  ): Promise<ChainCallResult> {
+  ): Promise<SignedChainTransaction> {
     const operationKey = new TextEncoder().encode(params.operationKey);
     const { operationShardId, budgetShardId } = selectShards(program, operationKey);
     const tx = this.client.buildEarnTransaction({
@@ -98,7 +104,13 @@ export class SuiClientService {
     this.logger.log(
       `earn ${params.purchaseAmount} purchase units -> account ${params.accountId} in program ${program.programControlId}`,
     );
-    return toChainCallResult(await this.client.signAndExecute(tx, this.issuerSigner));
+    return this.client.sign(tx, this.issuerSigner);
+  }
+
+  /** Sends a transaction from `signEarn`. Throwing here means the outcome is unknown, not failed. */
+  async execute(signed: SignedChainTransaction): Promise<ChainCallResult> {
+    this.logger.log(`executing ${signed.digest}`);
+    return toChainCallResult(await this.client.executeSigned(signed));
   }
 
   // No `redeem()` wrapper here, deliberately: `credit_account::redeem` requires

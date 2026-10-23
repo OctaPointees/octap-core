@@ -1,0 +1,1 @@
+ALTER TABLE "operations" ADD COLUMN "sui_tx_expiration_epoch" bigint;

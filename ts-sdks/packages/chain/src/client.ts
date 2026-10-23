@@ -1,5 +1,6 @@
 import { SuiGrpcClient } from '@mysten/sui/grpc';
-import { Transaction } from '@mysten/sui/transactions';
+import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
+import { TransactionError, type SuiClientTypes } from '@mysten/sui/client';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import type { Signer } from '@mysten/sui/cryptography';
@@ -131,6 +132,46 @@ export interface SubmittedChainTransaction {
   status: 'success' | 'failure';
   errorMessage?: string;
   events: Array<{ type: string; parsedJson: unknown }>;
+}
+
+/**
+ * A fully built and signed transaction that has not been sent yet. `digest` is known before
+ * anything leaves the process, so a caller can persist it first and later ask the chain what
+ * became of exactly this transaction, whatever happened to the connection that sent it.
+ */
+export interface SignedChainTransaction {
+  bytes: Uint8Array;
+  signature: string;
+  digest: string;
+  /** Last epoch the transaction can execute in (see `transactionExpirationEpoch`). */
+  expirationEpoch: bigint | null;
+}
+
+/**
+ * The last epoch in which `bytes` can still execute, or null if it never expires. Once the chain
+ * is past that epoch, a digest that was never found can never land.
+ */
+export function transactionExpirationEpoch(bytes: Uint8Array | string): bigint | null {
+  const expiration = Transaction.from(bytes).getData().expiration;
+  if (expiration?.$kind === 'Epoch') {
+    return BigInt(expiration.Epoch);
+  }
+  if (expiration?.$kind === 'ValidDuring' && expiration.ValidDuring.maxEpoch !== null) {
+    return BigInt(expiration.ValidDuring.maxEpoch);
+  }
+  return null;
+}
+
+type CoreTransactionResult = SuiClientTypes.TransactionResult<{ effects: true; events: true }>;
+
+function normalizeResult(response: CoreTransactionResult): SubmittedChainTransaction {
+  const result = response.$kind === 'Transaction' ? response.Transaction : response.FailedTransaction;
+  return {
+    digest: result.digest,
+    status: result.status.success ? 'success' : 'failure',
+    errorMessage: result.status.success ? undefined : result.status.error.message,
+    events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
+  };
 }
 
 /** The first value of `field` on any event of `result` whose type ends in `::<eventSuffix>`. */
@@ -340,22 +381,42 @@ export class OctapChainClient {
 
   /** Signs and submits `tx`, waits for it to be checkpointed, and returns a normalized result. */
   async signAndExecute(tx: Transaction, signer: Signer): Promise<SubmittedChainTransaction> {
-    const submitted = await this.rpc.core.signAndExecuteTransaction({
-      transaction: tx,
-      signer,
+    return this.executeSigned(await this.sign(tx, signer));
+  }
+
+  /**
+   * Builds and signs `tx` without sending it. Every result expires, so a transaction that never
+   * reached the network provably can't land once the chain is past `expirationEpoch`: gas paid from
+   * the address balance already gets a short `ValidDuring` window from the SDK (the chain requires
+   * one), and anything that would build without an expiration is pinned to the current epoch.
+   * Errors here are definitive: nothing was sent.
+   */
+  async sign(tx: Transaction, signer: Signer): Promise<SignedChainTransaction> {
+    tx.setSenderIfNotSet(signer.toSuiAddress());
+    let bytes = await tx.build({ client: this.rpc });
+    if (transactionExpirationEpoch(bytes) === null) {
+      tx.setExpiration({ Epoch: String(await this.currentEpoch()) });
+      bytes = await tx.build({ client: this.rpc });
+    }
+    const { signature } = await signer.signTransaction(bytes);
+    return {
+      bytes,
+      signature,
+      digest: TransactionDataBuilder.getDigestFromBytes(bytes),
+      expirationEpoch: transactionExpirationEpoch(bytes),
+    };
+  }
+
+  /** Sends a transaction from `sign`, waits for it to be checkpointed, and returns a normalized result. */
+  async executeSigned(signed: SignedChainTransaction): Promise<SubmittedChainTransaction> {
+    const submitted = await this.rpc.core.executeTransaction({
+      transaction: signed.bytes,
+      signatures: [signed.signature],
       include: { effects: true, events: true },
     });
-
-    const result = submitted.$kind === 'Transaction' ? submitted.Transaction : submitted.FailedTransaction;
+    const result = normalizeResult(submitted);
     await this.rpc.core.waitForTransaction({ digest: result.digest, include: { effects: true, events: true } });
-
-    const status = result.status.success ? 'success' : 'failure';
-    return {
-      digest: result.digest,
-      status,
-      errorMessage: result.status.success ? undefined : result.status.error.message,
-      events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
-    };
+    return result;
   }
 
   /**
@@ -364,16 +425,24 @@ export class OctapChainClient {
    * `signAndExecute`, but starting from only a digest.
    */
   async waitForTransaction(digest: string): Promise<SubmittedChainTransaction> {
-    const waited = await this.rpc.core.waitForTransaction({ digest, include: { effects: true, events: true } });
-    const result = waited.$kind === 'Transaction' ? waited.Transaction : waited.FailedTransaction;
+    return normalizeResult(await this.rpc.core.waitForTransaction({ digest, include: { effects: true, events: true } }));
+  }
 
-    const status = result.status.success ? 'success' : 'failure';
-    return {
-      digest: result.digest,
-      status,
-      errorMessage: result.status.success ? undefined : result.status.error.message,
-      events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
-    };
+  /** One lookup, no polling: the transaction's outcome, or null if the chain has no such digest (yet). */
+  async findTransaction(digest: string): Promise<SubmittedChainTransaction | null> {
+    try {
+      return normalizeResult(await this.rpc.core.getTransaction({ digest, include: { effects: true, events: true } }));
+    } catch (err: unknown) {
+      if (err instanceof TransactionError && err.reason === 'notFound') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async currentEpoch(): Promise<bigint> {
+    const { systemState } = await this.rpc.core.getCurrentSystemState();
+    return BigInt(systemState.epoch);
   }
 }
 

@@ -3,11 +3,12 @@ import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../../infra/cache/redis.provider.js';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
 import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
-import { OperationPayloadConflictError } from '../../infra/db/repositories/operations.repository.js';
+import { OperationPayloadConflictError, OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
 import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
+import { transactionExpirationEpoch } from '@octap/chain';
 import type {
   ReservePosRedemptionRequest,
   ReservePosRedemptionResponse,
@@ -22,6 +23,7 @@ interface CachedReserve {
   organizationId: string;
   organizationEndUserId: string;
   loyaltyTransactionId: string;
+  idempotencyKey: string;
   pointsAmount: number;
   transactionBytes: string;
 }
@@ -30,6 +32,15 @@ interface CachedReserve {
 function isUniqueViolation(err: unknown): boolean {
   const code = (e: unknown) => (e as { code?: unknown } | null)?.code;
   return code(err) === '23505' || code((err as { cause?: unknown } | null)?.cause) === '23505';
+}
+
+/** Unparseable bytes only cost the "expired, never landed" shortcut, never the finalize itself. */
+function expirationOf(transactionBytes: string): bigint | null {
+  try {
+    return transactionExpirationEpoch(transactionBytes);
+  } catch {
+    return null;
+  }
 }
 
 const reserveKey = (digest: string): string => `pos-redeem:reserve:${digest}`;
@@ -64,6 +75,7 @@ export class PosRedemptionService {
     private readonly suiBuilder: SuiTransactionBuilderClient,
     private readonly webhooks: WebhookDeliveryService,
     private readonly programsRepo: ProgramsRepository,
+    private readonly operationsRepo: OperationsRepository,
   ) {}
 
   async reserve(organizationId: string, request: ReservePosRedemptionRequest): Promise<ReservePosRedemptionResponse> {
@@ -96,7 +108,7 @@ export class PosRedemptionService {
       throw new BadRequestException(err instanceof Error ? err.message : 'Failed to reserve redemption');
     }
 
-    const { transaction, accountId, isNew } = reserved;
+    const { transaction, accountId, isNew, submittedDigest } = reserved;
 
     if (transaction.status !== 'PENDING') {
       // Settled by an earlier call under this idempotency key (CONFIRMED or FAILED) — nothing
@@ -125,6 +137,14 @@ export class PosRedemptionService {
           };
         }
       }
+      if (submittedDigest) {
+        // A finalize already sent bytes for this hold and their outcome is still unknown. Fresh
+        // bytes could land as a second on-chain redeem; `ChainOutcomeReconciler` settles the
+        // first one by digest, and only then is this key reusable.
+        throw new ConflictException(
+          `A finalize for this redemption (${submittedDigest}) is still being resolved on-chain; try again later`,
+        );
+      }
       // Cache lapsed: fall through and sponsor fresh bytes for the same existing hold, rather
       // than failing a retry just because the TTL won a race with the customer's device.
     }
@@ -148,6 +168,7 @@ export class PosRedemptionService {
       organizationId,
       organizationEndUserId: request.organizationEndUserId,
       loyaltyTransactionId: transaction.id,
+      idempotencyKey: transaction.idempotencyKey,
       pointsAmount: request.pointsAmount,
       transactionBytes: sponsored.transactionBytes,
     };
@@ -176,6 +197,16 @@ export class PosRedemptionService {
       throw new BadRequestException(`No real Sui address on file for member ${cached.organizationEndUserId}`);
     }
 
+    // Recorded before executing (OCT-52): if Enoki's execute or the wait below throws, the outcome
+    // is unknown, and `ChainOutcomeReconciler` settles this hold by asking the chain about this
+    // digest — confirmed, failed, or expired without ever landing.
+    const operationId = await this.operationsRepo.recordSubmitDigestForCommand({
+      tenantId: cached.organizationId,
+      idempotencyKey: cached.idempotencyKey,
+      suiTxDigest: request.digest,
+      expirationEpoch: expirationOf(cached.transactionBytes),
+    });
+
     let executed: { digest: string };
     try {
       executed = await this.sponsoredTx.executeSponsoredRedeem({ digest: request.digest, signature: request.signature });
@@ -193,6 +224,9 @@ export class PosRedemptionService {
         organizationEndUserId: cached.organizationEndUserId,
         pointsAmount: cached.pointsAmount,
       });
+      if (operationId) {
+        await this.operationsRepo.settleFromChain(operationId, 'FAILED', result.errorMessage ?? 'redeem failed on-chain');
+      }
       await this.redis.del(reserveKey(request.digest));
       throw new BadRequestException(result.errorMessage ?? 'Redeem failed on-chain');
     }
@@ -217,6 +251,9 @@ export class PosRedemptionService {
       return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
     }
 
+    if (operationId) {
+      await this.operationsRepo.settleFromChain(operationId, 'SUBMITTED');
+    }
     await this.redis.del(reserveKey(request.digest));
 
     const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);

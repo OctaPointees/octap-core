@@ -82,13 +82,19 @@ export class ChainSubmitProcessor {
 
       // The chain treats `pointsAmount` as a purchase amount and credits the program policy's
       // `earn_bps` share of it (see credits.repository.ts's confirmEarnOnChain), not the raw number.
-      let result: Awaited<ReturnType<SuiClientService['earn']>>;
+      // Signed but not sent yet: a failure up to here is definitive, nothing reached the chain.
+      const signed = await this.suiClient.signEarn(program, {
+        accountId,
+        purchaseAmount: payload.pointsAmount,
+        operationKey: operation.idempotencyKey,
+      });
+      // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
+      // can ask the chain about exactly this digest instead of guessing.
+      await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
+
+      let result: Awaited<ReturnType<SuiClientService['execute']>>;
       try {
-        result = await this.suiClient.earn(program, {
-          accountId,
-          purchaseAmount: payload.pointsAmount,
-          operationKey: operation.idempotencyKey,
-        });
+        result = await this.suiClient.execute(signed);
       } catch (err: unknown) {
         throw new EarnOutcomeUnknownError(err);
       }
@@ -114,8 +120,9 @@ export class ChainSubmitProcessor {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof EarnOutcomeUnknownError) {
         // Releasing the hold here could under-credit a member whose earn did land, and a FAILED
-        // status invites the merchant to retry under a new key: a second on-chain earn.
-        this.logger.error(`earn outcome unknown for operation ${operation.id}; left for the indexer: ${message}`);
+        // status invites the merchant to retry under a new key: a second on-chain earn. The
+        // indexer confirms it if it landed; `ChainOutcomeReconciler` settles it by digest either way.
+        this.logger.error(`earn outcome unknown for operation ${operation.id}; left for reconciliation: ${message}`);
         await this.markUnknown(operation.id, message);
         return;
       }

@@ -67,4 +67,15 @@ describe('requireEnv', () => {
     vi.stubEnv('OCTAP_TEST_VAR', '');
     expect(() => requireEnv('OCTAP_TEST_VAR', 'test adapter')).toThrow('Missing required env var OCTAP_TEST_VAR for the test adapter');
   });
+
+  it('findTransaction and currentEpoch are read-only pass-throughs (OCT-52)', async () => {
+    const outcome = { digest: 'D1', status: 'success', events: [] };
+    const findTransaction = vi.fn(async () => outcome);
+    const currentEpoch = vi.fn(async () => 1261n);
+    const builder = withChainClient(new SuiTransactionBuilderClient(), { findTransaction, currentEpoch });
+
+    await expect(builder.findTransaction('D1')).resolves.toBe(outcome);
+    await expect(builder.currentEpoch()).resolves.toBe(1261n);
+    expect(findTransaction).toHaveBeenCalledWith('D1');
+  });
 });

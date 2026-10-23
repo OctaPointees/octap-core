@@ -17,6 +17,12 @@ Loyalty points for an organization's end users.
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
   is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
   the clawback debt when an earn was already spent — there's no separate debt ledger.
+- `chain-outcome.reconciler.ts` (worker-only, run by `chain-submit.worker.ts`): settles commands
+  whose chain outcome was never learned — an earn whose `execute` threw, a POS finalize whose
+  Enoki execute (or the wait after it) threw, or a worker that died mid-submit (OCT-52). Both
+  paths record the transaction's digest and expiration epoch on the operation *before* sending,
+  so this only ever asks the chain about that digest: success -> `confirm*OnChain`, failure or
+  "not found and past its expiration epoch" -> release the hold, FAILED. It never sends anything.
 - `credits.module.ts`: Nest provider composition.
 
 Persistence is `infra/db/repositories/credits.repository.ts`; HTTP is `api/rest/credits.controller.ts`.

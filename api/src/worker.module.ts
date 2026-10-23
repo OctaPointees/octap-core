@@ -5,6 +5,7 @@ import { SuiModule } from './infra/clients/sui/sui.module.js';
 import { ProgramAdminModule } from './infra/clients/sui/program-admin.module.js';
 import { ChainSubmitWorker } from './domain/credits/chain-submit.worker.js';
 import { ChainSubmitProcessor } from './domain/credits/chain-submit.processor.js';
+import { ChainOutcomeReconciler } from './domain/credits/chain-outcome.reconciler.js';
 import { WebhookDeliveryWorker } from './domain/webhooks/webhook-delivery.worker.js';
 import { WebhookDeliveryProcessor } from './domain/webhooks/webhook-delivery.processor.js';
 import { CheckpointIndexerWorker } from './domain/indexer/checkpoint-indexer.worker.js';
@@ -21,6 +22,7 @@ import { ProgramsService } from './domain/programs/programs.service.js';
   providers: [
     ChainSubmitWorker,
     ChainSubmitProcessor,
+    ChainOutcomeReconciler,
     WebhookDeliveryWorker,
     WebhookDeliveryProcessor,
     CheckpointIndexerWorker,

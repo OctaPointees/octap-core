@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PosRedemptionService } from '../../../../src/domain/credits/pos-redemption.service.js';
-import { OperationPayloadConflictError } from '../../../../src/infra/db/repositories/operations.repository.js';
+import {
+  OperationPayloadConflictError,
+  type OperationsRepository,
+} from '../../../../src/infra/db/repositories/operations.repository.js';
 import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
 import type { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
 import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
@@ -15,6 +18,7 @@ const cachedReserve = {
   organizationId: 'org-1',
   organizationEndUserId: 'user-1',
   loyaltyTransactionId: 'tx-1',
+  idempotencyKey: 'idem-1',
   pointsAmount: 50,
   transactionBytes: 'bytes-1',
 };
@@ -24,6 +28,7 @@ function pendingHold(status: 'PENDING' | 'CONFIRMED' | 'FAILED' = 'PENDING', isN
     transaction: buildLoyaltyTransaction({ id: 'tx-1', transactionType: 'REDEEM', status, idempotencyKey: 'idem-1' }),
     accountId,
     isNew,
+    submittedDigest: null as string | null,
   });
 }
 
@@ -34,6 +39,7 @@ function service({
   suiBuilder = {},
   webhooks = {},
   programsRepo = PROGRAMS_REPO,
+  operationsRepo = { recordSubmitDigestForCommand: async () => 'op-pos-1', settleFromChain: async () => true },
 }: {
   redis?: ReturnType<typeof fakeRedis>;
   creditsRepo?: { [K in keyof CreditsRepository]?: unknown };
@@ -41,6 +47,7 @@ function service({
   suiBuilder?: { [K in keyof SuiTransactionBuilderClient]?: unknown };
   webhooks?: { [K in keyof WebhookDeliveryService]?: unknown };
   programsRepo?: ProgramsRepository;
+  operationsRepo?: { [K in keyof OperationsRepository]?: unknown };
 } = {}) {
   return new PosRedemptionService(
     redis,
@@ -49,6 +56,7 @@ function service({
     stub<SuiTransactionBuilderClient>(suiBuilder),
     stub<WebhookDeliveryService>(webhooks),
     programsRepo,
+    stub<OperationsRepository>(operationsRepo),
   );
 }
 
@@ -391,5 +399,134 @@ describe('PosRedemptionService per-organization programs (OCT-73)', () => {
 
     await expect(reserve).rejects.toMatchObject({ status: 422 });
     await expect(reserve).rejects.toThrow(/org-1 has no on-chain program provisioned/);
+  });
+});
+
+describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
+  it('records the digest on the reserve operation before executing, and keeps the hold when execute throws', async () => {
+    const order: string[] = [];
+    const recordSubmitDigestForCommand = vi.fn(async () => {
+      order.push('record');
+      return 'op-pos-1';
+    });
+    const finalize = service({
+      redis: await redisWithCachedReserve(),
+      creditsRepo: {
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        failPosRedemptionOnChain: () => expect.fail('the redeem may have landed; the hold must stay'),
+      },
+      sponsoredTx: {
+        executeSponsoredRedeem: async () => {
+          order.push('execute');
+          throw new Error('ETIMEDOUT');
+        },
+      },
+      operationsRepo: { recordSubmitDigestForCommand, settleFromChain: () => expect.fail('nothing settles while unknown') },
+    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
+
+    await expect(finalize).rejects.toThrow(/ETIMEDOUT/);
+    expect(order).toEqual(['record', 'execute']);
+    // `bytes-1` isn't a real transaction: an unreadable expiration costs only the expiry shortcut.
+    expect(recordSubmitDigestForCommand).toHaveBeenCalledWith({
+      tenantId: 'org-1',
+      idempotencyKey: 'idem-1',
+      suiTxDigest: 'digest-1',
+      expirationEpoch: null,
+    });
+  });
+
+  it('settles the reserve operation SUBMITTED on success and FAILED on a definitive failure', async () => {
+    const settleFromChain = vi.fn(async () => true);
+    const operationsRepo = { recordSubmitDigestForCommand: async () => 'op-pos-1', settleFromChain };
+
+    await service({
+      redis: await redisWithCachedReserve(),
+      creditsRepo: {
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        confirmPosRedemptionOnChain: async () => ({ id: 'btx-1' }),
+        getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
+      },
+      sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
+      suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
+      webhooks: { emit: async () => {} },
+      operationsRepo,
+    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
+    expect(settleFromChain).toHaveBeenLastCalledWith('op-pos-1', 'SUBMITTED');
+
+    await expect(
+      service({
+        redis: await redisWithCachedReserve(),
+        creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary', failPosRedemptionOnChain: async () => {} },
+        sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
+        suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', errorMessage: 'EInsufficientBalance', events: [] }) },
+        operationsRepo,
+      }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
+    ).rejects.toThrow(/EInsufficientBalance/);
+    expect(settleFromChain).toHaveBeenLastCalledWith('op-pos-1', 'FAILED', 'EInsufficientBalance');
+  });
+
+  it('settles nothing when the reserve operation was already settled (no operation id)', async () => {
+    await service({
+      redis: await redisWithCachedReserve(),
+      creditsRepo: {
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        confirmPosRedemptionOnChain: async () => ({ id: 'btx-1' }),
+        getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
+      },
+      sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
+      suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
+      webhooks: { emit: async () => {} },
+      operationsRepo: { recordSubmitDigestForCommand: async () => null, settleFromChain: () => expect.fail('nothing to settle') },
+    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
+
+    await expect(
+      service({
+        redis: await redisWithCachedReserve(),
+        creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary', failPosRedemptionOnChain: async () => {} },
+        sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
+        suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', events: [] }) },
+        operationsRepo: { recordSubmitDigestForCommand: async () => null, settleFromChain: () => expect.fail('nothing to settle') },
+      }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
+    ).rejects.toThrow(/Redeem failed on-chain/);
+  });
+
+  it('reads the expiration epoch out of real sponsored bytes', async () => {
+    const { Transaction } = await import('@mysten/sui/transactions');
+    const tx = new Transaction();
+    tx.setSender(`0x${'1'.repeat(64)}`);
+    tx.setGasPrice(1000);
+    tx.setGasBudget(10_000_000);
+    tx.setGasPayment([{ objectId: `0x${'9'.repeat(64)}`, version: '1', digest: '11111111111111111111111111111111' }]);
+    tx.moveCall({ target: '0x2::clock::timestamp_ms', arguments: [] });
+    tx.setExpiration({ Epoch: 1262 });
+    const transactionBytes = Buffer.from(await tx.build()).toString('base64');
+
+    const redis = fakeRedis();
+    await redis.set('pos-redeem:reserve:digest-1', JSON.stringify({ ...cachedReserve, transactionBytes }));
+    const recordSubmitDigestForCommand = vi.fn(async () => 'op-pos-1');
+
+    await expect(
+      service({
+        redis,
+        creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary' },
+        sponsoredTx: { executeSponsoredRedeem: async () => { throw new Error('ETIMEDOUT'); } },
+        operationsRepo: { recordSubmitDigestForCommand },
+      }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
+    ).rejects.toThrow();
+
+    expect(recordSubmitDigestForCommand).toHaveBeenCalledWith(expect.objectContaining({ expirationEpoch: 1262n }));
+  });
+
+  it('reserve refuses fresh bytes (409) while an earlier finalize is unresolved: no second on-chain redeem', async () => {
+    const reserve = service({
+      creditsRepo: {
+        findMemberOrganizationId: async () => 'org-1',
+        reservePosRedemption: async () => ({ ...(await pendingHold('PENDING', false)()), submittedDigest: 'digest-sent-before' }),
+      },
+      sponsoredTx: { previewSponsoredRedeem: () => expect.fail('must not sponsor a second redeem') },
+    }).reserve('org-1', reserveRequest);
+
+    await expect(reserve).rejects.toMatchObject({ status: 409 });
+    await expect(reserve).rejects.toThrow(/digest-sent-before/);
   });
 });

@@ -58,7 +58,8 @@ function chainSubmitWorker(earn = async (_program: unknown, params: { purchaseAm
       issuerAddress: () => '0xissuer',
       openAccount: async () =>
         fakeChainResult({ digest: 'OPEN', events: [{ type: '0xpkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc' } }] }),
-      earn,
+      signEarn: async (program: unknown, params: { purchaseAmount: number }) => ({ program, params, digest: 'SIGNED', expirationEpoch: 1n }),
+      execute: async (signed: { program: unknown; params: { purchaseAmount: number } }) => earn(signed.program, signed.params),
     }),
     ctx.app.get(ProgramsRepository),
   );

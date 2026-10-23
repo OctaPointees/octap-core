@@ -157,3 +157,84 @@ describe('OperationsRepository', () => {
     expect((await statusOf(pending.id)).status).toBe('PENDING');
   });
 });
+
+describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms);
+
+  it('recordSubmitDigest stores digest + expiration on an unsettled row and never touches a settled one', async () => {
+    const open = await insertOperation({ idempotencyKey: 'open', status: 'PROCESSING' });
+    const settled = await insertOperation({ idempotencyKey: 'settled', status: 'SUBMITTED', suiTxDigest: 'LANDED' });
+
+    await repo.recordSubmitDigest(open.id, 'D-PRE', 1262n);
+    await repo.recordSubmitDigest(settled.id, 'D-OTHER', 1262n);
+
+    expect(await statusOf(open.id)).toMatchObject({ status: 'PROCESSING', suiTxDigest: 'D-PRE', suiTxExpirationEpoch: 1262n });
+    expect(await statusOf(settled.id)).toMatchObject({ suiTxDigest: 'LANDED', suiTxExpirationEpoch: null });
+  });
+
+  it('recordSubmitDigestForCommand finds the command by tenant + key and returns its id, or null once settled', async () => {
+    const pending = await insertOperation({ idempotencyKey: 'pos-1', commandType: 'CREDIT_POS_REDEEM_RESERVE' });
+    await insertOperation({ idempotencyKey: 'pos-done', commandType: 'CREDIT_POS_REDEEM_RESERVE', status: 'FAILED' });
+    const other = await seedOrganization(db);
+
+    await expect(
+      repo.recordSubmitDigestForCommand({ tenantId: orgId, idempotencyKey: 'pos-1', suiTxDigest: 'D-POS', expirationEpoch: null }),
+    ).resolves.toBe(pending.id);
+    await expect(
+      repo.recordSubmitDigestForCommand({ tenantId: orgId, idempotencyKey: 'pos-done', suiTxDigest: 'D-POS', expirationEpoch: null }),
+    ).resolves.toBeNull();
+    await expect(
+      repo.recordSubmitDigestForCommand({ tenantId: other.id, idempotencyKey: 'pos-1', suiTxDigest: 'D-X', expirationEpoch: null }),
+    ).resolves.toBeNull();
+    expect(await statusOf(pending.id)).toMatchObject({ status: 'PENDING', suiTxDigest: 'D-POS' });
+  });
+
+  it('listUnresolvedChainOutcomes returns old UNKNOWN earns and POS finalizes with a digest, oldest first', async () => {
+    const old = ago(10 * 60 * 1000);
+    const earnUnknown = await insertOperation({ idempotencyKey: 'e-unknown', status: 'UNKNOWN', updatedAt: ago(20 * 60 * 1000) });
+    const posWithDigest = await insertOperation({
+      idempotencyKey: 'pos-digest',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      suiTxDigest: 'D-POS',
+      updatedAt: old,
+    });
+    await insertOperation({ idempotencyKey: 'e-fresh', status: 'UNKNOWN' });
+    await insertOperation({ idempotencyKey: 'e-pending', status: 'PENDING', updatedAt: old });
+    await insertOperation({ idempotencyKey: 'e-submitted', status: 'SUBMITTED', updatedAt: old });
+    await insertOperation({ idempotencyKey: 'pos-no-digest', commandType: 'CREDIT_POS_REDEEM_RESERVE', updatedAt: old });
+    await insertOperation({ idempotencyKey: 'pos-done', commandType: 'CREDIT_POS_REDEEM_RESERVE', status: 'SUBMITTED', suiTxDigest: 'D', updatedAt: old });
+    await insertOperation({ idempotencyKey: 'other', commandType: 'X', status: 'UNKNOWN', updatedAt: old });
+
+    const due = await repo.listUnresolvedChainOutcomes({
+      earnCommandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+      posCommandType: 'CREDIT_POS_REDEEM_RESERVE',
+      olderThanMs: 5 * 60 * 1000,
+      limit: 10,
+    });
+
+    expect(due.map((o) => o.id)).toEqual([earnUnknown.id, posWithDigest.id]);
+  });
+
+  it('settleFromChain settles PENDING or UNKNOWN once, and reports when someone else already settled it', async () => {
+    const unknown = await insertOperation({ idempotencyKey: 'u', status: 'UNKNOWN', errorMessage: 'timeout' });
+    const settled = await insertOperation({ idempotencyKey: 's', status: 'SUBMITTED' });
+
+    await expect(repo.settleFromChain(unknown.id, 'SUBMITTED')).resolves.toBe(true);
+    await expect(repo.settleFromChain(unknown.id, 'FAILED', 'late')).resolves.toBe(false);
+    await expect(repo.settleFromChain(settled.id, 'FAILED', 'never')).resolves.toBe(false);
+
+    expect(await statusOf(unknown.id)).toMatchObject({ status: 'SUBMITTED', errorMessage: 'timeout' });
+    expect(await statusOf(settled.id)).toMatchObject({ status: 'SUBMITTED' });
+  });
+
+  it('touch moves a row to the back of the queue without changing it', async () => {
+    const row = await insertOperation({ idempotencyKey: 't', status: 'UNKNOWN', updatedAt: ago(60 * 60 * 1000) });
+
+    await repo.touch(row.id);
+
+    const after = await statusOf(row.id);
+    expect(after.status).toBe('UNKNOWN');
+    expect(after.updatedAt.getTime()).toBeGreaterThan(Date.now() - 60 * 1000);
+  });
+});
+

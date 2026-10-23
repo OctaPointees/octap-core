@@ -31,6 +31,7 @@ then move the row to **Implemented** in the same pull request.
 | Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
 | Credits: chain-time expiry buckets mirrored into Postgres (FIFO consumption, lazy expiry sweep, `CreditExpired` projection) | api/src/infra/db/repositories/credits.repository.ts (`expireDueBuckets`); api/src/domain/indexer |
 | Indexer: `octap::credit_account` event projection with a committed cursor, reconciling PENDING/UNKNOWN earn and POS redeem from the chain; balance `asOfCheckpoint`/`observedAt`/`stale` | api/src/domain/indexer; api/src/infra/db/repositories/indexer.repository.ts |
+| Operations: outcome-unknown chain submits (earn, POS finalize) resolved by a digest recorded before sending — confirmed, failed, or released once expired, never resent | api/src/domain/credits/chain-outcome.reconciler.ts; `OctapChainClient.sign`/`executeSigned`/`findTransaction` |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 
 ### Known gaps in implemented features
@@ -38,8 +39,9 @@ then move the row to **Implemented** in the same pull request.
 - The **indexer** only reconciles rows still PENDING. The chain-submit worker now marks a row
   FAILED only on a returned on-chain `failure`; an `earn()` call that throws (outcome unknown)
   stays PENDING with its operation UNKNOWN, so the indexer confirms it if it landed. If it never
-  landed, it stays PENDING (hold kept, balance never wrong) until resolved by hand — resolving it
-  automatically needs the digest computed before submission (OCT-52). It emits no webhooks for
+  landed, `ChainOutcomeReconciler` (OCT-52) releases it once the chain is past the transaction's
+  expiration epoch — for address-balance gas that is the SDK's `ValidDuring` window, so up to two
+  epochs (~2 days on testnet) of a held, `stale` balance first. It emits no webhooks for
   what it confirms (OCT-209); and `stale` is "anything
   pending", not "indexer behind the chain tip". First run starts at the stream head, not genesis
   (see `api/src/domain/indexer/README.md`).
@@ -116,10 +118,16 @@ then move the row to **Implemented** in the same pull request.
   path isn't reachable through today's one real caller; it exists for the next caller that
   doesn't have its own equivalent check. A conflict also isn't mapped to a clean HTTP 409 yet —
   it surfaces as an uncaught error, since no caller can trigger it through the HTTP layer today.
-- `recoverStaleProcessing` only *detects and surfaces* a stuck operation (flips it to UNKNOWN,
-  logged at worker startup) — there is no replay/resolution flow yet. An UNKNOWN operation stays
-  UNKNOWN until someone checks the chain by hand and updates the row; auto-resubmitting it would
-  risk the exact "second business effect" durable commands exist to prevent.
+- `recoverStaleProcessing` flips a stuck operation to UNKNOWN at worker startup, and
+  `ChainOutcomeReconciler` then settles it by its recorded digest (OCT-52) — it never resubmits.
+  It relies on the digest being recorded *before* sending, so an UNKNOWN earn with no digest is
+  treated as never sent and released: an UNKNOWN row left over from before OCT-52 (when nothing
+  recorded a digest first) would be released the same way, so check for
+  `status = 'UNKNOWN' and sui_tx_digest is null` before deploying onto an existing database.
+  A POS finalize digest whose sponsored bytes carry no expiration can't be proven never-landed
+  and is logged for a human; while it is unresolved, `/reserve` refuses to sponsor fresh bytes
+  for that hold (409) so it can't turn into a second on-chain redeem. A reserve that is never
+  finalized at all still holds its points indefinitely — no hold-expiry policy yet.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
 - Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
