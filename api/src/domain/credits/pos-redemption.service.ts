@@ -6,7 +6,6 @@ import { ProgramsRepository } from '../../infra/db/repositories/programs.reposit
 import { OperationPayloadConflictError, OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
 import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
-import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { transactionExpirationEpoch } from '@octap/chain';
 import type {
@@ -73,7 +72,6 @@ export class PosRedemptionService {
     private readonly creditsRepo: CreditsRepository,
     private readonly sponsoredTx: SponsoredTransactionService,
     private readonly suiBuilder: SuiTransactionBuilderClient,
-    private readonly webhooks: WebhookDeliveryService,
     private readonly programsRepo: ProgramsRepository,
     private readonly operationsRepo: OperationsRepository,
   ) {}
@@ -232,7 +230,9 @@ export class PosRedemptionService {
     }
 
     // Null means `domain/indexer` saw this redeem's event and confirmed it first — same digest,
-    // same outcome, so the response and webhook below are unchanged (the indexer emits no webhooks).
+    // same outcome, so the response below is unchanged. Whichever side confirms queues the
+    // `credits.redemption.confirmed` webhook inside the confirm itself (OCT-209), so there is
+    // nothing to emit from here.
     try {
       await this.creditsRepo.confirmPosRedemptionOnChain({
         loyaltyTransactionId: cached.loyaltyTransactionId,
@@ -246,7 +246,7 @@ export class PosRedemptionService {
         throw err;
       }
       // A concurrent finalize of this same digest (client retry) recorded it first: same
-      // outcome, so answer the retry the same way instead of a 500. It owns the webhook.
+      // outcome, so answer the retry the same way instead of a 500.
       const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);
       return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
     }
@@ -257,17 +257,7 @@ export class PosRedemptionService {
     await this.redis.del(reserveKey(request.digest));
 
     const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);
-    const newBalance = Number(ownership.confirmedBalance);
-
-    await this.webhooks.emit(cached.organizationId, 'credits.redeemed', {
-      transactionId: cached.loyaltyTransactionId,
-      organizationEndUserId: cached.organizationEndUserId,
-      pointsAmount: cached.pointsAmount,
-      newBalance,
-      blockchainDigest: result.digest,
-    });
-
-    return this.confirmedResponse(cached, newBalance, result.digest);
+    return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
   }
 
   private confirmedResponse(cached: CachedReserve, newBalance: number, digest: string): FinalizePosRedemptionResponse {
