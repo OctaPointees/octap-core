@@ -69,11 +69,10 @@ then move the row to **Implemented** in the same pull request.
   guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for
   signing is entirely client-side (this process only ever sees its public half); nonce/proof
   endpoints are thin Enoki passthroughs with no local cryptography.
-- `domain/programs` can provision a real per-organization program/policy/IssuerCap, but nothing
-  consumes it yet: `chain-submit.processor.ts` still dispatches every organization's `earn`
-  against the single hardcoded `TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`. Wiring it to look up
-  `ProgramsRepository` per organization instead is follow-up work, left out here to avoid
-  touching the already-working demo earn path in the same change that adds provisioning. There
+- Earn is dispatched against the calling organization's own provisioned program (OCT-73,
+  `domain/programs`' `resolveProgramConfig`); there is no shared default program. An organization
+  without an `ACTIVE`, sharded `programs` row gets HTTP 422 on earn and on POS redeem reserve
+  (`credit_account::redeem` needs no program ids — the account records its own program). There
   is also no `domain/organizations` (org rows are inserted out of band) or standalone
   `domain/policies` versioning/preview API yet — policy publish/activate are steps inside
   `ProgramsService.provisionForOrganization`, not their own CRUD surface. Provisioning can't be
@@ -82,7 +81,7 @@ then move the row to **Implemented** in the same pull request.
   `earn_rejects_issuer_cap_scoped_to_a_different_program`, plus unit tests with a mocked
   `ProgramAdminClient`.
 - `SUI_PROGRAM_ADMIN_PRIVATE_KEY` is a second raw private key sitting in `.env`, alongside
-  `SUI_ISSUER_PRIVATE_KEY` — adequate for a demo, but not how a comparable Sui backend we have
+  `SUI_ISSUER_PRIVATE_KEY` — adequate on testnet, but not how a comparable Sui backend we have
   local access to (Walrus Console / Harbor, `D:\CommandOSS\harbor`) handles this at all: its
   `SuiKmsSignerService` (`api/src/infra/clients/sui-kms-signer.client.ts`) holds **zero** raw
   private keys. The actual signer lives in Google Cloud KMS; the app only holds a key reference
@@ -97,12 +96,10 @@ then move the row to **Implemented** in the same pull request.
   is real follow-up work, intentionally not done in this PR — it needs real cloud KMS
   infrastructure this project doesn't have set up yet, which is a bigger decision than this
   ticket's scope.
-- The chain adapter is demo-scoped to **one program/policy/IssuerCap**, applied to every
-  organization — those object ids are committed constants in
-  `ts-sdks/packages/chain/src/constants.ts` (`TESTNET_OCTAP_DEMO_PROGRAM_CONFIG`; see that file's
-  doc comment for why object ids aren't env vars), not something `.env.example` configures.
-  `domain/programs` (above) can now provision a real one per organization, but nothing routes
-  `earn` through it yet — see that bullet above for exactly what's left.
+- A `CreditAccount` is scoped to the program it was opened in, but `credit_ownerships` stores only
+  its id, not which program. If an organization is ever re-provisioned, its members' existing
+  accounts belong to the old program and `earn` aborts on-chain (`EWrongProgram`) until their
+  `sui_credit_account_id` is cleared so the worker reopens them under the new program.
 - Fixed (OCT-55): the worker used to open every `CreditAccount` under a placeholder address
   derived from the PG ownership row id, nobody's private key — written before Identity existed
   and never updated, which would have permanently blocked POS redemption (`beneficiary` is set
@@ -110,10 +107,9 @@ then move the row to **Implemented** in the same pull request.
   `end_users.suiAddress` via `CreditsRepository.findBeneficiaryAddress`, always populated by earn
   time since `organization_end_users` can only exist after a prior Google login.
 - `operation_key` anti-replay and the issuance budget are enforced on-chain by
-  `operation_shard`/`budget_shard` (OCT-41), but `SuiClientService.earn()` still reads shard ids
-  from the demo program constants, not the organization's `programs` row — same demo-scoping as
-  its program/policy/IssuerCap ids above. Every program runs `shard_count = 1` today; see
-  `contracts/sui/README.md`'s known gaps.
+  `operation_shard`/`budget_shard` (OCT-41), with shard ids taken from the organization's
+  `programs` row. Every program runs `shard_count = 1` today; see `contracts/sui/README.md`'s
+  known gaps.
 - `acceptCommand`'s payload-hash conflict only guards against this process accepting two
   different payloads under one key — `EarnService` already short-circuits on a repeated
   idempotency key earlier (at the `loyaltyTransactions` level), so in practice this conflict
@@ -125,7 +121,7 @@ then move the row to **Implemented** in the same pull request.
   UNKNOWN until someone checks the chain by hand and updates the row; auto-resubmitting it would
   risk the exact "second business effect" durable commands exist to prevent.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
-  comment), not a batched `SKIP LOCKED` claim — fine for today's single-worker demo only.
+  comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
 - Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
   `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
   done here to keep this change reviewable. `emit()` is also not in the same DB transaction as the

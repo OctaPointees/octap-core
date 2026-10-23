@@ -94,7 +94,7 @@ export class OperationsRepository {
    * Claims up to `limit` PENDING rows of the given command types by flipping them to PROCESSING
    * one at a time with a conditional update, so two worker instances racing on the same row only
    * ever have one succeed. (A single `UPDATE ... RETURNING` with `SKIP LOCKED` would claim a
-   * batch in one round-trip instead of N+1; fine for today's single-worker demo, worth revisiting
+   * batch in one round-trip instead of N+1; fine for today's single worker, worth revisiting
    * before running more than one worker instance.)
    */
   async claimNextPending(commandTypes: string[], limit = 5) {

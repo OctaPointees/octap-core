@@ -3,8 +3,16 @@ import { ChainSubmitProcessor } from '../../../../src/domain/credits/chain-submi
 import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
 import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
 import type { SuiClientService } from '../../../../src/infra/clients/sui/sui.client.js';
+import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
-import { buildOperation, fakeChainResult } from '../../../helpers/fixtures.js';
+import {
+  PROGRAMS_REPO,
+  buildOperation,
+  buildProgramRow,
+  fakeChainResult,
+  programConfigFor,
+  programsRepoFor,
+} from '../../../helpers/fixtures.js';
 
 const earned = (amount = '100', extra: Record<string, unknown> = {}) =>
   fakeChainResult({ events: [{ type: 'pkg::credit_account::CreditEarned', parsedJson: { amount, ...extra } }] });
@@ -15,11 +23,13 @@ function processor(
   operationsRepo: { [K in keyof OperationsRepository]?: unknown },
   creditsRepo: { [K in keyof CreditsRepository]?: unknown },
   suiClient: { [K in keyof SuiClientService]?: unknown },
+  programsRepo: ProgramsRepository = PROGRAMS_REPO,
 ) {
   return new ChainSubmitProcessor(
     stub<OperationsRepository>(operationsRepo),
     stub<CreditsRepository>(creditsRepo),
     stub<SuiClientService>({ issuerAddress: () => '0xissuer', ...suiClient }),
+    programsRepo,
   );
 }
 
@@ -46,9 +56,13 @@ describe('ChainSubmitProcessor', () => {
     ).process(buildOperation());
 
     // OCT-55: must open under the member's real zkLogin address, never a placeholder.
-    expect(openAccount).toHaveBeenCalledWith('0xbeneficiary');
+    expect(openAccount).toHaveBeenCalledWith(programConfigFor('org-1'), '0xbeneficiary');
     expect(setSuiCreditAccountId).toHaveBeenCalledWith('ownership-1', '0xacc1');
-    expect(earn).toHaveBeenCalledWith({ accountId: '0xacc1', purchaseAmount: 10000, operationKey: 'idem-chain-1' });
+    expect(earn).toHaveBeenCalledWith(programConfigFor('org-1'), {
+      accountId: '0xacc1',
+      purchaseAmount: 10000,
+      operationKey: 'idem-chain-1',
+    });
     expect(confirmEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
@@ -71,7 +85,7 @@ describe('ChainSubmitProcessor', () => {
       { openAccount: () => expect.fail('should not reopen an existing account'), earn },
     ).process(buildOperation());
 
-    expect(earn).toHaveBeenCalledWith(expect.objectContaining({ accountId: '0xexisting' }));
+    expect(earn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ accountId: '0xexisting' }));
     expect(markSubmitted).toHaveBeenCalledOnce();
   });
 
@@ -276,5 +290,37 @@ describe('ChainSubmitProcessor', () => {
     ).resolves.toBeUndefined();
 
     expect(markUnknown).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ChainSubmitProcessor per-organization programs (OCT-73)', () => {
+  it('dispatches each organization against its own program', async () => {
+    const earn = vi.fn<(program: unknown, params: unknown) => Promise<ReturnType<typeof earned>>>(async () => earned('1'));
+    const run = processor(
+      { markSubmitted: async () => {} },
+      { getCreditOwnershipByEndUserId: existingAccount, confirmEarnOnChain: async () => ({ id: 'btx-1' }) },
+      { earn },
+      programsRepoFor({ 'org-1': buildProgramRow('org-1'), 'org-2': buildProgramRow('org-2') }),
+    );
+
+    await run.process(buildOperation({ tenantId: 'org-1' }));
+    await run.process(buildOperation({ tenantId: 'org-2' }));
+
+    expect(earn.mock.calls.map(([program]) => program)).toEqual([programConfigFor('org-1'), programConfigFor('org-2')]);
+  });
+
+  it('an organization without a program fails the earn before any chain call, never falling back', async () => {
+    const failEarnOnChain = vi.fn(async () => {});
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      { getCreditOwnershipByEndUserId: () => expect.fail('must not reach the ownership lookup'), failEarnOnChain },
+      { openAccount: () => expect.fail('must not open an account'), earn: () => expect.fail('must not call chain') },
+      programsRepoFor({}),
+    ).process(buildOperation({ tenantId: 'org-unprovisioned' }));
+
+    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
+    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/org-unprovisioned has no on-chain program provisioned/));
   });
 });

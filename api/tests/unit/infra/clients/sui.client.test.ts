@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { TESTNET_OCTAP_DEMO_PROGRAM_CONFIG, operationShardIndex, type OctapChainClient } from '@octap/chain';
+import { operationShardIndex, type OctapChainClient } from '@octap/chain';
 import { SuiClientService, selectShards } from '../../../../src/infra/clients/sui/sui.client.js';
+import { programConfigFor } from '../../../helpers/fixtures.js';
+
+const PROGRAM = programConfigFor('org-1');
 
 /** Swaps the lazily-built chain client for a double; the adapter never touches the network. */
 function withChainClient(service: SuiClientService, client: Partial<Record<keyof OctapChainClient, unknown>>) {
@@ -51,9 +54,12 @@ describe('selectShards', () => {
 });
 
 describe('SuiClientService', () => {
-  it('refuses to construct for a network with no demo program', () => {
+  it('refuses to build a chain client for a network with no published package', () => {
     vi.stubEnv('SUI_NETWORK', 'mainnet');
-    expect(() => new SuiClientService()).toThrow(/No demo program configured for Sui network "mainnet"/);
+    const service = new SuiClientService();
+    expect(() => (service as unknown as { client: OctapChainClient }).client).toThrow(
+      /No octap package configured for Sui network "mainnet"/,
+    );
   });
 
   it('issuerAddress derives from SUI_ISSUER_PRIVATE_KEY, and fails loudly without it', () => {
@@ -67,7 +73,7 @@ describe('SuiClientService', () => {
     expect(service.issuerAddress()).toBe(keypair.getPublicKey().toSuiAddress());
   });
 
-  it('openAccount opens under the demo program and exposes eventField on the result', async () => {
+  it('openAccount opens under the given program and exposes eventField on the result', async () => {
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', Ed25519Keypair.generate().getSecretKey());
     const tx = fakeTx();
     const buildOpenAccountTransaction = vi.fn(() => tx);
@@ -76,11 +82,11 @@ describe('SuiClientService', () => {
     );
     const service = withChainClient(new SuiClientService(), { buildOpenAccountTransaction, signAndExecute });
 
-    const result = await service.openAccount('0xbeneficiary');
+    const result = await service.openAccount(PROGRAM, '0xbeneficiary');
 
     expect(buildOpenAccountTransaction).toHaveBeenCalledWith({
-      issuerCapId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.issuerCapId,
-      programId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.programControlId,
+      issuerCapId: PROGRAM.issuerCapId,
+      programId: PROGRAM.programControlId,
       beneficiary: '0xbeneficiary',
     });
     expect(tx.setGasBudget).toHaveBeenCalledWith(50_000_000);
@@ -94,15 +100,15 @@ describe('SuiClientService', () => {
     const buildEarnTransaction = vi.fn(() => fakeTx());
     const service = withChainClient(new SuiClientService(), { buildEarnTransaction, signAndExecute: async () => submitted() });
 
-    await service.earn({ accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' });
+    await service.earn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' });
 
     expect(buildEarnTransaction).toHaveBeenCalledWith({
-      issuerCapId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.issuerCapId,
-      programId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.programControlId,
-      policyId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.policyVersionId,
+      issuerCapId: PROGRAM.issuerCapId,
+      programId: PROGRAM.programControlId,
+      policyId: PROGRAM.policyVersionId,
       accountId: '0xacc',
-      operationShardId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.operationShardIds[0],
-      budgetShardId: TESTNET_OCTAP_DEMO_PROGRAM_CONFIG.budgetShardIds[0],
+      operationShardId: PROGRAM.operationShardIds[0],
+      budgetShardId: PROGRAM.budgetShardIds[0],
       purchaseAmount: 10_000,
       operationKey: new TextEncoder().encode('idem-1'),
     });

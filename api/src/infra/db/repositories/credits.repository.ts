@@ -400,9 +400,9 @@ export class CreditsRepository {
    * Records the on-chain receipt and resolves the pending reservation.
    *
    * `reservedPointsAmount` (what `recordEarnTransaction` moved into `pendingEarn`) and
-   * `confirmedPointsAmount` (the `CreditEarned` event's actual `amount`) can differ: the demo
-   * policy is 100 bps, so the chain treats the requested `pointsAmount` as a purchase amount and
-   * credits 1% of it, not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
+   * `confirmedPointsAmount` (the `CreditEarned` event's actual `amount`) can differ: the chain
+   * treats the requested `pointsAmount` as a purchase amount and credits the organization's policy
+   * `earn_bps` share of it (e.g. 1% at 100 bps), not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
    * the loyalty transaction is corrected to the confirmed figure here — Sui is authoritative for
    * confirmed points (docs/architecture.md), the PG row at insert time was only a request.
    *

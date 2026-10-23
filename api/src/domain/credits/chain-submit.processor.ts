@@ -3,8 +3,10 @@ import { CreditsRepository } from '../../infra/db/repositories/credits.repositor
 // Not `import type`: NestJS DI resolves this constructor param by its runtime type (reflect-metadata),
 // which an erased type-only import would turn into a bare `Function` and break resolution.
 import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
+import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
 import type { operations } from '../../infra/db/schema/operations.schema.js';
 import { SuiClientService } from '../../infra/clients/sui/sui.client.js';
+import { resolveProgramConfig } from '../programs/program-config.js';
 
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
@@ -33,6 +35,7 @@ export class ChainSubmitProcessor {
     private readonly operationsRepo: OperationsRepository,
     private readonly creditsRepo: CreditsRepository,
     private readonly suiClient: SuiClientService,
+    private readonly programsRepo: ProgramsRepository,
   ) {}
 
   async process(operation: typeof operations.$inferSelect): Promise<void> {
@@ -46,6 +49,10 @@ export class ChainSubmitProcessor {
 
   private async processEarn(operation: typeof operations.$inferSelect, payload: EarnChainSubmitPayload): Promise<void> {
     try {
+      // The operation's own tenant, never a shared default: an organization without a provisioned
+      // program fails here, before anything is sent on-chain.
+      const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+
       const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(payload.organizationEndUserId);
       if (!ownership) {
         throw new Error(`No credit ownership for end user ${payload.organizationEndUserId}`);
@@ -62,7 +69,7 @@ export class ChainSubmitProcessor {
         if (!beneficiaryAddress) {
           throw new Error(`No real Sui address on file for end user ${payload.organizationEndUserId}`);
         }
-        const opened = await this.suiClient.openAccount(beneficiaryAddress);
+        const opened = await this.suiClient.openAccount(program, beneficiaryAddress);
         if (opened.status !== 'success') {
           throw new Error(opened.errorMessage ?? 'open_account failed on-chain');
         }
@@ -73,11 +80,11 @@ export class ChainSubmitProcessor {
         await this.creditsRepo.setSuiCreditAccountId(ownership.id, accountId);
       }
 
-      // Demo policy is 100 bps: the chain treats `pointsAmount` as a purchase amount and credits
-      // 1% of it (see docs in credits.repository.ts's confirmEarnOnChain), not the raw number.
+      // The chain treats `pointsAmount` as a purchase amount and credits the program policy's
+      // `earn_bps` share of it (see credits.repository.ts's confirmEarnOnChain), not the raw number.
       let result: Awaited<ReturnType<SuiClientService['earn']>>;
       try {
-        result = await this.suiClient.earn({
+        result = await this.suiClient.earn(program, {
           accountId,
           purchaseAmount: payload.pointsAmount,
           operationKey: operation.idempotencyKey,

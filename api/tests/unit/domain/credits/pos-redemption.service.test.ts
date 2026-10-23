@@ -5,9 +5,10 @@ import type { CreditsRepository } from '../../../../src/infra/db/repositories/cr
 import type { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
 import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
 import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
+import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
-import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
+import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
 
 const reserveRequest = { organizationEndUserId: 'user-1', pointsAmount: 50, idempotencyKey: 'idem-1' };
 const cachedReserve = {
@@ -32,12 +33,14 @@ function service({
   sponsoredTx = {},
   suiBuilder = {},
   webhooks = {},
+  programsRepo = PROGRAMS_REPO,
 }: {
   redis?: ReturnType<typeof fakeRedis>;
   creditsRepo?: { [K in keyof CreditsRepository]?: unknown };
   sponsoredTx?: { [K in keyof SponsoredTransactionService]?: unknown };
   suiBuilder?: { [K in keyof SuiTransactionBuilderClient]?: unknown };
   webhooks?: { [K in keyof WebhookDeliveryService]?: unknown };
+  programsRepo?: ProgramsRepository;
 } = {}) {
   return new PosRedemptionService(
     redis,
@@ -45,6 +48,7 @@ function service({
     stub<SponsoredTransactionService>(sponsoredTx),
     stub<SuiTransactionBuilderClient>(suiBuilder),
     stub<WebhookDeliveryService>(webhooks),
+    programsRepo,
   );
 }
 
@@ -372,5 +376,20 @@ describe('PosRedemptionService.finalize', () => {
     }).finalize({ digest: 'digest-1', signature: 'sig-1' });
 
     await expect(finalize).rejects.toThrow('connection reset');
+  });
+});
+
+describe('PosRedemptionService per-organization programs (OCT-73)', () => {
+  it('reserve rejects with 422 for an organization without a program, holding nothing', async () => {
+    const reserve = service({
+      creditsRepo: {
+        findMemberOrganizationId: async () => 'org-1',
+        reservePosRedemption: () => expect.fail('must not hold points'),
+      },
+      programsRepo: programsRepoFor({}),
+    }).reserve('org-1', reserveRequest);
+
+    await expect(reserve).rejects.toMatchObject({ status: 422 });
+    await expect(reserve).rejects.toThrow(/org-1 has no on-chain program provisioned/);
   });
 });

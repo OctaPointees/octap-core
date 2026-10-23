@@ -2,10 +2,12 @@ import { Inject, Injectable, BadRequestException, ConflictException, NotFoundExc
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../../infra/cache/redis.provider.js';
 import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
 import { OperationPayloadConflictError } from '../../infra/db/repositories/operations.repository.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
 import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
+import { requireProgramConfig } from '../programs/program-config.js';
 import type {
   ReservePosRedemptionRequest,
   ReservePosRedemptionResponse,
@@ -61,6 +63,7 @@ export class PosRedemptionService {
     private readonly sponsoredTx: SponsoredTransactionService,
     private readonly suiBuilder: SuiTransactionBuilderClient,
     private readonly webhooks: WebhookDeliveryService,
+    private readonly programsRepo: ProgramsRepository,
   ) {}
 
   async reserve(organizationId: string, request: ReservePosRedemptionRequest): Promise<ReservePosRedemptionResponse> {
@@ -72,6 +75,11 @@ export class PosRedemptionService {
     if (memberOrgId !== organizationId) {
       throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
+
+    // Same gate as earn, checked before anything is held. `credit_account::redeem` itself needs no
+    // program ids — the member's `CreditAccount` was opened in (and records) its organization's
+    // program — so there is nothing further to resolve, only to refuse an unprovisioned one.
+    await requireProgramConfig(this.programsRepo, organizationId);
 
     let reserved: Awaited<ReturnType<CreditsRepository['reservePosRedemption']>>;
     try {

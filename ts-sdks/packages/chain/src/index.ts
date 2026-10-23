@@ -4,6 +4,7 @@ export {
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
+  type OctapProgramConfig,
   type OpenAccountParams,
   type EarnParams,
   type RedeemParams,
@@ -17,9 +18,6 @@ export {
 export {
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
-  TESTNET_OCTAP_DEMO_PROGRAM_CONFIG,
-  MAINNET_OCTAP_DEMO_PROGRAM_CONFIG,
   type OctapPackageConfig,
-  type OctapDemoProgramConfig,
 } from './constants.js';
 export { operationShardIndex } from './shards.js';

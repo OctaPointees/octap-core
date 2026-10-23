@@ -8,7 +8,7 @@ The worker runs `ChainSubmitWorker` (`src/domain/credits/chain-submit.worker.ts`
 `src/infra/clients/sui`. That client is imported only by `worker.module.ts`, never by
 `infra/infrastructure.module.ts`, so the signer key in `SUI_ISSUER_PRIVATE_KEY` never has to live
 in the HTTP process. See the root `.env.example` for the `SUI_*` variables it needs and
-`docs/roadmap.md`'s known gaps for what's still demo-scoped.
+`docs/roadmap.md`'s known gaps for what's still missing.
 
 ## Layers
 
