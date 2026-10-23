@@ -65,7 +65,13 @@ permission checks remain required even when Web hides a surface.
 Run before opening a pull request:
 
 ```sh
-npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap
+npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap
 ```
+
+`npm run format` applies the Prettier style (`.prettierrc.json`; Markdown and generated code are
+excluded in `.prettierignore`). CI runs the same checks on every push and pull request, but they are
+**advisory**: `main` has no branch protection, because required status checks need GitHub Pro or a
+public repository and this one is private on the free plan. A red check does not block a merge, so
+look at it before merging.
 
 Add runtime dependencies with the feature that uses them, not ahead of time.

@@ -49,6 +49,7 @@ Use Node.js 24 LTS and npm 11, from this repository root:
 
 ```sh
 npm ci
+npm run format:check     # Prettier; `npm run format` fixes
 npm run lint
 npm run build
 npm run typecheck
@@ -76,6 +77,7 @@ See [the package handoff guide](docs/package-handoff.md) for regeneration and fu
 
 ## Verification scope
 
-Lint, build, typecheck, unit tests, integration tests against real PostgreSQL/Redis (with a
-coverage gate) and the Nest bootstrap check run in CI. See [api/tests/README.md](api/tests/README.md).
+Format check, lint, build, typecheck, unit tests, integration tests against real PostgreSQL/Redis
+(with a coverage gate) and the Nest bootstrap check run in CI. See [api/tests/README.md](api/tests/README.md).
+CI is advisory: a private repo on the free plan can't require status checks before merge.
 Chain and Enoki calls are faked in tests; nothing in CI touches Sui testnet.

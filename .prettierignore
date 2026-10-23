@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+api/db/postgres/migrations/
+ts-sdks/packages/chain/src/contracts/
+contracts/sui/build/
+# Prose: Prettier pads Markdown tables to the widest row, so any row edit rewrites the whole table.
+*.md
