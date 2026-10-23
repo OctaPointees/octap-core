@@ -1,10 +1,12 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
 import { ChainSubmitProcessor } from './chain-submit.processor.js';
+import { ChainOutcomeReconciler, EARN_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 
 const POLL_INTERVAL_MS = Number(process.env.CHAIN_SUBMIT_POLL_INTERVAL_MS ?? 3000);
 const BATCH_SIZE = Number(process.env.CHAIN_SUBMIT_BATCH_SIZE ?? 5);
-const COMMAND_TYPES = ['CREDIT_EARN_CHAIN_SUBMIT'];
+const COMMAND_TYPES = [EARN_COMMAND_TYPE];
+const RECONCILE_INTERVAL_MS = Number(process.env.CHAIN_OUTCOME_RECONCILE_INTERVAL_MS ?? 60_000);
 /** A healthy chain submit resolves in seconds; stuck this long means the worker that claimed it died. */
 const STALE_PROCESSING_MS = Number(process.env.CHAIN_SUBMIT_STALE_PROCESSING_MS ?? 5 * 60 * 1000);
 
@@ -19,12 +21,15 @@ const STALE_PROCESSING_MS = Number(process.env.CHAIN_SUBMIT_STALE_PROCESSING_MS 
 export class ChainSubmitWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ChainSubmitWorker.name);
   private timer?: NodeJS.Timeout;
+  private reconcileTimer?: NodeJS.Timeout;
   private stopped = false;
   private polling = false;
+  private reconciling = false;
 
   constructor(
     private readonly operationsRepo: OperationsRepository,
     private readonly processor: ChainSubmitProcessor,
+    private readonly reconciler: ChainOutcomeReconciler,
   ) {}
 
   onModuleInit(): void {
@@ -36,6 +41,7 @@ export class ChainSubmitWorker implements OnModuleInit, OnModuleDestroy {
 
     this.logger.log(`starting, polling every ${POLL_INTERVAL_MS}ms`);
     this.timer = setInterval(() => void this.pollOnce(), POLL_INTERVAL_MS);
+    this.reconcileTimer = setInterval(() => void this.reconcileOnce(), RECONCILE_INTERVAL_MS);
   }
 
   private async recoverStaleOperations(): Promise<void> {
@@ -57,6 +63,24 @@ export class ChainSubmitWorker implements OnModuleInit, OnModuleDestroy {
     this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
+    }
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+    }
+  }
+
+  /** Settles outcome-unknown commands by digest; see `ChainOutcomeReconciler`. */
+  private async reconcileOnce(): Promise<void> {
+    if (this.reconciling || this.stopped) {
+      return;
+    }
+    this.reconciling = true;
+    try {
+      await this.reconciler.reconcileOnce();
+    } catch (err: unknown) {
+      this.logger.error(`reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.reconciling = false;
     }
   }
 

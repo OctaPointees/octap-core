@@ -561,7 +561,13 @@ export class CreditsRepository {
     organizationEndUserId: string;
     pointsAmount: number;
     idempotencyKey: string;
-  }): Promise<{ transaction: typeof loyaltyTransactions.$inferSelect; accountId: string | null; isNew: boolean }> {
+  }): Promise<{
+    transaction: typeof loyaltyTransactions.$inferSelect;
+    accountId: string | null;
+    isNew: boolean;
+    /** Digest a finalize already tried to execute for this hold (OCT-52), if any. */
+    submittedDigest: string | null;
+  }> {
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       const { operation, isNew } = await acceptCommand(tx, {
         tenantId: params.organizationId,
@@ -586,7 +592,12 @@ export class CreditsRepository {
         const ownership = await tx.query.creditOwnerships.findFirst({
           where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
         });
-        return { transaction: existing, accountId: ownership?.suiCreditAccountId ?? null, isNew: false };
+        return {
+          transaction: existing,
+          accountId: ownership?.suiCreditAccountId ?? null,
+          isNew: false,
+          submittedDigest: operation.suiTxDigest,
+        };
       }
 
       // A bucket past its expiry is already gone on-chain; holding against it would only fail at `redeem`.
@@ -620,7 +631,7 @@ export class CreditsRepository {
         .set({ pendingRedemption: Number(ownership.pendingRedemption) + params.pointsAmount, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
 
-      return { transaction, accountId: ownership.suiCreditAccountId, isNew: true };
+      return { transaction, accountId: ownership.suiCreditAccountId, isNew: true, submittedDigest: null };
     });
   }
 
