@@ -36,6 +36,34 @@ export async function seedOrganization(db: DrizzleDb, overrides: Partial<typeof 
   return org;
 }
 
+/** An `ACTIVE`, sharded program for `organizationId`, as `scripts/provision-program.mjs` leaves it. */
+export async function seedProgram(
+  db: DrizzleDb,
+  organizationId: string,
+  overrides: Partial<typeof schema.programs.$inferInsert> = {},
+) {
+  const [program] = await db
+    .insert(schema.programs)
+    .values({
+      organizationId,
+      status: 'ACTIVE',
+      programControlId: `0xprogram-${organizationId}`,
+      adminCapId: `0xadmincap-${organizationId}`,
+      policyVersionId: `0xpolicy-${organizationId}`,
+      issuerCapId: `0xissuercap-${organizationId}`,
+      policyVersion: 1,
+      earnBps: 100,
+      expiryMs: 30 * 24 * 60 * 60 * 1000,
+      shardCount: 1,
+      totalBudget: 1_000_000,
+      operationShardIds: [`0xop0-${organizationId}`],
+      budgetShardIds: [`0xbudget0-${organizationId}`],
+      ...overrides,
+    })
+    .returning();
+  return program;
+}
+
 /** An end user (with a zkLogin address) enrolled in `organizationId`, as IdentityService would leave it. */
 export async function seedMember(
   db: DrizzleDb,

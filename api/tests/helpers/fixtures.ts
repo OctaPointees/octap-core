@@ -4,6 +4,9 @@ import type { ChainCallResult } from '../../src/infra/clients/sui/sui.client.js'
 import type { operations } from '../../src/infra/db/schema/operations.schema.js';
 import type { loyaltyTransactions } from '../../src/infra/db/schema/credits.schema.js';
 import type { vouchers } from '../../src/infra/db/schema/rewards.schema.js';
+import type { programs } from '../../src/infra/db/schema/programs.schema.js';
+import type { ProgramsRepository } from '../../src/infra/db/repositories/programs.repository.js';
+import { stub } from './stub.js';
 
 export const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
 
@@ -137,3 +140,48 @@ export function executionContext({
     request,
   } as unknown as ExecutionContext & { request: FakeHttpRequest };
 }
+
+/** A fully provisioned (`ACTIVE`, sharded) `programs` row whose ids all name `organizationId`. */
+export function buildProgramRow(
+  organizationId: string,
+  overrides: Partial<typeof programs.$inferSelect> = {},
+): typeof programs.$inferSelect {
+  return {
+    id: `program-${organizationId}`,
+    organizationId,
+    status: 'ACTIVE',
+    programControlId: `0xprogram-${organizationId}`,
+    adminCapId: `0xadmincap-${organizationId}`,
+    policyVersionId: `0xpolicy-${organizationId}`,
+    issuerCapId: `0xissuercap-${organizationId}`,
+    policyVersion: 1,
+    earnBps: 100,
+    expiryMs: 30 * 24 * 60 * 60 * 1000,
+    shardCount: 1,
+    totalBudget: 1_000_000,
+    operationShardIds: [`0xop0-${organizationId}`],
+    budgetShardIds: [`0xbudget0-${organizationId}`],
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
+    ...overrides,
+  } as typeof programs.$inferSelect;
+}
+
+/** The `OctapProgramConfig` that `resolveProgramConfig` derives from `buildProgramRow(organizationId)`. */
+export function programConfigFor(organizationId: string) {
+  return {
+    programControlId: `0xprogram-${organizationId}`,
+    policyVersionId: `0xpolicy-${organizationId}`,
+    issuerCapId: `0xissuercap-${organizationId}`,
+    operationShardIds: [`0xop0-${organizationId}`],
+    budgetShardIds: [`0xbudget0-${organizationId}`],
+  };
+}
+
+/** `ProgramsRepository` double over organizationId -> row (missing key = no row). */
+export function programsRepoFor(rows: Record<string, typeof programs.$inferSelect | undefined>): ProgramsRepository {
+  return stub<ProgramsRepository>({ findByOrganization: async (organizationId: string) => rows[organizationId] });
+}
+
+/** Only `org-1` is provisioned. */
+export const PROGRAMS_REPO = programsRepoFor({ 'org-1': buildProgramRow('org-1') });
