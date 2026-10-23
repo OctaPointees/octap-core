@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UnprocessableEntityException } from '@nestjs/common';
-import { EarnService } from '../../../../src/domain/credits/earn.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
+import { EarnService } from '#domain/credits/earn.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
 

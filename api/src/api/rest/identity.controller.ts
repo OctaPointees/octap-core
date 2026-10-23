@@ -1,5 +1,5 @@
 import { Controller, Post, Body, Param, BadRequestException } from '@nestjs/common';
-import { IdentityService } from '../../domain/identity/identity.service.js';
+import { IdentityService } from '#domain/identity/identity.service.js';
 import type {
   GoogleLoginBodyDto,
   EnrollMemberBodyDto,
@@ -7,8 +7,8 @@ import type {
   ZkLoginProofBodyDto,
 } from '../dto/identity.dto.js';
 import type { GoogleLoginResponse, EnrollMemberResponse } from '@octap/contracts';
-import type { ZkLoginProofResult } from '../../infra/clients/enoki/enoki.client.js';
-import { Public } from '../../infra/auth/public.decorator.js';
+import type { ZkLoginProofResult } from '#infra/clients/enoki/enoki.client.js';
+import { Public } from '#infra/auth/public.decorator.js';
 
 /**
  * `@Public()`: opted out of the merchant API-key guard, because the caller here is the end customer

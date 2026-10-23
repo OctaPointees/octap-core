@@ -2,7 +2,8 @@
 
 Vitest, configured once in the root [`vitest.config.ts`](../../vitest.config.ts), with two projects.
 Tests import TypeScript sources directly (`api/src`, and `@octap/*` resolves to each package's
-`src`), so nothing needs building first.
+`src`), so nothing needs building first. Import application code the way `api/src` does — through
+the `#api/…`, `#domain/…`, `#infra/…` subpaths (Vitest maps them to `src`, Node maps them to `dist`).
 
 | Project | Files | Needs | Command |
 |---|---|---|---|

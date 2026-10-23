@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { EnokiClient } from '../../infra/clients/enoki/enoki.client.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 export interface SponsoredRedeemPreview {
   /** Base64 full transaction bytes (kind + Enoki's gas data) for the end user to zkLogin-sign. */

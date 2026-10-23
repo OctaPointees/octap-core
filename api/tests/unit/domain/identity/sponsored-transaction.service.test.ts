@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
-import type { EnokiClient } from '../../../../src/infra/clients/enoki/enoki.client.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
+import { SponsoredTransactionService } from '#domain/identity/sponsored-transaction.service.js';
+import type { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { stub } from '../../../helpers/stub.js';
 
 const REDEEM_TARGET = '0xpkg::credit_account::redeem';

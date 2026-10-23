@@ -4,8 +4,8 @@ import {
   ProgramNotProvisionedError,
   requireProgramConfig,
   resolveProgramConfig,
-} from '../../../../src/domain/programs/program-config.js';
-import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
+} from '#domain/programs/program-config.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildProgramRow, programConfigFor, programsRepoFor } from '../../../helpers/fixtures.js';
 

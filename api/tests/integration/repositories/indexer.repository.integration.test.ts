@@ -3,7 +3,7 @@ import {
   CREDIT_ACCOUNT_STREAM,
   IndexerCursorMovedError,
   IndexerRepository,
-} from '../../../src/infra/db/repositories/indexer.repository.js';
+} from '#infra/db/repositories/indexer.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();

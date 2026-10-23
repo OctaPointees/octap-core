@@ -1,9 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { RewardsRepository } from '../../infra/db/repositories/rewards.repository.js';
-import type { vouchers } from '../../infra/db/schema/rewards.schema.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import type { vouchers } from '#infra/db/schema/rewards.schema.js';
 import { RedemptionService } from '../credits/redemption.service.js';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type {
   CreateVoucherRequest,
   VoucherDto,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CreditsService } from '../../../../src/domain/credits/credits.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { IndexerRepository } from '../../../../src/infra/db/repositories/indexer.repository.js';
+import { CreditsService } from '#domain/credits/credits.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 

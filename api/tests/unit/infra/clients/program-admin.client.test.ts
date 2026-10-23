@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import type { OctapChainClient, SubmittedChainTransaction } from '@octap/chain';
-import { ProgramAdminClient } from '../../../../src/infra/clients/sui/program-admin.client.js';
+import { ProgramAdminClient } from '#infra/clients/sui/program-admin.client.js';
 
 const PARAMS = {
   earnBps: 100,

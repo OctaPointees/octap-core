@@ -3,8 +3,8 @@ import {
   OperationPayloadConflictError,
   acceptCommand,
   hashPayload,
-} from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { DrizzleDb } from '../../../../src/infra/db/postgres.provider.js';
+} from '#infra/db/repositories/operations.repository.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 
 /** Just enough of a drizzle transaction for `acceptCommand`'s read/update/insert paths. */
 function fakeCommandTx(existing: Record<string, unknown> | undefined) {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IdentityService } from '../../../../src/domain/identity/identity.service.js';
-import type { IdentityRepository } from '../../../../src/infra/db/repositories/identity.repository.js';
-import type { EnokiClient } from '../../../../src/infra/clients/enoki/enoki.client.js';
+import { IdentityService } from '#domain/identity/identity.service.js';
+import type { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import type { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 import { stub } from '../../../helpers/stub.js';
 
 const enokiResolving = (address = '0xabc') =>

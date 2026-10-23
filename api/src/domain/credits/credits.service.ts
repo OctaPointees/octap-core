@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '../../infra/db/repositories/indexer.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contracts';
 
 @Injectable()

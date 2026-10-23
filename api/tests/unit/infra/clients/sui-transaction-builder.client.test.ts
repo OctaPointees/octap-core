@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TESTNET_OCTAP_PACKAGE_CONFIG, type OctapChainClient } from '@octap/chain';
-import { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import { configForNetwork } from '../../../../src/infra/clients/sui/network-config.js';
-import { requireEnv } from '../../../../src/infra/clients/require-env.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import { configForNetwork } from '#infra/clients/sui/network-config.js';
+import { requireEnv } from '#infra/clients/require-env.js';
 
 function withChainClient(
   builder: SuiTransactionBuilderClient,

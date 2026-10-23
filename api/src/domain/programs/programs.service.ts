@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, Logger } from '@nestjs/common';
-import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
-import { ProgramAdminClient, type ProvisionedProgram } from '../../infra/clients/sui/program-admin.client.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import { ProgramAdminClient, type ProvisionedProgram } from '#infra/clients/sui/program-admin.client.js';
 
 /** Postgres `unique_violation` — possibly wrapped by drizzle in a `cause`. */
 function isUniqueViolation(err: unknown): boolean {

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PosRedemptionService } from '../../../../src/domain/credits/pos-redemption.service.js';
+import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import {
   OperationPayloadConflictError,
   type OperationsRepository,
-} from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { SponsoredTransactionService } from '../../../../src/domain/identity/sponsored-transaction.service.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
+} from '#infra/db/repositories/operations.repository.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { SponsoredTransactionService } from '#domain/identity/sponsored-transaction.service.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
 import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';

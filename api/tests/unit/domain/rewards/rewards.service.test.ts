@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RewardsService } from '../../../../src/domain/rewards/rewards.service.js';
-import type { RewardsRepository } from '../../../../src/infra/db/repositories/rewards.repository.js';
-import type { RedemptionService } from '../../../../src/domain/credits/redemption.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
+import { RewardsService } from '#domain/rewards/rewards.service.js';
+import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import type { RedemptionService } from '#domain/credits/redemption.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildVoucher } from '../../../helpers/fixtures.js';
 

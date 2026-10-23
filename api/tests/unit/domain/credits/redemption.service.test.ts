@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RedemptionService } from '../../../../src/domain/credits/redemption.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
+import { RedemptionService } from '#domain/credits/redemption.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 

@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { IdentityRepository } from '../../../src/infra/db/repositories/identity.repository.js';
-import { ApiCredentialsRepository } from '../../../src/infra/db/repositories/api-credentials.repository.js';
-import { ProgramsRepository } from '../../../src/infra/db/repositories/programs.repository.js';
+import { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();

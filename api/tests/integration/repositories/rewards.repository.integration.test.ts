@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { RewardsRepository } from '../../../src/infra/db/repositories/rewards.repository.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { connectTestDb, resetDb, schema, seedMember, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();

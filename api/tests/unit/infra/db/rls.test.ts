@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { withRls } from '../../../../src/infra/db/rls.js';
-import type { DrizzleDb } from '../../../../src/infra/db/postgres.provider.js';
+import { withRls } from '#infra/db/rls.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 
 const dialect = new PgDialect();
 

@@ -1,6 +1,6 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import type { OctapProgramConfig } from '@octap/chain';
-import type { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 
 /**
  * The organization has no `ACTIVE`, sharded `programs` row, so there is no on-chain program to

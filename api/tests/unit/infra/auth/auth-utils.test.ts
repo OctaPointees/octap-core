@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants.js';
 import type { Redis } from 'ioredis';
-import { API_KEY_PREFIX, generateApiKey, hashApiKey } from '../../../../src/infra/auth/api-key-hash.util.js';
+import { API_KEY_PREFIX, generateApiKey, hashApiKey } from '#infra/auth/api-key-hash.util.js';
 import {
   REPLAY_WINDOW_SECONDS,
   buildCanonicalRequest,
@@ -10,14 +10,10 @@ import {
   isTimestampFresh,
   signCanonicalRequest,
   verifyCanonicalSignature,
-} from '../../../../src/infra/auth/request-signing.util.js';
-import {
-  RATE_LIMIT_MAX_REQUESTS,
-  RATE_LIMIT_WINDOW_SECONDS,
-  checkRateLimit,
-} from '../../../../src/infra/auth/rate-limit.util.js';
-import { claimNonce } from '../../../../src/infra/auth/nonce-store.util.js';
-import { Tenant } from '../../../../src/infra/auth/tenant.decorator.js';
+} from '#infra/auth/request-signing.util.js';
+import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS, checkRateLimit } from '#infra/auth/rate-limit.util.js';
+import { claimNonce } from '#infra/auth/nonce-store.util.js';
+import { Tenant } from '#infra/auth/tenant.decorator.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
 

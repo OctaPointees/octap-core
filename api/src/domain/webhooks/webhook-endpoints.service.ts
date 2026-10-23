@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { WebhooksRepository } from '../../infra/db/repositories/webhooks.repository.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { generateWebhookSecret } from './webhook-signing.util.js';
 
 @Injectable()

@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 // Not `import type`: NestJS DI resolves this constructor param by its runtime type (reflect-metadata),
 // which an erased type-only import would turn into a bare `Function` and break resolution.
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
-import { ProgramsRepository } from '../../infra/db/repositories/programs.repository.js';
-import type { operations } from '../../infra/db/schema/operations.schema.js';
-import { SuiClientService } from '../../infra/clients/sui/sui.client.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import type { operations } from '#infra/db/schema/operations.schema.js';
+import { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import { resolveProgramConfig } from '../programs/program-config.js';
 
 interface EarnChainSubmitPayload {

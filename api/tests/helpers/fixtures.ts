@@ -1,11 +1,11 @@
 import type { ExecutionContext } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
-import type { ChainCallResult } from '../../src/infra/clients/sui/sui.client.js';
-import type { operations } from '../../src/infra/db/schema/operations.schema.js';
-import type { loyaltyTransactions } from '../../src/infra/db/schema/credits.schema.js';
-import type { vouchers } from '../../src/infra/db/schema/rewards.schema.js';
-import type { programs } from '../../src/infra/db/schema/programs.schema.js';
-import type { ProgramsRepository } from '../../src/infra/db/repositories/programs.repository.js';
+import type { ChainCallResult } from '#infra/clients/sui/sui.client.js';
+import type { operations } from '#infra/db/schema/operations.schema.js';
+import type { loyaltyTransactions } from '#infra/db/schema/credits.schema.js';
+import type { vouchers } from '#infra/db/schema/rewards.schema.js';
+import type { programs } from '#infra/db/schema/programs.schema.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from './stub.js';
 
 export const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');

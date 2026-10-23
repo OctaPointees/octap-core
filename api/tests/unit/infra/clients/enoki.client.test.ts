@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { toBase64 } from '@mysten/sui/utils';
-import { EnokiClient } from '../../../../src/infra/clients/enoki/enoki.client.js';
+import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 
 /** Swaps the lazily-built Mysten SDK client for a double. */
 function withSdk(sdk: Record<string, unknown>) {

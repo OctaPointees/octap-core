@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
-import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '../../infra/db/repositories/indexer.repository.js';
-import type { DrizzleDb } from '../../infra/db/postgres.provider.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 const PAGE_SIZE = Number(process.env.INDEXER_PAGE_SIZE ?? 50);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

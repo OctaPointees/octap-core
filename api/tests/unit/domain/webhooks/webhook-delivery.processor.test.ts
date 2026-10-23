@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  MAX_DELIVERY_ATTEMPTS,
-  WebhookDeliveryProcessor,
-} from '../../../../src/domain/webhooks/webhook-delivery.processor.js';
-import { generateWebhookSecret, signWebhookPayload } from '../../../../src/domain/webhooks/webhook-signing.util.js';
-import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
-import type { webhookDeliveries } from '../../../../src/infra/db/schema/webhooks.schema.js';
+import { MAX_DELIVERY_ATTEMPTS, WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
+import { generateWebhookSecret, signWebhookPayload } from '#domain/webhooks/webhook-signing.util.js';
+import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
+import type { webhookDeliveries } from '#infra/db/schema/webhooks.schema.js';
 import { stub } from '../../../helpers/stub.js';
 
 const activeEndpoint = (secret = generateWebhookSecret()) => ({

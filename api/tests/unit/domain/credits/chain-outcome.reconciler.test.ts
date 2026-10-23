@@ -4,11 +4,11 @@ import {
   ChainOutcomeReconciler,
   EARN_COMMAND_TYPE,
   POS_REDEEM_COMMAND_TYPE,
-} from '../../../../src/domain/credits/chain-outcome.reconciler.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { SuiClientService } from '../../../../src/infra/clients/sui/sui.client.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
+} from '#domain/credits/chain-outcome.reconciler.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction, buildOperation } from '../../../helpers/fixtures.js';
 

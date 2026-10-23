@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WebhookDeliveryWorker } from '../../../../src/domain/webhooks/webhook-delivery.worker.js';
-import type { WebhookDeliveryProcessor } from '../../../../src/domain/webhooks/webhook-delivery.processor.js';
-import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
+import { WebhookDeliveryWorker } from '#domain/webhooks/webhook-delivery.worker.js';
+import type { WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
+import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 const POLL_INTERVAL_MS = 3000;

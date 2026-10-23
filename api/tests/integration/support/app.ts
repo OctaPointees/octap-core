@@ -3,11 +3,11 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module.js';
-import { EnokiClient } from '../../../src/infra/clients/enoki/enoki.client.js';
-import { SuiTransactionBuilderClient } from '../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import { DRIZZLE_DB, type DrizzleDb } from '../../../src/infra/db/postgres.provider.js';
-import { hashApiKey } from '../../../src/infra/auth/api-key-hash.util.js';
-import { buildCanonicalRequest, signCanonicalRequest } from '../../../src/infra/auth/request-signing.util.js';
+import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import { DRIZZLE_DB, type DrizzleDb } from '#infra/db/postgres.provider.js';
+import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
+import { buildCanonicalRequest, signCanonicalRequest } from '#infra/auth/request-signing.util.js';
 
 /** Stand-ins for the two external services the HTTP process talks to; everything else is real. */
 export function fakeChainAdapters() {

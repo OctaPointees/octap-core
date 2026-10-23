@@ -4,7 +4,7 @@ import {
   DELIVERY_CLAIM_LEASE_MS,
   WebhooksRepository,
   enqueueWebhookEvent,
-} from '../../../src/infra/db/repositories/webhooks.repository.js';
+} from '#infra/db/repositories/webhooks.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();

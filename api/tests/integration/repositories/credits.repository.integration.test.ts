@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { CreditsRepository, expireDueBuckets } from '../../../src/infra/db/repositories/credits.repository.js';
-import { OperationPayloadConflictError } from '../../../src/infra/db/repositories/operations.repository.js';
-import { WebhooksRepository } from '../../../src/infra/db/repositories/webhooks.repository.js';
+import { CreditsRepository, expireDueBuckets } from '#infra/db/repositories/credits.repository.js';
+import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import {
   connectTestDb,
   getLoyaltyTransaction,

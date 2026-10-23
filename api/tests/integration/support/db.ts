@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
-import * as schema from '../../../src/infra/db/schema/index.js';
-import type { DrizzleDb } from '../../../src/infra/db/postgres.provider.js';
-import { generateApiKey } from '../../../src/infra/auth/api-key-hash.util.js';
+import * as schema from '#infra/db/schema/index.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { generateApiKey } from '#infra/auth/api-key-hash.util.js';
 
 export { schema };
 

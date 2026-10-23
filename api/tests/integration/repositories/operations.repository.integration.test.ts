@@ -5,7 +5,7 @@ import {
   OperationsRepository,
   acceptCommand,
   hashPayload,
-} from '../../../src/infra/db/repositories/operations.repository.js';
+} from '#infra/db/repositories/operations.repository.js';
 import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();

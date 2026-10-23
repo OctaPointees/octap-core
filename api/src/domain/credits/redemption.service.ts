@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type { RedeemPointsRequest, RedeemPointsResponse } from '@octap/contracts';
 

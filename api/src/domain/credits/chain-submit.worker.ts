@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { ChainSubmitProcessor } from './chain-submit.processor.js';
 import { ChainOutcomeReconciler, EARN_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 

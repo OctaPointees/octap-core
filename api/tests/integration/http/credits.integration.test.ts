@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { ChainSubmitProcessor } from '../../../src/domain/credits/chain-submit.processor.js';
-import { CheckpointIndexerProcessor } from '../../../src/domain/indexer/checkpoint-indexer.processor.js';
-import { CreditsRepository } from '../../../src/infra/db/repositories/credits.repository.js';
-import { OperationsRepository } from '../../../src/infra/db/repositories/operations.repository.js';
-import { IndexerRepository, CREDIT_ACCOUNT_STREAM } from '../../../src/infra/db/repositories/indexer.repository.js';
-import { ProgramsRepository } from '../../../src/infra/db/repositories/programs.repository.js';
-import type { SuiClientService } from '../../../src/infra/clients/sui/sui.client.js';
-import type { SuiTransactionBuilderClient } from '../../../src/infra/clients/sui/sui-transaction-builder.client.js';
+import { ChainSubmitProcessor } from '#domain/credits/chain-submit.processor.js';
+import { CheckpointIndexerProcessor } from '#domain/indexer/checkpoint-indexer.processor.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { IndexerRepository, CREDIT_ACCOUNT_STREAM } from '#infra/db/repositories/indexer.repository.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { createTestApp } from '../support/app.js';
 import {
   getOwnership,

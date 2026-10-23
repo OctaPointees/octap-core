@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { IndexerCursorMovedError } from '../../infra/db/repositories/indexer.repository.js';
+import { IndexerCursorMovedError } from '#infra/db/repositories/indexer.repository.js';
 import { CheckpointIndexerProcessor } from './checkpoint-indexer.processor.js';
 
 const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? 5000);

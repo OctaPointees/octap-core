@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { verifyWebhookSignature } from '@octap/sdk';
-import { WebhookDeliveryProcessor } from '../../../src/domain/webhooks/webhook-delivery.processor.js';
-import { WebhooksRepository } from '../../../src/infra/db/repositories/webhooks.repository.js';
+import { WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { createTestApp } from '../support/app.js';
 import { resetDb, seedCredential, seedMember, seedOrganization, setOwnership } from '../support/db.js';
 

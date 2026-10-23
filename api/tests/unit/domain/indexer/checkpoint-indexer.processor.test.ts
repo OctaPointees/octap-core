@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CreditAccountEvent, CreditAccountEventPage } from '@octap/chain';
-import { CheckpointIndexerProcessor } from '../../../../src/domain/indexer/checkpoint-indexer.processor.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { IndexerRepository } from '../../../../src/infra/db/repositories/indexer.repository.js';
-import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/sui-transaction-builder.client.js';
-import type { DrizzleDb } from '../../../../src/infra/db/postgres.provider.js';
+import { CheckpointIndexerProcessor } from '#domain/indexer/checkpoint-indexer.processor.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
+import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { stub } from '../../../helpers/stub.js';
 import { b64, buildLoyaltyTransaction, earnedEvent } from '../../../helpers/fixtures.js';
 

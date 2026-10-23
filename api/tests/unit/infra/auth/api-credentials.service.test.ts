@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiCredentialsService, DEFAULT_SCOPES } from '../../../../src/infra/auth/api-credentials.service.js';
-import { hashApiKey } from '../../../../src/infra/auth/api-key-hash.util.js';
-import type { ApiCredentialsRepository } from '../../../../src/infra/db/repositories/api-credentials.repository.js';
+import { ApiCredentialsService, DEFAULT_SCOPES } from '#infra/auth/api-credentials.service.js';
+import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
+import type { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 type Row = {

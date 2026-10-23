@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WebhookEndpointsService } from '../../../../src/domain/webhooks/webhook-endpoints.service.js';
-import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
+import { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
+import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 type Endpoint = {

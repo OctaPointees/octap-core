@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { operationShardIndex, type OctapChainClient } from '@octap/chain';
-import { SuiClientService, selectShards } from '../../../../src/infra/clients/sui/sui.client.js';
+import { SuiClientService, selectShards } from '#infra/clients/sui/sui.client.js';
 import { programConfigFor } from '../../../helpers/fixtures.js';
 
 const PROGRAM = programConfigFor('org-1');

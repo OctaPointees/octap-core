@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
 
 @Injectable()

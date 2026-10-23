@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WebhookDeliveryService } from '../../../../src/domain/webhooks/webhook-delivery.service.js';
-import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
+import { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
+import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 describe('WebhookDeliveryService.emit', () => {

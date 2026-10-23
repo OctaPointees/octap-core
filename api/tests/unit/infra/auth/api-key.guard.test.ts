@@ -1,19 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Reflector } from '@nestjs/core';
 import type { Redis } from 'ioredis';
-import { ApiKeyGuard } from '../../../../src/infra/auth/api-key.guard.js';
-import { hashApiKey } from '../../../../src/infra/auth/api-key-hash.util.js';
-import { Scopes, SCOPES_KEY } from '../../../../src/infra/auth/scopes.decorator.js';
-import {
-  RequireSignedRequest,
-  REQUIRE_SIGNED_REQUEST_KEY,
-} from '../../../../src/infra/auth/signed-request.decorator.js';
-import { IS_PUBLIC_KEY, Public } from '../../../../src/infra/auth/public.decorator.js';
-import { IdentityController } from '../../../../src/api/rest/identity.controller.js';
-import { CreditsController } from '../../../../src/api/rest/credits.controller.js';
-import { buildCanonicalRequest, signCanonicalRequest } from '../../../../src/infra/auth/request-signing.util.js';
-import { RATE_LIMIT_MAX_REQUESTS } from '../../../../src/infra/auth/rate-limit.util.js';
-import type { ApiCredentialsRepository } from '../../../../src/infra/db/repositories/api-credentials.repository.js';
+import { ApiKeyGuard } from '#infra/auth/api-key.guard.js';
+import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
+import { Scopes, SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
+import { RequireSignedRequest, REQUIRE_SIGNED_REQUEST_KEY } from '#infra/auth/signed-request.decorator.js';
+import { IS_PUBLIC_KEY, Public } from '#infra/auth/public.decorator.js';
+import { IdentityController } from '#api/rest/identity.controller.js';
+import { CreditsController } from '#api/rest/credits.controller.js';
+import { buildCanonicalRequest, signCanonicalRequest } from '#infra/auth/request-signing.util.js';
+import { RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/rate-limit.util.js';
+import type { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
 import { executionContext } from '../../../helpers/fixtures.js';

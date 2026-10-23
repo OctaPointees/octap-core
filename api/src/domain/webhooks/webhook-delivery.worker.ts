@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { WebhooksRepository } from '../../infra/db/repositories/webhooks.repository.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { WebhookDeliveryProcessor } from './webhook-delivery.processor.js';
 
 const POLL_INTERVAL_MS = Number(process.env.WEBHOOK_DELIVERY_POLL_INTERVAL_MS ?? 3000);

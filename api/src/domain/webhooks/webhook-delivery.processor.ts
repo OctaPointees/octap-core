@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { WebhooksRepository } from '../../infra/db/repositories/webhooks.repository.js';
-import type { webhookDeliveries } from '../../infra/db/schema/webhooks.schema.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
+import type { webhookDeliveries } from '#infra/db/schema/webhooks.schema.js';
 import { signWebhookPayload } from './webhook-signing.util.js';
 
 export const MAX_DELIVERY_ATTEMPTS = 6;

@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eventField, type SubmittedChainTransaction } from '@octap/chain';
-import { CreditsRepository } from '../../infra/db/repositories/credits.repository.js';
-import { OperationsRepository } from '../../infra/db/repositories/operations.repository.js';
-import type { operations } from '../../infra/db/schema/operations.schema.js';
-import { SuiClientService } from '../../infra/clients/sui/sui.client.js';
-import { SuiTransactionBuilderClient } from '../../infra/clients/sui/sui-transaction-builder.client.js';
+import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { operations } from '#infra/db/schema/operations.schema.js';
+import { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 export const EARN_COMMAND_TYPE = 'CREDIT_EARN_CHAIN_SUBMIT';
 export const POS_REDEEM_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';

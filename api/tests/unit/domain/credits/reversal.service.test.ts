@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ReversalService } from '../../../../src/domain/credits/reversal.service.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
+import { ReversalService } from '#domain/credits/reversal.service.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 

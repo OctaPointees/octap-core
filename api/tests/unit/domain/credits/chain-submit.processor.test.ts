@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChainSubmitProcessor } from '../../../../src/domain/credits/chain-submit.processor.js';
-import type { CreditsRepository } from '../../../../src/infra/db/repositories/credits.repository.js';
-import type { OperationsRepository } from '../../../../src/infra/db/repositories/operations.repository.js';
-import type { SuiClientService } from '../../../../src/infra/clients/sui/sui.client.js';
-import type { ProgramsRepository } from '../../../../src/infra/db/repositories/programs.repository.js';
+import { ChainSubmitProcessor } from '#domain/credits/chain-submit.processor.js';
+import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import {
   PROGRAMS_REPO,

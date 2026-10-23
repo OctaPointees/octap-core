@@ -1,8 +1,8 @@
 import { Controller, Post, Get, Body, Param, BadRequestException } from '@nestjs/common';
-import { RewardsService } from '../../domain/rewards/rewards.service.js';
-import { Scopes } from '../../infra/auth/scopes.decorator.js';
-import { Tenant } from '../../infra/auth/tenant.decorator.js';
-import type { TenantContext } from '../../infra/auth/tenant-context.js';
+import { RewardsService } from '#domain/rewards/rewards.service.js';
+import { Scopes } from '#infra/auth/scopes.decorator.js';
+import { Tenant } from '#infra/auth/tenant.decorator.js';
+import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type { CreateVoucherBodyDto, ClaimVoucherBodyDto, RedeemVoucherBodyDto } from '../dto/rewards.dto.js';
 import type { VoucherDto, ClaimVoucherResponse, RedeemVoucherResponse, VoucherOwnershipDto } from '@octap/contracts';
 

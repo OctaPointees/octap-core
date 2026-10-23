@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
 import { createTestApp, signedHeaders } from '../support/app.js';
 import { resetDb, seedCredential, seedOrganization } from '../support/db.js';
-import { RATE_LIMIT_MAX_REQUESTS } from '../../../src/infra/auth/rate-limit.util.js';
+import { RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/rate-limit.util.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
