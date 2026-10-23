@@ -1,17 +1,23 @@
 import { sql } from 'drizzle-orm';
-import { bigint, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 import { organizationEndUsers } from './members.schema.js';
 import { loyaltyTransactions } from './credits.schema.js';
 
-export const voucherStatusEnum = pgEnum('voucher_status', [
-  'DRAFT',
-  'ACTIVE',
-  'PAUSED',
-  'EXPIRED',
-  'DEPLETED',
-]);
+export const voucherStatusEnum = pgEnum('voucher_status', ['DRAFT', 'ACTIVE', 'PAUSED', 'EXPIRED', 'DEPLETED']);
 
 export const voucherOwnershipStatusEnum = pgEnum('voucher_ownership_status', [
   'AVAILABLE',
@@ -69,10 +75,9 @@ export const voucherOwnerships = pgTable(
     organizationEndUserId: uuid('organization_end_user_id')
       .notNull()
       .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
-    loyaltyTransactionId: uuid('loyalty_transaction_id').references(
-      () => loyaltyTransactions.id,
-      { onDelete: 'set null' },
-    ),
+    loyaltyTransactionId: uuid('loyalty_transaction_id').references(() => loyaltyTransactions.id, {
+      onDelete: 'set null',
+    }),
     serialCode: text('serial_code').notNull().unique(),
     status: voucherOwnershipStatusEnum('status').default('AVAILABLE').notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),

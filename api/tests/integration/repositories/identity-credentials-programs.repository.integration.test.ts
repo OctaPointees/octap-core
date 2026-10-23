@@ -29,7 +29,12 @@ describe('IdentityRepository', () => {
     await expect(repo.createEndUser({ suiAddress: '0xabc' })).rejects.toThrow();
 
     const enrollment = await repo.enroll({ organizationId: orgId, endUserId: endUser.id, externalMemberId: 'ext-1' });
-    expect(enrollment).toMatchObject({ organizationId: orgId, endUserId: endUser.id, externalMemberId: 'ext-1', tier: 'BRONZE' });
+    expect(enrollment).toMatchObject({
+      organizationId: orgId,
+      endUserId: endUser.id,
+      externalMemberId: 'ext-1',
+      tier: 'BRONZE',
+    });
     expect((await repo.findEnrollment(orgId, endUser.id))?.id).toBe(enrollment.id);
     await expect(repo.enroll({ organizationId: orgId, endUserId: endUser.id })).rejects.toThrow();
 
@@ -42,7 +47,13 @@ describe('ApiCredentialsRepository', () => {
   const repo = new ApiCredentialsRepository(db);
 
   it('creates, finds by hash/id, lists newest-first, touches, and revokes', async () => {
-    const first = await repo.create({ organizationId: orgId, name: 'a', keyPrefix: 'octap_live_aaaa', keyHash: 'hash-a', scopes: ['read'] });
+    const first = await repo.create({
+      organizationId: orgId,
+      name: 'a',
+      keyPrefix: 'octap_live_aaaa',
+      keyHash: 'hash-a',
+      scopes: ['read'],
+    });
     const second = await repo.create({
       organizationId: orgId,
       name: 'b',
@@ -61,13 +72,23 @@ describe('ApiCredentialsRepository', () => {
     expect((await repo.findById(first.id))?.lastUsedAt).toBeInstanceOf(Date);
 
     expect((await repo.revoke(first.id)).status).toBe('REVOKED');
-    await expect(repo.create({ organizationId: orgId, name: 'dup', keyPrefix: 'p', keyHash: 'hash-a', scopes: [] })).rejects.toThrow();
+    await expect(
+      repo.create({ organizationId: orgId, name: 'dup', keyPrefix: 'p', keyHash: 'hash-a', scopes: [] }),
+    ).rejects.toThrow();
   });
 });
 
 describe('ProgramsRepository', () => {
   const repo = new ProgramsRepository(db);
-  const reservation = () => repo.reserve({ organizationId: orgId, policyVersion: 1, earnBps: 100, expiryMs: 86_400_000, shardCount: 2, totalBudget: 1000 });
+  const reservation = () =>
+    repo.reserve({
+      organizationId: orgId,
+      policyVersion: 1,
+      earnBps: 100,
+      expiryMs: 86_400_000,
+      shardCount: 2,
+      totalBudget: 1000,
+    });
 
   it('reserves PROVISIONING, refuses a second reservation for the organization, activates, and releases', async () => {
     const reserved = await reservation();

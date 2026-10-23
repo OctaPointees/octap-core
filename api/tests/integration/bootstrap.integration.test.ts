@@ -9,7 +9,8 @@ import { WebhookDeliveryWorker } from '../../src/domain/webhooks/webhook-deliver
 import { SuiClientService } from '../../src/infra/clients/sui/sui.client.js';
 import { ProgramAdminClient } from '../../src/infra/clients/sui/program-admin.client.js';
 
-const hasModule = (container: ModulesContainer, module: unknown) => [...container.values()].some((m) => m.metatype === module);
+const hasModule = (container: ModulesContainer, module: unknown) =>
+  [...container.values()].some((m) => m.metatype === module);
 
 /**
  * The same process-boundary rule `scripts/check-bootstrap.mjs` checks, here against the source:
@@ -33,7 +34,13 @@ describe('Nest module graphs', () => {
     await app.init();
     try {
       expect(hasModule(app.get(ModulesContainer), WorkerModule)).toBe(true);
-      for (const provider of [ChainSubmitWorker, CheckpointIndexerWorker, WebhookDeliveryWorker, SuiClientService, ProgramAdminClient]) {
+      for (const provider of [
+        ChainSubmitWorker,
+        CheckpointIndexerWorker,
+        WebhookDeliveryWorker,
+        SuiClientService,
+        ProgramAdminClient,
+      ]) {
         expect(app.get(provider, { strict: false })).toBeInstanceOf(provider);
       }
     } finally {

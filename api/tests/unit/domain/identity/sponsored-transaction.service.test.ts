@@ -14,7 +14,12 @@ describe('SponsoredTransactionService', () => {
       stub<EnokiClient>({ createSponsoredTransaction }),
       stub<SuiTransactionBuilderClient>({ redeemMoveCallTarget: REDEEM_TARGET, buildRedeemTransactionKind }),
     );
-    const params = { beneficiaryAddress: '0xbeneficiary', accountId: 'account-1', cost: 50n, reference: new Uint8Array([9]) };
+    const params = {
+      beneficiaryAddress: '0xbeneficiary',
+      accountId: 'account-1',
+      cost: 50n,
+      reference: new Uint8Array([9]),
+    };
 
     const result = await service.previewSponsoredRedeem(params);
 
@@ -31,7 +36,10 @@ describe('SponsoredTransactionService', () => {
     const createSponsoredTransaction = vi.fn(async () => ({ bytes: 'bytes', digest: 'digest' }));
     const service = new SponsoredTransactionService(
       stub<EnokiClient>({ createSponsoredTransaction }),
-      stub<SuiTransactionBuilderClient>({ redeemMoveCallTarget: REDEEM_TARGET, buildRedeemTransactionKind: async () => new Uint8Array() }),
+      stub<SuiTransactionBuilderClient>({
+        redeemMoveCallTarget: REDEEM_TARGET,
+        buildRedeemTransactionKind: async () => new Uint8Array(),
+      }),
     );
 
     // The only parameters are domain values; extra keys a caller smuggles in are never forwarded.
@@ -43,14 +51,21 @@ describe('SponsoredTransactionService', () => {
       allowedMoveCallTargets: ['0xevil::drain::all'],
     } as Parameters<SponsoredTransactionService['previewSponsoredRedeem']>[0]);
 
-    expect(createSponsoredTransaction).toHaveBeenCalledWith(expect.objectContaining({ allowedMoveCallTargets: [REDEEM_TARGET] }));
+    expect(createSponsoredTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedMoveCallTargets: [REDEEM_TARGET] }),
+    );
   });
 
   it('executeSponsoredRedeem submits the signature for an already-sponsored digest', async () => {
     const executeSponsoredTransaction = vi.fn(async () => ({ digest: 'digest-1' }));
-    const service = new SponsoredTransactionService(stub<EnokiClient>({ executeSponsoredTransaction }), stub<SuiTransactionBuilderClient>());
+    const service = new SponsoredTransactionService(
+      stub<EnokiClient>({ executeSponsoredTransaction }),
+      stub<SuiTransactionBuilderClient>(),
+    );
 
-    expect(await service.executeSponsoredRedeem({ digest: 'digest-1', signature: 'sig' })).toEqual({ digest: 'digest-1' });
+    expect(await service.executeSponsoredRedeem({ digest: 'digest-1', signature: 'sig' })).toEqual({
+      digest: 'digest-1',
+    });
     expect(executeSponsoredTransaction).toHaveBeenCalledWith({ digest: 'digest-1', signature: 'sig' });
   });
 });

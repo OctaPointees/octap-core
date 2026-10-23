@@ -34,22 +34,39 @@ describe('identity over HTTP (no merchant API key)', () => {
       .send({ endUserId: first.body.endUserId, externalMemberId: 'loyalty-card-7' })
       .expect(201);
     expect(enrolled.body.isNewEnrollment).toBe(true);
-    const reenrolled = await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ endUserId: first.body.endUserId }).expect(201);
-    expect(reenrolled.body).toEqual({ organizationEndUserId: enrolled.body.organizationEndUserId, isNewEnrollment: false });
+    const reenrolled = await ctx
+      .http()
+      .post(`/v1/identity/organizations/${orgId}/enroll`)
+      .send({ endUserId: first.body.endUserId })
+      .expect(201);
+    expect(reenrolled.body).toEqual({
+      organizationEndUserId: enrolled.body.organizationEndUserId,
+      isNewEnrollment: false,
+    });
   });
 
   it('proxies zkLogin nonce and proof to Enoki', async () => {
     const nonce = await ctx.http().post('/v1/identity/zklogin/nonce').send({ ephemeralPublicKey: 'epk' }).expect(201);
     expect(nonce.body).toMatchObject({ nonce: 'nonce', maxEpoch: 3 });
 
-    await ctx.http().post('/v1/identity/zklogin/proof').send({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 3 }).expect(201);
-    expect(ctx.adapters.enoki.createZkLoginProof).toHaveBeenCalledWith(expect.objectContaining({ jwt: 'jwt', maxEpoch: 3 }));
+    await ctx
+      .http()
+      .post('/v1/identity/zklogin/proof')
+      .send({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 3 })
+      .expect(201);
+    expect(ctx.adapters.enoki.createZkLoginProof).toHaveBeenCalledWith(
+      expect.objectContaining({ jwt: 'jwt', maxEpoch: 3 }),
+    );
   });
 
   it('validates bodies', async () => {
     await ctx.http().post('/v1/identity/google-login').send({}).expect(400);
     await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({}).expect(400);
-    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ endUserId: '00000000-0000-0000-0000-000000000000' }).expect(400);
+    await ctx
+      .http()
+      .post(`/v1/identity/organizations/${orgId}/enroll`)
+      .send({ endUserId: '00000000-0000-0000-0000-000000000000' })
+      .expect(400);
     await ctx.http().post('/v1/identity/zklogin/nonce').send({}).expect(400);
     await ctx.http().post('/v1/identity/zklogin/proof').send({ idToken: 'jwt' }).expect(400);
   });

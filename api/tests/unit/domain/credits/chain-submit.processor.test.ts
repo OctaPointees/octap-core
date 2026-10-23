@@ -36,7 +36,12 @@ function processor(
   const { earn, ...rest } = suiClient;
   const sui = earn
     ? {
-        signEarn: async (program: unknown, params: unknown) => ({ program, params, digest: 'DIGEST1', expirationEpoch: 7n }),
+        signEarn: async (program: unknown, params: unknown) => ({
+          program,
+          params,
+          digest: 'DIGEST1',
+          expirationEpoch: 7n,
+        }),
         execute: async (signed: { program: unknown; params: unknown }) => earn(signed.program, signed.params),
         ...rest,
       }
@@ -52,7 +57,9 @@ function processor(
 describe('ChainSubmitProcessor', () => {
   it('opens an account under the member’s real address, earns, and confirms on success', async () => {
     const openAccount = vi.fn(async () =>
-      fakeChainResult({ events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc1' } }] }),
+      fakeChainResult({
+        events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc1' } }],
+      }),
     );
     const earn = vi.fn(async () => earned());
     const setSuiCreditAccountId = vi.fn(async () => {});
@@ -152,42 +159,72 @@ describe('ChainSubmitProcessor', () => {
   });
 
   it.each([
-    ['no credit ownership', { getCreditOwnershipByEndUserId: async () => undefined }, {}, /No credit ownership for end user user-1/],
+    [
+      'no credit ownership',
+      { getCreditOwnershipByEndUserId: async () => undefined },
+      {},
+      /No credit ownership for end user user-1/,
+    ],
     [
       'no beneficiary address',
-      { getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }), findBeneficiaryAddress: async () => null },
+      {
+        getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }),
+        findBeneficiaryAddress: async () => null,
+      },
       {},
       /No real Sui address on file/,
     ],
     [
       'open_account failed on-chain',
-      { getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }), findBeneficiaryAddress: async () => '0xb' },
+      {
+        getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }),
+        findBeneficiaryAddress: async () => '0xb',
+      },
       { openAccount: async () => fakeChainResult({ status: 'failure', errorMessage: 'EPaused' }) },
       /EPaused/,
     ],
     [
       'open_account failed without a message',
-      { getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }), findBeneficiaryAddress: async () => '0xb' },
+      {
+        getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }),
+        findBeneficiaryAddress: async () => '0xb',
+      },
       { openAccount: async () => fakeChainResult({ status: 'failure' }) },
       /open_account failed on-chain/,
     ],
     [
       'open_account emitted no CreditAccountOpened',
-      { getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }), findBeneficiaryAddress: async () => '0xb' },
+      {
+        getCreditOwnershipByEndUserId: async () => ({ id: 'o-1', suiCreditAccountId: null }),
+        findBeneficiaryAddress: async () => '0xb',
+      },
       { openAccount: async () => fakeChainResult() },
       /did not emit CreditAccountOpened/,
     ],
-    ['earn failed without a message', { getCreditOwnershipByEndUserId: existingAccount }, { earn: async () => fakeChainResult({ status: 'failure' }) }, /earn failed on-chain/],
-    ['earn emitted no CreditEarned', { getCreditOwnershipByEndUserId: existingAccount }, { earn: async () => fakeChainResult() }, /emitted no CreditEarned/],
-  ])('a definitive failure (%s) releases the hold and marks FAILED', async (_label, creditsRepo, suiClient, message) => {
-    const failEarnOnChain = vi.fn(async () => {});
-    const markFailed = vi.fn(async () => {});
+    [
+      'earn failed without a message',
+      { getCreditOwnershipByEndUserId: existingAccount },
+      { earn: async () => fakeChainResult({ status: 'failure' }) },
+      /earn failed on-chain/,
+    ],
+    [
+      'earn emitted no CreditEarned',
+      { getCreditOwnershipByEndUserId: existingAccount },
+      { earn: async () => fakeChainResult() },
+      /emitted no CreditEarned/,
+    ],
+  ])(
+    'a definitive failure (%s) releases the hold and marks FAILED',
+    async (_label, creditsRepo, suiClient, message) => {
+      const failEarnOnChain = vi.fn(async () => {});
+      const markFailed = vi.fn(async () => {});
 
-    await processor({ markFailed }, { ...creditsRepo, failEarnOnChain }, suiClient).process(buildOperation());
+      await processor({ markFailed }, { ...creditsRepo, failEarnOnChain }, suiClient).process(buildOperation());
 
-    expect(failEarnOnChain).toHaveBeenCalledOnce();
-    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(message));
-  });
+      expect(failEarnOnChain).toHaveBeenCalledOnce();
+      expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(message));
+    },
+  );
 
   it('stringifies a non-Error failure before marking FAILED', async () => {
     const markFailed = vi.fn(async () => {});
@@ -270,7 +307,11 @@ describe('ChainSubmitProcessor', () => {
       },
     ).process(buildOperation());
 
-    expect(markUnknown).toHaveBeenCalledWith('op-1', 'earn outcome unknown: DEADLINE_EXCEEDED waiting for checkpoint', undefined);
+    expect(markUnknown).toHaveBeenCalledWith(
+      'op-1',
+      'earn outcome unknown: DEADLINE_EXCEEDED waiting for checkpoint',
+      undefined,
+    );
   });
 
   it('an earn call that throws a non-Error is still treated as outcome unknown', async () => {
@@ -311,7 +352,9 @@ describe('ChainSubmitProcessor', () => {
 
 describe('ChainSubmitProcessor per-organization programs (OCT-73)', () => {
   it('dispatches each organization against its own program', async () => {
-    const earn = vi.fn<(program: unknown, params: unknown) => Promise<ReturnType<typeof earned>>>(async () => earned('1'));
+    const earn = vi.fn<(program: unknown, params: unknown) => Promise<ReturnType<typeof earned>>>(async () =>
+      earned('1'),
+    );
     const run = processor(
       { markSubmitted: async () => {} },
       { getCreditOwnershipByEndUserId: existingAccount, confirmEarnOnChain: async () => ({ id: 'btx-1' }) },
@@ -337,7 +380,10 @@ describe('ChainSubmitProcessor per-organization programs (OCT-73)', () => {
     ).process(buildOperation({ tenantId: 'org-unprovisioned' }));
 
     expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
-    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/org-unprovisioned has no on-chain program provisioned/));
+    expect(markFailed).toHaveBeenCalledWith(
+      'op-1',
+      expect.stringMatching(/org-unprovisioned has no on-chain program provisioned/),
+    );
   });
 });
 
@@ -348,11 +394,15 @@ describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
 
     await processor(
       {
-        recordSubmitDigest: async (id: string, digest: string, epoch: bigint) => order.push(`record:${id}:${digest}:${epoch}`),
+        recordSubmitDigest: async (id: string, digest: string, epoch: bigint) =>
+          order.push(`record:${id}:${digest}:${epoch}`),
         markUnknown,
         markFailed: () => expect.fail('an outcome-unknown execute is not FAILED'),
       },
-      { getCreditOwnershipByEndUserId: existingAccount, failEarnOnChain: () => expect.fail('the earn may have landed') },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        failEarnOnChain: () => expect.fail('the earn may have landed'),
+      },
       {
         signEarn: async () => {
           order.push('sign');
@@ -374,7 +424,11 @@ describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
     const markFailed = vi.fn(async () => {});
 
     await processor(
-      { recordSubmitDigest: () => expect.fail('nothing was built'), markFailed, markUnknown: () => expect.fail('not ambiguous') },
+      {
+        recordSubmitDigest: () => expect.fail('nothing was built'),
+        markFailed,
+        markUnknown: () => expect.fail('not ambiguous'),
+      },
       { getCreditOwnershipByEndUserId: existingAccount, failEarnOnChain },
       {
         signEarn: async () => {

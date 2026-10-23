@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MAX_DELIVERY_ATTEMPTS, WebhookDeliveryProcessor } from '../../../../src/domain/webhooks/webhook-delivery.processor.js';
+import {
+  MAX_DELIVERY_ATTEMPTS,
+  WebhookDeliveryProcessor,
+} from '../../../../src/domain/webhooks/webhook-delivery.processor.js';
 import { generateWebhookSecret, signWebhookPayload } from '../../../../src/domain/webhooks/webhook-signing.util.js';
 import type { WebhooksRepository } from '../../../../src/infra/db/repositories/webhooks.repository.js';
 import type { webhookDeliveries } from '../../../../src/infra/db/schema/webhooks.schema.js';
@@ -13,7 +16,13 @@ const activeEndpoint = (secret = generateWebhookSecret()) => ({
 });
 
 const delivery = (attemptCount = 1): typeof webhookDeliveries.$inferSelect =>
-  ({ id: 'dlv-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: { a: 1 }, attemptCount }) as typeof webhookDeliveries.$inferSelect;
+  ({
+    id: 'dlv-1',
+    endpointId: 'ep-1',
+    eventType: 'credits.earned',
+    payload: { a: 1 },
+    attemptCount,
+  }) as typeof webhookDeliveries.$inferSelect;
 
 describe('WebhookDeliveryProcessor', () => {
   afterEach(() => {
@@ -23,12 +32,15 @@ describe('WebhookDeliveryProcessor', () => {
   it('a successful delivery is signed over the exact body and marked DELIVERED', async () => {
     const secret = generateWebhookSecret();
     const markDelivered = vi.fn(async () => {});
-    const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<{ ok: boolean; status: number }>>(async () => ({ ok: true, status: 200 }));
+    const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<{ ok: boolean; status: number }>>(async () => ({
+      ok: true,
+      status: 200,
+    }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await new WebhookDeliveryProcessor(stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(secret), markDelivered })).process(
-      delivery(),
-    );
+    await new WebhookDeliveryProcessor(
+      stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(secret), markDelivered }),
+    ).process(delivery());
 
     const [url, init] = fetchMock.mock.calls[0];
     const headers = init.headers as Record<string, string>;
@@ -51,9 +63,9 @@ describe('WebhookDeliveryProcessor', () => {
     const scheduleRetry = vi.fn(async () => {});
     vi.stubGlobal('fetch', async () => ({ ok: false, status: 503 }));
 
-    await new WebhookDeliveryProcessor(stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry })).process(
-      delivery(attemptCount),
-    );
+    await new WebhookDeliveryProcessor(
+      stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry }),
+    ).process(delivery(attemptCount));
 
     expect(scheduleRetry).toHaveBeenCalledWith('dlv-1', new Date(Date.now() + minutes * 60_000), 503, 'HTTP 503');
   });
@@ -64,9 +76,9 @@ describe('WebhookDeliveryProcessor', () => {
       throw new Error('ECONNREFUSED');
     });
 
-    await new WebhookDeliveryProcessor(stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry })).process(
-      delivery(),
-    );
+    await new WebhookDeliveryProcessor(
+      stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry }),
+    ).process(delivery());
 
     expect(scheduleRetry).toHaveBeenCalledWith('dlv-1', expect.any(Date), null, 'ECONNREFUSED');
   });
@@ -77,9 +89,9 @@ describe('WebhookDeliveryProcessor', () => {
       throw 'aborted';
     });
 
-    await new WebhookDeliveryProcessor(stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry })).process(
-      delivery(),
-    );
+    await new WebhookDeliveryProcessor(
+      stub<WebhooksRepository>({ findEndpointById: async () => activeEndpoint(), scheduleRetry }),
+    ).process(delivery());
 
     expect(scheduleRetry).toHaveBeenCalledWith('dlv-1', expect.any(Date), null, 'aborted');
   });
@@ -107,7 +119,9 @@ describe('WebhookDeliveryProcessor', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    await new WebhookDeliveryProcessor(stub<WebhooksRepository>({ findEndpointById: async () => endpoint, markDeadLetter })).process(delivery());
+    await new WebhookDeliveryProcessor(
+      stub<WebhooksRepository>({ findEndpointById: async () => endpoint, markDeadLetter }),
+    ).process(delivery());
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markDeadLetter).toHaveBeenCalledWith('dlv-1', null, 'Endpoint is disabled or no longer exists');

@@ -6,7 +6,12 @@ import { organizations } from './organizations.schema.js';
 export const systemUserRoleEnum = pgEnum('system_user_role', ['SUPER_ADMIN', 'ADMIN', 'USER']);
 export const membershipRoleEnum = pgEnum('membership_role', ['OWNER', 'ADMIN', 'MANAGER', 'STAFF', 'VIEWER']);
 export const invitationStatusEnum = pgEnum('invitation_status', ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED']);
-export const changeRequestStatusEnum = pgEnum('change_request_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
+export const changeRequestStatusEnum = pgEnum('change_request_status', [
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+]);
 export const changeRequestTypeEnum = pgEnum('change_request_type', [
   'CREATE_ORGANIZATION',
   'UPDATE_PROFILE',
@@ -61,9 +66,7 @@ export const invitations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [
-    uniqueIndex('invitation_org_email_pending_idx').on(t.organizationId, t.email),
-  ],
+  (t) => [uniqueIndex('invitation_org_email_pending_idx').on(t.organizationId, t.email)],
 );
 
 /**
@@ -97,21 +100,18 @@ export const organizationMemberships = pgTable(
 /**
  * ORGANIZATION CHANGE REQUEST: Audited proposals / workflow requests to create or modify an Organization.
  */
-export const organizationChangeRequests = pgTable(
-  'organization_change_requests',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
-    requestedById: uuid('requested_by_id')
-      .notNull()
-      .references(() => systemUsers.id, { onDelete: 'cascade' }),
-    reviewedById: uuid('reviewed_by_id').references(() => systemUsers.id, { onDelete: 'set null' }),
-    requestType: changeRequestTypeEnum('request_type').notNull(),
-    status: changeRequestStatusEnum('status').default('PENDING').notNull(),
-    payload: jsonb('payload').default({}).notNull(),
-    reason: text('reason'),
-    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-);
+export const organizationChangeRequests = pgTable('organization_change_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  requestedById: uuid('requested_by_id')
+    .notNull()
+    .references(() => systemUsers.id, { onDelete: 'cascade' }),
+  reviewedById: uuid('reviewed_by_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+  requestType: changeRequestTypeEnum('request_type').notNull(),
+  status: changeRequestStatusEnum('status').default('PENDING').notNull(),
+  payload: jsonb('payload').default({}).notNull(),
+  reason: text('reason'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

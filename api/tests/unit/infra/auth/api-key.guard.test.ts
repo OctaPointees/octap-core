@@ -4,7 +4,10 @@ import type { Redis } from 'ioredis';
 import { ApiKeyGuard } from '../../../../src/infra/auth/api-key.guard.js';
 import { hashApiKey } from '../../../../src/infra/auth/api-key-hash.util.js';
 import { Scopes, SCOPES_KEY } from '../../../../src/infra/auth/scopes.decorator.js';
-import { RequireSignedRequest, REQUIRE_SIGNED_REQUEST_KEY } from '../../../../src/infra/auth/signed-request.decorator.js';
+import {
+  RequireSignedRequest,
+  REQUIRE_SIGNED_REQUEST_KEY,
+} from '../../../../src/infra/auth/signed-request.decorator.js';
 import { IS_PUBLIC_KEY, Public } from '../../../../src/infra/auth/public.decorator.js';
 import { IdentityController } from '../../../../src/api/rest/identity.controller.js';
 import { CreditsController } from '../../../../src/api/rest/credits.controller.js';
@@ -57,7 +60,13 @@ function signedContext({
   signature?: string;
   originalUrl?: string;
 } = {}) {
-  const canonical = buildCanonicalRequest({ method: 'POST', path: SIGNED_PATH, timestamp: String(timestamp), nonce, rawBody: body });
+  const canonical = buildCanonicalRequest({
+    method: 'POST',
+    path: SIGNED_PATH,
+    timestamp: String(timestamp),
+    nonce,
+    rawBody: body,
+  });
   const ctx = executionContext({
     method: 'POST',
     url: originalUrl ? '/rewritten' : SIGNED_PATH,
@@ -78,9 +87,15 @@ function signedContext({
 
 describe('ApiKeyGuard: authentication', () => {
   it('a valid key attaches the tenant context, touches lastUsedAt, and passes', async () => {
-    const findByKeyHash = vi.fn(async (hash: string) => (hash === hashApiKey('octap_live_valid') ? activeCredential() : undefined));
+    const findByKeyHash = vi.fn(async (hash: string) =>
+      hash === hashApiKey('octap_live_valid') ? activeCredential() : undefined,
+    );
     const touchLastUsed = vi.fn(async () => {});
-    const g = new ApiKeyGuard(stub<ApiCredentialsRepository>({ findByKeyHash, touchLastUsed }), new Reflector(), fakeRedis());
+    const g = new ApiKeyGuard(
+      stub<ApiCredentialsRepository>({ findByKeyHash, touchLastUsed }),
+      new Reflector(),
+      fakeRedis(),
+    );
     const ctx = executionContext({ headers: { authorization: 'Bearer octap_live_valid' } });
 
     expect(await g.canActivate(ctx)).toBe(true);
@@ -108,19 +123,23 @@ describe('ApiKeyGuard: authentication', () => {
     ['unknown', undefined],
     ['revoked', { status: 'REVOKED' }],
   ])('rejects an %s key', async (_label, credential) => {
-    await expect(guard(credential).canActivate(executionContext({ headers: { authorization: 'Bearer k' } }))).rejects.toThrow(
-      /invalid or has been revoked/,
-    );
+    await expect(
+      guard(credential).canActivate(executionContext({ headers: { authorization: 'Bearer k' } })),
+    ).rejects.toThrow(/invalid or has been revoked/);
   });
 
   it('rejects an expired key, but accepts one expiring in the future', async () => {
     const ctx = () => executionContext({ headers: { authorization: 'Bearer k' } });
-    await expect(guard(activeCredential({ expiresAt: new Date(Date.now() - 1000) })).canActivate(ctx())).rejects.toThrow(/expired/);
+    await expect(
+      guard(activeCredential({ expiresAt: new Date(Date.now() - 1000) })).canActivate(ctx()),
+    ).rejects.toThrow(/expired/);
     expect(await guard(activeCredential({ expiresAt: new Date(Date.now() + 60_000) })).canActivate(ctx())).toBe(true);
   });
 
   it('rejects a stolen key replayed with a different org header (anti cross-tenant spoofing)', async () => {
-    const ctx = executionContext({ headers: { authorization: 'Bearer octap_live_org1key', 'x-organization-id': 'org-2' } });
+    const ctx = executionContext({
+      headers: { authorization: 'Bearer octap_live_org1key', 'x-organization-id': 'org-2' },
+    });
     await expect(guard(activeCredential()).canActivate(ctx)).rejects.toMatchObject({
       name: 'ForbiddenException',
       message: expect.stringMatching(/does not match this API credential/),
@@ -150,7 +169,14 @@ describe('ApiKeyGuard: @Public()', () => {
     const isPublic = (target: object) => Reflect.getMetadata(IS_PUBLIC_KEY, target) === true;
     expect(isPublic(IdentityController)).toBe(true);
     expect(isPublic(CreditsController.prototype.finalizePosRedemption)).toBe(true);
-    for (const merchantRoute of ['earn', 'redeem', 'reservePosRedemption', 'reverseTransaction', 'getBalance', 'getTransactions'] as const) {
+    for (const merchantRoute of [
+      'earn',
+      'redeem',
+      'reservePosRedemption',
+      'reverseTransaction',
+      'getBalance',
+      'getTransactions',
+    ] as const) {
       expect(isPublic(CreditsController.prototype[merchantRoute]), merchantRoute).toBe(false);
     }
     expect(isPublic(CreditsController)).toBe(false);
@@ -163,7 +189,9 @@ describe('ApiKeyGuard: scopes', () => {
     expect(Reflect.getMetadata(SCOPES_KEY, writeRoute)).toEqual(['write']);
 
     const ctx = executionContext({ headers: { authorization: 'Bearer k' }, handler: writeRoute });
-    await expect(guard(activeCredential({ scopes: ['read'] })).canActivate(ctx)).rejects.toThrow(/missing the required "write" scope/);
+    await expect(guard(activeCredential({ scopes: ['read'] })).canActivate(ctx)).rejects.toThrow(
+      /missing the required "write" scope/,
+    );
   });
 
   it('honours class-level scopes when the handler declares none', async () => {
@@ -197,7 +225,9 @@ describe('ApiKeyGuard: rate limiting', () => {
         throw new Error('ECONNREFUSED');
       },
     });
-    await expect(guard(activeCredential(), brokenRedis).canActivate(executionContext({ headers: { authorization: 'Bearer k' } }))).rejects.toMatchObject({
+    await expect(
+      guard(activeCredential(), brokenRedis).canActivate(executionContext({ headers: { authorization: 'Bearer k' } })),
+    ).rejects.toMatchObject({
       name: 'ServiceUnavailableException',
       message: expect.stringMatching(/Rate limiting is temporarily unavailable/),
     });
@@ -225,14 +255,19 @@ describe('ApiKeyGuard: signed requests', () => {
     expect(await guard(admin).canActivate(ctx)).toBe(true);
   });
 
-  it.each(['x-octap-timestamp', 'x-octap-nonce', 'x-octap-signature'])('rejects a request missing %s', async (header) => {
-    const ctx = signedContext();
-    delete ctx.request.headers[header];
-    await expect(guard(admin).canActivate(ctx)).rejects.toThrow(/requires a signed request/);
-  });
+  it.each(['x-octap-timestamp', 'x-octap-nonce', 'x-octap-signature'])(
+    'rejects a request missing %s',
+    async (header) => {
+      const ctx = signedContext();
+      delete ctx.request.headers[header];
+      await expect(guard(admin).canActivate(ctx)).rejects.toThrow(/requires a signed request/);
+    },
+  );
 
   it('rejects a tampered signature', async () => {
-    await expect(guard(admin).canActivate(signedContext({ signature: 'a'.repeat(64) }))).rejects.toThrow(/Invalid request signature/);
+    await expect(guard(admin).canActivate(signedContext({ signature: 'a'.repeat(64) }))).rejects.toThrow(
+      /Invalid request signature/,
+    );
   });
 
   it('rejects a body changed after signing', async () => {
@@ -252,12 +287,16 @@ describe('ApiKeyGuard: signed requests', () => {
   it('rejects a replayed (already-used) nonce', async () => {
     const g = guard(admin);
     expect(await g.canActivate(signedContext({ nonce: 'reused-nonce' }))).toBe(true);
-    await expect(g.canActivate(signedContext({ nonce: 'reused-nonce' }))).rejects.toThrow(/already used, or replay protection is unavailable/);
+    await expect(g.canActivate(signedContext({ nonce: 'reused-nonce' }))).rejects.toThrow(
+      /already used, or replay protection is unavailable/,
+    );
   });
 
   it('a forged request cannot burn someone else’s nonce', async () => {
     const g = guard(admin);
-    await expect(g.canActivate(signedContext({ nonce: 'victim-nonce', signature: 'b'.repeat(64) }))).rejects.toThrow(/Invalid/);
+    await expect(g.canActivate(signedContext({ nonce: 'victim-nonce', signature: 'b'.repeat(64) }))).rejects.toThrow(
+      /Invalid/,
+    );
     expect(await g.canActivate(signedContext({ nonce: 'victim-nonce' }))).toBe(true);
   });
 
@@ -269,7 +308,9 @@ describe('ApiKeyGuard: signed requests', () => {
         throw new Error('ECONNREFUSED');
       },
     });
-    await expect(guard(admin, brokenNonceRedis).canActivate(signedContext())).rejects.toThrow(/replay protection is unavailable/);
+    await expect(guard(admin, brokenNonceRedis).canActivate(signedContext())).rejects.toThrow(
+      /replay protection is unavailable/,
+    );
   });
 
   it('rotating a credential invalidates signatures made with the old signing key', async () => {

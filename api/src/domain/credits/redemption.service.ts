@@ -20,10 +20,7 @@ export class RedemptionService {
       throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
 
-    const existingTx = await this.creditsRepo.findTransactionByIdempotency(
-      organizationId,
-      request.idempotencyKey,
-    );
+    const existingTx = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
 
     if (existingTx) {
       const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);

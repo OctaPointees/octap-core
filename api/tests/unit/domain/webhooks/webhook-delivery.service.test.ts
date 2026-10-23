@@ -13,21 +13,38 @@ describe('WebhookDeliveryService.emit', () => {
     await service.emit('org-1', 'credits.earned', { transactionId: 'tx-1' });
 
     expect(enqueueDelivery.mock.calls).toEqual([
-      [{ organizationId: 'org-1', endpointId: 'ep-1', eventType: 'credits.earned', payload: { transactionId: 'tx-1' } }],
-      [{ organizationId: 'org-1', endpointId: 'ep-2', eventType: 'credits.earned', payload: { transactionId: 'tx-1' } }],
+      [
+        {
+          organizationId: 'org-1',
+          endpointId: 'ep-1',
+          eventType: 'credits.earned',
+          payload: { transactionId: 'tx-1' },
+        },
+      ],
+      [
+        {
+          organizationId: 'org-1',
+          endpointId: 'ep-2',
+          eventType: 'credits.earned',
+          payload: { transactionId: 'tx-1' },
+        },
+      ],
     ]);
   });
 
-  it.each([new Error('db down'), 'db down'])('never throws, so webhook infra can’t fail the business operation (%s)', async (failure) => {
-    const service = new WebhookDeliveryService(
-      stub<WebhooksRepository>({
-        listActiveEndpoints: async () => {
-          throw failure;
-        },
-      }),
-    );
-    await expect(service.emit('org-1', 'credits.earned', {})).resolves.toBeUndefined();
-  });
+  it.each([new Error('db down'), 'db down'])(
+    'never throws, so webhook infra can’t fail the business operation (%s)',
+    async (failure) => {
+      const service = new WebhookDeliveryService(
+        stub<WebhooksRepository>({
+          listActiveEndpoints: async () => {
+            throw failure;
+          },
+        }),
+      );
+      await expect(service.emit('org-1', 'credits.earned', {})).resolves.toBeUndefined();
+    },
+  );
 });
 
 describe('WebhookDeliveryService.list / replay', () => {
@@ -43,7 +60,8 @@ describe('WebhookDeliveryService.list / replay', () => {
     const deadLetter = { id: 'dlv-1', organizationId: 'org-1', status: 'DEAD_LETTER' };
     const service = new WebhookDeliveryService(
       stub<WebhooksRepository>({
-        findDeliveryForOrganization: async (orgId: string, id: string) => (orgId === 'org-1' && id === 'dlv-1' ? deadLetter : undefined),
+        findDeliveryForOrganization: async (orgId: string, id: string) =>
+          orgId === 'org-1' && id === 'dlv-1' ? deadLetter : undefined,
         resetForReplay: async (id: string) => ({ id, status: 'PENDING', attemptCount: 0 }),
       }),
     );
@@ -54,8 +72,12 @@ describe('WebhookDeliveryService.list / replay', () => {
 
   it('refuses to replay a delivery that is not dead-lettered', async () => {
     const service = new WebhookDeliveryService(
-      stub<WebhooksRepository>({ findDeliveryForOrganization: async () => ({ id: 'dlv-2', organizationId: 'org-1', status: 'PENDING' }) }),
+      stub<WebhooksRepository>({
+        findDeliveryForOrganization: async () => ({ id: 'dlv-2', organizationId: 'org-1', status: 'PENDING' }),
+      }),
     );
-    await expect(service.replay('org-1', 'dlv-2')).rejects.toThrow(/Only a DEAD_LETTER delivery can be replayed \(current status: PENDING\)/);
+    await expect(service.replay('org-1', 'dlv-2')).rejects.toThrow(
+      /Only a DEAD_LETTER delivery can be replayed \(current status: PENDING\)/,
+    );
   });
 });

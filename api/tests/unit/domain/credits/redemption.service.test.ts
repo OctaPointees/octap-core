@@ -47,7 +47,12 @@ describe('RedemptionService', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       findTransactionByIdempotency: async () =>
-        buildLoyaltyTransaction({ id: 'tx-redeem-1', transactionType: 'REDEEM', pointsAmount: 30, idempotencyKey: 'idem-redeem-1' }),
+        buildLoyaltyTransaction({
+          id: 'tx-redeem-1',
+          transactionType: 'REDEEM',
+          pointsAmount: 30,
+          idempotencyKey: 'idem-redeem-1',
+        }),
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: 70 }),
       recordRedeemTransaction: () => expect.fail('must not redeem twice'),
     });

@@ -425,7 +425,9 @@ export class OctapChainClient {
    * `signAndExecute`, but starting from only a digest.
    */
   async waitForTransaction(digest: string): Promise<SubmittedChainTransaction> {
-    return normalizeResult(await this.rpc.core.waitForTransaction({ digest, include: { effects: true, events: true } }));
+    return normalizeResult(
+      await this.rpc.core.waitForTransaction({ digest, include: { effects: true, events: true } }),
+    );
   }
 
   /** One lookup, no polling: the transaction's outcome, or null if the chain has no such digest (yet). */

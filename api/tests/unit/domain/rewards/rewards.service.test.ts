@@ -75,7 +75,9 @@ describe('RewardsService.createVoucher', () => {
       pointsCost: 25,
     });
 
-    expect(createVoucher).toHaveBeenCalledWith(expect.objectContaining({ pointsCost: 25, startsAt: undefined, expiresAt: undefined }));
+    expect(createVoucher).toHaveBeenCalledWith(
+      expect.objectContaining({ pointsCost: 25, startsAt: undefined, expiresAt: undefined }),
+    );
     expect(dto.startsAt).toBeNull();
     expect(dto.expiresAt).toBeNull();
   });
@@ -93,9 +95,9 @@ describe('RewardsService.createVoucher', () => {
 
 describe('RewardsService.listVouchers / getVoucher', () => {
   it('lists the organization’s vouchers as DTOs', async () => {
-    const list = await service({ listVouchersByOrganization: async () => [buildVoucher(), buildVoucher({ id: 'v-2' })] }).listVouchers(
-      'org-1',
-    );
+    const list = await service({
+      listVouchersByOrganization: async () => [buildVoucher(), buildVoucher({ id: 'v-2' })],
+    }).listVouchers('org-1');
     expect(list.map((v) => v.id)).toEqual(['v-1', 'v-2']);
   });
 
@@ -110,24 +112,26 @@ describe('RewardsService.listVouchers / getVoucher', () => {
 
 describe('RewardsService.claimVoucher', () => {
   it('claims a paid voucher, deducting its points cost through RedemptionService', async () => {
-    const executeRedeem = vi.fn(async (_orgId: string, req: { pointsAmount: number; organizationEndUserId: string; idempotencyKey: string }) => ({
-      transactionId: 'tx-redeem-v-1',
-      organizationEndUserId: req.organizationEndUserId,
-      pointsRedeemed: req.pointsAmount,
-      newBalance: 50,
-      status: 'CONFIRMED',
-      idempotencyKey: req.idempotencyKey,
-    }));
-    const claimVoucherInstance = vi.fn(async (params: { serialCode: string; voucherId: string; organizationEndUserId: string }) => ({
-      ownership: ownership({ serialCode: params.serialCode }),
-      voucher: buildVoucher(),
-    }));
+    const executeRedeem = vi.fn(
+      async (_orgId: string, req: { pointsAmount: number; organizationEndUserId: string; idempotencyKey: string }) => ({
+        transactionId: 'tx-redeem-v-1',
+        organizationEndUserId: req.organizationEndUserId,
+        pointsRedeemed: req.pointsAmount,
+        newBalance: 50,
+        status: 'CONFIRMED',
+        idempotencyKey: req.idempotencyKey,
+      }),
+    );
+    const claimVoucherInstance = vi.fn(
+      async (params: { serialCode: string; voucherId: string; organizationEndUserId: string }) => ({
+        ownership: ownership({ serialCode: params.serialCode }),
+        voucher: buildVoucher(),
+      }),
+    );
 
-    const result = await service(
-      { findVoucherById: async () => buildVoucher(), claimVoucherInstance },
-      sameOrgMember,
-      { executeRedeem },
-    ).claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1', idempotencyKey: 'claim-key' });
+    const result = await service({ findVoucherById: async () => buildVoucher(), claimVoucherInstance }, sameOrgMember, {
+      executeRedeem,
+    }).claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1', idempotencyKey: 'claim-key' });
 
     expect(executeRedeem).toHaveBeenCalledWith('org-1', {
       organizationEndUserId: 'user-1',
@@ -137,7 +141,11 @@ describe('RewardsService.claimVoucher', () => {
       metadata: { voucherId: 'v-1', voucherCode: 'DISCOUNT10' },
     });
     expect(claimVoucherInstance).toHaveBeenCalledWith(
-      expect.objectContaining({ voucherId: 'v-1', organizationEndUserId: 'user-1', loyaltyTransactionId: 'tx-redeem-v-1' }),
+      expect.objectContaining({
+        voucherId: 'v-1',
+        organizationEndUserId: 'user-1',
+        loyaltyTransactionId: 'tx-redeem-v-1',
+      }),
     );
     expect(result.serialCode).toMatch(/^DISCOUNT10-[0-9A-F]{8}$/);
     expect(result).toMatchObject({
@@ -155,7 +163,10 @@ describe('RewardsService.claimVoucher', () => {
     await service(
       {
         findVoucherById: async () => buildVoucher(),
-        claimVoucherInstance: async () => ({ ownership: ownership({ expiresAt: new Date('2027-01-01T00:00:00Z') }), voucher: buildVoucher() }),
+        claimVoucherInstance: async () => ({
+          ownership: ownership({ expiresAt: new Date('2027-01-01T00:00:00Z') }),
+          voucher: buildVoucher(),
+        }),
       },
       sameOrgMember,
       { executeRedeem },
@@ -193,7 +204,10 @@ describe('RewardsService.claimVoucher', () => {
       },
     }).claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1' });
 
-    await expect(claim).rejects.toMatchObject({ name: 'BadRequestException', message: expect.stringMatching(/already been claimed/) });
+    await expect(claim).rejects.toMatchObject({
+      name: 'BadRequestException',
+      message: expect.stringMatching(/already been claimed/),
+    });
   });
 
   it('a non-Error claim failure becomes a generic 400', async () => {
@@ -214,7 +228,9 @@ describe('RewardsService.claimVoucher', () => {
       }),
     ).rejects.toThrow(/Voucher with id v-1 not found/);
     await expect(
-      service({ findVoucherById: async () => undefined }).claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1' }),
+      service({ findVoucherById: async () => undefined }).claimVoucher('org-1', 'v-1', {
+        organizationEndUserId: 'user-1',
+      }),
     ).rejects.toThrow(/not found/);
   });
 
@@ -231,19 +247,21 @@ describe('RewardsService.claimVoucher', () => {
   });
 
   it('rejects an inactive voucher', async () => {
-    const claim = service({ findVoucherById: async () => buildVoucher({ status: 'PAUSED' }) }).claimVoucher('org-1', 'v-1', {
-      organizationEndUserId: 'user-1',
-    });
+    const claim = service({ findVoucherById: async () => buildVoucher({ status: 'PAUSED' }) }).claimVoucher(
+      'org-1',
+      'v-1',
+      {
+        organizationEndUserId: 'user-1',
+      },
+    );
 
     await expect(claim).rejects.toThrow(/not active \(current status: PAUSED\)/);
   });
 
   it('rejects an expired voucher', async () => {
-    const claim = service({ findVoucherById: async () => buildVoucher({ expiresAt: new Date(Date.now() - 1000) }) }).claimVoucher(
-      'org-1',
-      'v-1',
-      { organizationEndUserId: 'user-1' },
-    );
+    const claim = service({
+      findVoucherById: async () => buildVoucher({ expiresAt: new Date(Date.now() - 1000) }),
+    }).claimVoucher('org-1', 'v-1', { organizationEndUserId: 'user-1' });
 
     await expect(claim).rejects.toThrow(/Voucher has expired/);
   });
@@ -257,9 +275,12 @@ describe('RewardsService.redeemVoucher', () => {
       redeemedAt: new Date('2026-10-03T00:00:00Z'),
     }));
 
-    const result = await service({ findOwnershipBySerial: async () => ownership(), markVoucherRedeemed }).redeemVoucher('org-1', {
-      serialCode: 'DISCOUNT10-ABCD1234',
-    });
+    const result = await service({ findOwnershipBySerial: async () => ownership(), markVoucherRedeemed }).redeemVoucher(
+      'org-1',
+      {
+        serialCode: 'DISCOUNT10-ABCD1234',
+      },
+    );
 
     expect(markVoucherRedeemed).toHaveBeenCalledWith('own-1');
     expect(result).toEqual({
@@ -284,26 +305,29 @@ describe('RewardsService.redeemVoucher', () => {
   });
 
   it('rejects an unknown serial or one from another organization', async () => {
-    await expect(service({ findOwnershipBySerial: async () => undefined }).redeemVoucher('org-1', { serialCode: 's' })).rejects.toThrow(
-      /serial code s not found/,
-    );
     await expect(
-      service({ findOwnershipBySerial: async () => ownership({ voucher: buildVoucher({ organizationId: 'org-2' }) }) }).redeemVoucher(
-        'org-1',
-        { serialCode: 's' },
-      ),
+      service({ findOwnershipBySerial: async () => undefined }).redeemVoucher('org-1', { serialCode: 's' }),
+    ).rejects.toThrow(/serial code s not found/);
+    await expect(
+      service({
+        findOwnershipBySerial: async () => ownership({ voucher: buildVoucher({ organizationId: 'org-2' }) }),
+      }).redeemVoucher('org-1', { serialCode: 's' }),
     ).rejects.toThrow(/not found/);
   });
 
   it('rejects an instance that is no longer AVAILABLE', async () => {
     await expect(
-      service({ findOwnershipBySerial: async () => ownership({ status: 'REDEEMED' }) }).redeemVoucher('org-1', { serialCode: 's' }),
+      service({ findOwnershipBySerial: async () => ownership({ status: 'REDEEMED' }) }).redeemVoucher('org-1', {
+        serialCode: 's',
+      }),
     ).rejects.toThrow(/status is currently REDEEMED/);
   });
 
   it('rejects an expired instance', async () => {
     await expect(
-      service({ findOwnershipBySerial: async () => ownership({ expiresAt: new Date(Date.now() - 1000) }) }).redeemVoucher('org-1', {
+      service({
+        findOwnershipBySerial: async () => ownership({ expiresAt: new Date(Date.now() - 1000) }),
+      }).redeemVoucher('org-1', {
         serialCode: 's',
       }),
     ).rejects.toThrow(/expired/);
@@ -329,7 +353,10 @@ describe('RewardsService.listMemberVouchers', () => {
   });
 
   it('maps missing optional dates to null', async () => {
-    const [entry] = await service({ listOwnershipsByMember: async () => [ownership()] }).listMemberVouchers('org-1', 'user-1');
+    const [entry] = await service({ listOwnershipsByMember: async () => [ownership()] }).listMemberVouchers(
+      'org-1',
+      'user-1',
+    );
     expect(entry.redeemedAt).toBeNull();
     expect(entry.expiresAt).toBeNull();
   });

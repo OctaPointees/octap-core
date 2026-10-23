@@ -9,7 +9,15 @@ import { ProgramsRepository } from '../../../src/infra/db/repositories/programs.
 import type { SuiClientService } from '../../../src/infra/clients/sui/sui.client.js';
 import type { SuiTransactionBuilderClient } from '../../../src/infra/clients/sui/sui-transaction-builder.client.js';
 import { createTestApp } from '../support/app.js';
-import { getOwnership, resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from '../support/db.js';
+import {
+  getOwnership,
+  resetDb,
+  schema,
+  seedCredential,
+  seedMember,
+  seedOrganization,
+  seedProgram,
+} from '../support/db.js';
 import { stub } from '../../helpers/stub.js';
 import { b64, fakeChainResult } from '../../helpers/fixtures.js';
 
@@ -39,17 +47,19 @@ afterAll(async () => {
  * The worker's half of an earn, wired to the app's real repositories: the chain double opens an
  * account and credits 1% of the purchase amount (the seeded program's 100 bps), like testnet does.
  */
-function chainSubmitWorker(earn = async (_program: unknown, params: { purchaseAmount: number }) =>
-  fakeChainResult({
-    digest: `EARN-${params.purchaseAmount}-${Math.random()}`,
-    events: [
-      {
-        type: '0xpkg::credit_account::CreditEarned',
-        parameters: undefined,
-        parsedJson: { amount: String(params.purchaseAmount / 100), bucket_expires_at_ms: String(BUCKET_EXPIRY_MS) },
-      } as never,
-    ],
-  })) {
+function chainSubmitWorker(
+  earn = async (_program: unknown, params: { purchaseAmount: number }) =>
+    fakeChainResult({
+      digest: `EARN-${params.purchaseAmount}-${Math.random()}`,
+      events: [
+        {
+          type: '0xpkg::credit_account::CreditEarned',
+          parameters: undefined,
+          parsedJson: { amount: String(params.purchaseAmount / 100), bucket_expires_at_ms: String(BUCKET_EXPIRY_MS) },
+        } as never,
+      ],
+    }),
+) {
   const operations = ctx.app.get(OperationsRepository);
   const processor = new ChainSubmitProcessor(
     operations,
@@ -57,9 +67,18 @@ function chainSubmitWorker(earn = async (_program: unknown, params: { purchaseAm
     stub<SuiClientService>({
       issuerAddress: () => '0xissuer',
       openAccount: async () =>
-        fakeChainResult({ digest: 'OPEN', events: [{ type: '0xpkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc' } }] }),
-      signEarn: async (program: unknown, params: { purchaseAmount: number }) => ({ program, params, digest: 'SIGNED', expirationEpoch: 1n }),
-      execute: async (signed: { program: unknown; params: { purchaseAmount: number } }) => earn(signed.program, signed.params),
+        fakeChainResult({
+          digest: 'OPEN',
+          events: [{ type: '0xpkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xacc' } }],
+        }),
+      signEarn: async (program: unknown, params: { purchaseAmount: number }) => ({
+        program,
+        params,
+        digest: 'SIGNED',
+        expirationEpoch: 1n,
+      }),
+      execute: async (signed: { program: unknown; params: { purchaseAmount: number } }) =>
+        earn(signed.program, signed.params),
     }),
     ctx.app.get(ProgramsRepository),
   );
@@ -74,7 +93,8 @@ function chainSubmitWorker(earn = async (_program: unknown, params: { purchaseAm
 
 const earn = (pointsAmount: number, idempotencyKey: string) =>
   ctx.http().post('/v1/credits/earn').set(auth).send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
-const balance = async () => (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body;
+const balance = async () =>
+  (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body;
 
 describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
   it('runs the whole credits lifecycle through HTTP and the real database', async () => {
@@ -96,9 +116,15 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
       .expect(201);
     expect(redeemed.body).toMatchObject({ pointsRedeemed: 40, newBalance: 60, status: 'CONFIRMED' });
 
-    const history = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions?limit=10`).set(auth).expect(200)).body;
+    const history = (
+      await ctx.http().get(`/v1/credits/members/${memberId}/transactions?limit=10`).set(auth).expect(200)
+    ).body;
     expect(history.map((t: { transactionType: string }) => t.transactionType)).toEqual(['REDEEM', 'EARN']);
-    expect(history[1]).toMatchObject({ pointsAmount: 100, status: 'CONFIRMED', blockchainDigest: expect.stringMatching(/^EARN-/) });
+    expect(history[1]).toMatchObject({
+      pointsAmount: 100,
+      status: 'CONFIRMED',
+      blockchainDigest: expect.stringMatching(/^EARN-/),
+    });
 
     const reversed = await ctx
       .http()
@@ -119,7 +145,9 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
 
   it('a definitive on-chain failure releases the hold', async () => {
     await earn(500, 'e-fail').expect(201);
-    await chainSubmitWorker(async () => fakeChainResult({ status: 'failure', errorMessage: 'EBudgetExhausted' })).drain();
+    await chainSubmitWorker(async () =>
+      fakeChainResult({ status: 'failure', errorMessage: 'EBudgetExhausted' }),
+    ).drain();
 
     expect(await balance()).toMatchObject({ confirmedBalance: 0, pendingEarn: 0 });
     const [op] = await ctx.db.select().from(schema.operations).where(eq(schema.operations.idempotencyKey, 'e-fail'));
@@ -146,7 +174,12 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
             {
               name: 'CreditEarned',
               sender: '0xissuer',
-              json: { account_id: '0xacc', amount: '100', operation_key: b64('e-unknown'), bucket_expires_at_ms: String(BUCKET_EXPIRY_MS) },
+              json: {
+                account_id: '0xacc',
+                amount: '100',
+                operation_key: b64('e-unknown'),
+                bucket_expires_at_ms: String(BUCKET_EXPIRY_MS),
+              },
               checkpoint: '42',
               transactionDigest: 'D-FROM-CHAIN',
               eventIndex: 0,
@@ -164,7 +197,10 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
     expect(await balance()).toMatchObject({ confirmedBalance: 100, pendingEarn: 0, asOfCheckpoint: '42' });
     const [op] = await ctx.db.select().from(schema.operations).where(eq(schema.operations.idempotencyKey, 'e-unknown'));
     expect(op).toMatchObject({ status: 'SUBMITTED', suiTxDigest: 'D-FROM-CHAIN' });
-    const [tx] = await ctx.db.select().from(schema.loyaltyTransactions).where(eq(schema.loyaltyTransactions.id, accepted.body.transactionId));
+    const [tx] = await ctx.db
+      .select()
+      .from(schema.loyaltyTransactions)
+      .where(eq(schema.loyaltyTransactions.id, accepted.body.transactionId));
     expect(tx.status).toBe('CONFIRMED');
   });
 
@@ -175,22 +211,47 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
     const other = await seedOrganization(ctx.db);
     const { memberId: foreign } = await seedMember(ctx.db, other.id);
     await ctx.http().get(`/v1/credits/members/${foreign}/balance`).set(auth).expect(404);
-    await ctx.http().post('/v1/credits/earn').set(auth).send({ organizationEndUserId: foreign, pointsAmount: 1, idempotencyKey: 'x' }).expect(404);
-    await ctx.http().post('/v1/credits/transactions/00000000-0000-0000-0000-000000000000/reverse').set(auth).send({ idempotencyKey: 'k', reason: 'r' }).expect(404);
+    await ctx
+      .http()
+      .post('/v1/credits/earn')
+      .set(auth)
+      .send({ organizationEndUserId: foreign, pointsAmount: 1, idempotencyKey: 'x' })
+      .expect(404);
+    await ctx
+      .http()
+      .post('/v1/credits/transactions/00000000-0000-0000-0000-000000000000/reverse')
+      .set(auth)
+      .send({ idempotencyKey: 'k', reason: 'r' })
+      .expect(404);
   });
 
   it('an organization without a provisioned program gets 422 on earn and POS reserve, and nothing is held', async () => {
     const bare = await seedOrganization(ctx.db);
     const { memberId: bareMember } = await seedMember(ctx.db, bare.id);
-    const bareAuth = { authorization: `Bearer ${(await seedCredential(ctx.db, bare.id, { scopes: ['read', 'write'] })).rawKey}` };
+    const bareAuth = {
+      authorization: `Bearer ${(await seedCredential(ctx.db, bare.id, { scopes: ['read', 'write'] })).rawKey}`,
+    };
 
-    const earnRes = await ctx.http().post('/v1/credits/earn').set(bareAuth)
-      .send({ organizationEndUserId: bareMember, pointsAmount: 100, idempotencyKey: 'bare-earn' }).expect(422);
+    const earnRes = await ctx
+      .http()
+      .post('/v1/credits/earn')
+      .set(bareAuth)
+      .send({ organizationEndUserId: bareMember, pointsAmount: 100, idempotencyKey: 'bare-earn' })
+      .expect(422);
     expect(earnRes.body.message).toMatch(/has no on-chain program provisioned \(no programs row\)/);
-    await ctx.http().post('/v1/credits/redeem/reserve').set(bareAuth)
-      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve' }).expect(422);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/reserve')
+      .set(bareAuth)
+      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve' })
+      .expect(422);
 
-    expect(await ctx.db.select().from(schema.loyaltyTransactions).where(eq(schema.loyaltyTransactions.organizationId, bare.id))).toEqual([]);
+    expect(
+      await ctx.db
+        .select()
+        .from(schema.loyaltyTransactions)
+        .where(eq(schema.loyaltyTransactions.organizationId, bare.id)),
+    ).toEqual([]);
     expect(await ctx.db.select().from(schema.operations).where(eq(schema.operations.tenantId, bare.id))).toEqual([]);
   });
 });
@@ -202,11 +263,19 @@ describe('POS redemption: reserve -> customer signs -> finalize', () => {
   });
 
   const reserve = (pointsAmount: number, idempotencyKey = 'pos-1') =>
-    ctx.http().post('/v1/credits/redeem/reserve').set(auth).send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
+    ctx
+      .http()
+      .post('/v1/credits/redeem/reserve')
+      .set(auth)
+      .send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
 
   it('holds, sponsors, and settles on the chain’s verdict; finalize needs no merchant key', async () => {
     const reserved = await reserve(30).expect(201);
-    expect(reserved.body).toMatchObject({ status: 'PENDING', digest: 'SPONSORED-DIGEST', transactionBytes: 'sponsored-bytes' });
+    expect(reserved.body).toMatchObject({
+      status: 'PENDING',
+      digest: 'SPONSORED-DIGEST',
+      transactionBytes: 'sponsored-bytes',
+    });
     expect(ctx.adapters.enoki.createSponsoredTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ sender: '0xbeneficiary', allowedMoveCallTargets: ['0xpkg::credit_account::redeem'] }),
     );
@@ -218,21 +287,42 @@ describe('POS redemption: reserve -> customer signs -> finalize', () => {
     expect(ctx.adapters.enoki.createSponsoredTransaction).not.toHaveBeenCalled();
     await reserve(31).expect(409);
 
-    const finalized = await ctx.http().post('/v1/credits/redeem/finalize').send({ digest: 'SPONSORED-DIGEST', signature: 'customer-sig' }).expect(201);
-    expect(finalized.body).toMatchObject({ status: 'CONFIRMED', pointsRedeemed: 30, newBalance: 70, blockchainDigest: 'SPONSORED-DIGEST' });
+    const finalized = await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: 'SPONSORED-DIGEST', signature: 'customer-sig' })
+      .expect(201);
+    expect(finalized.body).toMatchObject({
+      status: 'CONFIRMED',
+      pointsRedeemed: 30,
+      newBalance: 70,
+      blockchainDigest: 'SPONSORED-DIGEST',
+    });
     expect(await balance()).toMatchObject({ confirmedBalance: 70, pendingRedemption: 0, lifetimeRedeemed: 30 });
 
     // The reservation is consumed.
-    await ctx.http().post('/v1/credits/redeem/finalize').send({ digest: 'SPONSORED-DIGEST', signature: 'customer-sig' }).expect(404);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: 'SPONSORED-DIGEST', signature: 'customer-sig' })
+      .expect(404);
     expect((await reserve(30).expect(201)).body).toMatchObject({ status: 'CONFIRMED', digest: null });
   });
 
   it('a failed on-chain redeem releases the hold', async () => {
     ctx.adapters.enoki.createSponsoredTransaction.mockResolvedValueOnce({ bytes: 'b', digest: 'FAIL-DIGEST' });
-    ctx.adapters.suiBuilder.waitForTransaction.mockResolvedValueOnce({ digest: 'FAIL-DIGEST', status: 'failure', errorMessage: 'ENotBeneficiary' } as never);
+    ctx.adapters.suiBuilder.waitForTransaction.mockResolvedValueOnce({
+      digest: 'FAIL-DIGEST',
+      status: 'failure',
+      errorMessage: 'ENotBeneficiary',
+    } as never);
     await reserve(30, 'pos-fail').expect(201);
 
-    const res = await ctx.http().post('/v1/credits/redeem/finalize').send({ digest: 'FAIL-DIGEST', signature: 'sig' }).expect(400);
+    const res = await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: 'FAIL-DIGEST', signature: 'sig' })
+      .expect(400);
 
     expect(res.body.message).toBe('ENotBeneficiary');
     expect(await balance()).toMatchObject({ confirmedBalance: 100, pendingRedemption: 0 });

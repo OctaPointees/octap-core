@@ -11,12 +11,7 @@ export class OctaApiError extends OctaSdkError {
   public readonly statusText: string;
   public readonly responseBody: unknown;
 
-  constructor(
-    statusCode: number,
-    statusText: string,
-    responseBody: unknown,
-    message?: string,
-  ) {
+  constructor(statusCode: number, statusText: string, responseBody: unknown, message?: string) {
     let msg = message;
     if (!msg) {
       if (typeof responseBody === 'object' && responseBody !== null && 'message' in responseBody) {

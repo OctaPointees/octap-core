@@ -81,7 +81,7 @@ export class OctaPointClient {
     }
 
     const headers: Record<string, string> = {
-      'accept': 'application/json',
+      accept: 'application/json',
     };
 
     if (body !== undefined) {
@@ -135,20 +135,14 @@ export class OctaPointClient {
   /**
    * Earn loyalty points for an organization member.
    */
-  async earnPoints(
-    request: EarnPointsRequest,
-    options?: RequestOptions,
-  ): Promise<EarnPointsResponse> {
+  async earnPoints(request: EarnPointsRequest, options?: RequestOptions): Promise<EarnPointsResponse> {
     return this.request<EarnPointsResponse>('/v1/credits/earn', 'POST', request, options);
   }
 
   /**
    * Redeem loyalty points for an organization member.
    */
-  async redeemPoints(
-    request: RedeemPointsRequest,
-    options?: RequestOptions,
-  ): Promise<RedeemPointsResponse> {
+  async redeemPoints(request: RedeemPointsRequest, options?: RequestOptions): Promise<RedeemPointsResponse> {
     return this.request<RedeemPointsResponse>('/v1/credits/redeem', 'POST', request, options);
   }
 
@@ -198,10 +192,7 @@ export class OctaPointClient {
   /**
    * Create a new voucher definition.
    */
-  async createVoucher(
-    request: CreateVoucherRequest,
-    options?: RequestOptions,
-  ): Promise<VoucherDto> {
+  async createVoucher(request: CreateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>('/v1/rewards/vouchers', 'POST', request, options);
   }
 
@@ -227,37 +218,21 @@ export class OctaPointClient {
     request: ClaimVoucherRequest,
     options?: RequestOptions,
   ): Promise<ClaimVoucherResponse> {
-    return this.request<ClaimVoucherResponse>(
-      `/v1/rewards/vouchers/${voucherId}/claim`,
-      'POST',
-      request,
-      options,
-    );
+    return this.request<ClaimVoucherResponse>(`/v1/rewards/vouchers/${voucherId}/claim`, 'POST', request, options);
   }
 
   /**
    * Redeem a claimed voucher by its serial code.
    */
-  async redeemVoucher(
-    request: RedeemVoucherRequest,
-    options?: RequestOptions,
-  ): Promise<RedeemVoucherResponse> {
+  async redeemVoucher(request: RedeemVoucherRequest, options?: RequestOptions): Promise<RedeemVoucherResponse> {
     return this.request<RedeemVoucherResponse>('/v1/rewards/vouchers/redeem', 'POST', request, options);
   }
 
   /**
    * List all vouchers claimed/owned by a member.
    */
-  async listMemberVouchers(
-    memberId: string,
-    options?: RequestOptions,
-  ): Promise<VoucherOwnershipDto[]> {
-    return this.request<VoucherOwnershipDto[]>(
-      `/v1/rewards/members/${memberId}/vouchers`,
-      'GET',
-      undefined,
-      options,
-    );
+  async listMemberVouchers(memberId: string, options?: RequestOptions): Promise<VoucherOwnershipDto[]> {
+    return this.request<VoucherOwnershipDto[]>(`/v1/rewards/members/${memberId}/vouchers`, 'GET', undefined, options);
   }
 
   /**

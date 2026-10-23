@@ -4,7 +4,15 @@ import { hashApiKey } from '../../../../src/infra/auth/api-key-hash.util.js';
 import type { ApiCredentialsRepository } from '../../../../src/infra/db/repositories/api-credentials.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
-type Row = { id: string; organizationId: string; name: string; keyPrefix: string; keyHash: string; scopes: string[]; status: string };
+type Row = {
+  id: string;
+  organizationId: string;
+  name: string;
+  keyPrefix: string;
+  keyHash: string;
+  scopes: string[];
+  status: string;
+};
 
 function inMemoryRepo() {
   const store = new Map<string, Row>();

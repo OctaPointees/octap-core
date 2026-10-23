@@ -73,7 +73,8 @@ async function trimBucketsToBalance(tx: DrizzleDb, ownership: { id: string; conf
     .orderBy(asc(creditBuckets.expiresAtMs))
     .for('update');
 
-  let excess = buckets.reduce((sum, b) => sum + Number(b.remaining), 0) - Math.max(Number(ownership.confirmedBalance), 0);
+  let excess =
+    buckets.reduce((sum, b) => sum + Number(b.remaining), 0) - Math.max(Number(ownership.confirmedBalance), 0);
   for (const bucket of buckets) {
     if (excess <= 0) {
       break;
@@ -158,7 +159,12 @@ export async function expireDueBuckets(
   await tx
     .update(creditBuckets)
     .set({ remaining: 0 })
-    .where(inArray(creditBuckets.id, due.map((b) => b.id)));
+    .where(
+      inArray(
+        creditBuckets.id,
+        due.map((b) => b.id),
+      ),
+    );
 
   const total = due.reduce((sum, b) => sum + Number(b.remaining), 0);
   const forfeited = Math.min(total, Math.max(Number(ownership.confirmedBalance), 0));
@@ -526,7 +532,9 @@ export class CreditsRepository {
       });
 
       if (!ownership || Number(ownership.confirmedBalance) < params.pointsAmount) {
-        throw new Error(`Insufficient points: required ${params.pointsAmount}, available ${ownership?.confirmedBalance ?? 0}`);
+        throw new Error(
+          `Insufficient points: required ${params.pointsAmount}, available ${ownership?.confirmedBalance ?? 0}`,
+        );
       }
 
       const [transaction] = await tx

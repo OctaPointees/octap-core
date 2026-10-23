@@ -11,7 +11,11 @@ import {
   signCanonicalRequest,
   verifyCanonicalSignature,
 } from '../../../../src/infra/auth/request-signing.util.js';
-import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS, checkRateLimit } from '../../../../src/infra/auth/rate-limit.util.js';
+import {
+  RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_WINDOW_SECONDS,
+  checkRateLimit,
+} from '../../../../src/infra/auth/rate-limit.util.js';
 import { claimNonce } from '../../../../src/infra/auth/nonce-store.util.js';
 import { Tenant } from '../../../../src/infra/auth/tenant.decorator.js';
 import { stub } from '../../../helpers/stub.js';
@@ -30,9 +34,9 @@ describe('api-key-hash', () => {
 
 describe('request-signing', () => {
   it('the canonical form is method/path/timestamp/nonce/body-hash, newline separated, method upper-cased', () => {
-    expect(buildCanonicalRequest({ method: 'post', path: '/v1/x?a=1', timestamp: '100', nonce: 'n', rawBody: '{}' })).toBe(
-      `POST\n/v1/x?a=1\n100\nn\n${hashBody('{}')}`,
-    );
+    expect(
+      buildCanonicalRequest({ method: 'post', path: '/v1/x?a=1', timestamp: '100', nonce: 'n', rawBody: '{}' }),
+    ).toBe(`POST\n/v1/x?a=1\n100\nn\n${hashBody('{}')}`);
   });
 
   it('verifies its own signature and rejects a different key, length, or non-hex signature', () => {

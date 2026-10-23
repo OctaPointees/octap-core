@@ -26,19 +26,9 @@ export const loyaltyTxTypeEnum = pgEnum('loyalty_tx_type', [
   'ADJUSTMENT',
 ]);
 
-export const loyaltyTxStatusEnum = pgEnum('loyalty_tx_status', [
-  'PENDING',
-  'CONFIRMED',
-  'FAILED',
-  'REVERSED',
-]);
+export const loyaltyTxStatusEnum = pgEnum('loyalty_tx_status', ['PENDING', 'CONFIRMED', 'FAILED', 'REVERSED']);
 
-export const blockchainTxStatusEnum = pgEnum('blockchain_tx_status', [
-  'PENDING',
-  'SUBMITTED',
-  'CONFIRMED',
-  'FAILED',
-]);
+export const blockchainTxStatusEnum = pgEnum('blockchain_tx_status', ['PENDING', 'SUBMITTED', 'CONFIRMED', 'FAILED']);
 
 /**
  * BLOCKCHAIN TRANSACTION: Audit trail of transactions dispatched to the Sui blockchain.
@@ -58,24 +48,21 @@ export const blockchainTransactions = pgTable('blockchain_transactions', {
 /**
  * CREDIT OWNERSHIP: Represents point balance, tier counters, and on-chain credit account reference.
  */
-export const creditOwnerships = pgTable(
-  'credit_ownerships',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    organizationEndUserId: uuid('organization_end_user_id')
-      .notNull()
-      .unique()
-      .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
-    suiCreditAccountId: text('sui_credit_account_id'),
-    confirmedBalance: bigint('confirmed_balance', { mode: 'number' }).default(0).notNull(),
-    pendingEarn: bigint('pending_earn', { mode: 'number' }).default(0).notNull(),
-    pendingRedemption: bigint('pending_redemption', { mode: 'number' }).default(0).notNull(),
-    lifetimeEarned: bigint('lifetime_earned', { mode: 'number' }).default(0).notNull(),
-    lifetimeRedeemed: bigint('lifetime_redeemed', { mode: 'number' }).default(0).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-);
+export const creditOwnerships = pgTable('credit_ownerships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  organizationEndUserId: uuid('organization_end_user_id')
+    .notNull()
+    .unique()
+    .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
+  suiCreditAccountId: text('sui_credit_account_id'),
+  confirmedBalance: bigint('confirmed_balance', { mode: 'number' }).default(0).notNull(),
+  pendingEarn: bigint('pending_earn', { mode: 'number' }).default(0).notNull(),
+  pendingRedemption: bigint('pending_redemption', { mode: 'number' }).default(0).notNull(),
+  lifetimeEarned: bigint('lifetime_earned', { mode: 'number' }).default(0).notNull(),
+  lifetimeRedeemed: bigint('lifetime_redeemed', { mode: 'number' }).default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 /**
  * LOYALTY TRANSACTION: Point operations (earn/redeem/reversal) created by organization members
@@ -91,14 +78,12 @@ export const loyaltyTransactions = pgTable(
     organizationEndUserId: uuid('organization_end_user_id')
       .notNull()
       .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
-    createdByMembershipId: uuid('created_by_membership_id').references(
-      () => organizationMemberships.id,
-      { onDelete: 'set null' },
-    ),
-    blockchainTransactionId: uuid('blockchain_transaction_id').references(
-      () => blockchainTransactions.id,
-      { onDelete: 'set null' },
-    ),
+    createdByMembershipId: uuid('created_by_membership_id').references(() => organizationMemberships.id, {
+      onDelete: 'set null',
+    }),
+    blockchainTransactionId: uuid('blockchain_transaction_id').references(() => blockchainTransactions.id, {
+      onDelete: 'set null',
+    }),
     transactionType: loyaltyTxTypeEnum('transaction_type').notNull(),
     pointsAmount: bigint('points_amount', { mode: 'number' }).notNull(),
     idempotencyKey: text('idempotency_key').notNull(),

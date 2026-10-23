@@ -12,8 +12,16 @@ import { buildCanonicalRequest, signCanonicalRequest } from '../../../src/infra/
 /** Stand-ins for the two external services the HTTP process talks to; everything else is real. */
 export function fakeChainAdapters() {
   const enoki = {
-    resolveZkLoginAddress: vi.fn<(jwt: string) => Promise<{ address: string; publicKey: string; salt: string }>>(async () => ({ address: '0xzklogin', publicKey: 'pk', salt: 'salt' })),
-    createZkLoginNonce: vi.fn(async () => ({ nonce: 'nonce', randomness: 'rand', epoch: 1, maxEpoch: 3, estimatedExpiration: 0 })),
+    resolveZkLoginAddress: vi.fn<(jwt: string) => Promise<{ address: string; publicKey: string; salt: string }>>(
+      async () => ({ address: '0xzklogin', publicKey: 'pk', salt: 'salt' }),
+    ),
+    createZkLoginNonce: vi.fn(async () => ({
+      nonce: 'nonce',
+      randomness: 'rand',
+      epoch: 1,
+      maxEpoch: 3,
+      estimatedExpiration: 0,
+    })),
     createZkLoginProof: vi.fn(async () => ({ proofPoints: { a: [], b: [], c: [] } })),
     createSponsoredTransaction: vi.fn(async () => ({ bytes: 'sponsored-bytes', digest: 'SPONSORED-DIGEST' })),
     executeSponsoredTransaction: vi.fn(async ({ digest }: { digest: string }) => ({ digest })),
@@ -22,7 +30,12 @@ export function fakeChainAdapters() {
     redeemMoveCallTarget: '0xpkg::credit_account::redeem',
     buildRedeemTransactionKind: vi.fn(async () => new Uint8Array([1, 2, 3])),
     waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
-    listCreditAccountEvents: vi.fn(async () => ({ events: [], hasNextPage: false, startCursor: null, endCursor: null })),
+    listCreditAccountEvents: vi.fn(async () => ({
+      events: [],
+      hasNextPage: false,
+      startCursor: null,
+      endCursor: null,
+    })),
   };
   return { enoki, suiBuilder };
 }

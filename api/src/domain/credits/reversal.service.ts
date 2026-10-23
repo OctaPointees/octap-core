@@ -18,9 +18,7 @@ export class ReversalService {
       if (existingByIdempotency.transactionType !== 'REVERSAL' || !existingByIdempotency.reversesTransactionId) {
         throw new ConflictException('This idempotency key was already used for a different operation');
       }
-      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(
-        existingByIdempotency.organizationEndUserId,
-      );
+      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(existingByIdempotency.organizationEndUserId);
       const newBalance = Number(ownership.confirmedBalance);
       return {
         reversalTransactionId: existingByIdempotency.id,
@@ -37,10 +35,7 @@ export class ReversalService {
       throw new BadRequestException('A reason is required to reverse a transaction');
     }
 
-    const original = await this.creditsRepo.findTransactionByIdForOrganization(
-      organizationId,
-      request.transactionId,
-    );
+    const original = await this.creditsRepo.findTransactionByIdForOrganization(organizationId, request.transactionId);
     if (!original) {
       throw new NotFoundException(`Transaction ${request.transactionId} was not found for this organization`);
     }

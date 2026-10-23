@@ -32,7 +32,11 @@ describe('OctaPointClient', () => {
       fetchFn,
     });
 
-    const earn = await client.earnPoints({ organizationEndUserId: 'user-456', pointsAmount: 100, idempotencyKey: 'idem-key-1' });
+    const earn = await client.earnPoints({
+      organizationEndUserId: 'user-456',
+      pointsAmount: 100,
+      idempotencyKey: 'idem-key-1',
+    });
 
     expect(last()).toEqual({
       url: 'https://api.octap.network/v1/credits/earn',
@@ -47,7 +51,10 @@ describe('OctaPointClient', () => {
     });
     expect(earn).toMatchObject({ transactionId: 'tx-sdk-1', newBalance: 200 });
 
-    await client.redeemPoints({ organizationEndUserId: 'user-456', pointsAmount: 50, idempotencyKey: 'idem-key-2' }, { organizationId: 'org-override' });
+    await client.redeemPoints(
+      { organizationEndUserId: 'user-456', pointsAmount: 50, idempotencyKey: 'idem-key-2' },
+      { organizationId: 'org-override' },
+    );
     expect(last().url).toBe('https://api.octap.network/v1/credits/redeem');
     expect(last().headers['x-organization-id']).toBe('org-override');
   });
@@ -70,7 +77,14 @@ describe('OctaPointClient', () => {
   });
 
   it('the (programId, memberId) getBalance overload returns the snake_case BalanceSnapshot', async () => {
-    const snapshot = { confirmedBalance: 5, pendingEarn: 1, pendingRedemption: 2, asOfCheckpoint: null, observedAt: 'now', stale: true };
+    const snapshot = {
+      confirmedBalance: 5,
+      pendingEarn: 1,
+      pendingRedemption: 2,
+      asOfCheckpoint: null,
+      observedAt: 'now',
+      stale: true,
+    };
     const { fetchFn, last } = recordingFetch(() => snapshot);
     const client = new OctaPointClient({ fetchFn });
 
@@ -84,7 +98,9 @@ describe('OctaPointClient', () => {
     });
     expect(last().url).toBe('http://localhost:3000/v1/credits/members/user-1/balance');
 
-    const withCheckpoint = new OctaPointClient({ fetchFn: recordingFetch(() => ({ ...snapshot, asOfCheckpoint: '42' })).fetchFn });
+    const withCheckpoint = new OctaPointClient({
+      fetchFn: recordingFetch(() => ({ ...snapshot, asOfCheckpoint: '42' })).fetchFn,
+    });
     expect((await withCheckpoint.getBalance('program-1', 'user-1')).as_of_checkpoint).toBe('42');
   });
 
@@ -130,12 +146,25 @@ describe('OctaPointClient', () => {
 
     expect(err).toBeInstanceOf(OctaApiError);
     expect(err).toBeInstanceOf(OctaSdkError);
-    expect(err).toMatchObject({ statusCode: 400, statusText: 'Bad Request', message: 'Insufficient points balance', name: 'OctaApiError' });
+    expect(err).toMatchObject({
+      statusCode: 400,
+      statusText: 'Bad Request',
+      message: 'Insufficient points balance',
+      name: 'OctaApiError',
+    });
   });
 
   it('reads a text body for non-JSON responses and tolerates malformed JSON', async () => {
-    const textFetch = vi.fn(async () => ({ ok: false, status: 502, statusText: 'Bad Gateway', headers: textHeaders, text: async () => 'upstream down' }));
-    const err = (await new OctaPointClient({ fetchFn: textFetch as unknown as typeof fetch }).listVouchers().catch((e: unknown) => e)) as OctaApiError;
+    const textFetch = vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: textHeaders,
+      text: async () => 'upstream down',
+    }));
+    const err = (await new OctaPointClient({ fetchFn: textFetch as unknown as typeof fetch })
+      .listVouchers()
+      .catch((e: unknown) => e)) as OctaApiError;
     expect(err.responseBody).toBe('upstream down');
     expect(err.message).toBe('API request failed with status 502 (Bad Gateway)');
 
@@ -149,7 +178,12 @@ describe('OctaPointClient', () => {
     }));
     expect(await new OctaPointClient({ fetchFn: brokenJson as unknown as typeof fetch }).listVouchers()).toBeNull();
 
-    const noContentType = vi.fn(async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => '' }));
+    const noContentType = vi.fn(async () => ({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      text: async () => '',
+    }));
     expect(await new OctaPointClient({ fetchFn: noContentType as unknown as typeof fetch }).listVouchers()).toBe('');
   });
 
@@ -184,13 +218,17 @@ describe('OctaPointClient', () => {
   });
 
   it('waitForOperation echoes the operation reference', async () => {
-    expect(await new OctaPointClient({ fetchFn: recordingFetch().fetchFn }).waitForOperation('op-1')).toEqual({ operation_id: 'op-1' });
+    expect(await new OctaPointClient({ fetchFn: recordingFetch().fetchFn }).waitForOperation('op-1')).toEqual({
+      operation_id: 'op-1',
+    });
   });
 });
 
 describe('OctaApiError', () => {
   it('joins an array of validation messages, and honours an explicit message', () => {
-    expect(new OctaApiError(400, 'Bad Request', { message: ['a is required', 'b is required'] }).message).toBe('a is required, b is required');
+    expect(new OctaApiError(400, 'Bad Request', { message: ['a is required', 'b is required'] }).message).toBe(
+      'a is required, b is required',
+    );
     expect(new OctaApiError(500, 'Oops', null, 'custom').message).toBe('custom');
   });
 });

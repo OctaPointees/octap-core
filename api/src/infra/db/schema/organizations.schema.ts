@@ -9,11 +9,7 @@ export const organizationStatusEnum = pgEnum('organization_status', [
   'ARCHIVED',
 ]);
 
-export const apiCredentialStatusEnum = pgEnum('api_credential_status', [
-  'ACTIVE',
-  'REVOKED',
-  'EXPIRED',
-]);
+export const apiCredentialStatusEnum = pgEnum('api_credential_status', ['ACTIVE', 'REVOKED', 'EXPIRED']);
 
 /**
  * ORGANIZATION: Merchant tenants in OctaP managing loyalty programs.

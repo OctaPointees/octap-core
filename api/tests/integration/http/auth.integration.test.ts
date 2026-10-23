@@ -28,7 +28,11 @@ describe('ApiKeyGuard over HTTP (real Postgres + Redis)', () => {
     await ctx.http().get('/v1/rewards/vouchers').expect(401);
     await ctx.http().get('/v1/rewards/vouchers').set('authorization', 'Bearer octap_live_unknown').expect(401);
     await ctx.http().get('/v1/rewards/vouchers').set('authorization', `Bearer ${revoked.rawKey}`).expect(401);
-    const res = await ctx.http().get('/v1/rewards/vouchers').set('authorization', `Bearer ${expired.rawKey}`).expect(401);
+    const res = await ctx
+      .http()
+      .get('/v1/rewards/vouchers')
+      .set('authorization', `Bearer ${expired.rawKey}`)
+      .expect(401);
     expect(res.body.message).toMatch(/expired/);
   });
 
@@ -41,7 +45,11 @@ describe('ApiKeyGuard over HTTP (real Postgres + Redis)', () => {
     const other = await seedOrganization(ctx.db);
     const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['read'] });
 
-    await ctx.http().get('/v1/rewards/vouchers').set({ authorization: `Bearer ${rawKey}`, 'x-organization-id': other.id }).expect(403);
+    await ctx
+      .http()
+      .get('/v1/rewards/vouchers')
+      .set({ authorization: `Bearer ${rawKey}`, 'x-organization-id': other.id })
+      .expect(403);
     const res = await ctx
       .http()
       .post('/v1/rewards/vouchers')
@@ -73,7 +81,12 @@ describe('ApiKeyGuard over HTTP (real Postgres + Redis)', () => {
     // Sent unsigned: refused.
     await ctx.http().post('/v1/api-credentials').set('authorization', `Bearer ${rawKey}`).send(body).expect(401);
     // Sent with a body that differs from what was signed: refused.
-    await ctx.http().post('/v1/api-credentials').set(headers).send({ ...body, scopes: ['admin'] }).expect(401);
+    await ctx
+      .http()
+      .post('/v1/api-credentials')
+      .set(headers)
+      .send({ ...body, scopes: ['admin'] })
+      .expect(401);
 
     const fresh = signedHeaders(rawKey, 'POST', '/v1/api-credentials', body);
     await ctx.http().post('/v1/api-credentials').set(fresh).send(body).expect(201);

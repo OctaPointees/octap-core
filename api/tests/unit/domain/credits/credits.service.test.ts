@@ -5,7 +5,13 @@ import type { IndexerRepository } from '../../../../src/infra/db/repositories/in
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
-const settled = { confirmedBalance: 100, pendingEarn: 0, pendingRedemption: 0, lifetimeEarned: 100, lifetimeRedeemed: 0 };
+const settled = {
+  confirmedBalance: 100,
+  pendingEarn: 0,
+  pendingRedemption: 0,
+  lifetimeEarned: 100,
+  lifetimeRedeemed: 0,
+};
 const noCursor = stub<IndexerRepository>({ getCursor: async () => undefined });
 
 describe('CreditsService.getBalance', () => {
@@ -29,7 +35,8 @@ describe('CreditsService.getBalance', () => {
       getOrCreateCreditOwnership: async () => ownership,
     });
     const indexerRepo = stub<IndexerRepository>({
-      getCursor: async (stream: string) => (stream === 'octap::credit_account' ? { lastCheckpoint: '394761967' } : undefined),
+      getCursor: async (stream: string) =>
+        stream === 'octap::credit_account' ? { lastCheckpoint: '394761967' } : undefined,
     });
     const service = new CreditsService(repo, indexerRepo);
 

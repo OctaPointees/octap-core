@@ -81,7 +81,11 @@ export class RewardsRepository {
         throw new Error(`Voucher is not active (current status: ${voucher.status})`);
       }
 
-      if (voucher.totalSupply !== null && voucher.totalSupply !== undefined && voucher.claimedCount >= voucher.totalSupply) {
+      if (
+        voucher.totalSupply !== null &&
+        voucher.totalSupply !== undefined &&
+        voucher.claimedCount >= voucher.totalSupply
+      ) {
         throw new Error('Voucher is completely depleted');
       }
 
@@ -110,7 +114,8 @@ export class RewardsRepository {
         .returning();
 
       const newClaimedCount = voucher.claimedCount + 1;
-      const isDepleted = voucher.totalSupply !== null && voucher.totalSupply !== undefined && newClaimedCount >= voucher.totalSupply;
+      const isDepleted =
+        voucher.totalSupply !== null && voucher.totalSupply !== undefined && newClaimedCount >= voucher.totalSupply;
 
       await tx
         .update(vouchers)

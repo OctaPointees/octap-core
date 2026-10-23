@@ -105,7 +105,9 @@ export class ChainOutcomeReconciler {
       return this.fail(operation, `${operation.suiTxDigest} never landed and expired after epoch ${expiration}`);
     }
     if (expiration === null) {
-      this.logger.warn(`${operation.suiTxDigest} (operation ${operation.id}) is not on-chain and has no expiration; needs a human`);
+      this.logger.warn(
+        `${operation.suiTxDigest} (operation ${operation.id}) is not on-chain and has no expiration; needs a human`,
+      );
     }
     await this.operationsRepo.touch(operation.id);
     return 'waiting';
@@ -115,7 +117,9 @@ export class ChainOutcomeReconciler {
     const payload = operation.payload as unknown as EarnPayload;
     const amount = eventField<string>(outcome, 'CreditEarned', 'amount');
     if (amount === undefined) {
-      this.logger.error(`${outcome.digest} succeeded but emitted no CreditEarned; operation ${operation.id} left for a human`);
+      this.logger.error(
+        `${outcome.digest} succeeded but emitted no CreditEarned; operation ${operation.id} left for a human`,
+      );
       await this.operationsRepo.touch(operation.id);
       return 'waiting';
     }
@@ -167,7 +171,10 @@ export class ChainOutcomeReconciler {
       });
     } else {
       const payload = operation.payload as unknown as PosRedeemPayload;
-      const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(operation.tenantId, operation.idempotencyKey);
+      const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(
+        operation.tenantId,
+        operation.idempotencyKey,
+      );
       if (loyaltyTx) {
         await this.creditsRepo.failPosRedemptionOnChain({
           loyaltyTransactionId: loyaltyTx.id,

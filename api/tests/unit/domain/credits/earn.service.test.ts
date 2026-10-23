@@ -58,11 +58,20 @@ describe('EarnService', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       findTransactionByIdempotency: async () =>
-        buildLoyaltyTransaction({ id: 'tx-1', organizationEndUserId: 'user-1', pointsAmount: 50, idempotencyKey: 'idem-1' }),
+        buildLoyaltyTransaction({
+          id: 'tx-1',
+          organizationEndUserId: 'user-1',
+          pointsAmount: 50,
+          idempotencyKey: 'idem-1',
+        }),
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
       recordEarnTransaction: () => expect.fail('must not record twice'),
     });
-    const service = new EarnService(repo, stub<WebhookDeliveryService>({ emit: () => expect.fail('must not emit twice') }), PROGRAMS_REPO);
+    const service = new EarnService(
+      repo,
+      stub<WebhookDeliveryService>({ emit: () => expect.fail('must not emit twice') }),
+      PROGRAMS_REPO,
+    );
 
     const result = await service.executeEarn('org-1', request);
 

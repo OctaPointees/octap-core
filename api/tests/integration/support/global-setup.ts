@@ -8,7 +8,9 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 const POSTGRES_IMAGE = 'postgres:17-alpine';
 const REDIS_IMAGE = 'redis:7-alpine';
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../../db/postgres/migrations', import.meta.url));
-const SUPABASE_COMPAT_SQL = fileURLToPath(new URL('../../../../docker/postgres-init/01-supabase-compat.sql', import.meta.url));
+const SUPABASE_COMPAT_SQL = fileURLToPath(
+  new URL('../../../../docker/postgres-init/01-supabase-compat.sql', import.meta.url),
+);
 
 const containers: StartedTestContainer[] = [];
 
@@ -23,7 +25,8 @@ const containers: StartedTestContainer[] = [];
  */
 export async function setup(): Promise<void> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? (await startPostgres());
-  const redisUrl = process.env.TEST_REDIS_URL ?? (process.env.TEST_DATABASE_URL ? 'redis://127.0.0.1:6379' : await startRedis());
+  const redisUrl =
+    process.env.TEST_REDIS_URL ?? (process.env.TEST_DATABASE_URL ? 'redis://127.0.0.1:6379' : await startRedis());
 
   await prepareDatabase(databaseUrl);
 
@@ -64,7 +67,9 @@ async function prepareDatabase(databaseUrl: string): Promise<void> {
   const url = new URL(databaseUrl);
   const database = url.pathname.slice(1);
   if (!/test/i.test(database)) {
-    throw new Error(`Refusing to run integration tests against "${database}": the database name must contain "test" (every test truncates it).`);
+    throw new Error(
+      `Refusing to run integration tests against "${database}": the database name must contain "test" (every test truncates it).`,
+    );
   }
 
   const admin = postgres({ ...connectionOptions(url), database: 'postgres', max: 1, onnotice: () => {} });

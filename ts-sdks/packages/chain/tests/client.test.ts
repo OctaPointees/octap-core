@@ -28,15 +28,19 @@ const client = () => new OctapChainClient({ package: { packageId: PKG } });
 
 describe('OctapChainClient transaction builders', () => {
   it('defaults to the testnet package', () => {
-    const tx = new OctapChainClient().buildRedeemTransaction({ accountId: ID(1), cost: 1, reference: new Uint8Array() });
+    const tx = new OctapChainClient().buildRedeemTransaction({
+      accountId: ID(1),
+      cost: 1,
+      reference: new Uint8Array(),
+    });
     expect(moveCalls(tx)[0].startsWith(TESTNET_OCTAP_PACKAGE_CONFIG.packageId)).toBe(true);
   });
 
   it('builds one Move call per single-purpose transaction', () => {
     const c = client();
-    expect(moveCalls(c.buildOpenAccountTransaction({ issuerCapId: ID(1), programId: ID(2), beneficiary: ID(3) }))).toEqual([
-      `${PKG}::credit_account::open_account`,
-    ]);
+    expect(
+      moveCalls(c.buildOpenAccountTransaction({ issuerCapId: ID(1), programId: ID(2), beneficiary: ID(3) })),
+    ).toEqual([`${PKG}::credit_account::open_account`]);
     expect(
       moveCalls(
         c.buildEarnTransaction({
@@ -51,17 +55,26 @@ describe('OctapChainClient transaction builders', () => {
         }),
       ),
     ).toEqual([`${PKG}::credit_account::earn`]);
-    expect(moveCalls(c.buildRedeemTransaction({ accountId: ID(1), cost: 5n, reference: new Uint8Array([1]) }))).toEqual([
-      `${PKG}::credit_account::redeem`,
-    ]);
+    expect(moveCalls(c.buildRedeemTransaction({ accountId: ID(1), cost: 5n, reference: new Uint8Array([1]) }))).toEqual(
+      [`${PKG}::credit_account::redeem`],
+    );
     expect(moveCalls(c.buildCreateProgramTransaction())).toEqual([`${PKG}::program_control::create_program_entry`]);
     expect(
-      moveCalls(c.buildPublishPolicyTransaction({ adminCapId: ID(1), programId: ID(2), version: 1, earnBps: 100, expiryMs: 1000 })),
+      moveCalls(
+        c.buildPublishPolicyTransaction({
+          adminCapId: ID(1),
+          programId: ID(2),
+          version: 1,
+          earnBps: 100,
+          expiryMs: 1000,
+        }),
+      ),
     ).toEqual([`${PKG}::policy_version::publish`]);
-    expect(moveCalls(c.buildCreateShardsTransaction({ adminCapId: ID(1), programId: ID(2), shardCount: 2, totalBudget: 10 }))).toEqual([
-      `${PKG}::operation_shard::create_shards`,
-      `${PKG}::budget_shard::create_shards`,
-    ]);
+    expect(
+      moveCalls(
+        c.buildCreateShardsTransaction({ adminCapId: ID(1), programId: ID(2), shardCount: 2, totalBudget: 10 }),
+      ),
+    ).toEqual([`${PKG}::operation_shard::create_shards`, `${PKG}::budget_shard::create_shards`]);
   });
 
   it('activate+issue_cap optionally creates shards in the same transaction', () => {
@@ -70,7 +83,11 @@ describe('OctapChainClient transaction builders', () => {
       `${PKG}::program_control::activate_policy`,
       `${PKG}::program_control::issue_cap`,
     ]);
-    expect(moveCalls(client().buildActivatePolicyAndIssueCapTransaction({ ...base, shards: { shardCount: 1, totalBudget: 5 } }))).toEqual([
+    expect(
+      moveCalls(
+        client().buildActivatePolicyAndIssueCapTransaction({ ...base, shards: { shardCount: 1, totalBudget: 5 } }),
+      ),
+    ).toEqual([
       `${PKG}::program_control::activate_policy`,
       `${PKG}::program_control::issue_cap`,
       `${PKG}::operation_shard::create_shards`,
@@ -80,7 +97,11 @@ describe('OctapChainClient transaction builders', () => {
 });
 
 describe('OctapChainClient RPC wrappers', () => {
-  const okTx = { digest: 'D1', status: { success: true }, events: [{ eventType: `${PKG}::credit_account::CreditEarned`, json: { amount: '1' } }] };
+  const okTx = {
+    digest: 'D1',
+    status: { success: true },
+    events: [{ eventType: `${PKG}::credit_account::CreditEarned`, json: { amount: '1' } }],
+  };
   const failedTx = { digest: 'D2', status: { success: false, error: { message: 'MoveAbort 7' } }, events: undefined };
 
   it('signAndExecute signs first, then sends, waits for the checkpoint, and normalizes success and failure', async () => {
@@ -109,7 +130,12 @@ describe('OctapChainClient RPC wrappers', () => {
     });
     expect(waitForTransaction).toHaveBeenCalledWith({ digest: 'D1', include: { effects: true, events: true } });
 
-    expect(await c.signAndExecute(tx, signer)).toEqual({ digest: 'D2', status: 'failure', errorMessage: 'MoveAbort 7', events: [] });
+    expect(await c.signAndExecute(tx, signer)).toEqual({
+      digest: 'D2',
+      status: 'failure',
+      errorMessage: 'MoveAbort 7',
+      events: [],
+    });
   });
 
   it('waitForTransaction normalizes a transaction this process did not sign', async () => {
@@ -126,8 +152,22 @@ describe('OctapChainClient RPC wrappers', () => {
     const c = client();
     const listEvents = vi.spyOn(c.rpc.core, 'listEvents').mockResolvedValue({
       events: [
-        { eventType: `${PKG}::credit_account::CreditEarned`, sender: '0xs', json: { amount: '1' }, checkpoint: '9', transactionDigest: 'D', eventIndex: 2 },
-        { eventType: 'Unqualified', sender: '0xs', json: null, checkpoint: null, transactionDigest: 'D', eventIndex: 3 },
+        {
+          eventType: `${PKG}::credit_account::CreditEarned`,
+          sender: '0xs',
+          json: { amount: '1' },
+          checkpoint: '9',
+          transactionDigest: 'D',
+          eventIndex: 2,
+        },
+        {
+          eventType: 'Unqualified',
+          sender: '0xs',
+          json: null,
+          checkpoint: null,
+          transactionDigest: 'D',
+          eventIndex: 3,
+        },
       ],
       hasNextPage: true,
       startCursor: 'S',
@@ -136,10 +176,22 @@ describe('OctapChainClient RPC wrappers', () => {
 
     const page = await c.listCreditAccountEvents({ after: null, limit: 5, order: 'descending' });
 
-    expect(listEvents).toHaveBeenCalledWith({ filter: { emitModule: `${PKG}::credit_account` }, after: undefined, limit: 5, order: 'descending' });
+    expect(listEvents).toHaveBeenCalledWith({
+      filter: { emitModule: `${PKG}::credit_account` },
+      after: undefined,
+      limit: 5,
+      order: 'descending',
+    });
     expect(page).toEqual({
       events: [
-        { name: 'CreditEarned', sender: '0xs', json: { amount: '1' }, checkpoint: '9', transactionDigest: 'D', eventIndex: 2 },
+        {
+          name: 'CreditEarned',
+          sender: '0xs',
+          json: { amount: '1' },
+          checkpoint: '9',
+          transactionDigest: 'D',
+          eventIndex: 2,
+        },
         { name: 'Unqualified', sender: '0xs', json: null, checkpoint: null, transactionDigest: 'D', eventIndex: 3 },
       ],
       hasNextPage: true,
@@ -167,7 +219,9 @@ describe('chain helpers', () => {
   it('signerFromPrivateKey round-trips an ed25519 key and rejects other schemes', () => {
     const keypair = Ed25519Keypair.generate();
     expect(signerFromPrivateKey(keypair.getSecretKey()).toSuiAddress()).toBe(keypair.toSuiAddress());
-    expect(() => signerFromPrivateKey(Secp256k1Keypair.generate().getSecretKey())).toThrow(/Unsupported key scheme "Secp256k1"/);
+    expect(() => signerFromPrivateKey(Secp256k1Keypair.generate().getSecretKey())).toThrow(
+      /Unsupported key scheme "Secp256k1"/,
+    );
   });
 
   it('operationShardIndex is sha256(key)[0..8] big-endian mod shardCount', () => {
@@ -177,7 +231,9 @@ describe('chain helpers', () => {
 });
 
 /** Real, fully resolved transaction bytes (no network): fixed gas, one argument-less Move call. */
-async function offlineBytes(expiration?: Parameters<Transaction['setExpiration']>[0]): Promise<Uint8Array<ArrayBuffer>> {
+async function offlineBytes(
+  expiration?: Parameters<Transaction['setExpiration']>[0],
+): Promise<Uint8Array<ArrayBuffer>> {
   const tx = new Transaction();
   tx.setSender(ID(1));
   tx.setGasPrice(1000);
@@ -194,9 +250,18 @@ describe('digest-first submission (OCT-52)', () => {
   it('transactionExpirationEpoch reads Epoch and ValidDuring, and null when the bytes never expire', async () => {
     expect(transactionExpirationEpoch(await offlineBytes())).toBeNull();
     expect(transactionExpirationEpoch(await offlineBytes({ Epoch: 5 }))).toBe(5n);
-    const validDuring = { minEpoch: '4', maxEpoch: '5', minTimestamp: null, maxTimestamp: null, chain: '11111111111111111111111111111111', nonce: 1 };
+    const validDuring = {
+      minEpoch: '4',
+      maxEpoch: '5',
+      minTimestamp: null,
+      maxTimestamp: null,
+      chain: '11111111111111111111111111111111',
+      nonce: 1,
+    };
     expect(transactionExpirationEpoch(await offlineBytes({ ValidDuring: validDuring }))).toBe(5n);
-    expect(transactionExpirationEpoch(await offlineBytes({ ValidDuring: { ...validDuring, maxEpoch: null } }))).toBeNull();
+    expect(
+      transactionExpirationEpoch(await offlineBytes({ ValidDuring: { ...validDuring, maxEpoch: null } })),
+    ).toBeNull();
     expect(transactionExpirationEpoch(Buffer.from(await offlineBytes({ Epoch: 6 })).toString('base64'))).toBe(6n);
   });
 
@@ -213,7 +278,11 @@ describe('digest-first submission (OCT-52)', () => {
     expect(build).toHaveBeenCalledOnce();
     expect(getCurrentSystemState).not.toHaveBeenCalled();
     expect(tx.getData().sender).toBe(signer.toSuiAddress());
-    expect(signed).toMatchObject({ bytes, digest: TransactionDataBuilder.getDigestFromBytes(bytes), expirationEpoch: 12n });
+    expect(signed).toMatchObject({
+      bytes,
+      digest: TransactionDataBuilder.getDigestFromBytes(bytes),
+      expirationEpoch: 12n,
+    });
     await expect(verifyTransactionSignature(bytes, signed.signature)).resolves.toBeDefined();
   });
 
@@ -221,7 +290,9 @@ describe('digest-first submission (OCT-52)', () => {
     const c = client();
     const tx = c.buildCreateProgramTransaction();
     const pinned = await offlineBytes({ Epoch: 1261 });
-    vi.spyOn(tx, 'build').mockResolvedValueOnce(await offlineBytes()).mockResolvedValueOnce(pinned);
+    vi.spyOn(tx, 'build')
+      .mockResolvedValueOnce(await offlineBytes())
+      .mockResolvedValueOnce(pinned);
     vi.spyOn(c.rpc.core, 'getCurrentSystemState').mockResolvedValue({ systemState: { epoch: '1261' } } as never);
     const setExpiration = vi.spyOn(tx, 'setExpiration');
 

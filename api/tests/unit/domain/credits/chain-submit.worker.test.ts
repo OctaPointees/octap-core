@@ -152,11 +152,16 @@ describe('ChainSubmitWorker', () => {
   });
 
   describe('outcome reconciliation (OCT-52)', () => {
-    const quietOps = () => stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending: async () => [] });
+    const quietOps = () =>
+      stub<OperationsRepository>({ recoverStaleProcessing: async () => [], claimNextPending: async () => [] });
 
     it('runs the reconciler on its own interval', async () => {
       const reconcileOnce = vi.fn(async () => []);
-      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+      const worker = new ChainSubmitWorker(
+        quietOps(),
+        stub<ChainSubmitProcessor>(),
+        stub<ChainOutcomeReconciler>({ reconcileOnce }),
+      );
 
       worker.onModuleInit();
       await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS - 1);
@@ -175,7 +180,11 @@ describe('ChainSubmitWorker', () => {
         .mockRejectedValueOnce(new Error('rpc down'))
         .mockRejectedValueOnce('string failure')
         .mockResolvedValue([]);
-      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+      const worker = new ChainSubmitWorker(
+        quietOps(),
+        stub<ChainSubmitProcessor>(),
+        stub<ChainOutcomeReconciler>({ reconcileOnce }),
+      );
 
       worker.onModuleInit();
       await vi.advanceTimersByTimeAsync(RECONCILE_INTERVAL_MS * 3);
@@ -189,7 +198,11 @@ describe('ChainSubmitWorker', () => {
 
     it('stops reconciling after onModuleDestroy', async () => {
       const reconcileOnce = vi.fn(async () => []);
-      const worker = new ChainSubmitWorker(quietOps(), stub<ChainSubmitProcessor>(), stub<ChainOutcomeReconciler>({ reconcileOnce }));
+      const worker = new ChainSubmitWorker(
+        quietOps(),
+        stub<ChainSubmitProcessor>(),
+        stub<ChainOutcomeReconciler>({ reconcileOnce }),
+      );
 
       worker.onModuleInit();
       worker.onModuleDestroy();

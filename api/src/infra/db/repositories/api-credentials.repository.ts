@@ -50,10 +50,7 @@ export class ApiCredentialsRepository {
   }
 
   async touchLastUsed(id: string) {
-    await this.db
-      .update(apiCredentials)
-      .set({ lastUsedAt: new Date() })
-      .where(eq(apiCredentials.id, id));
+    await this.db.update(apiCredentials).set({ lastUsedAt: new Date() }).where(eq(apiCredentials.id, id));
   }
 
   async revoke(id: string) {

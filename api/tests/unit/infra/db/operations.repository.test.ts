@@ -34,11 +34,18 @@ function fakeCommandTx(existing: Record<string, unknown> | undefined) {
   return { tx: tx as unknown as DrizzleDb, updates, inserts };
 }
 
-const command = (payload: Record<string, unknown>) => ({ tenantId: 't1', idempotencyKey: 'k1', commandType: 'X', payload });
+const command = (payload: Record<string, unknown>) => ({
+  tenantId: 't1',
+  idempotencyKey: 'k1',
+  commandType: 'X',
+  payload,
+});
 
 describe('hashPayload', () => {
   it('ignores key order at every level, keeps array order, and drops undefined members', () => {
-    expect(hashPayload({ a: 1, b: { c: 2, d: [1, { e: 3, f: 4 }] } })).toBe(hashPayload({ b: { d: [1, { f: 4, e: 3 }], c: 2 }, a: 1 }));
+    expect(hashPayload({ a: 1, b: { c: 2, d: [1, { e: 3, f: 4 }] } })).toBe(
+      hashPayload({ b: { d: [1, { f: 4, e: 3 }], c: 2 }, a: 1 }),
+    );
     expect(hashPayload({ a: 1, skip: undefined })).toBe(hashPayload({ a: 1 }));
     expect(hashPayload({ list: [1, 2] })).not.toBe(hashPayload({ list: [2, 1] }));
     expect(hashPayload({ a: 1 })).not.toBe(hashPayload({ a: 2 }));
@@ -54,7 +61,14 @@ describe('acceptCommand', () => {
 
     expect(result.isNew).toBe(true);
     expect(inserts).toEqual([
-      { tenantId: 't1', idempotencyKey: 'k1', commandType: 'X', status: 'PENDING', payload: { amount: 10 }, payloadHash: hashPayload({ amount: 10 }) },
+      {
+        tenantId: 't1',
+        idempotencyKey: 'k1',
+        commandType: 'X',
+        status: 'PENDING',
+        payload: { amount: 10 },
+        payloadHash: hashPayload({ amount: 10 }),
+      },
     ]);
   });
 
@@ -65,8 +79,12 @@ describe('acceptCommand', () => {
     const replay = await acceptCommand(tx, command({ member: 'm1', amount: 10 }));
     expect(replay).toEqual({ operation: existing, isNew: false });
 
-    await expect(acceptCommand(tx, command({ member: 'm1', amount: 11 }))).rejects.toThrow(OperationPayloadConflictError);
-    await expect(acceptCommand(tx, command({ member: 'm1', amount: 11 }))).rejects.toThrow('Idempotency key "k1" was already used with a different payload');
+    await expect(acceptCommand(tx, command({ member: 'm1', amount: 11 }))).rejects.toThrow(
+      OperationPayloadConflictError,
+    );
+    await expect(acceptCommand(tx, command({ member: 'm1', amount: 11 }))).rejects.toThrow(
+      'Idempotency key "k1" was already used with a different payload',
+    );
   });
 
   it('a row accepted before payload hashes existed adopts the hash instead of conflicting', async () => {

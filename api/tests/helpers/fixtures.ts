@@ -34,7 +34,9 @@ export function fakeChainResult({
   };
 }
 
-export function buildOperation(overrides: Partial<typeof operations.$inferSelect> = {}): typeof operations.$inferSelect {
+export function buildOperation(
+  overrides: Partial<typeof operations.$inferSelect> = {},
+): typeof operations.$inferSelect {
   return {
     id: 'op-1',
     tenantId: 'org-1',

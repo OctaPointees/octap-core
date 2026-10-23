@@ -21,7 +21,13 @@ describe('constructWebhookEvent (OCT-209)', () => {
   const body = JSON.stringify({
     id: 'evt-confirm-1',
     type: 'credits.earn.confirmed',
-    data: { transactionId: 'tx-1', organizationEndUserId: 'user-1', pointsAmount: 100, newBalance: 200, blockchainDigest: 'DIGEST1' },
+    data: {
+      transactionId: 'tx-1',
+      organizationEndUserId: 'user-1',
+      pointsAmount: 100,
+      newBalance: 200,
+      blockchainDigest: 'DIGEST1',
+    },
   });
 
   it('verifies the signature and returns the typed event', () => {
@@ -36,7 +42,9 @@ describe('constructWebhookEvent (OCT-209)', () => {
 
   it('throws OctaSdkError for a missing, wrong, or stale signature instead of returning an event', () => {
     expect(() => constructWebhookEvent(body, undefined, 'whsec_test')).toThrow(OctaSdkError);
-    expect(() => constructWebhookEvent(body, sign(body, 'whsec_other'), 'whsec_test')).toThrow(/Invalid OctaP webhook signature/);
+    expect(() => constructWebhookEvent(body, sign(body, 'whsec_other'), 'whsec_test')).toThrow(
+      /Invalid OctaP webhook signature/,
+    );
     expect(() => constructWebhookEvent(`${body} `, sign(body, 'whsec_test'), 'whsec_test')).toThrow(OctaSdkError);
   });
 });

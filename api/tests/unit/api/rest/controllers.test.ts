@@ -80,9 +80,19 @@ describe('CreditsController', () => {
     const c = controller({ reversal: { reverseTransaction } });
 
     await c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: 'k', reason: 'chargeback' });
-    expect(reverseTransaction).toHaveBeenCalledWith('org-1', { transactionId: 'tx-1', idempotencyKey: 'k', reason: 'chargeback' });
-    await bad(c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: '', reason: 'x' }), /idempotencyKey and reason are required/);
-    await bad(c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: 'k', reason: '' }), /idempotencyKey and reason are required/);
+    expect(reverseTransaction).toHaveBeenCalledWith('org-1', {
+      transactionId: 'tx-1',
+      idempotencyKey: 'k',
+      reason: 'chargeback',
+    });
+    await bad(
+      c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: '', reason: 'x' }),
+      /idempotencyKey and reason are required/,
+    );
+    await bad(
+      c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: 'k', reason: '' }),
+      /idempotencyKey and reason are required/,
+    );
   });
 
   it('balance and transactions read through CreditsService, parsing the limit', async () => {
@@ -152,9 +162,18 @@ describe('IdentityController', () => {
     await c.createProof({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 1 });
 
     expect(service.loginWithGoogle).toHaveBeenCalledWith('jwt');
-    expect(service.enrollInOrganization).toHaveBeenCalledWith({ endUserId: 'eu', organizationId: 'org-1', externalMemberId: 'ext' });
+    expect(service.enrollInOrganization).toHaveBeenCalledWith({
+      endUserId: 'eu',
+      organizationId: 'org-1',
+      externalMemberId: 'ext',
+    });
     expect(service.createZkLoginNonce).toHaveBeenCalledWith({ ephemeralPublicKey: 'epk' });
-    expect(service.createZkLoginProof).toHaveBeenCalledWith({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 1 });
+    expect(service.createZkLoginProof).toHaveBeenCalledWith({
+      idToken: 'jwt',
+      ephemeralPublicKey: 'epk',
+      randomness: 'r',
+      maxEpoch: 1,
+    });
 
     await bad(c.googleLogin({ idToken: '' }), /idToken is required/);
     await bad(c.enroll('org-1', { endUserId: '' }), /endUserId is required/);
@@ -165,7 +184,10 @@ describe('WebhooksController', () => {
   it('validates the endpoint URL and delegates every route with the tenant org', async () => {
     const endpoints = { register: ok({}), list: ok([]), disable: ok({}), enable: ok({}), rotateSecret: ok({}) };
     const deliveries = { list: ok([]), replay: ok({}) };
-    const c = new WebhooksController(stub<WebhookEndpointsService>(endpoints), stub<WebhookDeliveryService>(deliveries));
+    const c = new WebhooksController(
+      stub<WebhookEndpointsService>(endpoints),
+      stub<WebhookDeliveryService>(deliveries),
+    );
 
     await c.registerEndpoint(tenant, { url: 'https://x', description: 'd' });
     await c.listEndpoints(tenant);
@@ -197,7 +219,11 @@ describe('ApiCredentialsController', () => {
     const c = new ApiCredentialsController(stub<ApiCredentialsService>(service));
 
     expect(await c.list(tenant)).toEqual([{ id: 'c1' }]);
-    expect(await c.issue(tenant, { name: 'pos', scopes: ['read'] })).toEqual({ id: 'c2', keyHash: 'h', rawKey: 'octap_live_raw' });
+    expect(await c.issue(tenant, { name: 'pos', scopes: ['read'] })).toEqual({
+      id: 'c2',
+      keyHash: 'h',
+      rawKey: 'octap_live_raw',
+    });
     expect(await c.revoke(tenant, 'c1')).toEqual({ id: 'c1', status: 'REVOKED' });
     expect(await c.rotate(tenant, 'c1')).toEqual({ id: 'c3', rawKey: 'octap_live_new' });
     expect(service.issue).toHaveBeenCalledWith('org-1', 'pos', ['read']);

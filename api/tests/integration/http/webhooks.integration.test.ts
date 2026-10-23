@@ -60,27 +60,50 @@ async function deliverDue() {
 
 describe('webhooks over HTTP, delivered to a real receiver', () => {
   it('a business event is signed with the endpoint secret and verifies with the Node SDK', async () => {
-    const endpoint = await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url, description: 'pos' }).expect(201);
+    const endpoint = await ctx
+      .http()
+      .post('/v1/webhooks/endpoints')
+      .set(auth)
+      .send({ url: receiver.url, description: 'pos' })
+      .expect(201);
     expect(endpoint.body.secret).toMatch(/^whsec_/);
     expect((await ctx.http().get('/v1/webhooks/endpoints').set(auth).expect(200)).body[0]).not.toHaveProperty('secret');
 
-    await ctx.http().post('/v1/credits/redeem').set(auth).send({ organizationEndUserId: memberId, pointsAmount: 10, idempotencyKey: 'r-1' }).expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem')
+      .set(auth)
+      .send({ organizationEndUserId: memberId, pointsAmount: 10, idempotencyKey: 'r-1' })
+      .expect(201);
     await deliverDue();
 
     expect(receiver.received).toHaveLength(1);
     const [{ headers, body }] = receiver.received;
     expect(verifyWebhookSignature(body, headers['x-octap-signature'] as string, endpoint.body.secret)).toBe(true);
     expect(headers['x-octap-event-type']).toBe('credits.redeemed');
-    expect(JSON.parse(body)).toMatchObject({ type: 'credits.redeemed', data: { pointsAmount: 10, newBalance: 90, organizationEndUserId: memberId } });
+    expect(JSON.parse(body)).toMatchObject({
+      type: 'credits.redeemed',
+      data: { pointsAmount: 10, newBalance: 90, organizationEndUserId: memberId },
+    });
 
     const [delivery] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
-    expect(delivery).toMatchObject({ id: headers['x-octap-event-id'], status: 'DELIVERED', lastResponseStatus: 200, attemptCount: 1 });
+    expect(delivery).toMatchObject({
+      id: headers['x-octap-event-id'],
+      status: 'DELIVERED',
+      lastResponseStatus: 200,
+      attemptCount: 1,
+    });
   });
 
   it('a failing receiver gets a retry scheduled; a dead-lettered delivery can be replayed under the same id', async () => {
     await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201);
     receiver.status = 503;
-    await ctx.http().post('/v1/credits/redeem').set(auth).send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r' }).expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem')
+      .set(auth)
+      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r' })
+      .expect(201);
     await deliverDue();
 
     const [pending] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
@@ -97,18 +120,30 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
   });
 
   it('disable stops deliveries, enable resumes them, rotate-secret returns a new secret once', async () => {
-    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201)).body;
+    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201))
+      .body;
 
     await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/disable`).set(auth).expect(201);
-    await ctx.http().post('/v1/credits/redeem').set(auth).send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-1' }).expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem')
+      .set(auth)
+      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-1' })
+      .expect(201);
     await deliverDue();
     expect(receiver.received).toEqual([]);
 
     await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/enable`).set(auth).expect(201);
-    const rotated = (await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/rotate-secret`).set(auth).expect(201)).body;
+    const rotated = (await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/rotate-secret`).set(auth).expect(201))
+      .body;
     expect(rotated.secret).not.toBe(endpoint.secret);
 
-    await ctx.http().post('/v1/credits/redeem').set(auth).send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-2' }).expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem')
+      .set(auth)
+      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-2' })
+      .expect(201);
     await deliverDue();
     const [{ headers, body }] = receiver.received;
     expect(verifyWebhookSignature(body, headers['x-octap-signature'] as string, rotated.secret)).toBe(true);
@@ -117,7 +152,8 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
   it('validates the URL and hides other tenants’ endpoints', async () => {
     const other = await seedOrganization(ctx.db);
     const otherAuth = { authorization: `Bearer ${(await seedCredential(ctx.db, other.id)).rawKey}` };
-    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201)).body;
+    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201))
+      .body;
 
     await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({}).expect(400);
     await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: 'ftp://nope' }).expect(400);

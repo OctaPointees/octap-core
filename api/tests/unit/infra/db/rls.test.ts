@@ -46,7 +46,10 @@ describe('withRls', () => {
 
   it('a user-only context sets the subject claim but no tenant', async () => {
     const { statements } = await statementsFor({ userId: 'user-1' });
-    expect(statements.map((s) => s.sql)).toEqual(['SET LOCAL ROLE authenticated', "SELECT set_config('request.jwt.claim.sub', $1, true)"]);
+    expect(statements.map((s) => s.sql)).toEqual([
+      'SET LOCAL ROLE authenticated',
+      "SELECT set_config('request.jwt.claim.sub', $1, true)",
+    ]);
   });
 
   it('an empty context changes nothing', async () => {

@@ -86,7 +86,10 @@ describe('ProgramsService.provisionForOrganization', () => {
       stub<ProgramAdminClient>({ provisionProgram }),
     ).provisionForOrganization(PROVISION_PARAMS);
 
-    await expect(provision).rejects.toMatchObject({ name: 'ConflictException', message: expect.stringMatching(/already has a program/) });
+    await expect(provision).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/already has a program/),
+    });
     expect(provisionProgram).not.toHaveBeenCalled();
   });
 

@@ -4,14 +4,19 @@ import { SuiTransactionBuilderClient } from '../../../../src/infra/clients/sui/s
 import { configForNetwork } from '../../../../src/infra/clients/sui/network-config.js';
 import { requireEnv } from '../../../../src/infra/clients/require-env.js';
 
-function withChainClient(builder: SuiTransactionBuilderClient, client: Partial<Record<keyof OctapChainClient, unknown>>) {
+function withChainClient(
+  builder: SuiTransactionBuilderClient,
+  client: Partial<Record<keyof OctapChainClient, unknown>>,
+) {
   (builder as unknown as { chainClient: unknown }).chainClient = client;
   return builder;
 }
 
 describe('SuiTransactionBuilderClient', () => {
   it('exposes the one Move call its redeem builder produces', () => {
-    expect(new SuiTransactionBuilderClient().redeemMoveCallTarget).toBe(`${TESTNET_OCTAP_PACKAGE_CONFIG.packageId}::credit_account::redeem`);
+    expect(new SuiTransactionBuilderClient().redeemMoveCallTarget).toBe(
+      `${TESTNET_OCTAP_PACKAGE_CONFIG.packageId}::credit_account::redeem`,
+    );
   });
 
   it('refuses to construct for a network with no package', () => {
@@ -35,7 +40,12 @@ describe('SuiTransactionBuilderClient', () => {
 
   it('waitForTransaction and listCreditAccountEvents pass through to the chain client', async () => {
     const waitForTransaction = vi.fn(async () => ({ digest: 'D', status: 'success', events: [] }));
-    const listCreditAccountEvents = vi.fn(async () => ({ events: [], hasNextPage: false, startCursor: null, endCursor: null }));
+    const listCreditAccountEvents = vi.fn(async () => ({
+      events: [],
+      hasNextPage: false,
+      startCursor: null,
+      endCursor: null,
+    }));
     const builder = withChainClient(new SuiTransactionBuilderClient(), { waitForTransaction, listCreditAccountEvents });
 
     expect((await builder.waitForTransaction('D')).digest).toBe('D');
@@ -55,7 +65,9 @@ describe('configForNetwork', () => {
   it('picks testnet, picks mainnet once deployed, and throws otherwise', () => {
     expect(configForNetwork('testnet', { testnet: 't', mainnet: undefined }, 'thing')).toBe('t');
     expect(configForNetwork('mainnet', { testnet: 't', mainnet: 'm' }, 'thing')).toBe('m');
-    expect(() => configForNetwork('mainnet', { testnet: 't', mainnet: undefined }, 'thing')).toThrow(/No thing configured for Sui network "mainnet"/);
+    expect(() => configForNetwork('mainnet', { testnet: 't', mainnet: undefined }, 'thing')).toThrow(
+      /No thing configured for Sui network "mainnet"/,
+    );
     expect(() => configForNetwork('devnet', { testnet: 't', mainnet: 'm' }, 'thing')).toThrow(/"devnet"/);
   });
 });
@@ -65,7 +77,9 @@ describe('requireEnv', () => {
     vi.stubEnv('OCTAP_TEST_VAR', 'value');
     expect(requireEnv('OCTAP_TEST_VAR', 'test adapter')).toBe('value');
     vi.stubEnv('OCTAP_TEST_VAR', '');
-    expect(() => requireEnv('OCTAP_TEST_VAR', 'test adapter')).toThrow('Missing required env var OCTAP_TEST_VAR for the test adapter');
+    expect(() => requireEnv('OCTAP_TEST_VAR', 'test adapter')).toThrow(
+      'Missing required env var OCTAP_TEST_VAR for the test adapter',
+    );
   });
 
   it('findTransaction and currentEpoch are read-only pass-throughs (OCT-52)', async () => {

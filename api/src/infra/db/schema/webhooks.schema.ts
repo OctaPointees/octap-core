@@ -1,14 +1,5 @@
 import { sql } from 'drizzle-orm';
-import {
-  integer,
-  jsonb,
-  pgEnum,
-  pgPolicy,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 
@@ -18,11 +9,7 @@ export const webhookEndpointStatusEnum = pgEnum('webhook_endpoint_status', ['ACT
  * `lastResponseStatus` set and `nextAttemptAt` pushed out, until either DELIVERED or the retry
  * budget is exhausted and it becomes DEAD_LETTER.
  */
-export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
-  'PENDING',
-  'DELIVERED',
-  'DEAD_LETTER',
-]);
+export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', ['PENDING', 'DELIVERED', 'DEAD_LETTER']);
 
 /**
  * WEBHOOK ENDPOINT: a merchant-registered URL that receives signed event deliveries.

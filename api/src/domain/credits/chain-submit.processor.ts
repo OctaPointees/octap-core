@@ -174,7 +174,9 @@ export class ChainSubmitProcessor {
 
   private async markUnknown(operationId: string, message: string, digest?: string): Promise<void> {
     if (!(await this.operationsRepo.markUnknown(operationId, message, digest))) {
-      this.logger.warn(`operation ${operationId} was no longer PROCESSING (already settled, likely by the indexer); left as is`);
+      this.logger.warn(
+        `operation ${operationId} was no longer PROCESSING (already settled, likely by the indexer); left as is`,
+      );
     }
   }
 }

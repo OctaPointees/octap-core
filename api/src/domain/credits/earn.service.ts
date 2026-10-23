@@ -24,10 +24,7 @@ export class EarnService {
     }
 
     // Check idempotency
-    const existingTx = await this.creditsRepo.findTransactionByIdempotency(
-      organizationId,
-      request.idempotencyKey,
-    );
+    const existingTx = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
 
     if (existingTx) {
       const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);
