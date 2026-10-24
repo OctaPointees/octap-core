@@ -14,21 +14,46 @@
  * debited from the program's `BudgetShard` for the same key. `operation_key` is
  * also emitted on `CreditEarned` so the event can be correlated with the off-chain
  * command that caused it.
+ * 
+ * Reversals are issuer operations, separate from the earn/redeem they undo:
+ * `reverse_earn` removes exactly the bucket one earn created (and refunds its
+ * budget), aborting if that bucket was already partly spent or expired instead of
+ * silently clawing back less; `reverse_redeem` gives a redemption's credits back
+ * as a non-expiring balance. Each original can be reversed at most once, enforced
+ * here, not only in PostgreSQL.
  */
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.js';
 import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
+import * as table from './deps/sui/table.js';
 const $moduleName = 'octap::credit_account';
 export const Bucket = new MoveStruct({ name: `${$moduleName}::Bucket`, fields: {
         expires_at_ms: bcs.u64(),
-        amount: bcs.u64()
+        amount: bcs.u64(),
+        /**
+         * Unique per account, assigned at `earn`, so `reverse_earn` can find the one
+         * bucket its earn created even among same-expiry buckets.
+         */
+        seq: bcs.u64()
+    } });
+export const Redemption = new MoveStruct({ name: `${$moduleName}::Redemption`, fields: {
+        amount: bcs.u64(),
+        reversed: bcs.bool()
     } });
 export const CreditAccount = new MoveStruct({ name: `${$moduleName}::CreditAccount`, fields: {
         id: bcs.Address,
         program_id: bcs.Address,
         beneficiary: bcs.Address,
         buckets: bcs.vector(Bucket),
+        next_bucket_seq: bcs.u64(),
+        /**
+         * Credits given back by `reverse_redeem`: they never expire, and `redeem` spends
+         * them only after every live bucket.
+         */
+        non_expiring: bcs.u64(),
+        /** `reference` of every `redeem` -> what it spent. */
+        redemptions: table.Table,
         lifetime_earned: bcs.u64(),
         lifetime_redeemed: bcs.u64()
     } });
@@ -46,6 +71,20 @@ export const CreditEarned = new MoveStruct({ name: `${$moduleName}::CreditEarned
         operation_key: bcs.vector(bcs.u8())
     } });
 export const CreditRedeemed = new MoveStruct({ name: `${$moduleName}::CreditRedeemed`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        amount: bcs.u64(),
+        reference: bcs.vector(bcs.u8())
+    } });
+export const CreditEarnReversed = new MoveStruct({ name: `${$moduleName}::CreditEarnReversed`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        amount: bcs.u64(),
+        operation_key: bcs.vector(bcs.u8())
+    } });
+export const CreditRedeemReversed = new MoveStruct({ name: `${$moduleName}::CreditRedeemReversed`, fields: {
         account_id: bcs.Address,
         program_id: bcs.Address,
         beneficiary: bcs.Address,
@@ -77,7 +116,7 @@ export interface OpenAccountOptions {
  * anyone spam shared objects.
  */
 export function openAccount(options: OpenAccountOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         null,
@@ -126,7 +165,7 @@ export interface EarnOptions {
  * budget shard aborts `budget_shard::EBudgetExceeded`.
  */
 export function earn(options: EarnOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         null,
@@ -160,13 +199,15 @@ export interface RedeemOptions {
     ];
 }
 /**
- * Debits `cost` credits, consuming the nearest-to-expiry bucket(s) first. Requires
- * the beneficiary's own signature (`sender == beneficiary`): there is no path for
- * an organization or admin to spend on a member's behalf, matching the
- * non-transferable, consent-gated redemption rule.
+ * Debits `cost` credits, consuming the nearest-to-expiry bucket(s) first and the
+ * non-expiring balance last. Requires the beneficiary's own signature
+ * (`sender == beneficiary`): there is no path for an organization or admin to
+ * spend on a member's behalf, matching the non-transferable, consent-gated
+ * redemption rule. `reference` must be new to this account
+ * (`EDuplicateRedemption`): it is what `reverse_redeem` later names.
  */
 export function redeem(options: RedeemOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         'u64',
@@ -178,6 +219,86 @@ export function redeem(options: RedeemOptions) {
         package: packageAddress,
         module: 'credit_account',
         function: 'redeem',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ReverseEarnArguments {
+    issuer: RawTransactionArgument<string>;
+    account: RawTransactionArgument<string>;
+    operationShard: RawTransactionArgument<string>;
+    budgetShard: RawTransactionArgument<string>;
+    operationKey: RawTransactionArgument<Array<number>>;
+}
+export interface ReverseEarnOptions {
+    package?: string;
+    arguments: ReverseEarnArguments | [
+        issuer: RawTransactionArgument<string>,
+        account: RawTransactionArgument<string>,
+        operationShard: RawTransactionArgument<string>,
+        budgetShard: RawTransactionArgument<string>,
+        operationKey: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Undoes the earn recorded under `operation_key`: removes the bucket it created
+ * and refunds its amount to the budget shard it was debited from. Issuer-only, for
+ * the issuer's own program. `operation_shard` and `budget_shard` must own
+ * `operation_key`, as for `earn`.
+ *
+ * Aborts `EBucketUnavailable` if that bucket no longer holds the full earned
+ * amount (partly redeemed) or has expired: a reversal never claws back less than
+ * the earn, nor takes credits from another bucket. A second reversal of the same
+ * key aborts `operation_shard::EAlreadyReversed`.
+ */
+export function reverseEarn(options: ReverseEarnOptions) {
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'vector<u8>',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["issuer", "account", "operationShard", "budgetShard", "operationKey"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'reverse_earn',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ReverseRedeemArguments {
+    issuer: RawTransactionArgument<string>;
+    account: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface ReverseRedeemOptions {
+    package?: string;
+    arguments: ReverseRedeemArguments | [
+        issuer: RawTransactionArgument<string>,
+        account: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Gives back what the `redeem` named `reference` spent, as non-expiring credits
+ * (matching the off-chain ledger, where a reversed redemption's add-back has no
+ * expiry bucket). Issuer-only, for the issuer's own program; at most once per
+ * `reference`.
+ */
+export function reverseRedeem(options: ReverseRedeemOptions) {
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const argumentsTypes = [
+        null,
+        null,
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["issuer", "account", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'reverse_redeem',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -195,7 +316,7 @@ export interface SpendableOptions {
  * the PostgreSQL projection without needing a transaction.
  */
 export function spendable(options: SpendableOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         '0x2::clock::Clock'
@@ -218,7 +339,7 @@ export interface BeneficiaryOptions {
     ];
 }
 export function beneficiary(options: BeneficiaryOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -240,7 +361,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

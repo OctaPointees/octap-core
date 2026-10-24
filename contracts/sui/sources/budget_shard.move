@@ -11,7 +11,9 @@
 /// first.
 ///
 /// A drained shard is refilled by the program's `AdminCap` holder with
-/// `top_up`; `IssuerCap` holders can only spend budget, never add it.
+/// `top_up`. `debit` and `refund` are `public(package)`: only
+/// `credit_account::earn`/`reverse_earn` move budget, since a public `&mut`
+/// function on a shared shard would let anyone drain it.
 module octap::budget_shard;
 
 use octap::capabilities::{Self, AdminCap};
@@ -41,6 +43,13 @@ public struct BudgetShardCreated has copy, drop {
 }
 
 public struct BudgetDebited has copy, drop {
+    program_id: ID,
+    shard_id: ID,
+    amount: u64,
+    remaining: u64,
+}
+
+public struct BudgetRefunded has copy, drop {
     program_id: ID,
     shard_id: ID,
     amount: u64,
@@ -92,9 +101,8 @@ public fun create_shards(
 /// Debits `amount` from the shard that owns `operation_key`. Aborts
 /// `EWrongShard` for any other shard, so a caller can't drain whichever
 /// shard still has budget left.
-public fun debit(shard: &mut BudgetShard, program_id: ID, operation_key: &vector<u8>, amount: u64) {
-    assert!(shard.program_id == program_id, EWrongProgram);
-    assert!(operation_shard::shard_index_for(operation_key, shard.shard_count) == shard.shard_index, EWrongShard);
+public(package) fun debit(shard: &mut BudgetShard, program_id: ID, operation_key: &vector<u8>, amount: u64) {
+    assert_owning_shard(shard, program_id, operation_key);
     assert!(amount <= shard.remaining, EBudgetExceeded);
 
     shard.remaining = shard.remaining - amount;
@@ -104,6 +112,25 @@ public fun debit(shard: &mut BudgetShard, program_id: ID, operation_key: &vector
         amount,
         remaining: shard.remaining,
     });
+}
+
+/// Gives a reversed earn's `amount` back to the shard that owns its
+/// `operation_key` — the same shard `debit` took it from.
+public(package) fun refund(shard: &mut BudgetShard, program_id: ID, operation_key: &vector<u8>, amount: u64) {
+    assert_owning_shard(shard, program_id, operation_key);
+
+    shard.remaining = shard.remaining + amount;
+    event::emit(BudgetRefunded {
+        program_id,
+        shard_id: object::id(shard),
+        amount,
+        remaining: shard.remaining,
+    });
+}
+
+fun assert_owning_shard(shard: &BudgetShard, program_id: ID, operation_key: &vector<u8>) {
+    assert!(shard.program_id == program_id, EWrongProgram);
+    assert!(operation_shard::shard_index_for(operation_key, shard.shard_count) == shard.shard_index, EWrongShard);
 }
 
 /// Adds `amount` to one shard's remaining budget. Only the program's

@@ -15,8 +15,10 @@
  * means a program's operation and budget shard counts should match, and a hot key
  * range drains its budget shard first.
  * 
- * A drained shard is refilled by the program's `AdminCap` holder with `top_up`;
- * `IssuerCap` holders can only spend budget, never add it.
+ * A drained shard is refilled by the program's `AdminCap` holder with `top_up`.
+ * `debit` and `refund` are `public(package)`: only
+ * `credit_account::earn`/`reverse_earn` move budget, since a public `&mut`
+ * function on a shared shard would let anyone drain it.
  */
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.js';
@@ -38,6 +40,12 @@ export const BudgetShardCreated = new MoveStruct({ name: `${$moduleName}::Budget
         allocated: bcs.u64()
     } });
 export const BudgetDebited = new MoveStruct({ name: `${$moduleName}::BudgetDebited`, fields: {
+        program_id: bcs.Address,
+        shard_id: bcs.Address,
+        amount: bcs.u64(),
+        remaining: bcs.u64()
+    } });
+export const BudgetRefunded = new MoveStruct({ name: `${$moduleName}::BudgetRefunded`, fields: {
         program_id: bcs.Address,
         shard_id: bcs.Address,
         amount: bcs.u64(),
@@ -70,7 +78,7 @@ export interface CreateShardsOptions {
  * shard ids in shard-index order.
  */
 export function createShards(options: CreateShardsOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         '0x2::object::ID',
@@ -82,42 +90,6 @@ export function createShards(options: CreateShardsOptions) {
         package: packageAddress,
         module: 'budget_shard',
         function: 'create_shards',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-    });
-}
-export interface DebitArguments {
-    shard: RawTransactionArgument<string>;
-    programId: RawTransactionArgument<string>;
-    operationKey: RawTransactionArgument<Array<number>>;
-    amount: RawTransactionArgument<number | bigint>;
-}
-export interface DebitOptions {
-    package?: string;
-    arguments: DebitArguments | [
-        shard: RawTransactionArgument<string>,
-        programId: RawTransactionArgument<string>,
-        operationKey: RawTransactionArgument<Array<number>>,
-        amount: RawTransactionArgument<number | bigint>
-    ];
-}
-/**
- * Debits `amount` from the shard that owns `operation_key`. Aborts `EWrongShard`
- * for any other shard, so a caller can't drain whichever shard still has budget
- * left.
- */
-export function debit(options: DebitOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
-    const argumentsTypes = [
-        null,
-        '0x2::object::ID',
-        'vector<u8>',
-        'u64'
-    ] satisfies (string | null)[];
-    const parameterNames = ["shard", "programId", "operationKey", "amount"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'budget_shard',
-        function: 'debit',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -141,7 +113,7 @@ export interface TopUpOptions {
  * it wants refilled.
  */
 export function topUp(options: TopUpOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null,
         null,
@@ -165,7 +137,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -187,7 +159,7 @@ export interface ShardIndexOptions {
     ];
 }
 export function shardIndex(options: ShardIndexOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -209,7 +181,7 @@ export interface ShardCountOptions {
     ];
 }
 export function shardCount(options: ShardCountOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -231,7 +203,7 @@ export interface RemainingOptions {
     ];
 }
 export function remaining(options: RemainingOptions) {
-    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
+    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

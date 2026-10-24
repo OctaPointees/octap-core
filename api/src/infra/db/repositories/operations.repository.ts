@@ -161,7 +161,8 @@ export class OperationsRepository {
    * never finalized, so there is nothing on-chain to ask about.
    */
   async listUnresolvedChainOutcomes(params: {
-    earnCommandType: string;
+    /** Worker-signed commands: only an UNKNOWN one needs settling (earn, reversal). */
+    unknownCommandTypes: string[];
     posCommandType: string;
     olderThanMs: number;
     limit: number;
@@ -171,7 +172,7 @@ export class OperationsRepository {
       where: and(
         lt(operations.updatedAt, cutoff),
         or(
-          and(eq(operations.commandType, params.earnCommandType), eq(operations.status, 'UNKNOWN')),
+          and(inArray(operations.commandType, params.unknownCommandTypes), eq(operations.status, 'UNKNOWN')),
           and(
             eq(operations.commandType, params.posCommandType),
             inArray(operations.status, ['PENDING', 'UNKNOWN']),

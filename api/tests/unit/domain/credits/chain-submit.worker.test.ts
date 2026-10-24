@@ -30,7 +30,10 @@ describe('ChainSubmitWorker', () => {
     await vi.advanceTimersByTimeAsync(0);
     worker.onModuleDestroy();
 
-    expect(recoverStaleProcessing).toHaveBeenCalledWith(['CREDIT_EARN_CHAIN_SUBMIT'], 5 * 60 * 1000);
+    expect(recoverStaleProcessing).toHaveBeenCalledWith(
+      ['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT'],
+      5 * 60 * 1000,
+    );
   });
 
   it('a failing startup recovery is logged, not fatal, and polling still starts', async () => {
@@ -50,7 +53,7 @@ describe('ChainSubmitWorker', () => {
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     worker.onModuleDestroy();
 
-    expect(claimNextPending).toHaveBeenCalledWith(['CREDIT_EARN_CHAIN_SUBMIT'], 5);
+    expect(claimNextPending).toHaveBeenCalledWith(['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT'], 5);
   });
 
   it('a non-Error startup recovery failure is also swallowed', async () => {

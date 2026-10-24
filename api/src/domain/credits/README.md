@@ -16,7 +16,10 @@ Loyalty points for an organization's end users.
   releases it. Idempotent via OCT-43's `acceptCommand` inside `reservePosRedemption`.
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
   is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
-  the clawback debt when an earn was already spent — there's no separate debt ledger.
+  the clawback debt when an earn was already spent — there's no separate debt ledger. If the
+  original reached the chain (it has a `blockchainTransactionId`), the same transaction queues a
+  `CREDIT_REVERSAL_CHAIN_SUBMIT` command, which `chain-submit.processor.ts` mirrors with
+  `reverse_earn`/`reverse_redeem` (OCT-50); its digest is linked to the REVERSAL row once it lands.
 - `chain-outcome.reconciler.ts` (worker-only, run by `chain-submit.worker.ts`): settles commands
   whose chain outcome was never learned — an earn whose `execute` threw, a POS finalize whose
   Enoki execute (or the wait after it) threw, or a worker that died mid-submit (OCT-52). Both

@@ -24,6 +24,7 @@ then move the row to **Implemented** in the same pull request.
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
+| Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
@@ -143,7 +144,12 @@ then move the row to **Implemented** in the same pull request.
   further redemption via the existing balance check — there is no separate debt ledger, repayment
   plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
   forfeited again; reversing a REDEEM adds the points back *without* a bucket, so they never
-  expire in Postgres. (Reversal is Postgres-only; it doesn't touch the chain at all.)
+  expire in Postgres. The chain mirrors both (OCT-50): a reversed REDEEM's add-back is a
+  non-expiring on-chain balance too. Reversing an earn whose credits were already spent (or have
+  expired) is accepted in Postgres but aborts on-chain (`EBucketUnavailable`), so that account's
+  two balances differ until a human settles it; the mirror command is FAILED with the abort and
+  nothing retries it. A voucher-claim REDEEM never reached the chain, so its reversal has no
+  mirror.
 - **Expiry** (OCT-49) is lazy: due buckets are swept whenever the balance is read or spent, not
   by a scheduled job. Every balance check (POS reserve, voucher claim) and `GET /balance` sweeps
   first; only the informational `newBalance` in earn/POS-finalize responses can show a

@@ -7,11 +7,21 @@ import { ProgramsRepository } from '#infra/db/repositories/programs.repository.j
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import { resolveProgramConfig } from '../programs/program-config.js';
+import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
   pointsAmount: number;
+}
+
+export interface ReversalChainSubmitPayload {
+  reversalTransactionId: string;
+  reversedTransactionId: string;
+  reversedTransactionType: 'EARN' | 'REDEEM';
+  organizationEndUserId: string;
+  /** The original's on-chain handle: an earn's `operation_key`, or a POS redemption's `reference`. */
+  chainKey: string;
 }
 
 /**
@@ -39,12 +49,73 @@ export class ChainSubmitProcessor {
   ) {}
 
   async process(operation: typeof operations.$inferSelect): Promise<void> {
-    if (operation.commandType !== 'CREDIT_EARN_CHAIN_SUBMIT') {
-      await this.operationsRepo.markFailed(operation.id, `Unsupported commandType "${operation.commandType}"`);
+    if (operation.commandType === EARN_COMMAND_TYPE) {
+      await this.processEarn(operation, operation.payload as unknown as EarnChainSubmitPayload);
       return;
     }
+    if (operation.commandType === REVERSAL_COMMAND_TYPE) {
+      await this.processReversal(operation, operation.payload as unknown as ReversalChainSubmitPayload);
+      return;
+    }
+    await this.operationsRepo.markFailed(operation.id, `Unsupported commandType "${operation.commandType}"`);
+  }
 
-    await this.processEarn(operation, operation.payload as unknown as EarnChainSubmitPayload);
+  /**
+   * Mirrors an already-CONFIRMED Postgres reversal on-chain (OCT-50): `reverse_earn` or
+   * `reverse_redeem`, signed with the IssuerCap. There is no hold to release on failure — the
+   * Postgres reversal stands either way — so a definitive on-chain failure only marks the command
+   * FAILED with the chain's reason (e.g. `EBucketUnavailable` for an earn whose credits were
+   * already spent: that clawback debt exists in Postgres only, see docs/roadmap.md).
+   */
+  private async processReversal(
+    operation: typeof operations.$inferSelect,
+    payload: ReversalChainSubmitPayload,
+  ): Promise<void> {
+    try {
+      const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+      const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(payload.organizationEndUserId);
+      const accountId = ownership?.suiCreditAccountId;
+      if (!accountId) {
+        throw new Error(`No on-chain credit account for end user ${payload.organizationEndUserId}`);
+      }
+
+      const signed =
+        payload.reversedTransactionType === 'EARN'
+          ? await this.suiClient.signReverseEarn(program, { accountId, operationKey: payload.chainKey })
+          : await this.suiClient.signReverseRedeem(program, { accountId, reference: payload.chainKey });
+      await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
+
+      let result: Awaited<ReturnType<SuiClientService['execute']>>;
+      try {
+        result = await this.suiClient.execute(signed);
+      } catch (err: unknown) {
+        const message = `reversal outcome unknown: ${err instanceof Error ? err.message : String(err)}`;
+        this.logger.error(`operation ${operation.id}: ${message}; left for reconciliation`);
+        await this.markUnknown(operation.id, message);
+        return;
+      }
+      if (result.status !== 'success') {
+        throw new Error(result.errorMessage ?? 'reversal failed on-chain');
+      }
+
+      try {
+        await this.creditsRepo.recordReversalOnChain({
+          reversalTransactionId: payload.reversalTransactionId,
+          digest: result.digest,
+          sender: this.suiClient.issuerAddress(),
+        });
+        await this.operationsRepo.markSubmitted(operation.id, result.digest);
+        this.logger.log(`reversal ${payload.reversalTransactionId} mirrored on-chain: digest=${result.digest}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`reversal landed (digest=${result.digest}) but recording it failed: ${message}`);
+        await this.markUnknown(operation.id, message, result.digest);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`reversal ${payload.reversalTransactionId} not mirrored on-chain: ${message}`);
+      await this.operationsRepo.markFailed(operation.id, message);
+    }
   }
 
   private async processEarn(operation: typeof operations.$inferSelect, payload: EarnChainSubmitPayload): Promise<void> {

@@ -14,18 +14,22 @@ Move source.
 
 | Object | Id |
 | --- | --- |
-| Package (`published-at` = `original-id`, v1) | `0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba` |
-| `0x2::package::UpgradeCap` | `0xff3511b7d81faa363e9805906dcf875c486b3b5fa0065fe7da4a6c0b72ff9170` |
-| Publish tx | `HvATS87mP58rtvhVwFGBzQZZtNSxBWE32LE2MHY9MND3` |
+| Package (`published-at` = `original-id`, v1) | `0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b` |
+| `0x2::package::UpgradeCap` | `0x91c6cb36de66ecae455e8dbb1e45ac944ca3b4286ace81ca141c405a8b5c7323` |
+| Publish tx | `DYv3YrwCm1XhixAaJ7sQU25TxjzKCXLvVu33tncVJwHz` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
 | Issuer address (`SUI_ISSUER_PRIVATE_KEY`, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
 
-Fresh publish for OCT-81 (`budget_shard::top_up`). Adding an entry function alone is
-upgrade-compatible, but an upgrade gives the package a new id while event types keep the original
-one, and the indexer filters events by the configured package id — so this is a fresh publish,
-like OCT-41's. The previous packages `0xda317c68...` (OCT-41) and `0x52f0fbc3...` are abandoned on
-testnet, not migrated.
+Fresh publish for OCT-50 (`reverse_earn`/`reverse_redeem`): `Bucket`, `CreditAccount` and
+`OperationShard`'s table value changed shape, and `budget_shard::debit` /
+`operation_shard::check_and_record` went from `public` to `public(package)` — none of which is
+upgrade-compatible. Even an additive change is published fresh here: an upgrade gives the package
+a new id while event types keep the original one, and the indexer filters events by the
+configured package id. The previous packages `0x8ee8b8b9...` (OCT-81), `0xda317c68...` (OCT-41)
+and `0x52f0fbc3...` are abandoned on testnet, not migrated — and must not be used: on all three,
+anyone can call `budget_shard::debit` / `operation_shard::check_and_record` on a program's shared
+shards directly.
 
 ## Programs
 

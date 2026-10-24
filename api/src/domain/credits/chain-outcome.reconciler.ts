@@ -8,6 +8,7 @@ import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-
 
 export const EARN_COMMAND_TYPE = 'CREDIT_EARN_CHAIN_SUBMIT';
 export const POS_REDEEM_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
+export const REVERSAL_COMMAND_TYPE = 'CREDIT_REVERSAL_CHAIN_SUBMIT';
 
 /** Long enough that a healthy submit (or the indexer) has settled it first; this is the fallback. */
 const RECONCILE_AFTER_MS = Number(process.env.CHAIN_OUTCOME_RECONCILE_AFTER_MS ?? 5 * 60 * 1000);
@@ -24,13 +25,17 @@ interface PosRedeemPayload {
   pointsAmount: number;
 }
 
+interface ReversalPayload {
+  reversalTransactionId: string;
+}
+
 type Operation = typeof operations.$inferSelect;
 export type ReconcileOutcome = 'confirmed' | 'failed' | 'waiting';
 
 /**
- * Settles commands whose chain outcome was never learned (OCT-52): an earn whose `execute` threw,
- * a POS finalize whose `executeSponsoredRedeem` (or the wait after it) threw, or a worker that died
- * mid-submit. The digest was persisted before sending, so this asks the chain about exactly that
+ * Settles commands whose chain outcome was never learned (OCT-52): an earn or reversal (OCT-50)
+ * whose `execute` threw, a POS finalize whose `executeSponsoredRedeem` (or the wait after it)
+ * threw, or a worker that died mid-submit. The digest was persisted before sending, so this asks the chain about exactly that
  * transaction instead of guessing — and never sends anything itself, so it can't cause a second
  * on-chain effect:
  *
@@ -40,6 +45,9 @@ export type ReconcileOutcome = 'confirmed' | 'failed' | 'waiting';
  * - not found, chain past the transaction's expiration epoch -> it never landed and never can:
  *   release the hold, FAILED
  * - not found, still within its expiration -> leave it and look again later
+ *
+ * A reversal has no hold: confirming links its digest, failing only marks the command FAILED (the
+ * Postgres reversal stands either way).
  *
  * An earn with no digest at all never had anything sent (the digest is recorded before sending),
  * so it is released straight away.
@@ -57,7 +65,7 @@ export class ChainOutcomeReconciler {
 
   async reconcileOnce(): Promise<ReconcileOutcome[]> {
     const due = await this.operationsRepo.listUnresolvedChainOutcomes({
-      earnCommandType: EARN_COMMAND_TYPE,
+      unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
       posCommandType: POS_REDEEM_COMMAND_TYPE,
       olderThanMs: RECONCILE_AFTER_MS,
       limit: BATCH_SIZE,
@@ -85,16 +93,21 @@ export class ChainOutcomeReconciler {
   }
 
   private async reconcile(operation: Operation, currentEpoch: () => Promise<bigint>): Promise<ReconcileOutcome> {
-    const isEarn = operation.commandType === EARN_COMMAND_TYPE;
-
     if (!operation.suiTxDigest) {
-      // Only earns get here (POS rows need a digest to be listed): nothing was ever sent.
+      // Only worker-signed commands get here (POS rows need a digest to be listed): nothing was
+      // ever sent.
       return this.fail(operation, 'no transaction was ever sent for this command');
     }
 
     const outcome = await this.suiReader.findTransaction(operation.suiTxDigest);
     if (outcome?.status === 'success') {
-      return isEarn ? this.confirmEarn(operation, outcome) : this.confirmPosRedeem(operation, outcome);
+      if (operation.commandType === EARN_COMMAND_TYPE) {
+        return this.confirmEarn(operation, outcome);
+      }
+      if (operation.commandType === REVERSAL_COMMAND_TYPE) {
+        return this.confirmReversal(operation, outcome);
+      }
+      return this.confirmPosRedeem(operation, outcome);
     }
     if (outcome?.status === 'failure') {
       return this.fail(operation, outcome.errorMessage ?? `${operation.suiTxDigest} failed on-chain`);
@@ -139,6 +152,18 @@ export class ChainOutcomeReconciler {
     return 'confirmed';
   }
 
+  private async confirmReversal(operation: Operation, outcome: SubmittedChainTransaction): Promise<ReconcileOutcome> {
+    const payload = operation.payload as unknown as ReversalPayload;
+    await this.creditsRepo.recordReversalOnChain({
+      reversalTransactionId: payload.reversalTransactionId,
+      digest: outcome.digest,
+      sender: this.suiClient.issuerAddress(),
+    });
+    await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
+    this.logger.log(`reversal ${payload.reversalTransactionId} mirrored on-chain from digest ${outcome.digest}`);
+    return 'confirmed';
+  }
+
   private async confirmPosRedeem(operation: Operation, outcome: SubmittedChainTransaction): Promise<ReconcileOutcome> {
     const payload = operation.payload as unknown as PosRedeemPayload;
     const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(operation.tenantId, operation.idempotencyKey);
@@ -169,7 +194,7 @@ export class ChainOutcomeReconciler {
         organizationEndUserId: payload.organizationEndUserId,
         reservedPointsAmount: payload.pointsAmount,
       });
-    } else {
+    } else if (operation.commandType === POS_REDEEM_COMMAND_TYPE) {
       const payload = operation.payload as unknown as PosRedeemPayload;
       const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(
         operation.tenantId,

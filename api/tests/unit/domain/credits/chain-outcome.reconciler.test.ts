@@ -3,6 +3,7 @@ import type { SubmittedChainTransaction } from '@octap/chain';
 import {
   ChainOutcomeReconciler,
   EARN_COMMAND_TYPE,
+  REVERSAL_COMMAND_TYPE,
   POS_REDEEM_COMMAND_TYPE,
 } from '#domain/credits/chain-outcome.reconciler.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
@@ -82,7 +83,7 @@ describe('ChainOutcomeReconciler', () => {
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual([]);
     expect(ops.listUnresolvedChainOutcomes).toHaveBeenCalledWith({
-      earnCommandType: EARN_COMMAND_TYPE,
+      unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
       posCommandType: POS_REDEEM_COMMAND_TYPE,
       olderThanMs: 5 * 60 * 1000,
       limit: 20,
@@ -274,5 +275,54 @@ describe('ChainOutcomeReconciler', () => {
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['waiting', 'waiting']);
     expect(ops.touch.mock.calls).toEqual([['op-bad'], ['op-ok']]);
+  });
+});
+
+describe('ChainOutcomeReconciler reversals (OCT-50)', () => {
+  const unknownReversal = (overrides: Partial<Operation> = {}) =>
+    buildOperation({
+      id: 'op-rev',
+      commandType: REVERSAL_COMMAND_TYPE,
+      status: 'UNKNOWN',
+      suiTxDigest: 'DIGEST-R',
+      suiTxExpirationEpoch: 10n,
+      payload: { reversalTransactionId: 'rev-1' },
+      ...overrides,
+    });
+
+  it('links a reversal that landed and settles it SUBMITTED', async () => {
+    const recordReversalOnChain = vi.fn(async () => ({ id: 'btx' }));
+    const { ops, reconciler } = fixture({
+      operations: [unknownReversal()],
+      outcomes: { 'DIGEST-R': landed('DIGEST-R') },
+      creditsRepo: { recordReversalOnChain },
+    });
+
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['confirmed']);
+    expect(recordReversalOnChain).toHaveBeenCalledWith({
+      reversalTransactionId: 'rev-1',
+      digest: 'DIGEST-R',
+      sender: '0xissuer',
+    });
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-rev', 'SUBMITTED');
+  });
+
+  it('a reversal that failed or never landed is only marked FAILED: no hold to release', async () => {
+    const { ops, credits, reconciler } = fixture({
+      operations: [unknownReversal(), unknownReversal({ id: 'op-rev-2', suiTxDigest: null })],
+      outcomes: {
+        'DIGEST-R': { digest: 'DIGEST-R', status: 'failure', errorMessage: 'EBucketUnavailable', events: [] },
+      },
+    });
+
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed', 'failed']);
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-rev', 'FAILED', 'EBucketUnavailable');
+    expect(ops.settleFromChain).toHaveBeenCalledWith(
+      'op-rev-2',
+      'FAILED',
+      'no transaction was ever sent for this command',
+    );
+    expect(credits.failEarnOnChain).not.toHaveBeenCalled();
+    expect(credits.failPosRedemptionOnChain).not.toHaveBeenCalled();
   });
 });

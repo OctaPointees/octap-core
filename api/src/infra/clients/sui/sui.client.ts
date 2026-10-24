@@ -107,7 +107,45 @@ export class SuiClientService {
     return this.client.sign(tx, this.issuerSigner);
   }
 
-  /** Sends a transaction from `signEarn`. Throwing here means the outcome is unknown, not failed. */
+  /**
+   * Builds and signs a `reverse_earn` of the earn recorded under `operationKey`, without sending
+   * it (same digest-first contract as `signEarn`). Routed to the shard pair that owns the key — the
+   * one the earn itself was recorded in and debited from.
+   */
+  async signReverseEarn(
+    program: OctapProgramConfig,
+    params: { accountId: string; operationKey: string },
+  ): Promise<SignedChainTransaction> {
+    const operationKey = new TextEncoder().encode(params.operationKey);
+    const { operationShardId, budgetShardId } = selectShards(program, operationKey);
+    const tx = this.client.buildReverseEarnTransaction({
+      issuerCapId: program.issuerCapId,
+      accountId: params.accountId,
+      operationShardId,
+      budgetShardId,
+      operationKey,
+    });
+    tx.setGasBudget(50_000_000);
+    this.logger.log(`reverse earn ${params.operationKey} on account ${params.accountId}`);
+    return this.client.sign(tx, this.issuerSigner);
+  }
+
+  /** Builds and signs a `reverse_redeem` of the redemption named `reference`, without sending it. */
+  async signReverseRedeem(
+    program: OctapProgramConfig,
+    params: { accountId: string; reference: string },
+  ): Promise<SignedChainTransaction> {
+    const tx = this.client.buildReverseRedeemTransaction({
+      issuerCapId: program.issuerCapId,
+      accountId: params.accountId,
+      reference: new TextEncoder().encode(params.reference),
+    });
+    tx.setGasBudget(50_000_000);
+    this.logger.log(`reverse redeem ${params.reference} on account ${params.accountId}`);
+    return this.client.sign(tx, this.issuerSigner);
+  }
+
+  /** Sends a transaction from a `sign*` method. Throwing here means the outcome is unknown, not failed. */
   async execute(signed: SignedChainTransaction): Promise<ChainCallResult> {
     this.logger.log(`executing ${signed.digest}`);
     return toChainCallResult(await this.client.executeSigned(signed));

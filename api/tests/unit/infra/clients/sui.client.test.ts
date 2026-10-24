@@ -139,6 +139,46 @@ describe('SuiClientService', () => {
     expect(sign).toHaveBeenCalledWith(tx, expect.anything());
   });
 
+  it('signReverseEarn routes to the shard pair that owns the original key, and only signs', async () => {
+    vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', Ed25519Keypair.generate().getSecretKey());
+    const tx = fakeTx();
+    const buildReverseEarnTransaction = vi.fn(() => tx);
+    const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D-REV', expirationEpoch: 7n };
+    const sign = vi.fn(async () => signed);
+    const service = withChainClient(new SuiClientService(), { buildReverseEarnTransaction, sign });
+
+    await expect(service.signReverseEarn(PROGRAM, { accountId: '0xacc', operationKey: 'idem-1' })).resolves.toBe(
+      signed,
+    );
+    expect(buildReverseEarnTransaction).toHaveBeenCalledWith({
+      issuerCapId: PROGRAM.issuerCapId,
+      accountId: '0xacc',
+      operationShardId: PROGRAM.operationShardIds[0],
+      budgetShardId: PROGRAM.budgetShardIds[0],
+      operationKey: new TextEncoder().encode('idem-1'),
+    });
+    expect(tx.setGasBudget).toHaveBeenCalledWith(50_000_000);
+    expect(sign).toHaveBeenCalledWith(tx, expect.anything());
+  });
+
+  it('signReverseRedeem encodes the original reference, and only signs', async () => {
+    vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', Ed25519Keypair.generate().getSecretKey());
+    const tx = fakeTx();
+    const buildReverseRedeemTransaction = vi.fn(() => tx);
+    const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D-REV', expirationEpoch: 7n };
+    const service = withChainClient(new SuiClientService(), {
+      buildReverseRedeemTransaction,
+      sign: async () => signed,
+    });
+
+    await expect(service.signReverseRedeem(PROGRAM, { accountId: '0xacc', reference: 'tx-1' })).resolves.toBe(signed);
+    expect(buildReverseRedeemTransaction).toHaveBeenCalledWith({
+      issuerCapId: PROGRAM.issuerCapId,
+      accountId: '0xacc',
+      reference: new TextEncoder().encode('tx-1'),
+    });
+  });
+
   it('execute sends a signed earn and exposes eventField on the result', async () => {
     const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'D1', expirationEpoch: 7n };
     const executeSigned = vi.fn(async () =>

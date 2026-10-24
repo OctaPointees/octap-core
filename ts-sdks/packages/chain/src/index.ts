@@ -9,6 +9,8 @@ export {
   type OpenAccountParams,
   type EarnParams,
   type RedeemParams,
+  type ReverseEarnParams,
+  type ReverseRedeemParams,
   type PublishPolicyParams,
   type ActivatePolicyAndIssueCapParams,
   type CreateShardsParams,
