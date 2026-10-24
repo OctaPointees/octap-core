@@ -12,6 +12,7 @@ export {
   type PublishPolicyParams,
   type ActivatePolicyAndIssueCapParams,
   type CreateShardsParams,
+  type TopUpBudgetParams,
   type SubmittedChainTransaction,
   type SignedChainTransaction,
   type CreditAccountEvent,

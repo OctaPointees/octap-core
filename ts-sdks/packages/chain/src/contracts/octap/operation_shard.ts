@@ -57,7 +57,7 @@ export interface CreateShardsOptions {
  * object id without scanning events.
  */
 export function createShards(options: CreateShardsOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null,
         '0x2::object::ID',
@@ -89,7 +89,7 @@ export interface CheckAndRecordOptions {
  * key has never been recorded; then records it.
  */
 export function checkAndRecord(options: CheckAndRecordOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null,
         '0x2::object::ID',
@@ -119,7 +119,7 @@ export interface ShardIndexForOptions {
  * the exact byte-order convention.
  */
 export function shardIndexFor(options: ShardIndexForOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         'vector<u8>',
         'u64'
@@ -142,7 +142,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -164,7 +164,7 @@ export interface ShardIndexOptions {
     ];
 }
 export function shardIndex(options: ShardIndexOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -186,7 +186,7 @@ export interface ShardCountOptions {
     ];
 }
 export function shardCount(options: ShardCountOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -210,7 +210,7 @@ export interface HasSeenOptions {
     ];
 }
 export function hasSeen(options: HasSeenOptions) {
-    const packageAddress = options.package ?? '0xda317c683fd6cbabc25d03f04c5aa27711cf3c5ffe4e3ef79c154174da7c3a60';
+    const packageAddress = options.package ?? '0x8ee8b8b9def794088090984737e5b33e46bcbe7c13d35dd5b7c4b36845e975ba';
     const argumentsTypes = [
         null,
         'vector<u8>'

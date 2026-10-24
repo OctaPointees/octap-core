@@ -127,6 +127,12 @@ export interface CreateShardsParams {
   totalBudget: number | bigint;
 }
 
+export interface TopUpBudgetParams {
+  adminCapId: string;
+  /** Credits to add per `BudgetShard` id; each must be positive (`budget_shard::EZeroTopUp`). */
+  topUps: ReadonlyArray<{ budgetShardId: string; amount: number | bigint }>;
+}
+
 export interface SubmittedChainTransaction {
   digest: string;
   status: 'success' | 'failure';
@@ -356,6 +362,21 @@ export class OctapChainClient {
   buildCreateShardsTransaction(params: CreateShardsParams): Transaction {
     const tx = new Transaction();
     this.addCreateShards(tx, params);
+    return tx;
+  }
+
+  /**
+   * Refills one or more of a program's `BudgetShard`s in one transaction, one `top_up` call per
+   * entry. `AdminCap`-gated on-chain: the `IssuerCap` signer can't build a valid one of these.
+   */
+  buildTopUpBudgetTransaction(params: TopUpBudgetParams): Transaction {
+    const tx = new Transaction();
+    for (const { budgetShardId, amount } of params.topUps) {
+      budgetShard.topUp({
+        package: this.packageId,
+        arguments: { admin: params.adminCapId, shard: budgetShardId, amount },
+      })(tx);
+    }
     return tx;
   }
 

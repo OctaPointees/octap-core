@@ -403,6 +403,74 @@ fun drained_budget_shard_does_not_borrow_from_its_sibling() {
     ts::end(scenario);
 }
 
+/// Tops up `budget_shard_id` by `amount` as `ADMIN`, with the program's own `AdminCap`.
+fun top_up_as_admin(scenario: &mut ts::Scenario, budget_shard_id: ID, amount: u64) {
+    ts::next_tx(scenario, ADMIN);
+    let admin_cap = ts::take_from_sender<AdminCap>(scenario);
+    let mut budget = ts::take_shared_by_id<BudgetShard>(scenario, budget_shard_id);
+    budget_shard::top_up(&admin_cap, &mut budget, amount, ts::ctx(scenario));
+    ts::return_shared(budget);
+    ts::return_to_sender(scenario, admin_cap);
+}
+
+#[test]
+fun top_up_refills_a_drained_shard_so_earn_works_again() {
+    let mut scenario = ts::begin(ADMIN);
+    // 100 total over 1 shard: exactly one 100-credit earn drains it.
+    let (op_ids, budget_ids) = setup_with_shards(&mut scenario, 100, 1);
+    earn_with_shards(&mut scenario, op_ids[0], budget_ids[0], 10_000, b"op-1");
+    assert!(budget_remaining(&mut scenario, budget_ids[0]) == 0, 0);
+
+    top_up_as_admin(&mut scenario, budget_ids[0], 250);
+    assert!(budget_remaining(&mut scenario, budget_ids[0]) == 250, 1);
+
+    // The earn that a drained shard would have rejected (`EBudgetExceeded`) now succeeds.
+    earn_with_shards(&mut scenario, op_ids[0], budget_ids[0], 10_000, b"op-2");
+    assert!(budget_remaining(&mut scenario, budget_ids[0]) == 150, 2);
+
+    ts::end(scenario);
+}
+
+#[test]
+fun top_up_only_touches_the_given_shard() {
+    let mut scenario = ts::begin(ADMIN);
+    let (_op_ids, budget_ids) = setup_with_shards(&mut scenario, 200, 2);
+
+    top_up_as_admin(&mut scenario, budget_ids[1], 40);
+    assert!(budget_remaining(&mut scenario, budget_ids[0]) == 100, 0);
+    assert!(budget_remaining(&mut scenario, budget_ids[1]) == 140, 1);
+
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 0, location = octap::budget_shard)] // EWrongProgram
+fun top_up_rejects_admin_cap_of_a_different_program() {
+    let mut scenario = ts::begin(ADMIN);
+    let (_op_ids, budget_ids) = setup_with_shards(&mut scenario, 100, 1);
+
+    // A second program's AdminCap, held by OTHER: a real AdminCap, just not this program's.
+    // (An IssuerCap can't even be passed here — `top_up` takes `&AdminCap`.)
+    let admin_cap_b = program_control::create_program(ts::ctx(&mut scenario));
+    transfer::public_transfer(admin_cap_b, OTHER);
+
+    ts::next_tx(&mut scenario, OTHER);
+    let admin_cap_b = ts::take_from_sender<AdminCap>(&scenario);
+    let mut budget = ts::take_shared_by_id<BudgetShard>(&scenario, budget_ids[0]);
+    budget_shard::top_up(&admin_cap_b, &mut budget, 1_000, ts::ctx(&mut scenario));
+
+    ts::return_shared(budget);
+    ts::return_to_sender(&scenario, admin_cap_b);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 4, location = octap::budget_shard)] // EZeroTopUp
+fun top_up_rejects_zero_amount() {
+    let mut scenario = ts::begin(ADMIN);
+    let (_op_ids, budget_ids) = setup_with_shards(&mut scenario, 100, 1);
+    top_up_as_admin(&mut scenario, budget_ids[0], 0);
+    ts::end(scenario);
+}
+
 /// Cross-language fixture: `ts-sdks/packages/chain` asserts the same
 /// key/count -> index pairs, so Move and TS shard routing can't drift.
 #[test]
