@@ -1,7 +1,8 @@
 # Chạy demo OctaP trên máy khác
 
 ## 0. Yêu cầu
-- Node.js 24+, Docker hoặc Podman (có docker-compose), [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install)
+- Node.js 24+, Docker (hoặc Podman) có docker-compose. **Không cần biết gì về Sui/blockchain/key**
+  — script ở bước 3 tự làm hết.
 - Checkout branch `dinhviethieu2910/temp-demo` của `OctaPointees/octap-core`
 
 ## 1. Cài đặt + build
@@ -19,18 +20,12 @@ docker-compose up -d
 Copy `.env.example` → `.env`, điền:
 ```
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/octap_dev
-SUI_NETWORK=testnet
 ```
-Tạo **2 ví testnet riêng của máy này** (đừng dùng lại key của ai khác — mỗi ví giữ một quyền
-ký khác nhau, issuer và admin phải tách biệt):
+Rồi chạy script này — nó tự tạo 2 ví testnet mới (issuer + admin) riêng cho máy này, tự xin
+gas từ faucet, tự ghi `SUI_ISSUER_PRIVATE_KEY`/`SUI_PROGRAM_ADMIN_PRIVATE_KEY`/`SUI_NETWORK`
+vào `.env` — không cần cài Sui CLI, không cần vào trang faucet, không cần biết gì về wallet:
 ```bash
-sui client new-address ed25519 issuer-demo
-sui client new-address ed25519 admin-demo
-```
-Xin gas free tại https://faucet.testnet.sui.io cho cả 2 địa chỉ, rồi export key:
-```bash
-sui keytool export --key-identity issuer-demo --json   # -> dán vào SUI_ISSUER_PRIVATE_KEY
-sui keytool export --key-identity admin-demo --json    # -> dán vào SUI_PROGRAM_ADMIN_PRIVATE_KEY
+node temp/generate-testnet-keys.mjs
 ```
 `ENOKI_API_KEY` có thể để trống — trang demo tự fallback sang khách hàng demo nếu không có Enoki.
 

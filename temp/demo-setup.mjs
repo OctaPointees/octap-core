@@ -14,8 +14,8 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
  * In ra cuối cùng block CONFIG để dán vào temp/login.html.
  *
  * Yêu cầu trước khi chạy: `npm install && npm run build`, Postgres+Redis đã up (docker-compose
- * up -d), `.env` đã điền DATABASE_URL/SUI_NETWORK/SUI_ISSUER_PRIVATE_KEY/SUI_PROGRAM_ADMIN_PRIVATE_KEY
- * (2 ví testnet riêng của máy này, đã xin gas ở https://faucet.testnet.sui.io).
+ * up -d), `.env` đã điền DATABASE_URL + đã chạy `node temp/generate-testnet-keys.mjs` để có
+ * SUI_NETWORK/SUI_ISSUER_PRIVATE_KEY/SUI_PROGRAM_ADMIN_PRIVATE_KEY.
  *
  * Usage: node --env-file=.env temp/demo-setup.mjs
  */
