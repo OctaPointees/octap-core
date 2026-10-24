@@ -34,6 +34,7 @@ then move the row to **Implemented** in the same pull request.
 | Indexer: `octap::credit_account` event projection with a committed cursor, reconciling PENDING/UNKNOWN earn and POS redeem from the chain; balance `asOfCheckpoint`/`observedAt`/`stale` | api/src/domain/indexer; api/src/infra/db/repositories/indexer.repository.ts |
 | Operations: outcome-unknown chain submits (earn, POS finalize) resolved by a digest recorded before sending — confirmed, failed, or released once expired, never resent | api/src/domain/credits/chain-outcome.reconciler.ts; `OctapChainClient.sign`/`executeSigned`/`findTransaction` |
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
+| Programs: budget top-up for a drained issuance budget (`budget_shard::top_up`, AdminCap-gated), worker-only | contracts/sui/sources/budget_shard.move; api/src/domain/programs/programs.service.ts (`topUpBudget`); scripts/top-up-budget.mjs |
 
 ### Known gaps in implemented features
 

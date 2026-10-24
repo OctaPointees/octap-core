@@ -16,6 +16,10 @@ only ever runs against the program provisioned for it.
   `AppModule` also imports): it depends on `infra/clients/sui/program-admin.client.ts`, which
   holds `SUI_PROGRAM_ADMIN_PRIVATE_KEY` — an `AdminCap` signer with a much larger blast radius
   than the earn-only `IssuerCap` signer, so it must never reach the HTTP process.
+- `topUpBudget()` refills an organization's issuance budget (`budget_shard::top_up`, signed by the
+  same `AdminCap` key) when its budget shards drain, split across shards like the initial budget.
+  `programs.total_budget` keeps the provisioning-time figure; the chain holds the live remaining.
+  Run it with `scripts/top-up-budget.mjs <organizationId> <amount>`.
 - No HTTP endpoint yet: provisioning a program is a one-time per-organization setup action, not
   a per-request call, so it's invoked via `scripts/provision-program.mjs` (same pattern as
   `scripts/seed-dev-credential.mjs` for API credentials), not wired into `api/rest`.

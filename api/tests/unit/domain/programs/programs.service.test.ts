@@ -138,3 +138,47 @@ describe('ProgramsService.provisionForOrganization', () => {
     expect(release).not.toHaveBeenCalled();
   });
 });
+
+describe('ProgramsService.topUpBudget', () => {
+  const ACTIVE_ROW = {
+    id: 'program-row-1',
+    status: 'ACTIVE',
+    adminCapId: '0xadmincap',
+    budgetShardIds: ['0xbudget0', '0xbudget1'],
+  };
+
+  it("tops up the organization's own program with its AdminCap and budget shards", async () => {
+    const topUps = [{ budgetShardId: '0xbudget0', amount: 50, remaining: 50 }];
+    const topUpBudget = vi.fn(async () => topUps);
+    const findByOrganization = vi.fn(async () => ACTIVE_ROW);
+
+    const result = await new ProgramsService(
+      stub<ProgramsRepository>({ findByOrganization }),
+      stub<ProgramAdminClient>({ topUpBudget }),
+    ).topUpBudget({ organizationId: 'org-1', amount: 100 });
+
+    expect(findByOrganization).toHaveBeenCalledWith('org-1');
+    expect(topUpBudget).toHaveBeenCalledWith({
+      adminCapId: '0xadmincap',
+      budgetShardIds: ['0xbudget0', '0xbudget1'],
+      amount: 100,
+    });
+    expect(result).toBe(topUps);
+  });
+
+  it.each([
+    ['no program row', undefined],
+    ['a PROVISIONING row', { ...ACTIVE_ROW, status: 'PROVISIONING' }],
+    ['a row without an AdminCap', { ...ACTIVE_ROW, adminCapId: null }],
+    ['a row without budget shards', { ...ACTIVE_ROW, budgetShardIds: [] }],
+  ])('is a NotFoundException for %s, without touching the chain', async (_label, row) => {
+    const topUpBudget = vi.fn();
+    const topUp = new ProgramsService(
+      stub<ProgramsRepository>({ findByOrganization: async () => row }),
+      stub<ProgramAdminClient>({ topUpBudget }),
+    ).topUpBudget({ organizationId: 'org-1', amount: 100 });
+
+    await expect(topUp).rejects.toMatchObject({ name: 'NotFoundException' });
+    expect(topUpBudget).not.toHaveBeenCalled();
+  });
+});

@@ -1,6 +1,10 @@
-import { Injectable, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
-import { ProgramAdminClient, type ProvisionedProgram } from '#infra/clients/sui/program-admin.client.js';
+import {
+  ProgramAdminClient,
+  type BudgetShardTopUp,
+  type ProvisionedProgram,
+} from '#infra/clients/sui/program-admin.client.js';
 
 /** Postgres `unique_violation` — possibly wrapped by drizzle in a `cause`. */
 function isUniqueViolation(err: unknown): boolean {
@@ -89,5 +93,22 @@ export class ProgramsService {
       );
       throw err;
     }
+  }
+
+  /**
+   * Refills an organization's on-chain issuance budget by `amount` credits, split across its
+   * budget shards like the initial budget. The `programs` row's `totalBudget` stays the
+   * provisioning-time figure; the chain's `BudgetShard.remaining` is the live one.
+   */
+  async topUpBudget(params: { organizationId: string; amount: number }): Promise<BudgetShardTopUp[]> {
+    const program = await this.repo.findByOrganization(params.organizationId);
+    if (program?.status !== 'ACTIVE' || !program.adminCapId || !program.budgetShardIds?.length) {
+      throw new NotFoundException(`Organization ${params.organizationId} has no active program with budget shards`);
+    }
+    return this.admin.topUpBudget({
+      adminCapId: program.adminCapId,
+      budgetShardIds: program.budgetShardIds,
+      amount: params.amount,
+    });
   }
 }

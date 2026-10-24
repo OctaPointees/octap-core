@@ -23,6 +23,27 @@ export interface ProvisionedProgram {
   budgetShardIds: string[];
 }
 
+/** One `BudgetToppedUp` event: how much a shard got and what it holds now. */
+export interface BudgetShardTopUp {
+  budgetShardId: string;
+  amount: number;
+  remaining: number;
+}
+
+/**
+ * Splits `amount` across `shardCount` shards the way `budget_shard::create_shards` splits a
+ * program's initial budget: evenly, remainder to shard 0. A zero share is left out, since
+ * `top_up` aborts on zero.
+ */
+export function splitTopUp(amount: number, shardCount: number): Array<{ shardIndex: number; amount: number }> {
+  const perShard = Math.floor(amount / shardCount);
+  const remainder = amount % shardCount;
+  return Array.from({ length: shardCount }, (_, shardIndex) => ({
+    shardIndex,
+    amount: shardIndex === 0 ? perShard + remainder : perShard,
+  })).filter((share) => share.amount > 0);
+}
+
 /** Every `<eventSuffix>` event's `shard_id`, ordered by its `shard_index`. */
 function shardIdsByIndex(result: SubmittedChainTransaction, eventSuffix: string): string[] {
   return result.events
@@ -151,5 +172,42 @@ export class ProgramAdminClient {
     );
 
     return { programId, adminCapId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds };
+  }
+
+  /**
+   * Refills a program's budget shards by `amount` credits in total, split like the initial
+   * budget (`splitTopUp`), in one transaction. Signed with the `AdminCap` holder's key — the only
+   * signer `budget_shard::top_up` accepts.
+   */
+  async topUpBudget(params: {
+    adminCapId: string;
+    budgetShardIds: string[];
+    amount: number;
+  }): Promise<BudgetShardTopUp[]> {
+    if (!Number.isSafeInteger(params.amount) || params.amount < 1) {
+      throw new Error(`amount must be a positive integer, got ${params.amount}`);
+    }
+    if (params.budgetShardIds.length === 0) {
+      throw new Error('program has no budget shards to top up');
+    }
+
+    const tx = this.client.buildTopUpBudgetTransaction({
+      adminCapId: params.adminCapId,
+      topUps: splitTopUp(params.amount, params.budgetShardIds.length).map((share) => ({
+        budgetShardId: params.budgetShardIds[share.shardIndex],
+        amount: share.amount,
+      })),
+    });
+    tx.setGasBudget(50_000_000);
+    const result = await this.client.signAndExecute(tx, this.adminSigner);
+    if (result.status !== 'success') {
+      throw new Error(result.errorMessage ?? 'budget_shard::top_up failed on-chain');
+    }
+    const topUps = result.events
+      .filter((e) => e.type.endsWith('::BudgetToppedUp'))
+      .map((e) => e.parsedJson as { shard_id: string; amount: string; remaining: string })
+      .map((e) => ({ budgetShardId: e.shard_id, amount: Number(e.amount), remaining: Number(e.remaining) }));
+    this.logger.log(`topped up ${topUps.length} budget shard(s) by ${params.amount} credits in total`);
+    return topUps;
   }
 }

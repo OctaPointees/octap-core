@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import type { OctapChainClient, SubmittedChainTransaction } from '@octap/chain';
-import { ProgramAdminClient } from '#infra/clients/sui/program-admin.client.js';
+import { ProgramAdminClient, splitTopUp } from '#infra/clients/sui/program-admin.client.js';
 
 const PARAMS = {
   earnBps: 100,
@@ -42,6 +42,7 @@ function adminWith(results: SubmittedChainTransaction[]) {
     buildCreateProgramTransaction: vi.fn(tx),
     buildPublishPolicyTransaction: vi.fn(tx),
     buildActivatePolicyAndIssueCapTransaction: vi.fn(tx),
+    buildTopUpBudgetTransaction: vi.fn(tx),
     signAndExecute: vi.fn(),
   };
   for (const result of results) {
@@ -132,6 +133,67 @@ describe('ProgramAdminClient.provisionProgram', () => {
     vi.stubEnv('SUI_NETWORK', 'mainnet');
     expect(() => (new ProgramAdminClient() as unknown as { client: OctapChainClient }).client).toThrow(
       /No octap package configured/,
+    );
+  });
+});
+
+describe('splitTopUp', () => {
+  it('splits evenly with the remainder on shard 0, like create_shards, and drops zero shares', () => {
+    expect(splitTopUp(301, 2)).toEqual([
+      { shardIndex: 0, amount: 151 },
+      { shardIndex: 1, amount: 150 },
+    ]);
+    expect(splitTopUp(500, 1)).toEqual([{ shardIndex: 0, amount: 500 }]);
+    expect(splitTopUp(2, 4)).toEqual([{ shardIndex: 0, amount: 2 }]);
+  });
+});
+
+describe('ProgramAdminClient.topUpBudget', () => {
+  const toppedUp = ok([
+    ev('BudgetToppedUp', { shard_id: '0xbudget0', amount: '151', remaining: '200' }),
+    ev('BudgetToppedUp', { shard_id: '0xbudget1', amount: '150', remaining: '150' }),
+  ]);
+
+  it('tops up every shard with its share in one transaction and reports the new remaining', async () => {
+    const { admin, client } = adminWith([toppedUp]);
+
+    expect(
+      await admin.topUpBudget({ adminCapId: '0xadmincap', budgetShardIds: ['0xbudget0', '0xbudget1'], amount: 301 }),
+    ).toEqual([
+      { budgetShardId: '0xbudget0', amount: 151, remaining: 200 },
+      { budgetShardId: '0xbudget1', amount: 150, remaining: 150 },
+    ]);
+    expect(client.buildTopUpBudgetTransaction).toHaveBeenCalledWith({
+      adminCapId: '0xadmincap',
+      topUps: [
+        { budgetShardId: '0xbudget0', amount: 151 },
+        { budgetShardId: '0xbudget1', amount: 150 },
+      ],
+    });
+    expect(client.signAndExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a non-positive amount or a shardless program before sending anything', async () => {
+    const { admin, client } = adminWith([]);
+    await expect(admin.topUpBudget({ adminCapId: '0xa', budgetShardIds: ['0xb'], amount: 0 })).rejects.toThrow(
+      /amount must be a positive integer/,
+    );
+    await expect(admin.topUpBudget({ adminCapId: '0xa', budgetShardIds: ['0xb'], amount: 1.5 })).rejects.toThrow(
+      /amount must be a positive integer/,
+    );
+    await expect(admin.topUpBudget({ adminCapId: '0xa', budgetShardIds: [], amount: 10 })).rejects.toThrow(
+      /no budget shards/,
+    );
+    expect(client.signAndExecute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['with a message', failed('EWrongProgram'), /EWrongProgram/],
+    ['silently', failed(), /budget_shard::top_up failed on-chain/],
+  ])('throws when top_up fails on-chain %s', async (_label, result, message) => {
+    const { admin } = adminWith([result]);
+    await expect(admin.topUpBudget({ adminCapId: '0xa', budgetShardIds: ['0xb'], amount: 10 })).rejects.toThrow(
+      message,
     );
   });
 });

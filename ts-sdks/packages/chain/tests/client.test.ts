@@ -77,6 +77,20 @@ describe('OctapChainClient transaction builders', () => {
     ).toEqual([`${PKG}::operation_shard::create_shards`, `${PKG}::budget_shard::create_shards`]);
   });
 
+  it('tops up each listed budget shard with its own top_up call', () => {
+    expect(
+      moveCalls(
+        client().buildTopUpBudgetTransaction({
+          adminCapId: ID(1),
+          topUps: [
+            { budgetShardId: ID(2), amount: 10 },
+            { budgetShardId: ID(3), amount: 5n },
+          ],
+        }),
+      ),
+    ).toEqual([`${PKG}::budget_shard::top_up`, `${PKG}::budget_shard::top_up`]);
+  });
+
   it('activate+issue_cap optionally creates shards in the same transaction', () => {
     const base = { adminCapId: ID(1), programId: ID(2), policyVersionId: ID(3), issuerRecipient: ID(4) };
     expect(moveCalls(client().buildActivatePolicyAndIssueCapTransaction(base))).toEqual([

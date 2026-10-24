@@ -9,6 +9,9 @@
 /// simplification — it means a program's operation and budget shard
 /// counts should match, and a hot key range drains its budget shard
 /// first.
+///
+/// A drained shard is refilled by the program's `AdminCap` holder with
+/// `top_up`; `IssuerCap` holders can only spend budget, never add it.
 module octap::budget_shard;
 
 use octap::capabilities::{Self, AdminCap};
@@ -19,6 +22,7 @@ const EWrongProgram: u64 = 0;
 const EWrongShard: u64 = 1;
 const EBudgetExceeded: u64 = 2;
 const EZeroShardCount: u64 = 3;
+const EZeroTopUp: u64 = 4;
 
 public struct BudgetShard has key {
     id: UID,
@@ -37,6 +41,13 @@ public struct BudgetShardCreated has copy, drop {
 }
 
 public struct BudgetDebited has copy, drop {
+    program_id: ID,
+    shard_id: ID,
+    amount: u64,
+    remaining: u64,
+}
+
+public struct BudgetToppedUp has copy, drop {
     program_id: ID,
     shard_id: ID,
     amount: u64,
@@ -89,6 +100,23 @@ public fun debit(shard: &mut BudgetShard, program_id: ID, operation_key: &vector
     shard.remaining = shard.remaining - amount;
     event::emit(BudgetDebited {
         program_id,
+        shard_id: object::id(shard),
+        amount,
+        remaining: shard.remaining,
+    });
+}
+
+/// Adds `amount` to one shard's remaining budget. Only the program's
+/// `AdminCap` can do this, and only for its own program's shards; the
+/// amount isn't redistributed across siblings, so a caller refilling a
+/// multi-shard program tops up each shard it wants refilled.
+entry fun top_up(admin: &AdminCap, shard: &mut BudgetShard, amount: u64, _ctx: &mut TxContext) {
+    assert!(capabilities::admin_program_id(admin) == shard.program_id, EWrongProgram);
+    assert!(amount > 0, EZeroTopUp);
+
+    shard.remaining = shard.remaining + amount;
+    event::emit(BudgetToppedUp {
+        program_id: shard.program_id,
         shard_id: object::id(shard),
         amount,
         remaining: shard.remaining,
