@@ -816,7 +816,54 @@ export class CreditsRepository {
         })
         .returning();
 
+      // Mirror it on-chain (OCT-50) only if the original reached the chain: a chain-dispatched earn
+      // or a POS redemption. A voucher-claim REDEEM never left Postgres, so there is nothing to undo.
+      if (params.original.blockchainTransactionId) {
+        await acceptCommand(tx, {
+          tenantId: params.organizationId,
+          idempotencyKey: `reversal:${reversal.id}`,
+          commandType: 'CREDIT_REVERSAL_CHAIN_SUBMIT',
+          payload: {
+            reversalTransactionId: reversal.id,
+            reversedTransactionId: params.original.id,
+            reversedTransactionType: params.original.transactionType,
+            organizationEndUserId: params.original.organizationEndUserId,
+            // The original's on-chain handle: an earn's `operation_key` is its idempotency key, a
+            // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts).
+            chainKey: params.original.transactionType === 'EARN' ? params.original.idempotencyKey : params.original.id,
+          },
+        });
+      }
+
       return { reversal, reversedOriginal, newBalance: newConfirmedBalance };
+    });
+  }
+
+  /**
+   * Records the transaction that mirrored a reversal on-chain and links it to the REVERSAL row.
+   * The reversal itself was already CONFIRMED in Postgres when it was accepted; this only adds its
+   * chain proof. Returns null (and writes nothing) if a digest is already linked — the worker and
+   * `ChainOutcomeReconciler` can both get here for the same command.
+   */
+  async recordReversalOnChain(params: { reversalTransactionId: string; digest: string; sender: string }) {
+    return this.db.transaction(async (tx) => {
+      const [reversal] = await tx
+        .select()
+        .from(loyaltyTransactions)
+        .where(eq(loyaltyTransactions.id, params.reversalTransactionId))
+        .for('update');
+      if (!reversal || reversal.blockchainTransactionId) {
+        return null;
+      }
+      const [blockchainTx] = await tx
+        .insert(blockchainTransactions)
+        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+        .returning();
+      await tx
+        .update(loyaltyTransactions)
+        .set({ blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
+        .where(eq(loyaltyTransactions.id, reversal.id));
+      return blockchainTx;
     });
   }
 

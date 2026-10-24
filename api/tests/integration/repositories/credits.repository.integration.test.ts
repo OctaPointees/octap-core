@@ -631,6 +631,84 @@ describe('reversal', () => {
     ).rejects.toThrow();
   });
 
+  it('reversing a chain-confirmed earn queues its on-chain mirror in the same transaction (OCT-50)', async () => {
+    const earn = await confirmedEarn(100, { key: 'earn-mirror' });
+    const original = await getLoyaltyTransaction(db, earn.id);
+
+    const { reversal } = await repo.recordReversalTransaction({
+      organizationId: orgId,
+      original,
+      idempotencyKey: 'rev',
+    });
+
+    const commands = await db
+      .select()
+      .from(schema.operations)
+      .where(eq(schema.operations.commandType, 'CREDIT_REVERSAL_CHAIN_SUBMIT'));
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      tenantId: orgId,
+      idempotencyKey: `reversal:${reversal.id}`,
+      status: 'PENDING',
+      payload: {
+        reversalTransactionId: reversal.id,
+        reversedTransactionId: earn.id,
+        reversedTransactionType: 'EARN',
+        organizationEndUserId: memberId,
+        // The earn's on-chain operation_key is its idempotency key.
+        chainKey: 'earn-mirror',
+      },
+    });
+  });
+
+  it('reversing a Postgres-only (voucher) redeem queues nothing on-chain', async () => {
+    await confirmedEarn(100);
+    const { transaction } = await repo.recordRedeemTransaction({
+      organizationId: orgId,
+      organizationEndUserId: memberId,
+      pointsAmount: 40,
+      idempotencyKey: 'voucher-redeem',
+    });
+
+    await repo.recordReversalTransaction({ organizationId: orgId, original: transaction, idempotencyKey: 'rev' });
+
+    expect(
+      await db
+        .select()
+        .from(schema.operations)
+        .where(eq(schema.operations.commandType, 'CREDIT_REVERSAL_CHAIN_SUBMIT')),
+    ).toEqual([]);
+  });
+
+  it('recordReversalOnChain links the mirror digest to the reversal exactly once', async () => {
+    const earn = await confirmedEarn(100);
+    const { reversal } = await repo.recordReversalTransaction({
+      organizationId: orgId,
+      original: await getLoyaltyTransaction(db, earn.id),
+      idempotencyKey: 'rev',
+    });
+
+    const linked = await repo.recordReversalOnChain({
+      reversalTransactionId: reversal.id,
+      digest: 'D-REV',
+      sender: '0xissuer',
+    });
+    expect(linked).toMatchObject({ digest: 'D-REV', status: 'CONFIRMED', sender: '0xissuer' });
+    expect((await getLoyaltyTransaction(db, reversal.id)).blockchainTransactionId).toBe(linked?.id);
+
+    // The worker and the reconciler can both get here: the second call changes nothing.
+    await expect(
+      repo.recordReversalOnChain({ reversalTransactionId: reversal.id, digest: 'D-REV-2', sender: '0xissuer' }),
+    ).resolves.toBeNull();
+    await expect(
+      repo.recordReversalOnChain({
+        reversalTransactionId: '00000000-0000-0000-0000-000000000000',
+        digest: 'D-X',
+        sender: '0xissuer',
+      }),
+    ).resolves.toBeNull();
+  });
+
   it('fails cleanly when the member has no ownership row', async () => {
     const { memberId: fresh } = await seedMember(db, orgId);
     const orphan = await insertLoyaltyTransaction(db, {

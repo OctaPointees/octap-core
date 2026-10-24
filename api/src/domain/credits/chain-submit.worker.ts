@@ -1,11 +1,11 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { ChainSubmitProcessor } from './chain-submit.processor.js';
-import { ChainOutcomeReconciler, EARN_COMMAND_TYPE } from './chain-outcome.reconciler.js';
+import { ChainOutcomeReconciler, EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 
 const POLL_INTERVAL_MS = Number(process.env.CHAIN_SUBMIT_POLL_INTERVAL_MS ?? 3000);
 const BATCH_SIZE = Number(process.env.CHAIN_SUBMIT_BATCH_SIZE ?? 5);
-const COMMAND_TYPES = [EARN_COMMAND_TYPE];
+const COMMAND_TYPES = [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE];
 const RECONCILE_INTERVAL_MS = Number(process.env.CHAIN_OUTCOME_RECONCILE_INTERVAL_MS ?? 60_000);
 /** A healthy chain submit resolves in seconds; stuck this long means the worker that claimed it died. */
 const STALE_PROCESSING_MS = Number(process.env.CHAIN_SUBMIT_STALE_PROCESSING_MS ?? 5 * 60 * 1000);

@@ -442,3 +442,159 @@ describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
     expect(markFailed).toHaveBeenCalledWith('op-1', 'InsufficientGas while resolving');
   });
 });
+
+describe('ChainSubmitProcessor reversal mirroring (OCT-50)', () => {
+  const reversalOp = (overrides: Record<string, unknown> = {}) =>
+    buildOperation({
+      id: 'op-rev',
+      commandType: 'CREDIT_REVERSAL_CHAIN_SUBMIT',
+      idempotencyKey: 'reversal:rev-1',
+      payload: {
+        reversalTransactionId: 'rev-1',
+        reversedTransactionId: 'tx-1',
+        reversedTransactionType: 'EARN',
+        organizationEndUserId: 'user-1',
+        chainKey: 'idem-earn-1',
+        ...overrides,
+      },
+    });
+  const signed = { bytes: new Uint8Array([1]), signature: 'sig', digest: 'DIGEST-R', expirationEpoch: 9n };
+
+  function reversalProcessor(sui: Record<string, unknown>, ops: Record<string, unknown> = {}, credits = {}) {
+    const operationsRepo = {
+      recordSubmitDigest: vi.fn(async () => {}),
+      markSubmitted: vi.fn(async () => {}),
+      markFailed: vi.fn(async () => {}),
+      markUnknown: vi.fn(async () => true),
+      ...ops,
+    };
+    const creditsRepo = {
+      getCreditOwnershipByEndUserId: existingAccount,
+      recordReversalOnChain: vi.fn(async () => ({ id: 'btx-r' })),
+      ...credits,
+    };
+    return {
+      operationsRepo,
+      creditsRepo,
+      run: (operation: ReturnType<typeof buildOperation>) =>
+        processor(operationsRepo, creditsRepo, sui).process(operation),
+    };
+  }
+
+  it('reverses an earn by its operation key, records the digest first, then links the chain proof', async () => {
+    const calls: string[] = [];
+    const signReverseEarn = vi.fn(async () => {
+      calls.push('sign');
+      return signed;
+    });
+    const execute = vi.fn(async () => {
+      calls.push('execute');
+      return fakeChainResult({ digest: 'DIGEST-R' });
+    });
+    const { operationsRepo, creditsRepo, run } = reversalProcessor(
+      { signReverseEarn, signReverseRedeem: () => expect.fail('not a redeem'), execute },
+      {
+        recordSubmitDigest: vi.fn(async () => {
+          calls.push('record');
+        }),
+      },
+    );
+
+    await run(reversalOp());
+
+    expect(calls).toEqual(['sign', 'record', 'execute']);
+    expect(signReverseEarn).toHaveBeenCalledWith(programConfigFor('org-1'), {
+      accountId: '0xexisting',
+      operationKey: 'idem-earn-1',
+    });
+    expect(operationsRepo.recordSubmitDigest).toHaveBeenCalledWith('op-rev', 'DIGEST-R', 9n);
+    expect(creditsRepo.recordReversalOnChain).toHaveBeenCalledWith({
+      reversalTransactionId: 'rev-1',
+      digest: 'DIGEST-R',
+      sender: '0xissuer',
+    });
+    expect(operationsRepo.markSubmitted).toHaveBeenCalledWith('op-rev', 'DIGEST-R');
+    expect(operationsRepo.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('reverses a POS redemption by its reference', async () => {
+    const signReverseRedeem = vi.fn(async () => signed);
+    const { operationsRepo, run } = reversalProcessor({
+      signReverseEarn: () => expect.fail('not an earn'),
+      signReverseRedeem,
+      execute: async () => fakeChainResult({ digest: 'DIGEST-R' }),
+    });
+
+    await run(reversalOp({ reversedTransactionType: 'REDEEM', chainKey: 'tx-redeem-1' }));
+
+    expect(signReverseRedeem).toHaveBeenCalledWith(programConfigFor('org-1'), {
+      accountId: '0xexisting',
+      reference: 'tx-redeem-1',
+    });
+    expect(operationsRepo.markSubmitted).toHaveBeenCalledWith('op-rev', 'DIGEST-R');
+  });
+
+  it('a definitive on-chain abort (e.g. an already-spent bucket) marks it FAILED with the reason', async () => {
+    const { operationsRepo, creditsRepo, run } = reversalProcessor({
+      signReverseEarn: async () => signed,
+      execute: async () => fakeChainResult({ status: 'failure', errorMessage: 'MoveAbort ... 6' }),
+    });
+
+    await run(reversalOp());
+
+    expect(operationsRepo.markFailed).toHaveBeenCalledWith('op-rev', 'MoveAbort ... 6');
+    expect(creditsRepo.recordReversalOnChain).not.toHaveBeenCalled();
+  });
+
+  it('fails without signing anything when the member has no on-chain account', async () => {
+    const signReverseEarn = vi.fn();
+    const { operationsRepo, run } = reversalProcessor(
+      { signReverseEarn },
+      {},
+      { getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: null }) },
+    );
+
+    await run(reversalOp());
+
+    expect(signReverseEarn).not.toHaveBeenCalled();
+    expect(operationsRepo.markFailed).toHaveBeenCalledWith(
+      'op-rev',
+      expect.stringMatching(/No on-chain credit account/),
+    );
+  });
+
+  it('an execute that throws leaves it UNKNOWN for the reconciler, never FAILED or resent', async () => {
+    const { operationsRepo, run } = reversalProcessor({
+      signReverseEarn: async () => signed,
+      execute: async () => {
+        throw new Error('socket hang up');
+      },
+    });
+
+    await run(reversalOp());
+
+    expect(operationsRepo.markUnknown).toHaveBeenCalledWith(
+      'op-rev',
+      'reversal outcome unknown: socket hang up',
+      undefined,
+    );
+    expect(operationsRepo.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('a PG failure after the reversal landed goes UNKNOWN with its digest', async () => {
+    const { operationsRepo, run } = reversalProcessor(
+      { signReverseEarn: async () => signed, execute: async () => fakeChainResult({ digest: 'DIGEST-R' }) },
+      {},
+      {
+        recordReversalOnChain: async () => {
+          throw new Error('connection reset');
+        },
+      },
+    );
+
+    await run(reversalOp());
+
+    expect(operationsRepo.markUnknown).toHaveBeenCalledWith('op-rev', 'connection reset', 'DIGEST-R');
+    expect(operationsRepo.markSubmitted).not.toHaveBeenCalled();
+  });
+});

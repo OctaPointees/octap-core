@@ -77,6 +77,29 @@ describe('OctapChainClient transaction builders', () => {
     ).toEqual([`${PKG}::operation_shard::create_shards`, `${PKG}::budget_shard::create_shards`]);
   });
 
+  it('builds reverse_earn and reverse_redeem as single Move calls', () => {
+    expect(
+      moveCalls(
+        client().buildReverseEarnTransaction({
+          issuerCapId: ID(1),
+          accountId: ID(2),
+          operationShardId: ID(3),
+          budgetShardId: ID(4),
+          operationKey: new TextEncoder().encode('k'),
+        }),
+      ),
+    ).toEqual([`${PKG}::credit_account::reverse_earn`]);
+    expect(
+      moveCalls(
+        client().buildReverseRedeemTransaction({
+          issuerCapId: ID(1),
+          accountId: ID(2),
+          reference: new Uint8Array([1]),
+        }),
+      ),
+    ).toEqual([`${PKG}::credit_account::reverse_redeem`]);
+  });
+
   it('tops up each listed budget shard with its own top_up call', () => {
     expect(
       moveCalls(

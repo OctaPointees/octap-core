@@ -257,7 +257,7 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     await insertOperation({ idempotencyKey: 'other', commandType: 'X', status: 'UNKNOWN', updatedAt: old });
 
     const due = await repo.listUnresolvedChainOutcomes({
-      earnCommandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+      unknownCommandTypes: ['CREDIT_EARN_CHAIN_SUBMIT'],
       posCommandType: 'CREDIT_POS_REDEEM_RESERVE',
       olderThanMs: 5 * 60 * 1000,
       limit: 10,

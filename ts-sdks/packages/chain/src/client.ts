@@ -77,6 +77,24 @@ export interface RedeemParams {
   reference: Uint8Array;
 }
 
+export interface ReverseEarnParams {
+  issuerCapId: string;
+  accountId: string;
+  /** The program's `OperationShard` that owns `operationKey` — the one the earn recorded it in. */
+  operationShardId: string;
+  /** The program's `BudgetShard` at the same index; the earn's budget is refunded to it. */
+  budgetShardId: string;
+  /** The original earn's `operation_key`. */
+  operationKey: Uint8Array;
+}
+
+export interface ReverseRedeemParams {
+  issuerCapId: string;
+  accountId: string;
+  /** The original `redeem`'s `reference`. */
+  reference: Uint8Array;
+}
+
 export interface CreditAccountEvent {
   /** Struct name only (`CreditEarned`, `CreditRedeemed`, ...), package/module prefix stripped. */
   name: string;
@@ -256,6 +274,34 @@ export class OctapChainClient {
       arguments: {
         account: params.accountId,
         cost: params.cost,
+        reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildReverseEarnTransaction(params: ReverseEarnParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.reverseEarn({
+      package: this.packageId,
+      arguments: {
+        issuer: params.issuerCapId,
+        account: params.accountId,
+        operationShard: params.operationShardId,
+        budgetShard: params.budgetShardId,
+        operationKey: Array.from(params.operationKey),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildReverseRedeemTransaction(params: ReverseRedeemParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.reverseRedeem({
+      package: this.packageId,
+      arguments: {
+        issuer: params.issuerCapId,
+        account: params.accountId,
         reference: Array.from(params.reference),
       },
     })(tx);
