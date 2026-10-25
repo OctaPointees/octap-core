@@ -20,7 +20,9 @@ async function makeFundedKeypair(label) {
     await requestSuiFromFaucetV3({ host, recipient: address });
     console.log(`[${label}] đã nhận gas.`);
   } catch (e) {
-    console.warn(`[${label}] faucet lỗi (${e.message}) — có thể do rate limit, thử lại sau vài phút bằng tay tại https://faucet.sui.io`);
+    console.warn(
+      `[${label}] faucet lỗi (${e.message}) — có thể do rate limit, thử lại sau vài phút bằng tay tại https://faucet.sui.io`,
+    );
   }
   return { address, secretKey: keypair.getSecretKey() };
 }
