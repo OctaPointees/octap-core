@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>OctaP — demo flow</title>
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      h1 {
+        font-size: 22px;
+      }
+      .step {
+        margin-top: 28px;
+        padding: 18px 20px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        opacity: 0.4;
+        transition: opacity 0.2s;
+      }
+      .step.active {
+        opacity: 1;
+      }
+      .step h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+      .step button {
+        padding: 8px 14px;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      .step button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      pre {
+        background: #f6f6f6;
+        padding: 10px;
+        border-radius: 6px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .err {
+        color: #c00;
+      }
+      .ok {
+        color: #2a8a2a;
+      }
+      a.chain {
+        display: inline-block;
+        margin-top: 8px;
+        font-size: 13px;
+      }
+      .profile {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .profile img {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+      }
+      input {
+        font-family: monospace;
+        padding: 4px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OctaP — demo flow</h1>
+    <p style="color: #888; font-size: 13px">
+      API: <code>http://127.0.0.1:3000</code> &nbsp;|&nbsp; bấm lần lượt từng bước
+    </p>
+
+    <!-- Act 1 -->
+    <div class="step active" id="step1">
+      <h2>1. Đăng nhập khách hàng</h2>
+      <div id="googleBtn"></div>
+      <div id="profile" style="display: none" class="profile">
+        <img id="avatar" src="" alt="" />
+        <div>
+          <div id="name"></div>
+          <div id="email" style="color: #666; font-size: 13px"></div>
+        </div>
+      </div>
+      <pre id="out1"></pre>
+    </div>
+
+    <!-- Act 2 -->
+    <div class="step" id="step2">
+      <h2>2. Earn điểm thật trên-chain</h2>
+      <button id="btn2">Earn 4000 (≈200 điểm, đủ dư cho các bước sau)</button>
+      <pre id="out2"></pre>
+    </div>
+
+    <!-- Act 3 -->
+    <div class="step" id="step3">
+      <h2>3. Voucher (tạo → claim → đổi)</h2>
+      <button id="btn3">Tạo + claim + đổi voucher 10%</button>
+      <pre id="out3"></pre>
+    </div>
+
+    <!-- Act 4 -->
+    <div class="step" id="step4">
+      <h2>4. POS redemption — khách tự ký</h2>
+      <button id="btn4">Reserve 100 điểm (POS) &amp; khách tự ký</button>
+      <pre id="out4"></pre>
+    </div>
+
+    <!-- Act 5 -->
+    <div class="step" id="step5">
+      <h2>5. Reversal thật trên-chain</h2>
+      <button id="btn5">Earn 50 điểm riêng rồi reverse ngay (on-chain sạch)</button>
+      <pre id="out5"></pre>
+    </div>
+
+    <!-- Act 6 -->
+    <div class="step" id="step6">
+      <h2>6. Budget cạn → top-up</h2>
+      <button id="btn6a">Earn một đơn rất lớn (làm cạn budget)</button>
+      <button id="btn6b" disabled>Thử earn lại (sau khi top-up ở terminal)</button>
+      <pre id="out6"></pre>
+      <div id="topupHint" style="display: none; color: #a60">
+        Budget đã cạn (EBudgetExceeded). Chạy ở terminal:<br />
+        <code id="topupCmd"></code><br />
+        rồi bấm "Thử earn lại".
+      </div>
+    </div>
+
+    <!-- Act 7 -->
+    <div class="step" id="step7">
+      <h2>7. Webhook</h2>
+      <input id="webhookUrl" placeholder="https://webhook.site/..." style="width: 70%" />
+      <button id="btn7a">Đăng ký webhook</button>
+      <button id="btn7b" disabled>Earn để trigger delivery</button>
+      <pre id="out7"></pre>
+    </div>
+
+    <script type="module">
+      const API = 'http://127.0.0.1:3000';
+      // --- Dán output của `node --env-file=.env temp/demo-setup.mjs` vào 5 dòng dưới đây ---
+      // Xem temp/HUONG-DAN-DEMO.md để biết cách chạy setup và điền đúng chỗ này.
+      const ORG_ID = 'FILL_ME_ORG_ID';
+      const KEY_A = 'FILL_ME_API_KEY';
+      const CUSTOMER_KEY = 'FILL_ME_CUSTOMER_SUIPRIVKEY';
+      const FALLBACK_END_USER_ID = 'FILL_ME_END_USER_ID';
+      const FALLBACK_SUI_ADDRESS = 'FILL_ME_SUI_ADDRESS';
+
+      // Lazy + tách riêng: nếu CDN này có vấn đề, chỉ Act 4 báo lỗi, không kéo sập cả trang.
+      let customerKeypairPromise = null;
+      async function getCustomerKeypair() {
+        if (!customerKeypairPromise) {
+          customerKeypairPromise = (async () => {
+            const { Ed25519Keypair } = await import('https://esm.sh/@mysten/sui@2.37.0/keypairs/ed25519');
+            const { decodeSuiPrivateKey } = await import('https://esm.sh/@mysten/sui@2.37.0/cryptography');
+            return Ed25519Keypair.fromSecretKey(decodeSuiPrivateKey(CUSTOMER_KEY).secretKey);
+          })();
+        }
+        return customerKeypairPromise;
+      }
+
+      let oeuId = null;
+      let earnTransactionId = null;
+
+      const $ = (id) => document.getElementById(id);
+      const rid = () => Math.random().toString(36).slice(2, 10);
+      const chainLink = (digest) =>
+        digest
+          ? `<a class="chain" target="_blank" href="https://suiscan.xyz/testnet/tx/${digest}">Xem trên Suiscan →</a>`
+          : '';
+      const show = (el, obj, ok = true) => {
+        el.innerHTML =
+          `<span class="${ok ? 'ok' : 'err'}">${JSON.stringify(obj, null, 2)}</span>` +
+          (obj && obj.blockchainDigest ? chainLink(obj.blockchainDigest) : '') +
+          (obj && obj.sui_tx_digest ? chainLink(obj.sui_tx_digest) : '');
+      };
+      const activate = (id) => $(id).classList.add('active');
+
+      async function api(path, body, key = KEY_A) {
+        const res = await fetch(`${API}${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: JSON.stringify(body ?? {}),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok)
+          throw Object.assign(new Error(json.message ?? `HTTP ${res.status}`), { body: json, status: res.status });
+        return json;
+      }
+      async function apiGet(path) {
+        const res = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${KEY_A}` } });
+        return res.json();
+      }
+      function decodeJwt(token) {
+        try {
+          return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        } catch {
+          return {};
+        }
+      }
+
+      // --- Act 1: login ---
+      const onGoogleCredential = async (response) => {
+        const profile = decodeJwt(response.credential);
+        $('avatar').src = profile.picture ?? '';
+        $('name').textContent = profile.name ?? '';
+        $('email').textContent = profile.email ?? '';
+        $('profile').style.display = 'flex';
+
+        let identity;
+        try {
+          identity = await api('/v1/identity/google-login', { idToken: response.credential }, null);
+        } catch (e) {
+          console.warn('google-login failed, falling back to known demo identity:', e);
+          identity = { endUserId: FALLBACK_END_USER_ID, suiAddress: FALLBACK_SUI_ADDRESS };
+        }
+        const enrollment = await api(
+          `/v1/identity/organizations/${ORG_ID}/enroll`,
+          { endUserId: identity.endUserId },
+          null,
+        );
+        oeuId = enrollment.organizationEndUserId;
+        show($('out1'), { suiAddress: identity.suiAddress, organizationEndUserId: oeuId });
+        activate('step2');
+      };
+
+      google.accounts.id.initialize({
+        client_id: '526926893299-k9dhcm4ug3vgl2mct32sfoi1ns1po17l.apps.googleusercontent.com',
+        callback: onGoogleCredential,
+      });
+      google.accounts.id.renderButton(document.getElementById('googleBtn'), { type: 'standard' });
+
+      // --- Act 2: earn ---
+      $('btn2').addEventListener('click', async () => {
+        try {
+          const earn = await api('/v1/credits/earn', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 4000,
+            idempotencyKey: `demo-earn-${rid()}`,
+          });
+          earnTransactionId = earn.transactionId;
+          show($('out2'), earn);
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const txs = await apiGet(`/v1/credits/members/${oeuId}/transactions`);
+            const tx = txs.find((t) => t.id === earnTransactionId);
+            if (tx && tx.status === 'CONFIRMED') {
+              show($('out2'), tx);
+              break;
+            }
+          }
+          activate('step3');
+        } catch (e) {
+          show($('out2'), e.body ?? e.message, false);
+        }
+      });
+
+      // --- Act 3: voucher ---
+      $('btn3').addEventListener('click', async () => {
+        try {
+          const voucher = await api('/v1/rewards/vouchers', {
+            code: `DEMO-${rid()}`,
+            title: '10% off',
+            discountType: 'PERCENTAGE',
+            discountValue: '10',
+            totalSupply: 100,
+          });
+          const claim = await api(`/v1/rewards/vouchers/${voucher.id}/claim`, { organizationEndUserId: oeuId });
+          const redeem = await api('/v1/rewards/vouchers/redeem', { serialCode: claim.serialCode });
+          show($('out3'), { voucher: voucher.code, serialCode: claim.serialCode, redeem });
+          activate('step4');
+        } catch (e) {
+          show($('out3'), e.body ?? e.message, false);
+        }
+      });
+
+      // --- Act 4: POS redemption, customer signs ---
+      $('btn4').addEventListener('click', async () => {
+        try {
+          const reserve = await api('/v1/credits/redeem/reserve', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 100,
+            idempotencyKey: `demo-pos-${rid()}`,
+          });
+          const bytes = Uint8Array.from(atob(reserve.transactionBytes), (c) => c.charCodeAt(0));
+          const customerKeypair = await getCustomerKeypair();
+          const { signature } = await customerKeypair.signTransaction(bytes);
+          const finalize = await api('/v1/credits/redeem/finalize', { digest: reserve.digest, signature }, null);
+          show($('out4'), finalize);
+          activate('step5');
+        } catch (e) {
+          show($('out4'), e.body ?? e.message, false);
+        }
+      });
+
+      // --- Act 5: dedicated earn, then reverse it while its bucket is still untouched ---
+      $('btn5').addEventListener('click', async () => {
+        try {
+          const out = $('out5');
+          out.textContent = 'Earning...';
+          const earn = await api('/v1/credits/earn', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 50,
+            idempotencyKey: `demo-rev-earn-${rid()}`,
+          });
+          let confirmedEarn = earn;
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const txs = await apiGet(`/v1/credits/members/${oeuId}/transactions`);
+            const tx = txs.find((t) => t.id === earn.transactionId);
+            if (tx && tx.status === 'CONFIRMED') {
+              confirmedEarn = tx;
+              break;
+            }
+          }
+          out.textContent = 'Earn xong, đang reverse...';
+          const reverse = await api(`/v1/credits/transactions/${earn.transactionId}/reverse`, {
+            idempotencyKey: `demo-rev-${rid()}`,
+            reason: 'demo clawback',
+          });
+          let settled = reverse;
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const txs = await apiGet(`/v1/credits/members/${oeuId}/transactions`);
+            const tx = txs.find((t) => t.id === reverse.reversalTransactionId);
+            if (tx && tx.blockchainDigest) {
+              settled = tx;
+              break;
+            }
+            if (tx) settled = tx;
+          }
+          show($('out5'), { earn: confirmedEarn, reversal: settled });
+          activate('step6');
+        } catch (e) {
+          show($('out5'), e.body ?? e.message, false);
+        }
+      });
+
+      // --- Act 6: budget exceeded -> top-up ---
+      // Budget bị kiểm tra trên-chain (Move), không đồng bộ ở lớp API — nên /earn luôn trả 201
+      // PENDING ngay cả khi sẽ bị EBudgetExceeded; phải poll transaction để thấy status FAILED.
+      // Lý do abort chi tiết chỉ in ra log terminal của worker, không có field riêng qua API này.
+      async function pollUntilSettled(transactionId) {
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const txs = await apiGet(`/v1/credits/members/${oeuId}/transactions`);
+          const tx = txs.find((t) => t.id === transactionId);
+          if (tx && (tx.status === 'CONFIRMED' || tx.status === 'FAILED')) return tx;
+        }
+        return null;
+      }
+
+      $('btn6a').addEventListener('click', async () => {
+        try {
+          const out = $('out6');
+          out.textContent = 'Earn một đơn rất lớn, đang chờ chain xử lý...';
+          // earnBps 500 (5%) trên budget 1,000,000 điểm: cần purchase lớn để chắc chắn vượt budget
+          // còn lại bất kể đã earn bao nhiêu trước đó trong buổi demo.
+          const earn = await api('/v1/credits/earn', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 100000000,
+            idempotencyKey: `demo-budget-${rid()}`,
+          });
+          const settled = await pollUntilSettled(earn.transactionId);
+          if (settled && settled.status === 'FAILED') {
+            show(out, { ...settled, note: 'Xem log terminal của worker để thấy EBudgetExceeded' }, false);
+            $('topupCmd').textContent = `node --env-file=.env scripts/top-up-budget.mjs ${ORG_ID} 500000`;
+            $('topupHint').style.display = 'block';
+            $('btn6b').disabled = false;
+          } else {
+            show(out, settled ?? earn);
+          }
+        } catch (e) {
+          show($('out6'), e.body ?? e.message, false);
+        }
+      });
+      $('btn6b').addEventListener('click', async () => {
+        try {
+          const earn = await api('/v1/credits/earn', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 500,
+            idempotencyKey: `demo-budget-ok-${rid()}`,
+          });
+          const settled = await pollUntilSettled(earn.transactionId);
+          show($('out6'), settled ?? earn, !(settled && settled.status === 'FAILED'));
+          if (settled && settled.status === 'CONFIRMED') activate('step7');
+        } catch (e) {
+          show($('out6'), e.body ?? e.message, false);
+        }
+      });
+
+      // --- Act 7: webhook ---
+      $('btn7a').addEventListener('click', async () => {
+        try {
+          const url = $('webhookUrl').value.trim();
+          const endpoint = await api('/v1/webhooks/endpoints', { url, description: 'demo' });
+          show($('out7'), endpoint);
+          $('btn7b').disabled = false;
+        } catch (e) {
+          show($('out7'), e.body ?? e.message, false);
+        }
+      });
+      $('btn7b').addEventListener('click', async () => {
+        try {
+          const earn = await api('/v1/credits/earn', {
+            organizationEndUserId: oeuId,
+            pointsAmount: 10,
+            idempotencyKey: `demo-webhook-${rid()}`,
+          });
+          show($('out7'), { earn, note: 'Mở tab webhook.site để xem delivery credits.earn.confirmed' });
+        } catch (e) {
+          show($('out7'), e.body ?? e.message, false);
+        }
+      });
+
+      activate('step1');
+    </script>
+  </body>
+</html>
