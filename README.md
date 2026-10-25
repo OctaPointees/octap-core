@@ -68,6 +68,20 @@ localhost:3000 and needs `DATABASE_URL` (see [.env.example](.env.example)); appl
 still boots and polls harmlessly without them — only a claimed operation's chain call fails).
 Supply environment variables through your shell, a root `.env`, or Node's --env-file option.
 
+### Local Docker port configuration
+
+For local Docker PostgreSQL, set `POSTGRES_PORT` in your root `.env` (default `5433`).
+Use the same port in `DATABASE_URL`; for example, if `5433` is already occupied:
+
+```dotenv
+POSTGRES_PORT=5434
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5434/octap_dev
+```
+
+Apply port changes with `docker compose up -d postgres`. The container still uses port
+`5432` internally; each developer chooses their own host port. `DATABASE_URL` does not
+automatically interpolate `POSTGRES_PORT`.
+
 ## Public package handoff
 
 OctaP_Web installs a committed npm tarball of @octap/contracts so a standalone clone builds
