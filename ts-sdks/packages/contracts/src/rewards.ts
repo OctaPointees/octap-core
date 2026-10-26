@@ -9,11 +9,14 @@ export interface CreateVoucherRequest {
   pointsCost?: number;
   discountType: DiscountType;
   discountValue?: string;
-  totalSupply?: number;
-  startsAt?: string;
-  expiresAt?: string;
+  totalSupply?: number | null;
+  startsAt?: string | null;
+  expiresAt?: string | null;
   metadata?: Record<string, unknown>;
+  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED';
 }
+
+export type UpdateVoucherRequest = Partial<CreateVoucherRequest>;
 
 export interface VoucherDto {
   id: string;

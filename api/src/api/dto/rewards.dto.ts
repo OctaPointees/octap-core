@@ -1,17 +1,7 @@
-import type { DiscountType } from '@octap/contracts';
+import type { CreateVoucherRequest, UpdateVoucherRequest } from '@octap/contracts';
 
-export interface CreateVoucherBodyDto {
-  code: string;
-  title: string;
-  description?: string;
-  pointsCost?: number;
-  discountType: DiscountType;
-  discountValue?: string;
-  totalSupply?: number;
-  startsAt?: string;
-  expiresAt?: string;
-  metadata?: Record<string, unknown>;
-}
+export type CreateVoucherBodyDto = CreateVoucherRequest;
+export type UpdateVoucherBodyDto = UpdateVoucherRequest;
 
 export interface ClaimVoucherBodyDto {
   organizationEndUserId: string;
