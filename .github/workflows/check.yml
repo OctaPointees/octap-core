@@ -28,9 +28,13 @@ jobs:
       - run: npm run typecheck
       - name: Unit tests
         run: npm run test:unit
+      - name: SDK demo regression tests
+        run: npm run test:demo:sdk
       # Unit + integration in one run, so the coverage gate (vitest.config.ts thresholds) counts
       # the repositories exercised against real Postgres. Integration boots its own Postgres/Redis
       # testcontainers through the runner's Docker.
       - name: Integration tests + coverage gate
         run: npm run test:coverage
+      - name: SDK demo against disposable API and database
+        run: node scripts/sdk-demo-local.mjs
       - run: npm run check:bootstrap
