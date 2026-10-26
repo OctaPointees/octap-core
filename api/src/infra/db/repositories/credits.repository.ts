@@ -93,7 +93,7 @@ async function trimBucketsToBalance(tx: DrizzleDb, ownership: { id: string; conf
  * Debits `amount` from live buckets, nearest expiry first (same order as `redeem` on-chain). If
  * buckets run out, the rest came from points that have no bucket (see `creditBuckets`).
  */
-async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: number, nowMs = Date.now()) {
+export async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: number, nowMs = Date.now()) {
   const live = await tx
     .select()
     .from(creditBuckets)
