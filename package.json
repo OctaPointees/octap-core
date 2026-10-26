@@ -14,6 +14,9 @@
     "api"
   ],
   "scripts": {
+    "demo:sdk": "node scripts/sdk-voucher-demo.mjs",
+    "demo:sdk:local": "npm run build && node scripts/sdk-demo-local.mjs",
+    "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs",
     "build": "node scripts/build.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json",
     "lint": "eslint api/src api/tests ts-sdks/packages scripts vitest.config.ts",
