@@ -8,6 +8,7 @@ import type {
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   CreateVoucherRequest,
+  UpdateVoucherRequest,
   VoucherDto,
   ClaimVoucherRequest,
   ClaimVoucherResponse,
@@ -194,6 +195,11 @@ export class OctaPointClient {
    */
   async createVoucher(request: CreateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>('/v1/rewards/vouchers', 'POST', request, options);
+  }
+
+  /** Edit a reward or set its status to DRAFT, ACTIVE or PAUSED. */
+  async updateVoucher(voucherId: string, request: UpdateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
+    return this.request<VoucherDto>(`/v1/rewards/vouchers/${voucherId}`, 'PATCH', request, options);
   }
 
   /**

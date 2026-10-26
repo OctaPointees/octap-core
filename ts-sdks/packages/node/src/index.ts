@@ -24,6 +24,7 @@ export type {
   VoucherOwnershipStatus,
   DiscountType,
   CreateVoucherRequest,
+  UpdateVoucherRequest,
   VoucherDto,
   ClaimVoucherRequest,
   ClaimVoucherResponse,
