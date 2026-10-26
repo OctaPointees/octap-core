@@ -20,6 +20,18 @@ function recordingFetch(respond: (url: string, init: RequestInit) => unknown = (
 }
 
 describe('OctaPointClient', () => {
+  it('updates voucher lifecycle fields through the authenticated public PATCH method', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ id: 'voucher-1', status: 'PAUSED' }));
+    const client = createOctaPointClient({ credentials: { apiKey: 'test-key' }, organizationId: 'org-1', fetchFn });
+    const voucher = await client.updateVoucher('voucher-1', { status: 'PAUSED', totalSupply: null });
+    expect(voucher.status).toBe('PAUSED');
+    expect(last()).toMatchObject({
+      method: 'PATCH',
+      url: 'http://localhost:3000/v1/rewards/vouchers/voucher-1',
+      body: { status: 'PAUSED', totalSupply: null },
+      headers: { authorization: 'Bearer test-key', 'x-organization-id': 'org-1' },
+    });
+  });
   it('earnPoints and redeemPoints send authenticated JSON requests, with a per-call org override', async () => {
     const { fetchFn, last } = recordingFetch((_url, init) => {
       const body = JSON.parse(String(init.body));
