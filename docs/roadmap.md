@@ -132,12 +132,11 @@ then move the row to **Implemented** in the same pull request.
   finalized at all still holds its points indefinitely — no hold-expiry policy yet.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
-  `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
-  done here to keep this change reviewable. `emit()` (the accept-time `credits.earned` and the
-  voucher `credits.redeemed`) is also not in the same DB transaction as the write that triggers it
-  (a crash in between would silently drop the event) — the chain-confirmation events already use
-  the outbox form, `enqueueWebhookEvent(tx, ...)`, and these two could move to it too. The endpoint
+- `emit()` (the accept-time `credits.earned`, the voucher-claim `credits.redeemed`, and since
+  OCT-244 `credits.reversed` and `voucher.redeemed`) is not in the same DB transaction as
+  the write that triggers it (a crash in between would silently drop the event) — the
+  chain-confirmation events already use the outbox form, `enqueueWebhookEvent(tx, ...)`, and these
+  could move to it too. The endpoint
   `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks

@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
 const confirmedEarn = buildLoyaltyTransaction;
+const webhooks = stub<WebhookDeliveryService>({ emit: async () => {} });
 const reverse = (overrides: Partial<{ transactionId: string; idempotencyKey: string; reason: string }> = {}) => ({
   transactionId: 'tx-earn-1',
   idempotencyKey: 'reverse-1',
@@ -33,8 +35,20 @@ describe('ReversalService', () => {
       recordReversalTransaction,
     });
 
-    const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
+    const emit = vi.fn(async () => {});
+    const result = await new ReversalService(repo, stub<WebhookDeliveryService>({ emit })).reverseTransaction(
+      'org-1',
+      reverse(),
+    );
 
+    expect(emit).toHaveBeenCalledWith('org-1', 'credits.reversed', {
+      reversalTransactionId: 'tx-reversal-1',
+      reversedTransactionId: 'tx-earn-1',
+      organizationEndUserId: 'user-1',
+      pointsAmount: 50,
+      newBalance: -20,
+      balanceWentNegative: true,
+    });
     expect(result).toEqual({
       reversalTransactionId: 'tx-reversal-1',
       reversedTransactionId: 'tx-earn-1',
@@ -63,7 +77,7 @@ describe('ReversalService', () => {
       }),
     });
 
-    const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
+    const result = await new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse());
 
     expect(result.balanceWentNegative).toBe(false);
     expect(result.newBalance).toBe(80);
@@ -83,8 +97,15 @@ describe('ReversalService', () => {
       recordReversalTransaction: () => expect.fail('should not be called on idempotent replay'),
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: 30 }),
     });
+    const emit = vi.fn(async () => {});
 
-    const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
+    const result = await new ReversalService(repo, stub<WebhookDeliveryService>({ emit })).reverseTransaction(
+      'org-1',
+      reverse(),
+    );
+
+    // The first call already announced this reversal; a replay must not announce it again.
+    expect(emit).not.toHaveBeenCalled();
 
     expect(result).toMatchObject({
       reversalTransactionId: 'tx-reversal-1',
@@ -101,7 +122,7 @@ describe('ReversalService', () => {
       getOrCreateCreditOwnership: async () => ({ confirmedBalance: -5 }),
     });
 
-    const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
+    const result = await new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse());
 
     expect(result.balanceWentNegative).toBe(true);
   });
@@ -111,7 +132,7 @@ describe('ReversalService', () => {
       findTransactionByIdempotency: async () => confirmedEarn({ transactionType: 'EARN' }),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toMatchObject({
+    await expect(new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse())).rejects.toMatchObject({
       name: 'ConflictException',
       message: expect.stringMatching(/already used for a different operation/),
     });
@@ -124,7 +145,7 @@ describe('ReversalService', () => {
     });
 
     await expect(
-      new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-2' })),
+      new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-2' })),
     ).rejects.toThrow(/already been reversed/);
   });
 
@@ -134,7 +155,7 @@ describe('ReversalService', () => {
       findTransactionByIdForOrganization: async () => confirmedEarn({ status: 'PENDING' }),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toThrow(
+    await expect(new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse())).rejects.toThrow(
       /Only a CONFIRMED transaction can be reversed \(current status: PENDING\)/,
     );
   });
@@ -146,7 +167,7 @@ describe('ReversalService', () => {
     });
 
     await expect(
-      new ReversalService(repo).reverseTransaction('org-2', reverse({ idempotencyKey: 'reverse-3' })),
+      new ReversalService(repo, webhooks).reverseTransaction('org-2', reverse({ idempotencyKey: 'reverse-3' })),
     ).rejects.toThrow(/was not found/);
   });
 
@@ -157,7 +178,7 @@ describe('ReversalService', () => {
     });
 
     await expect(
-      new ReversalService(repo).reverseTransaction('org-1', reverse({ transactionId: 'tx-reversal-1' })),
+      new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse({ transactionId: 'tx-reversal-1' })),
     ).rejects.toThrow(/cannot be reversed/);
   });
 
@@ -167,9 +188,9 @@ describe('ReversalService', () => {
       findTransactionByIdForOrganization: () => expect.fail('reason is validated before the lookup'),
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse({ reason: '  ' }))).rejects.toThrow(
-      /reason is required/,
-    );
+    await expect(
+      new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse({ reason: '  ' })),
+    ).rejects.toThrow(/reason is required/);
   });
 
   it('a concurrent double reversal is rejected (race caught by the unique index)', async () => {
@@ -184,7 +205,7 @@ describe('ReversalService', () => {
     });
 
     await expect(
-      new ReversalService(repo).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-6' })),
+      new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse({ idempotencyKey: 'reverse-6' })),
     ).rejects.toMatchObject({
       name: 'ConflictException',
       message: expect.stringMatching(/unique constraint/),
@@ -200,7 +221,7 @@ describe('ReversalService', () => {
       },
     });
 
-    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toThrow(
+    await expect(new ReversalService(repo, webhooks).reverseTransaction('org-1', reverse())).rejects.toThrow(
       'Failed to reverse transaction',
     );
   });

@@ -3,6 +3,7 @@ import { RewardsService } from '#domain/rewards/rewards.service.js';
 import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { RedemptionService } from '#domain/credits/redemption.service.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildVoucher } from '../../../helpers/fixtures.js';
 
@@ -30,8 +31,14 @@ function service(
   rewardsRepo: { [K in keyof RewardsRepository]?: unknown },
   creditsRepo = sameOrgMember,
   redemption: { [K in keyof RedemptionService]?: unknown } = {},
+  webhooks: { [K in keyof WebhookDeliveryService]?: unknown } = { emit: async () => {} },
 ) {
-  return new RewardsService(stub<RewardsRepository>(rewardsRepo), stub<RedemptionService>(redemption), creditsRepo);
+  return new RewardsService(
+    stub<RewardsRepository>(rewardsRepo),
+    stub<RedemptionService>(redemption),
+    creditsRepo,
+    stub<WebhookDeliveryService>(webhooks),
+  );
 }
 
 describe('RewardsService.createVoucher', () => {
@@ -275,14 +282,27 @@ describe('RewardsService.redeemVoucher', () => {
       redeemedAt: new Date('2026-10-03T00:00:00Z'),
     }));
 
-    const result = await service({ findOwnershipBySerial: async () => ownership(), markVoucherRedeemed }).redeemVoucher(
-      'org-1',
-      {
-        serialCode: 'DISCOUNT10-ABCD1234',
-      },
-    );
+    const emit = vi.fn(async () => {});
+
+    const result = await service(
+      { findOwnershipBySerial: async () => ownership(), markVoucherRedeemed },
+      sameOrgMember,
+      {},
+      { emit },
+    ).redeemVoucher('org-1', { serialCode: 'DISCOUNT10-ABCD1234' });
 
     expect(markVoucherRedeemed).toHaveBeenCalledWith('own-1');
+    expect(emit).toHaveBeenCalledWith('org-1', 'voucher.redeemed', {
+      voucherOwnershipId: 'own-1',
+      voucherId: 'v-1',
+      organizationEndUserId: 'user-1',
+      serialCode: 'DISCOUNT10-ABCD1234',
+      status: 'REDEEMED',
+      redeemedAt: '2026-10-03T00:00:00.000Z',
+      voucherTitle: '10% Off',
+      discountType: 'PERCENTAGE',
+      discountValue: '10.00',
+    });
     expect(result).toEqual({
       voucherOwnershipId: 'own-1',
       voucherId: 'v-1',
@@ -315,12 +335,17 @@ describe('RewardsService.redeemVoucher', () => {
     ).rejects.toThrow(/not found/);
   });
 
-  it('rejects an instance that is no longer AVAILABLE', async () => {
+  it('rejects an instance that is no longer AVAILABLE, announcing nothing', async () => {
+    const emit = vi.fn(async () => {});
     await expect(
-      service({ findOwnershipBySerial: async () => ownership({ status: 'REDEEMED' }) }).redeemVoucher('org-1', {
-        serialCode: 's',
-      }),
+      service(
+        { findOwnershipBySerial: async () => ownership({ status: 'REDEEMED' }) },
+        sameOrgMember,
+        {},
+        { emit },
+      ).redeemVoucher('org-1', { serialCode: 's' }),
     ).rejects.toThrow(/status is currently REDEEMED/);
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('rejects an expired instance', async () => {

@@ -4,6 +4,7 @@ import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js'
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
 import { RedemptionService } from '../credits/redemption.service.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type {
   CreateVoucherRequest,
   VoucherDto,
@@ -20,6 +21,7 @@ export class RewardsService {
     private readonly rewardsRepo: RewardsRepository,
     private readonly redemptionService: RedemptionService,
     private readonly creditsRepo: CreditsRepository,
+    private readonly webhooks: WebhookDeliveryService,
   ) {}
 
   async createVoucher(organizationId: string, req: CreateVoucherRequest): Promise<VoucherDto> {
@@ -138,8 +140,7 @@ export class RewardsService {
     }
 
     const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id);
-
-    return {
+    const response: RedeemVoucherResponse = {
       voucherOwnershipId: updated.id,
       voucherId: updated.voucherId,
       serialCode: updated.serialCode,
@@ -149,6 +150,13 @@ export class RewardsService {
       discountType: ownership.voucher.discountType,
       discountValue: ownership.voucher.discountValue,
     };
+
+    await this.webhooks.emit(organizationId, 'voucher.redeemed', {
+      ...response,
+      organizationEndUserId: updated.organizationEndUserId,
+    });
+
+    return response;
   }
 
   async listMemberVouchers(organizationId: string, organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {
