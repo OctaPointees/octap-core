@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { PosRedemptionService, RESERVE_TTL_SECONDS } from '#domain/credits/pos-redemption.service.js';
+import { ABANDONED_POS_HOLD_GRACE_MS } from '#infra/db/repositories/credits.repository.js';
 import {
   OperationPayloadConflictError,
   type OperationsRepository,
@@ -566,5 +567,13 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
 
     await expect(reserve).rejects.toMatchObject({ status: 409 });
     await expect(reserve).rejects.toThrow(/digest-sent-before/);
+  });
+});
+
+describe('POS hold expiry (OCT-244)', () => {
+  it('releases an abandoned hold only after every digest sponsored for it has left the cache', () => {
+    // Otherwise a finalize could execute cached bytes for a hold that was already released, and
+    // the redeem would land on-chain with no hold left to confirm it against.
+    expect(ABANDONED_POS_HOLD_GRACE_MS).toBeGreaterThan(RESERVE_TTL_SECONDS * 1000);
   });
 });

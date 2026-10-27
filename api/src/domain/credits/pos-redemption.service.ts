@@ -15,8 +15,11 @@ import type {
   FinalizePosRedemptionResponse,
 } from '@octap/contracts';
 
-/** How long a sponsored digest stays redeemable before the caller must reserve again. */
-const RESERVE_TTL_SECONDS = 600;
+/**
+ * How long a sponsored digest stays redeemable before the caller must reserve again. Must stay
+ * below `CreditsRepository`'s `ABANDONED_POS_HOLD_GRACE_MS` (see `releaseAbandonedPosHolds`).
+ */
+export const RESERVE_TTL_SECONDS = 600;
 
 interface CachedReserve {
   organizationId: string;

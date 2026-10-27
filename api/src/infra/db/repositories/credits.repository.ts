@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and, asc, gt, lte, inArray } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lt, lte, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -7,6 +7,7 @@ import {
   creditOwnerships,
   loyaltyTransactions,
 } from '../schema/credits.schema.js';
+import { operations } from '../schema/operations.schema.js';
 import { acceptCommand } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
@@ -185,6 +186,92 @@ export async function expireDueBuckets(
     });
   }
   return forfeited;
+}
+
+/** The durable command a POS reserve is accepted under (OCT-55). */
+const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
+
+/**
+ * How long a POS reserve that was never finalized keeps its points held before the member's next
+ * reserve releases it. Deliberately longer than `PosRedemptionService`'s `RESERVE_TTL_SECONDS`
+ * (the sponsored-bytes cache): by the time a hold is released, every digest sponsored for it has
+ * left the cache, so no finalize can still land against it.
+ */
+export const ABANDONED_POS_HOLD_GRACE_MS = 30 * 60 * 1000;
+
+/**
+ * Lazy hold expiry (OCT-244), same lazy pattern as `expireDueBuckets`: releases this member's POS
+ * reserves that were never finalized, so an abandoned reserve can't lock points in
+ * `pendingRedemption` forever. Each is marked FAILED and its points return to the available
+ * balance.
+ *
+ * Only a hold whose command is still PENDING **with no recorded finalize digest** qualifies: once
+ * finalize has recorded a digest (OCT-52) its outcome belongs to `ChainOutcomeReconciler`, however
+ * old it is. The command is claimed by one conditional `UPDATE`, which serializes against
+ * `recordSubmitDigestForCommand` on the same row, so exactly one of "released" and "finalize
+ * recorded a digest" wins.
+ *
+ * Age is the command's `updatedAt`, which `reservePosRedemption` refreshes on every retry under
+ * the same key. `graceMs` must exceed the sponsored-bytes cache TTL: a hold is then released only
+ * once no cached bytes for it can still be finalized.
+ */
+export async function releaseAbandonedPosHolds(
+  tx: DrizzleDb,
+  member: { organizationId: string; organizationEndUserId: string },
+  graceMs: number,
+  nowMs = Date.now(),
+): Promise<number> {
+  const abandoned = await tx
+    .update(operations)
+    .set({
+      status: 'FAILED',
+      errorMessage: 'POS reserve abandoned: never finalized within the hold grace period',
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(operations.tenantId, member.organizationId),
+        eq(operations.commandType, POS_RESERVE_COMMAND_TYPE),
+        eq(operations.status, 'PENDING'),
+        isNull(operations.suiTxDigest),
+        lt(operations.updatedAt, new Date(nowMs - graceMs)),
+        sql`${operations.payload} ->> 'organizationEndUserId' = ${member.organizationEndUserId}`,
+      ),
+    )
+    .returning({ idempotencyKey: operations.idempotencyKey });
+  if (abandoned.length === 0) {
+    return 0;
+  }
+
+  const released = await tx
+    .update(loyaltyTransactions)
+    .set({ status: 'FAILED', updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(loyaltyTransactions.organizationId, member.organizationId),
+        eq(loyaltyTransactions.organizationEndUserId, member.organizationEndUserId),
+        eq(loyaltyTransactions.transactionType, 'REDEEM'),
+        eq(loyaltyTransactions.status, 'PENDING'),
+        inArray(
+          loyaltyTransactions.idempotencyKey,
+          abandoned.map((op) => op.idempotencyKey),
+        ),
+      ),
+    )
+    .returning({ pointsAmount: loyaltyTransactions.pointsAmount });
+  const total = released.reduce((sum, row) => sum + Number(row.pointsAmount), 0);
+  if (total === 0) {
+    return 0;
+  }
+
+  const ownership = await lockOwnership(tx, member.organizationEndUserId);
+  if (ownership) {
+    await tx
+      .update(creditOwnerships)
+      .set({ pendingRedemption: Number(ownership.pendingRedemption) - total, updatedAt: new Date(nowMs) })
+      .where(eq(creditOwnerships.id, ownership.id));
+  }
+  return total;
 }
 
 @Injectable()
@@ -586,6 +673,8 @@ export class CreditsRepository {
     organizationEndUserId: string;
     pointsAmount: number;
     idempotencyKey: string;
+    /** Age past which this reserve releases the member's never-finalized holds first. */
+    abandonedHoldGraceMs?: number;
   }): Promise<{
     transaction: typeof loyaltyTransactions.$inferSelect;
     accountId: string | null;
@@ -614,6 +703,10 @@ export class CreditsRepository {
         if (!existing) {
           throw new Error(`Operation ${operation.id} was already accepted but its loyalty transaction is missing`);
         }
+        if (existing.status === 'PENDING' && operation.status === 'PENDING' && !operation.suiTxDigest) {
+          // A retry is the caller still working on this hold: restart its abandonment clock.
+          await tx.update(operations).set({ updatedAt: new Date() }).where(eq(operations.id, operation.id));
+        }
         const ownership = await tx.query.creditOwnerships.findFirst({
           where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
         });
@@ -627,6 +720,8 @@ export class CreditsRepository {
 
       // A bucket past its expiry is already gone on-chain; holding against it would only fail at `redeem`.
       await expireDueBuckets(tx, params);
+      // An abandoned hold's points are available again before this reserve's balance check.
+      await releaseAbandonedPosHolds(tx, params, params.abandonedHoldGraceMs ?? ABANDONED_POS_HOLD_GRACE_MS);
       // Locked: the balance check and the hold below must see every concurrent reserve's hold.
       const ownership = await lockOwnership(tx, params.organizationEndUserId);
 

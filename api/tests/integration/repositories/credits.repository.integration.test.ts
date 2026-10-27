@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { CreditsRepository, expireDueBuckets } from '#infra/db/repositories/credits.repository.js';
-import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
+import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import {
   connectTestDb,
@@ -426,6 +426,104 @@ describe('POS redemption', () => {
     await db.delete(schema.loyaltyTransactions).where(eq(schema.loyaltyTransactions.id, transaction.id));
 
     await expect(reserve(10)).rejects.toThrow(/already accepted but its loyalty transaction is missing/);
+  });
+
+  describe('abandoned hold expiry (OCT-244)', () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000);
+    const setCommand = (idempotencyKey: string, set: { updatedAt?: Date; suiTxDigest?: string }) =>
+      db
+        .update(schema.operations)
+        .set(set)
+        .where(and(eq(schema.operations.tenantId, orgId), eq(schema.operations.idempotencyKey, idempotencyKey)));
+    const command = async (idempotencyKey: string) =>
+      (
+        await db
+          .select()
+          .from(schema.operations)
+          .where(and(eq(schema.operations.tenantId, orgId), eq(schema.operations.idempotencyKey, idempotencyKey)))
+      )[0];
+
+    it('the next reserve releases a never-finalized hold past the grace period, and uses its points', async () => {
+      const abandoned = await reserve(80, 'pos-old');
+      await setCommand('pos-old', { updatedAt: minutesAgo(31) });
+
+      const next = await reserve(90, 'pos-new');
+
+      expect(next.isNew).toBe(true);
+      expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 90 });
+      const [released] = await db
+        .select()
+        .from(schema.loyaltyTransactions)
+        .where(eq(schema.loyaltyTransactions.id, abandoned.transaction.id));
+      expect(released.status).toBe('FAILED');
+      expect(await command('pos-old')).toMatchObject({
+        status: 'FAILED',
+        errorMessage: expect.stringMatching(/abandoned/),
+      });
+      // A finalize arriving after the release can't record a digest, so it has nothing to settle.
+      expect(
+        await new OperationsRepository(db).recordSubmitDigestForCommand({
+          tenantId: orgId,
+          idempotencyKey: 'pos-old',
+          suiTxDigest: 'D-LATE',
+          expirationEpoch: null,
+        }),
+      ).toBeNull();
+    });
+
+    it('never touches a hold whose finalize recorded a digest, however old', async () => {
+      await reserve(80, 'pos-sent');
+      await setCommand('pos-sent', { updatedAt: minutesAgo(120), suiTxDigest: 'D-SENT' });
+
+      await expect(reserve(30, 'pos-new')).rejects.toThrow(/Insufficient points: required 30, available 20/);
+      expect(await command('pos-sent')).toMatchObject({ status: 'PENDING', suiTxDigest: 'D-SENT' });
+      expect((await getOwnership(db, memberId)).pendingRedemption).toBe(80);
+    });
+
+    it('leaves a hold inside the grace period alone', async () => {
+      await reserve(80, 'pos-recent');
+      await setCommand('pos-recent', { updatedAt: minutesAgo(29) });
+
+      await expect(reserve(30, 'pos-new')).rejects.toThrow(/available 20/);
+      expect((await command('pos-recent')).status).toBe('PENDING');
+    });
+
+    it('a retry under the same key restarts the clock, so a hold still being worked on is kept', async () => {
+      await reserve(80, 'pos-retried');
+      await setCommand('pos-retried', { updatedAt: minutesAgo(31) });
+
+      expect(await reserve(80, 'pos-retried')).toMatchObject({ isNew: false, transaction: { status: 'PENDING' } });
+      await expect(reserve(30, 'pos-new')).rejects.toThrow(/available 20/);
+      expect((await command('pos-retried')).status).toBe('PENDING');
+    });
+
+    it('a retry of an already-released key reports it FAILED instead of re-holding', async () => {
+      await reserve(80, 'pos-old');
+      await setCommand('pos-old', { updatedAt: minutesAgo(31) });
+      await reserve(10, 'pos-new');
+
+      const retry = await reserve(80, 'pos-old');
+
+      expect(retry).toMatchObject({ isNew: false, transaction: { status: 'FAILED' } });
+      expect((await getOwnership(db, memberId)).pendingRedemption).toBe(10);
+    });
+
+    it("only releases the reserving member's own holds", async () => {
+      const { memberId: other } = await seedMember(db, orgId);
+      await setOwnership(db, other, { confirmedBalance: 50, suiCreditAccountId: '0xother' });
+      await repo.reservePosRedemption({
+        organizationId: orgId,
+        organizationEndUserId: other,
+        pointsAmount: 50,
+        idempotencyKey: 'pos-other',
+      });
+      await setCommand('pos-other', { updatedAt: minutesAgo(31) });
+
+      await reserve(10, 'pos-mine');
+
+      expect((await command('pos-other')).status).toBe('PENDING');
+      expect((await getOwnership(db, other)).pendingRedemption).toBe(50);
+    });
   });
 
   it('confirm moves the hold out of the balance once and consumes buckets', async () => {

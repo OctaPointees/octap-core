@@ -129,7 +129,10 @@ then move the row to **Implemented** in the same pull request.
   A POS finalize digest whose sponsored bytes carry no expiration can't be proven never-landed
   and is logged for a human; while it is unresolved, `/reserve` refuses to sponsor fresh bytes
   for that hold (409) so it can't turn into a second on-chain redeem. A reserve that is never
-  finalized at all still holds its points indefinitely — no hold-expiry policy yet.
+  finalized at all is released lazily (OCT-244): the member's next reserve marks any of their
+  holds that are past `ABANDONED_POS_HOLD_GRACE_MS` (30 min) and still have no finalize digest
+  FAILED, and returns those points to the available balance. Until that member reserves again,
+  the stale hold still shows in `pendingRedemption`; there is no scheduled sweep.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
 - `emit()` (the accept-time `credits.earned`, the voucher-claim `credits.redeemed`, and since
