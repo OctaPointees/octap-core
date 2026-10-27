@@ -598,3 +598,278 @@ describe('ChainSubmitProcessor reversal mirroring (OCT-50)', () => {
     expect(operationsRepo.markSubmitted).not.toHaveBeenCalled();
   });
 });
+
+describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', () => {
+  const CURRENT_PROGRAM = programConfigFor('org-1').programControlId;
+  const OLD_PROGRAM = '0xprogram-before-reprovisioning';
+
+  /** A definitive `earn` failure carrying a structured Move abort. */
+  const aborted = (module: string, abortCode: string, functionName = 'earn') => ({
+    ...fakeChainResult({
+      status: 'failure',
+      errorMessage: `MoveAbort, abort code: ${abortCode}, in '0xpkg::${module}::${functionName}'`,
+    }),
+    moveAbort: { module, functionName, abortCode },
+  });
+  const wrongProgram = () => aborted('credit_account', '0');
+
+  /**
+   * A sui double whose earns return `results` in order, each signed with its own digest
+   * (DIGEST1, DIGEST2, ...), so a retry is distinguishable from the first attempt.
+   */
+  function sequencedSui<Extra extends Record<string, unknown>>(results: unknown[], extra: Extra) {
+    const earnedOn: string[] = [];
+    let n = 0;
+    return {
+      earnedOn,
+      sui: {
+        signEarn: async (_program: unknown, params: { accountId: string }) => {
+          n += 1;
+          return { params, digest: `DIGEST${n}`, expirationEpoch: 7n, attempt: n };
+        },
+        execute: async (signed: { params: { accountId: string }; attempt: number; digest: string }) => {
+          earnedOn.push(signed.params.accountId);
+          const result = results[signed.attempt - 1];
+          if (result instanceof Error) {
+            throw result;
+          }
+          // Like the chain: the result carries the digest of the bytes that were sent.
+          return { ...(result as object), digest: signed.digest };
+        },
+        ...extra,
+      },
+    };
+  }
+
+  const reopenedAccount = () =>
+    fakeChainResult({
+      events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xreopened' } }],
+    });
+
+  it('clears the stale account, reopens it in the current program, and earns there', async () => {
+    const { sui, earnedOn } = sequencedSui([wrongProgram(), earned('100')], {
+      creditAccountProgramId: vi.fn(async () => OLD_PROGRAM),
+      openAccount: vi.fn(async () => reopenedAccount()),
+    });
+    const setSuiCreditAccountId = vi.fn(async () => {});
+    const recordSubmitDigest = vi.fn(async () => {});
+    const confirmEarnOnChain = vi.fn(async () => ({ id: 'btx-1' }));
+    const markSubmitted = vi.fn(async () => {});
+
+    await processor(
+      { recordSubmitDigest, markSubmitted, markFailed: () => expect.fail('recovered, not failed') },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        setSuiCreditAccountId,
+        confirmEarnOnChain,
+        failEarnOnChain: () => expect.fail('recovered, the hold stays'),
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(sui.creditAccountProgramId).toHaveBeenCalledWith('0xexisting');
+    // Cleared first, so a crash before the new id is stored still never retries the stale one.
+    expect(setSuiCreditAccountId.mock.calls).toEqual([
+      ['ownership-1', null],
+      ['ownership-1', '0xreopened'],
+    ]);
+    expect(sui.openAccount).toHaveBeenCalledWith(programConfigFor('org-1'), '0xbeneficiary');
+    expect(earnedOn).toEqual(['0xexisting', '0xreopened']);
+    // Each attempt's digest is recorded before it is sent; the confirmed one is the retry's.
+    expect(recordSubmitDigest.mock.calls).toEqual([
+      ['op-1', 'DIGEST1', 7n],
+      ['op-1', 'DIGEST2', 7n],
+    ]);
+    expect(confirmEarnOnChain).toHaveBeenCalledWith(
+      expect.objectContaining({ digest: 'DIGEST2', confirmedPointsAmount: 100 }),
+    );
+    expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST2');
+  });
+
+  it('compares program ids as addresses, not raw strings', async () => {
+    const { sui, earnedOn } = sequencedSui([wrongProgram()], {
+      // Same program, written with leading zeros and upper case: not a re-provisioning.
+      creditAccountProgramId: async () => '0x00' + CURRENT_PROGRAM.slice(2).toUpperCase(),
+      openAccount: () => expect.fail('same program, nothing to reopen'),
+    });
+
+    await processor(
+      { markFailed: async () => {} },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation({ tenantId: 'org-1' }));
+
+    expect(earnedOn).toEqual(['0xexisting']);
+  });
+
+  it('not re-provisioned: an EWrongProgram whose account is already in the current program changes nothing', async () => {
+    // The abort can also mean our IssuerCap is for another program (a bug, not re-provisioning):
+    // the account then really is in the organization's current program and must be kept.
+    const { sui, earnedOn } = sequencedSui([wrongProgram()], {
+      creditAccountProgramId: vi.fn(async () => CURRENT_PROGRAM),
+      openAccount: () => expect.fail('must not open a second account for an unaffected member'),
+    });
+    const failEarnOnChain = vi.fn(async () => {});
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('must not clear an account that is in the current program'),
+        confirmEarnOnChain: () => expect.fail('nothing landed'),
+        failEarnOnChain,
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(sui.creditAccountProgramId).toHaveBeenCalledWith('0xexisting');
+    expect(earnedOn).toEqual(['0xexisting']);
+    expect(failEarnOnChain).toHaveBeenCalledWith({
+      loyaltyTransactionId: 'tx-1',
+      organizationEndUserId: 'user-1',
+      reservedPointsAmount: 10000,
+    });
+    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/abort code: 0/));
+  });
+
+  it('a failed program read keeps the original abort as the failure reason and reopens nothing', async () => {
+    const { sui } = sequencedSui([wrongProgram()], {
+      creditAccountProgramId: async () => {
+        throw new Error('UNAVAILABLE');
+      },
+      openAccount: () => expect.fail('nothing proven, nothing reopened'),
+    });
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/abort code: 0/));
+  });
+
+  it('an account that is not on-chain at all is not reopened either', async () => {
+    const { sui, earnedOn } = sequencedSui([wrongProgram()], {
+      creditAccountProgramId: async () => null,
+      openAccount: () => expect.fail('unexplained abort, leave it for a human'),
+    });
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(earnedOn).toEqual(['0xexisting']);
+    expect(markFailed).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['another credit_account abort', aborted('credit_account', '3')],
+    ["budget_shard's own EWrongProgram (same code, other module)", aborted('budget_shard', '0', 'debit')],
+    ['a failure that is not a Move abort', fakeChainResult({ status: 'failure', errorMessage: 'InsufficientGas' })],
+  ])('%s never triggers the recovery', async (_label, failure) => {
+    const { sui, earnedOn } = sequencedSui([failure], {
+      creditAccountProgramId: () => expect.fail('only credit_account::earn EWrongProgram is recoverable'),
+      openAccount: () => expect.fail('no reopen'),
+    });
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(earnedOn).toEqual(['0xexisting']);
+    expect(markFailed).toHaveBeenCalledOnce();
+  });
+
+  it('an unaffected member earns exactly as before: no program read, no reopen', async () => {
+    const { sui, earnedOn } = sequencedSui([earned('100')], {
+      creditAccountProgramId: () => expect.fail('a successful earn reads nothing extra'),
+      openAccount: () => expect.fail('no reopen'),
+    });
+    const markSubmitted = vi.fn(async () => {});
+
+    await processor(
+      { markSubmitted },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        confirmEarnOnChain: async () => ({ id: 'btx-1' }),
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(earnedOn).toEqual(['0xexisting']);
+    expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST1');
+  });
+
+  it('recovers at most once: a retry that aborts again fails the earn instead of looping', async () => {
+    const { sui, earnedOn } = sequencedSui([wrongProgram(), wrongProgram()], {
+      creditAccountProgramId: async () => OLD_PROGRAM,
+      openAccount: vi.fn(async () => reopenedAccount()),
+    });
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        setSuiCreditAccountId: async () => {},
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(earnedOn).toEqual(['0xexisting', '0xreopened']);
+    expect(sui.openAccount).toHaveBeenCalledOnce();
+    expect(markFailed).toHaveBeenCalledOnce();
+  });
+
+  it('a retry whose execute throws is left UNKNOWN under the retry’s digest, never FAILED', async () => {
+    const { sui } = sequencedSui([wrongProgram(), new Error('ETIMEDOUT')], {
+      creditAccountProgramId: async () => OLD_PROGRAM,
+      openAccount: async () => reopenedAccount(),
+    });
+    const recordSubmitDigest = vi.fn(async () => {});
+    const markUnknown = vi.fn(async () => true);
+
+    await processor(
+      { recordSubmitDigest, markUnknown, markFailed: () => expect.fail('outcome unknown, not failed') },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        setSuiCreditAccountId: async () => {},
+        failEarnOnChain: () => expect.fail('the hold stays while the outcome is unknown'),
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(recordSubmitDigest).toHaveBeenLastCalledWith('op-1', 'DIGEST2', 7n);
+    expect(markUnknown).toHaveBeenCalledWith('op-1', expect.stringMatching(/ETIMEDOUT/), undefined);
+  });
+});

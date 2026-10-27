@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Secp256k1Keypair } from '@mysten/sui/keypairs/secp256k1';
 import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
-import { TransactionError } from '@mysten/sui/client';
+import { ObjectError, TransactionError } from '@mysten/sui/client';
 import { verifyTransactionSignature } from '@mysten/sui/verify';
 import {
   OctapChainClient,
@@ -12,6 +12,7 @@ import {
   signerFromPrivateKey,
   transactionExpirationEpoch,
 } from '../src/index.js';
+import { CreditAccount } from '../src/contracts/octap/credit_account.js';
 
 const PKG = '0x' + 'ab'.repeat(32);
 const ID = (n: number) => '0x' + n.toString(16).padStart(64, '0');
@@ -351,6 +352,57 @@ describe('digest-first submission (OCT-52)', () => {
     await expect(c.findTransaction('D1')).resolves.toMatchObject({ digest: 'D1', status: 'success' });
     await expect(c.findTransaction('D404')).resolves.toBeNull();
     await expect(c.findTransaction('D500')).rejects.toBe(boom);
+  });
+
+  it('normalizes a Move abort into a structured moveAbort next to its message', async () => {
+    const c = client();
+    vi.spyOn(c.rpc.core, 'waitForTransaction').mockResolvedValue({
+      $kind: 'FailedTransaction',
+      FailedTransaction: {
+        digest: 'D3',
+        status: {
+          success: false,
+          error: {
+            $kind: 'MoveAbort',
+            message: `MoveAbort in 1st command, abort code: 0, in '${PKG}::credit_account::earn'`,
+            MoveAbort: { abortCode: '0', location: { package: PKG, module: 'credit_account', functionName: 'earn' } },
+          },
+        },
+        events: [],
+      },
+    } as never);
+
+    expect(await c.waitForTransaction('D3')).toMatchObject({
+      status: 'failure',
+      errorMessage: expect.stringMatching(/abort code: 0/),
+      moveAbort: { module: 'credit_account', functionName: 'earn', abortCode: '0' },
+    });
+  });
+
+  it('creditAccountProgramId reads program_id from the object, null when it does not exist', async () => {
+    const c = client();
+    const content = CreditAccount.serialize({
+      id: ID(1),
+      program_id: '0x' + '0'.repeat(62) + 'ab',
+      beneficiary: ID(3),
+      buckets: [],
+      next_bucket_seq: 0,
+      non_expiring: 0,
+      redemptions: { id: ID(4), size: 0 },
+      lifetime_earned: 0,
+      lifetime_redeemed: 0,
+    }).toBytes();
+    const boom = new ObjectError('UNAVAILABLE', 'down', { reason: 'unknown' });
+    const getObject = vi
+      .spyOn(c.rpc.core, 'getObject')
+      .mockResolvedValueOnce({ object: { content } } as never)
+      .mockRejectedValueOnce(new ObjectError('notExists', 'gone', { reason: 'notFound' }))
+      .mockRejectedValueOnce(boom);
+
+    await expect(c.creditAccountProgramId(ID(1))).resolves.toBe('0x' + '0'.repeat(62) + 'ab');
+    expect(getObject).toHaveBeenCalledWith({ objectId: ID(1), include: { content: true } });
+    await expect(c.creditAccountProgramId(ID(2))).resolves.toBeNull();
+    await expect(c.creditAccountProgramId(ID(5))).rejects.toBe(boom);
   });
 
   it('currentEpoch reads the system state', async () => {

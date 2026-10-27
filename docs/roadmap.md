@@ -100,10 +100,16 @@ then move the row to **Implemented** in the same pull request.
   is real follow-up work, intentionally not done in this PR — it needs real cloud KMS
   infrastructure this project doesn't have set up yet, which is a bigger decision than this
   ticket's scope.
-- A `CreditAccount` is scoped to the program it was opened in, but `credit_ownerships` stores only
-  its id, not which program. If an organization is ever re-provisioned, its members' existing
-  accounts belong to the old program and `earn` aborts on-chain (`EWrongProgram`) until their
-  `sui_credit_account_id` is cleared so the worker reopens them under the new program.
+- Re-provisioning an organization (OCT-244): a member's existing `CreditAccount` stays in the old
+  program, so their next `earn` aborts with `EWrongProgram`. The chain-submit worker then reads
+  the account's on-chain `program_id`, and only if it differs from the organization's current
+  program does it clear `sui_credit_account_id`, open a new account in the current program and
+  retry the earn once. If the account is already in the current program (the same abort code
+  also covers an IssuerCap for the wrong program), nothing changes and the earn fails for a human
+  to look at. What is still not handled: the credits in the old account stay there on-chain, in
+  the old program. Postgres `confirmedBalance` still counts them, but a POS redeem only sees the
+  new account's on-chain balance, and a reversal of an earn made in the old program targets the
+  new account and aborts. Moving balances between programs needs its own design.
 - Fixed (OCT-55): the worker used to open every `CreditAccount` under a placeholder address
   derived from the PG ownership row id, nobody's private key — written before Identity existed
   and never updated, which would have permanently blocked POS redemption (`beneficiary` is set

@@ -1,8 +1,9 @@
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
-import { TransactionError, type SuiClientTypes } from '@mysten/sui/client';
+import { ObjectError, TransactionError, type SuiClientTypes } from '@mysten/sui/client';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { normalizeSuiAddress } from '@mysten/sui/utils';
 import type { Signer } from '@mysten/sui/cryptography';
 
 import * as creditAccount from './contracts/octap/credit_account.js';
@@ -155,7 +156,17 @@ export interface SubmittedChainTransaction {
   digest: string;
   status: 'success' | 'failure';
   errorMessage?: string;
+  /** Set when a failure was a Move `abort`: where it aborted and with which code. */
+  moveAbort?: ChainMoveAbort;
   events: Array<{ type: string; parsedJson: unknown }>;
+}
+
+/** A Move abort, structured (`errorMessage` carries the same thing as display text). */
+export interface ChainMoveAbort {
+  module?: string;
+  functionName?: string;
+  /** Decimal string, e.g. `'0'` for `credit_account::EWrongProgram`. */
+  abortCode: string;
 }
 
 /**
@@ -190,10 +201,20 @@ type CoreTransactionResult = SuiClientTypes.TransactionResult<{ effects: true; e
 
 function normalizeResult(response: CoreTransactionResult): SubmittedChainTransaction {
   const result = response.$kind === 'Transaction' ? response.Transaction : response.FailedTransaction;
+  const error = result.status.success ? null : result.status.error;
   return {
     digest: result.digest,
     status: result.status.success ? 'success' : 'failure',
-    errorMessage: result.status.success ? undefined : result.status.error.message,
+    errorMessage: error?.message,
+    ...(error?.$kind === 'MoveAbort'
+      ? {
+          moveAbort: {
+            module: error.MoveAbort.location?.module,
+            functionName: error.MoveAbort.location?.functionName,
+            abortCode: error.MoveAbort.abortCode,
+          },
+        }
+      : {}),
     events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
   };
 }
@@ -503,6 +524,22 @@ export class OctapChainClient {
       return normalizeResult(await this.rpc.core.getTransaction({ digest, include: { effects: true, events: true } }));
     } catch (err: unknown) {
       if (err instanceof TransactionError && err.reason === 'notFound') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The program a `CreditAccount` was opened in (its `program_id` field), read straight from the
+   * object — no transaction. Null if there is no such object.
+   */
+  async creditAccountProgramId(accountId: string): Promise<string | null> {
+    try {
+      const { object } = await this.rpc.core.getObject({ objectId: accountId, include: { content: true } });
+      return normalizeSuiAddress(creditAccount.CreditAccount.parse(object.content).program_id);
+    } catch (err: unknown) {
+      if (err instanceof ObjectError && (err.reason === 'notFound' || err.reason === 'deleted')) {
         return null;
       }
       throw err;

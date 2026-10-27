@@ -484,7 +484,8 @@ export class CreditsRepository {
     });
   }
 
-  async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
+  /** Null clears it, so the next earn opens a fresh account (re-provisioning recovery). */
+  async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string | null) {
     await this.db
       .update(creditOwnerships)
       .set({ suiCreditAccountId, updatedAt: new Date() })

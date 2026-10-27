@@ -5,7 +5,9 @@ import { CreditsRepository } from '#infra/db/repositories/credits.repository.js'
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
-import { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.client.js';
+import type { OctapProgramConfig, SubmittedChainTransaction } from '@octap/chain';
+import { normalizeSuiAddress } from '@mysten/sui/utils';
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 
@@ -34,6 +36,19 @@ class EarnOutcomeUnknownError extends Error {
     super(`earn outcome unknown: ${cause instanceof Error ? cause.message : String(cause)}`);
     this.name = 'EarnOutcomeUnknownError';
   }
+}
+
+/**
+ * `credit_account::earn`'s `EWrongProgram` (abort code 0, shared by its IssuerCap and account
+ * checks), matched on the structured abort rather than the display message.
+ */
+function isWrongProgramEarnAbort(result: SubmittedChainTransaction): boolean {
+  const abort = result.moveAbort;
+  return abort?.module === 'credit_account' && abort.functionName === 'earn' && abort.abortCode === '0';
+}
+
+function sameAddress(a: string, b: string): boolean {
+  return normalizeSuiAddress(a) === normalizeSuiAddress(b);
 }
 
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
@@ -118,6 +133,110 @@ export class ChainSubmitProcessor {
     }
   }
 
+  /**
+   * Opens the member's `CreditAccount` in `program` and records its id. Real zkLogin address, not
+   * a placeholder (OCT-55): `organization_end_users` can only exist via
+   * `IdentityService.enrollInOrganization`, which requires a prior Google login, so this is always
+   * populated by the time a member can earn at all. Opening the account under anything else would
+   * permanently block redeem later (credit_account.move's `beneficiary` field is set once at
+   * `open_account` and has no entry point to change it).
+   */
+  private async openCreditAccount(
+    program: OctapProgramConfig,
+    ownershipId: string,
+    payload: EarnChainSubmitPayload,
+  ): Promise<string> {
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
+    if (!beneficiaryAddress) {
+      throw new Error(`No real Sui address on file for end user ${payload.organizationEndUserId}`);
+    }
+    const opened = await this.suiClient.openAccount(program, beneficiaryAddress);
+    if (opened.status !== 'success') {
+      throw new Error(opened.errorMessage ?? 'open_account failed on-chain');
+    }
+    const accountId = opened.eventField<string>('CreditAccountOpened', 'account_id');
+    if (!accountId) {
+      throw new Error('open_account did not emit CreditAccountOpened');
+    }
+    await this.creditsRepo.setSuiCreditAccountId(ownershipId, accountId);
+    return accountId;
+  }
+
+  /**
+   * Signs, records and sends one `earn`. The chain treats `pointsAmount` as a purchase amount and
+   * credits the program policy's `earn_bps` share of it (see credits.repository.ts's
+   * confirmEarnOnChain), not the raw number. Throws `EarnOutcomeUnknownError` only once the
+   * transaction may have left the process.
+   */
+  private async submitEarn(
+    operation: typeof operations.$inferSelect,
+    program: OctapProgramConfig,
+    accountId: string,
+    payload: EarnChainSubmitPayload,
+  ): Promise<ChainCallResult> {
+    // Signed but not sent yet: a failure up to here is definitive, nothing reached the chain.
+    const signed = await this.suiClient.signEarn(program, {
+      accountId,
+      purchaseAmount: payload.pointsAmount,
+      operationKey: operation.idempotencyKey,
+    });
+    // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
+    // can ask the chain about exactly this digest instead of guessing.
+    await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
+
+    try {
+      return await this.suiClient.execute(signed);
+    } catch (err: unknown) {
+      throw new EarnOutcomeUnknownError(err);
+    }
+  }
+
+  /**
+   * Re-provisioning recovery (OCT-244). An `EWrongProgram` abort in `earn` has two possible
+   * causes sharing abort code 0: the IssuerCap isn't for `program` (a bug on our side), or the
+   * member's `CreditAccount` was opened in the organization's *previous* program. Only the second
+   * is recoverable, and the abort can't tell them apart, so the account's own on-chain
+   * `program_id` decides: if it differs from the organization's current program, the stored id is
+   * cleared and a new account is opened in `program`. Otherwise nothing changes and the earn fails
+   * as it would have. Returns the new account id, or null when nothing was reopened.
+   *
+   * The old account and its credits stay in the old program on-chain; Postgres balances are
+   * untouched (see docs/roadmap.md).
+   */
+  private async reopenIfStale(
+    program: OctapProgramConfig,
+    ownershipId: string,
+    staleAccountId: string,
+    payload: EarnChainSubmitPayload,
+  ): Promise<string | null> {
+    let accountProgramId: string | null;
+    try {
+      accountProgramId = await this.suiClient.creditAccountProgramId(staleAccountId);
+    } catch (err: unknown) {
+      // The earn already failed definitively; keep its abort as the reason rather than this read's.
+      this.logger.error(
+        `earn aborted with EWrongProgram; could not read account ${staleAccountId}'s program: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+    if (!accountProgramId || sameAddress(accountProgramId, program.programControlId)) {
+      const where = accountProgramId ? `already in program ${program.programControlId}` : 'not on-chain';
+      this.logger.error(
+        `earn aborted with EWrongProgram, but account ${staleAccountId} is ${where}; not reopening it, needs a human`,
+      );
+      return null;
+    }
+
+    this.logger.warn(
+      `account ${staleAccountId} belongs to program ${accountProgramId}, not the organization's current ` +
+        `${program.programControlId} (re-provisioned); reopening it for end user ${payload.organizationEndUserId}`,
+    );
+    await this.creditsRepo.setSuiCreditAccountId(ownershipId, null);
+    return this.openCreditAccount(program, ownershipId, payload);
+  }
+
   private async processEarn(operation: typeof operations.$inferSelect, payload: EarnChainSubmitPayload): Promise<void> {
     try {
       // The operation's own tenant, never a shared default: an organization without a provisioned
@@ -129,45 +248,14 @@ export class ChainSubmitProcessor {
         throw new Error(`No credit ownership for end user ${payload.organizationEndUserId}`);
       }
 
-      let accountId: string | null | undefined = ownership.suiCreditAccountId;
-      if (!accountId) {
-        // Real zkLogin address, not a placeholder (OCT-55): `organization_end_users` can only
-        // exist via `IdentityService.enrollInOrganization`, which requires a prior Google login,
-        // so this is always populated by the time a member can earn at all. Opening the account
-        // under anything else would permanently block redeem later (credit_account.move's
-        // `beneficiary` field is set once at `open_account` and has no entry point to change it).
-        const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
-        if (!beneficiaryAddress) {
-          throw new Error(`No real Sui address on file for end user ${payload.organizationEndUserId}`);
-        }
-        const opened = await this.suiClient.openAccount(program, beneficiaryAddress);
-        if (opened.status !== 'success') {
-          throw new Error(opened.errorMessage ?? 'open_account failed on-chain');
-        }
-        accountId = opened.eventField<string>('CreditAccountOpened', 'account_id');
-        if (!accountId) {
-          throw new Error('open_account did not emit CreditAccountOpened');
-        }
-        await this.creditsRepo.setSuiCreditAccountId(ownership.id, accountId);
-      }
+      const accountId = ownership.suiCreditAccountId ?? (await this.openCreditAccount(program, ownership.id, payload));
 
-      // The chain treats `pointsAmount` as a purchase amount and credits the program policy's
-      // `earn_bps` share of it (see credits.repository.ts's confirmEarnOnChain), not the raw number.
-      // Signed but not sent yet: a failure up to here is definitive, nothing reached the chain.
-      const signed = await this.suiClient.signEarn(program, {
-        accountId,
-        purchaseAmount: payload.pointsAmount,
-        operationKey: operation.idempotencyKey,
-      });
-      // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
-      // can ask the chain about exactly this digest instead of guessing.
-      await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
-
-      let result: Awaited<ReturnType<SuiClientService['execute']>>;
-      try {
-        result = await this.suiClient.execute(signed);
-      } catch (err: unknown) {
-        throw new EarnOutcomeUnknownError(err);
+      let result = await this.submitEarn(operation, program, accountId, payload);
+      if (result.status !== 'success' && isWrongProgramEarnAbort(result)) {
+        const reopenedId = await this.reopenIfStale(program, ownership.id, accountId, payload);
+        if (reopenedId) {
+          result = await this.submitEarn(operation, program, reopenedId, payload);
+        }
       }
 
       if (result.status !== 'success') {
