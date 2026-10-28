@@ -1,10 +1,9 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
-import type { vouchers } from '#infra/db/schema/rewards.schema.js';
+import type { voucherOwnerships, vouchers } from '#infra/db/schema/rewards.schema.js';
 import { RedemptionService } from '../credits/redemption.service.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
-import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import type {
   CreateVoucherRequest,
   VoucherDto,
@@ -21,7 +20,6 @@ export class RewardsService {
     private readonly rewardsRepo: RewardsRepository,
     private readonly redemptionService: RedemptionService,
     private readonly creditsRepo: CreditsRepository,
-    private readonly webhooks: WebhookDeliveryService,
   ) {}
 
   async createVoucher(organizationId: string, req: CreateVoucherRequest): Promise<VoucherDto> {
@@ -139,28 +137,27 @@ export class RewardsService {
       throw new BadRequestException('Voucher has expired');
     }
 
-    const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id);
+    const toResponse = (redeemed: typeof voucherOwnerships.$inferSelect): RedeemVoucherResponse => ({
+      voucherOwnershipId: redeemed.id,
+      voucherId: redeemed.voucherId,
+      serialCode: redeemed.serialCode,
+      status: redeemed.status,
+      redeemedAt: redeemed.redeemedAt?.toISOString() ?? new Date().toISOString(),
+      voucherTitle: ownership.voucher.title,
+      discountType: ownership.voucher.discountType,
+      discountValue: ownership.voucher.discountValue,
+    });
+
+    // `voucher.redeemed` (the response plus the member) is queued with the status change itself.
+    const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id, {
+      organizationId,
+      payload: (redeemed) => ({ ...toResponse(redeemed), organizationEndUserId: redeemed.organizationEndUserId }),
+    });
     if (!updated) {
       // A concurrent redeem of the same serial won: only that one is announced.
       throw new ConflictException('Voucher was already redeemed');
     }
-    const response: RedeemVoucherResponse = {
-      voucherOwnershipId: updated.id,
-      voucherId: updated.voucherId,
-      serialCode: updated.serialCode,
-      status: updated.status,
-      redeemedAt: updated.redeemedAt?.toISOString() ?? new Date().toISOString(),
-      voucherTitle: ownership.voucher.title,
-      discountType: ownership.voucher.discountType,
-      discountValue: ownership.voucher.discountValue,
-    };
-
-    await this.webhooks.emit(organizationId, 'voucher.redeemed', {
-      ...response,
-      organizationEndUserId: updated.organizationEndUserId,
-    });
-
-    return response;
+    return toResponse(updated);
   }
 
   async listMemberVouchers(organizationId: string, organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {

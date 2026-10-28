@@ -1,14 +1,10 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
-import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
-import type { ReversalEventData, ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
+import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
 
 @Injectable()
 export class ReversalService {
-  constructor(
-    private readonly creditsRepo: CreditsRepository,
-    private readonly webhooks: WebhookDeliveryService,
-  ) {}
+  constructor(private readonly creditsRepo: CreditsRepository) {}
 
   async reverseTransaction(
     organizationId: string,
@@ -62,18 +58,15 @@ export class ReversalService {
         reason: request.reason,
       });
 
-      // The webhook carries the response minus the caller's own idempotency key.
-      const eventData: ReversalEventData = {
+      return {
         reversalTransactionId: reversal.id,
         reversedTransactionId: original.id,
         organizationEndUserId: original.organizationEndUserId,
         pointsAmount: Number(reversal.pointsAmount),
         newBalance,
         balanceWentNegative: newBalance < 0,
+        idempotencyKey: reversal.idempotencyKey,
       };
-      await this.webhooks.emit(organizationId, 'credits.reversed', { ...eventData });
-
-      return { ...eventData, idempotencyKey: reversal.idempotencyKey };
     } catch (err: unknown) {
       // Most likely cause: a concurrent reversal of the same original already won the race
       // against the unique index on reverses_transaction_id.

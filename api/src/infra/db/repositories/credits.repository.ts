@@ -963,6 +963,21 @@ export class CreditsRepository {
         });
       }
 
+      // Outbox (OCT-244), same contract as the `*.confirmed` events: queued in this transaction, so
+      // the webhook exists exactly when the reversal does. A replayed key never reaches here.
+      await enqueueWebhookEvent(tx, {
+        organizationId: params.organizationId,
+        eventType: 'credits.reversed',
+        payload: {
+          reversalTransactionId: reversal.id,
+          reversedTransactionId: params.original.id,
+          organizationEndUserId: params.original.organizationEndUserId,
+          pointsAmount: magnitude,
+          newBalance: newConfirmedBalance,
+          balanceWentNegative: newConfirmedBalance < 0,
+        },
+      });
+
       return { reversal, reversedOriginal, newBalance: newConfirmedBalance };
     });
   }

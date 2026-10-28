@@ -887,6 +887,34 @@ describe('tenant scoping', () => {
 describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
   const deliveries = () => db.select().from(schema.webhookDeliveries);
 
+  it('a reversal queues exactly one credits.reversed in its own transaction; a rejected one queues nothing (OCT-244)', async () => {
+    const earn = await getLoyaltyTransaction(db, (await confirmedEarn(100)).id);
+    await db.delete(schema.webhookDeliveries);
+
+    const { reversal } = await repo.recordReversalTransaction({
+      organizationId: orgId,
+      original: earn,
+      idempotencyKey: 'rev-1',
+    });
+    await expect(
+      repo.recordReversalTransaction({ organizationId: orgId, original: earn, idempotencyKey: 'rev-2' }),
+    ).rejects.toThrow();
+
+    expect(await deliveries()).toMatchObject([
+      {
+        eventType: 'credits.reversed',
+        payload: {
+          reversalTransactionId: reversal.id,
+          reversedTransactionId: earn.id,
+          organizationEndUserId: memberId,
+          pointsAmount: 100,
+          newBalance: 0,
+          balanceWentNegative: false,
+        },
+      },
+    ]);
+  });
+
   beforeEach(async () => {
     await new WebhooksRepository(db).createEndpoint({
       organizationId: orgId,
