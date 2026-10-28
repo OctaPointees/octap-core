@@ -6,8 +6,7 @@ import { OperationsRepository } from '#infra/db/repositories/operations.reposito
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.client.js';
-import { moveAbortOf, type ChainMoveAbort, type OctapProgramConfig } from '@octap/chain';
-import { normalizeSuiAddress } from '@mysten/sui/utils';
+import { moveAbortOf, sameSuiAddress, type ChainMoveAbort, type OctapProgramConfig } from '@octap/chain';
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 
@@ -58,10 +57,6 @@ class EarnFailedError extends Error {
 function isWrongProgramEarnAbort(err: unknown): boolean {
   const abort = err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err);
   return abort?.module === 'credit_account' && abort.functionName === 'earn' && abort.abortCode === '0';
-}
-
-function sameAddress(a: string, b: string): boolean {
-  return normalizeSuiAddress(a) === normalizeSuiAddress(b);
 }
 
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
@@ -215,12 +210,14 @@ export class ChainSubmitProcessor {
    * causes sharing abort code 0: the IssuerCap isn't for `program` (a bug on our side), or the
    * member's `CreditAccount` was opened in the organization's *previous* program. Only the second
    * is recoverable, and the abort can't tell them apart, so the account's own on-chain
-   * `program_id` decides: if it differs from the organization's current program, the stored id is
-   * cleared and a new account is opened in `program`. Otherwise nothing changes and the earn fails
-   * as it would have. Returns the new account id, or null when nothing was reopened.
+   * `program_id` decides: if it differs from the organization's current program, a new account is
+   * opened in `program` and replaces the stored id. Otherwise nothing changes and the earn fails as
+   * it would have. Returns the new account id, or null when nothing was reopened.
    *
-   * The old account and its credits stay in the old program on-chain; Postgres balances are
-   * untouched (see docs/roadmap.md).
+   * The stale id is only replaced once the new account exists: if opening fails, the member keeps
+   * pointing at their old account (and its credits), and the next earn tries again. The old
+   * account and its credits stay in the old program on-chain; Postgres balances are untouched (see
+   * docs/roadmap.md).
    */
   private async reopenIfStale(
     program: OctapProgramConfig,
@@ -240,7 +237,7 @@ export class ChainSubmitProcessor {
       );
       return null;
     }
-    if (!accountProgramId || sameAddress(accountProgramId, program.programControlId)) {
+    if (!accountProgramId || sameSuiAddress(accountProgramId, program.programControlId)) {
       const where = accountProgramId ? `already in program ${program.programControlId}` : 'not on-chain';
       this.logger.error(
         `earn aborted with EWrongProgram, but account ${staleAccountId} is ${where}; not reopening it, needs a human`,
@@ -252,7 +249,6 @@ export class ChainSubmitProcessor {
       `account ${staleAccountId} belongs to program ${accountProgramId}, not the organization's current ` +
         `${program.programControlId} (re-provisioned); reopening it for end user ${payload.organizationEndUserId}`,
     );
-    await this.creditsRepo.setSuiCreditAccountId(ownershipId, null);
     return this.openCreditAccount(program, ownershipId, payload);
   }
 

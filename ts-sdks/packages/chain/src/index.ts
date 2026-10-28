@@ -2,6 +2,7 @@ export {
   OctapChainClient,
   eventField,
   moveAbortOf,
+  sameSuiAddress,
   transactionExpirationEpoch,
   signerFromPrivateKey,
   type OctapNetwork,

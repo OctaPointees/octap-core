@@ -142,6 +142,7 @@ export class RewardsRepository {
     });
   }
 
+  /** Undefined if the instance was no longer AVAILABLE (e.g. a concurrent redeem won). */
   async markVoucherRedeemed(ownershipId: string) {
     const [updated] = await this.db
       .update(voucherOwnerships)
@@ -150,7 +151,7 @@ export class RewardsRepository {
         redeemedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(voucherOwnerships.id, ownershipId))
+      .where(and(eq(voucherOwnerships.id, ownershipId), eq(voucherOwnerships.status, 'AVAILABLE')))
       .returning();
 
     return updated;

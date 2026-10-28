@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and, asc, gt, lt, lte, inArray, isNull, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -193,7 +193,7 @@ const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
 
 /**
  * How long a POS reserve that was never finalized keeps its points held before the member's next
- * reserve releases it. Deliberately longer than `PosRedemptionService`'s `RESERVE_TTL_SECONDS`
+ * reserve or balance read releases it. Deliberately longer than `PosRedemptionService`'s `RESERVE_TTL_SECONDS`
  * (the sponsored-bytes cache): by the time a hold is released, every digest sponsored for it has
  * left the cache, so no finalize can still land against it.
  */
@@ -219,8 +219,9 @@ export async function releaseAbandonedPosHolds(
   tx: DrizzleDb,
   member: { organizationId: string; organizationEndUserId: string },
   graceMs: number,
-  nowMs = Date.now(),
+  options: { nowMs?: number; exceptIdempotencyKey?: string } = {},
 ): Promise<number> {
+  const nowMs = options.nowMs ?? Date.now();
   const abandoned = await tx
     .update(operations)
     .set({
@@ -236,6 +237,7 @@ export async function releaseAbandonedPosHolds(
         isNull(operations.suiTxDigest),
         lt(operations.updatedAt, new Date(nowMs - graceMs)),
         sql`${operations.payload} ->> 'organizationEndUserId' = ${member.organizationEndUserId}`,
+        ...(options.exceptIdempotencyKey ? [ne(operations.idempotencyKey, options.exceptIdempotencyKey)] : []),
       ),
     )
     .returning({ idempotencyKey: operations.idempotencyKey });
@@ -451,6 +453,16 @@ export class CreditsRepository {
     });
   }
 
+  /** `releaseAbandonedPosHolds` in its own transaction, for a balance read. */
+  async releaseAbandonedPosHoldsForMember(member: {
+    organizationId: string;
+    organizationEndUserId: string;
+  }): Promise<number> {
+    return withRls(this.db, { tenantId: member.organizationId, role: 'authenticated' }, (tx) =>
+      releaseAbandonedPosHolds(tx, member, ABANDONED_POS_HOLD_GRACE_MS),
+    );
+  }
+
   /** `expireDueBuckets` in its own transaction (or the caller's, as a savepoint, via `db`). */
   async expireDueBucketsForMember(
     member: { organizationId: string; organizationEndUserId: string },
@@ -484,8 +496,7 @@ export class CreditsRepository {
     });
   }
 
-  /** Null clears it, so the next earn opens a fresh account (re-provisioning recovery). */
-  async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string | null) {
+  async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
     await this.db
       .update(creditOwnerships)
       .set({ suiCreditAccountId, updatedAt: new Date() })
@@ -683,6 +694,15 @@ export class CreditsRepository {
     /** Digest a finalize already tried to execute for this hold (OCT-52), if any. */
     submittedDigest: string | null;
   }> {
+    // Its own transaction, committed whatever happens to this reserve: a release must not roll back
+    // just because the reserve below then fails its balance check. The caller's own key is left to
+    // the retry path, which restarts that hold's clock instead.
+    await withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, (tx) =>
+      releaseAbandonedPosHolds(tx, params, params.abandonedHoldGraceMs ?? ABANDONED_POS_HOLD_GRACE_MS, {
+        exceptIdempotencyKey: params.idempotencyKey,
+      }),
+    );
+
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       const { operation, isNew } = await acceptCommand(tx, {
         tenantId: params.organizationId,
@@ -695,18 +715,32 @@ export class CreditsRepository {
       });
 
       if (!isNew) {
-        const existing = await tx.query.loyaltyTransactions.findFirst({
-          where: and(
-            eq(loyaltyTransactions.organizationId, params.organizationId),
-            eq(loyaltyTransactions.idempotencyKey, params.idempotencyKey),
-          ),
-        });
+        const findExisting = () =>
+          tx.query.loyaltyTransactions.findFirst({
+            where: and(
+              eq(loyaltyTransactions.organizationId, params.organizationId),
+              eq(loyaltyTransactions.idempotencyKey, params.idempotencyKey),
+            ),
+          });
+        let existing = await findExisting();
         if (!existing) {
           throw new Error(`Operation ${operation.id} was already accepted but its loyalty transaction is missing`);
         }
-        if (existing.status === 'PENDING' && operation.status === 'PENDING' && !operation.suiTxDigest) {
-          // A retry is the caller still working on this hold: restart its abandonment clock.
-          await tx.update(operations).set({ updatedAt: new Date() }).where(eq(operations.id, operation.id));
+        if (existing.status === 'PENDING' && !operation.suiTxDigest) {
+          // A retry is the caller still working on this hold: restart its abandonment clock. Under
+          // the same conditions the release checks, so the two serialize on this row: if another
+          // reserve released the hold first, nothing is touched and the retry reports it settled
+          // instead of sponsoring fresh bytes for a hold that no longer exists.
+          const touched = await tx
+            .update(operations)
+            .set({ updatedAt: new Date() })
+            .where(
+              and(eq(operations.id, operation.id), eq(operations.status, 'PENDING'), isNull(operations.suiTxDigest)),
+            )
+            .returning({ id: operations.id });
+          if (touched.length === 0) {
+            existing = (await findExisting()) ?? existing;
+          }
         }
         const ownership = await tx.query.creditOwnerships.findFirst({
           where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
@@ -721,8 +755,6 @@ export class CreditsRepository {
 
       // A bucket past its expiry is already gone on-chain; holding against it would only fail at `redeem`.
       await expireDueBuckets(tx, params);
-      // An abandoned hold's points are available again before this reserve's balance check.
-      await releaseAbandonedPosHolds(tx, params, params.abandonedHoldGraceMs ?? ABANDONED_POS_HOLD_GRACE_MS);
       // Locked: the balance check and the hold below must see every concurrent reserve's hold.
       const ownership = await lockOwnership(tx, params.organizationEndUserId);
 

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
@@ -140,6 +140,10 @@ export class RewardsService {
     }
 
     const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id);
+    if (!updated) {
+      // A concurrent redeem of the same serial won: only that one is announced.
+      throw new ConflictException('Voucher was already redeemed');
+    }
     const response: RedeemVoucherResponse = {
       voucherOwnershipId: updated.id,
       voucherId: updated.voucherId,

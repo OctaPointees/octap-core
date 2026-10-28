@@ -508,6 +508,44 @@ describe('POS redemption', () => {
       expect((await getOwnership(db, memberId)).pendingRedemption).toBe(10);
     });
 
+    it('the release commits even when the reserve that triggered it then fails its balance check', async () => {
+      await reserve(80, 'pos-old');
+      await setCommand('pos-old', { updatedAt: minutesAgo(31) });
+
+      await expect(reserve(150, 'pos-too-big')).rejects.toThrow(/Insufficient points: required 150, available 100/);
+
+      expect((await command('pos-old')).status).toBe('FAILED');
+      expect((await getOwnership(db, memberId)).pendingRedemption).toBe(0);
+    });
+
+    it('a balance read releases abandoned holds too (releaseAbandonedPosHoldsForMember)', async () => {
+      await reserve(80, 'pos-old');
+      await setCommand('pos-old', { updatedAt: minutesAgo(31) });
+
+      expect(
+        await repo.releaseAbandonedPosHoldsForMember({ organizationId: orgId, organizationEndUserId: memberId }),
+      ).toBe(80);
+      expect((await getOwnership(db, memberId)).pendingRedemption).toBe(0);
+    });
+
+    it('a retry racing a release ends consistent: a hold reported PENDING is never one that was released', async () => {
+      for (let round = 0; round < 5; round += 1) {
+        const key = `pos-race-${round}`;
+        await reserve(10, key);
+        await setCommand(key, { updatedAt: minutesAgo(31) });
+
+        const [retry] = await Promise.all([
+          reserve(10, key),
+          repo.releaseAbandonedPosHoldsForMember({ organizationId: orgId, organizationEndUserId: memberId }),
+        ]);
+
+        const settled = await command(key);
+        expect([retry.transaction.status, settled.status]).toEqual(
+          retry.transaction.status === 'PENDING' ? ['PENDING', 'PENDING'] : ['FAILED', 'FAILED'],
+        );
+      }
+    });
+
     it("only releases the reserving member's own holds", async () => {
       const { memberId: other } = await seedMember(db, orgId);
       await setOwnership(db, other, { confirmedBalance: 50, suiCreditAccountId: '0xother' });

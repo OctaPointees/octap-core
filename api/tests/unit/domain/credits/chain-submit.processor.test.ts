@@ -670,11 +670,8 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
     ).process(buildOperation());
 
     expect(sui.creditAccountProgramId).toHaveBeenCalledWith('0xexisting');
-    // Cleared first, so a crash before the new id is stored still never retries the stale one.
-    expect(setSuiCreditAccountId.mock.calls).toEqual([
-      ['ownership-1', null],
-      ['ownership-1', '0xreopened'],
-    ]);
+    // Replaced only once the new account exists: never cleared to nothing in between.
+    expect(setSuiCreditAccountId.mock.calls).toEqual([['ownership-1', '0xreopened']]);
     expect(sui.openAccount).toHaveBeenCalledWith(programConfigFor('org-1'), '0xbeneficiary');
     expect(earnedOn).toEqual(['0xexisting', '0xreopened']);
     // Each attempt's digest is recorded before it is sent; the confirmed one is the retry's.
@@ -732,10 +729,7 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
     expect(signedFor).toEqual(['0xexisting', '0xreopened']);
     // The aborted attempt never got a digest: only the retry was recorded and sent.
     expect(recordSubmitDigest.mock.calls).toEqual([['op-1', 'DIGEST-RETRY', 7n]]);
-    expect(setSuiCreditAccountId.mock.calls).toEqual([
-      ['ownership-1', null],
-      ['ownership-1', '0xreopened'],
-    ]);
+    expect(setSuiCreditAccountId.mock.calls).toEqual([['ownership-1', '0xreopened']]);
     expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST-RETRY');
   });
 
@@ -815,6 +809,27 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
       reservedPointsAmount: 10000,
     });
     expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/abort code: 0/));
+  });
+
+  it('a failed reopen keeps the stale account id, so the old account (and its credits) stays referenced', async () => {
+    const { sui } = sequencedSui([wrongProgram()], {
+      creditAccountProgramId: async () => OLD_PROGRAM,
+      openAccount: async () => fakeChainResult({ status: 'failure', errorMessage: 'InsufficientGas' }),
+    });
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        setSuiCreditAccountId: () => expect.fail('the stale id must survive a failed reopen'),
+        failEarnOnChain: async () => {},
+      },
+      sui,
+    ).process(buildOperation());
+
+    expect(markFailed).toHaveBeenCalledWith('op-1', 'InsufficientGas');
   });
 
   it('a failed program read keeps the original abort as the failure reason and reopens nothing', async () => {

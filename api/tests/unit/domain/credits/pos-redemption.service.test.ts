@@ -497,6 +497,7 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
       redis: await redisWithCachedReserve(),
       creditsRepo: {
         findBeneficiaryAddress: async () => '0xbeneficiary',
+        findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'PENDING' }),
         confirmPosRedemptionOnChain: async () => ({ id: 'btx-1' }),
         getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
       },
@@ -511,7 +512,11 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
     await expect(
       service({
         redis: await redisWithCachedReserve(),
-        creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary', failPosRedemptionOnChain: async () => {} },
+        creditsRepo: {
+          findBeneficiaryAddress: async () => '0xbeneficiary',
+          findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'PENDING' }),
+          failPosRedemptionOnChain: async () => {},
+        },
         sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
         suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', events: [] }) },
         operationsRepo: {
@@ -520,6 +525,28 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
         },
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
     ).rejects.toThrow(/Redeem failed on-chain/);
+  });
+
+  it('refuses to execute a finalize whose hold was already released (OCT-244), and drops its cache', async () => {
+    const redis = await redisWithCachedReserve();
+    const finalize = service({
+      redis,
+      creditsRepo: {
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'FAILED' }),
+      },
+      sponsoredTx: { executeSponsoredRedeem: () => expect.fail('must not spend on-chain points for a released hold') },
+      operationsRepo: {
+        recordSubmitDigestForCommand: async () => null,
+        settleFromChain: () => expect.fail('nothing to settle'),
+      },
+    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
+
+    await expect(finalize).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/released/),
+    });
+    expect(await redis.get('pos-redeem:reserve:digest-1')).toBeNull();
   });
 
   it('reads the expiration epoch out of real sponsored bytes', async () => {

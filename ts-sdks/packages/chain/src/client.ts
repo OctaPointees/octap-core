@@ -564,6 +564,11 @@ export class OctapChainClient {
   }
 }
 
+/** Whether two Sui addresses or object ids are the same, however they are written. */
+export function sameSuiAddress(a: string, b: string): boolean {
+  return normalizeSuiAddress(a) === normalizeSuiAddress(b);
+}
+
 /** Decodes a `suiprivkey1...` string into a signer. Only ed25519 is supported today. */
 export function signerFromPrivateKey(bech32PrivateKey: string): Ed25519Keypair {
   const decoded = decodeSuiPrivateKey(bech32PrivateKey);

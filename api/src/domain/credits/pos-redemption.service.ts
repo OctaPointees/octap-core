@@ -207,6 +207,18 @@ export class PosRedemptionService {
       suiTxDigest: request.digest,
       expirationEpoch: expirationOf(cached.transactionBytes),
     });
+    if (!operationId) {
+      // The command is already settled. If that was its hold being released (abandoned, or failed),
+      // executing now would spend on-chain points with no hold left to confirm against.
+      const hold = await this.creditsRepo.findTransactionByIdForOrganization(
+        cached.organizationId,
+        cached.loyaltyTransactionId,
+      );
+      if (hold?.status === 'FAILED') {
+        await this.redis.del(reserveKey(request.digest));
+        throw new ConflictException('This reserved redemption was released; reserve again');
+      }
+    }
 
     let executed: { digest: string };
     try {

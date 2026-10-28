@@ -335,6 +335,19 @@ describe('RewardsService.redeemVoucher', () => {
     ).rejects.toThrow(/not found/);
   });
 
+  it('a concurrent redeem that loses the race is a 409 and announces nothing (OCT-244)', async () => {
+    const emit = vi.fn(async () => {});
+    await expect(
+      service(
+        { findOwnershipBySerial: async () => ownership(), markVoucherRedeemed: async () => undefined },
+        sameOrgMember,
+        {},
+        { emit },
+      ).redeemVoucher('org-1', { serialCode: 's' }),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
+    expect(emit).not.toHaveBeenCalled();
+  });
+
   it('rejects an instance that is no longer AVAILABLE, announcing nothing', async () => {
     const emit = vi.fn(async () => {});
     await expect(
