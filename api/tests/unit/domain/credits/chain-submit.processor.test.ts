@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SimulationError } from '@mysten/sui/client';
 import { ChainSubmitProcessor } from '#domain/credits/chain-submit.processor.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
@@ -685,6 +686,84 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
       expect.objectContaining({ digest: 'DIGEST2', confirmedPointsAmount: 100 }),
     );
     expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST2');
+  });
+
+  it('recovers from the abort where it really surfaces: simulated while signing, before anything is sent', async () => {
+    // What testnet does (OCT-244 e2e): building the earn simulates it, and the SDK throws a
+    // SimulationError carrying the abort, so execute is never reached.
+    const simulated = new SimulationError(
+      "Transaction resolution failed: MoveAbort in 1st command, abort code: 0, in '0xpkg::credit_account::earn'",
+      {
+        executionError: {
+          $kind: 'MoveAbort',
+          message: 'MoveAbort in 1st command, abort code: 0',
+          MoveAbort: { abortCode: '0', location: { module: 'credit_account', functionName: 'earn' } },
+        } as never,
+      },
+    );
+    const signedFor: string[] = [];
+    const recordSubmitDigest = vi.fn(async () => {});
+    const setSuiCreditAccountId = vi.fn(async () => {});
+    const markSubmitted = vi.fn(async () => {});
+
+    await processor(
+      { recordSubmitDigest, markSubmitted, markFailed: () => expect.fail('recovered, not failed') },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        setSuiCreditAccountId,
+        confirmEarnOnChain: async () => ({ id: 'btx-1' }),
+        failEarnOnChain: () => expect.fail('recovered, the hold stays'),
+      },
+      {
+        signEarn: async (_program: unknown, params: { accountId: string }) => {
+          signedFor.push(params.accountId);
+          if (params.accountId === '0xexisting') {
+            throw simulated;
+          }
+          return { params, digest: 'DIGEST-RETRY', expirationEpoch: 7n };
+        },
+        execute: async () => ({ ...earned('500'), digest: 'DIGEST-RETRY' }),
+        creditAccountProgramId: async () => OLD_PROGRAM,
+        openAccount: async () => reopenedAccount(),
+      },
+    ).process(buildOperation());
+
+    expect(signedFor).toEqual(['0xexisting', '0xreopened']);
+    // The aborted attempt never got a digest: only the retry was recorded and sent.
+    expect(recordSubmitDigest.mock.calls).toEqual([['op-1', 'DIGEST-RETRY', 7n]]);
+    expect(setSuiCreditAccountId.mock.calls).toEqual([
+      ['ownership-1', null],
+      ['ownership-1', '0xreopened'],
+    ]);
+    expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST-RETRY');
+  });
+
+  it('a simulated abort that is not EWrongProgram fails the earn with the SDK message, nothing read', async () => {
+    const markFailed = vi.fn(async () => {});
+
+    await processor(
+      { markFailed },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        setSuiCreditAccountId: () => expect.fail('nothing to clear'),
+        failEarnOnChain: async () => {},
+      },
+      {
+        signEarn: async () => {
+          throw new SimulationError('Transaction resolution failed: MoveAbort, abort code: 4', {
+            executionError: {
+              $kind: 'MoveAbort',
+              message: 'abort code: 4',
+              MoveAbort: { abortCode: '4', location: { module: 'budget_shard', functionName: 'debit' } },
+            } as never,
+          });
+        },
+        creditAccountProgramId: () => expect.fail('not recoverable'),
+      },
+    ).process(buildOperation());
+
+    expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/Transaction resolution failed/));
   });
 
   it('compares program ids as addresses, not raw strings', async () => {

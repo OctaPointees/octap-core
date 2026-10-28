@@ -6,7 +6,7 @@ import { OperationsRepository } from '#infra/db/repositories/operations.reposito
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.client.js';
-import type { OctapProgramConfig, SubmittedChainTransaction } from '@octap/chain';
+import { moveAbortOf, type ChainMoveAbort, type OctapProgramConfig } from '@octap/chain';
 import { normalizeSuiAddress } from '@mysten/sui/utils';
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
@@ -38,12 +38,25 @@ class EarnOutcomeUnknownError extends Error {
   }
 }
 
+/** A definitive on-chain `earn` failure: the chain's verdict, with its Move abort if it was one. */
+class EarnFailedError extends Error {
+  constructor(
+    message: string,
+    readonly moveAbort?: ChainMoveAbort,
+  ) {
+    super(message);
+    this.name = 'EarnFailedError';
+  }
+}
+
 /**
  * `credit_account::earn`'s `EWrongProgram` (abort code 0, shared by its IssuerCap and account
- * checks), matched on the structured abort rather than the display message.
+ * checks), matched on the structured abort rather than the display message. It can surface either
+ * while signing (building simulates the transaction, so this is where it usually appears) or as
+ * the executed transaction's verdict, if the chain changed in between.
  */
-function isWrongProgramEarnAbort(result: SubmittedChainTransaction): boolean {
-  const abort = result.moveAbort;
+function isWrongProgramEarnAbort(err: unknown): boolean {
+  const abort = err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err);
   return abort?.module === 'credit_account' && abort.functionName === 'earn' && abort.abortCode === '0';
 }
 
@@ -163,10 +176,11 @@ export class ChainSubmitProcessor {
   }
 
   /**
-   * Signs, records and sends one `earn`. The chain treats `pointsAmount` as a purchase amount and
-   * credits the program policy's `earn_bps` share of it (see credits.repository.ts's
-   * confirmEarnOnChain), not the raw number. Throws `EarnOutcomeUnknownError` only once the
-   * transaction may have left the process.
+   * Signs, records and sends one `earn`, returning only a successful one. The chain treats
+   * `pointsAmount` as a purchase amount and credits the program policy's `earn_bps` share of it
+   * (see credits.repository.ts's confirmEarnOnChain), not the raw number. A failure verdict throws
+   * `EarnFailedError`; a send whose outcome is unknown throws `EarnOutcomeUnknownError`; anything
+   * thrown while signing (including a simulated abort) means nothing was sent.
    */
   private async submitEarn(
     operation: typeof operations.$inferSelect,
@@ -184,11 +198,16 @@ export class ChainSubmitProcessor {
     // can ask the chain about exactly this digest instead of guessing.
     await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
 
+    let result: ChainCallResult;
     try {
-      return await this.suiClient.execute(signed);
+      result = await this.suiClient.execute(signed);
     } catch (err: unknown) {
       throw new EarnOutcomeUnknownError(err);
     }
+    if (result.status !== 'success') {
+      throw new EarnFailedError(result.errorMessage ?? 'earn failed on-chain', result.moveAbort);
+    }
+    return result;
   }
 
   /**
@@ -250,16 +269,17 @@ export class ChainSubmitProcessor {
 
       const accountId = ownership.suiCreditAccountId ?? (await this.openCreditAccount(program, ownership.id, payload));
 
-      let result = await this.submitEarn(operation, program, accountId, payload);
-      if (result.status !== 'success' && isWrongProgramEarnAbort(result)) {
-        const reopenedId = await this.reopenIfStale(program, ownership.id, accountId, payload);
-        if (reopenedId) {
-          result = await this.submitEarn(operation, program, reopenedId, payload);
+      let result: ChainCallResult;
+      try {
+        result = await this.submitEarn(operation, program, accountId, payload);
+      } catch (err: unknown) {
+        const reopenedId = isWrongProgramEarnAbort(err)
+          ? await this.reopenIfStale(program, ownership.id, accountId, payload)
+          : null;
+        if (!reopenedId) {
+          throw err;
         }
-      }
-
-      if (result.status !== 'success') {
-        throw new Error(result.errorMessage ?? 'earn failed on-chain');
+        result = await this.submitEarn(operation, program, reopenedId, payload);
       }
 
       const confirmedPointsAmount = result.eventField<string>('CreditEarned', 'amount');

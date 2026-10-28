@@ -1,6 +1,6 @@
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
-import { ObjectError, TransactionError, type SuiClientTypes } from '@mysten/sui/client';
+import { ObjectError, SimulationError, TransactionError, type SuiClientTypes } from '@mysten/sui/client';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { normalizeSuiAddress } from '@mysten/sui/utils';
@@ -199,22 +199,34 @@ export function transactionExpirationEpoch(bytes: Uint8Array | string): bigint |
 
 type CoreTransactionResult = SuiClientTypes.TransactionResult<{ effects: true; events: true }>;
 
+function toMoveAbort(error: SuiClientTypes.ExecutionError | null | undefined): ChainMoveAbort | undefined {
+  if (error?.$kind !== 'MoveAbort') {
+    return undefined;
+  }
+  return {
+    module: error.MoveAbort.location?.module,
+    functionName: error.MoveAbort.location?.functionName,
+    abortCode: error.MoveAbort.abortCode,
+  };
+}
+
+/**
+ * The Move abort behind an error thrown while *building* a transaction. Building simulates it
+ * first, so an abort the chain would hit (e.g. `EWrongProgram`) usually surfaces here, as the
+ * SDK's `SimulationError`, before anything is signed or sent. Undefined for any other error.
+ */
+export function moveAbortOf(err: unknown): ChainMoveAbort | undefined {
+  return err instanceof SimulationError ? toMoveAbort(err.executionError) : undefined;
+}
+
 function normalizeResult(response: CoreTransactionResult): SubmittedChainTransaction {
   const result = response.$kind === 'Transaction' ? response.Transaction : response.FailedTransaction;
-  const error = result.status.success ? null : result.status.error;
+  const moveAbort = result.status.success ? undefined : toMoveAbort(result.status.error);
   return {
     digest: result.digest,
     status: result.status.success ? 'success' : 'failure',
-    errorMessage: error?.message,
-    ...(error?.$kind === 'MoveAbort'
-      ? {
-          moveAbort: {
-            module: error.MoveAbort.location?.module,
-            functionName: error.MoveAbort.location?.functionName,
-            abortCode: error.MoveAbort.abortCode,
-          },
-        }
-      : {}),
+    errorMessage: result.status.success ? undefined : result.status.error.message,
+    ...(moveAbort ? { moveAbort } : {}),
     events: (result.events ?? []).map((event) => ({ type: event.eventType, parsedJson: event.json })),
   };
 }

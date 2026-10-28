@@ -1,6 +1,7 @@
 export {
   OctapChainClient,
   eventField,
+  moveAbortOf,
   transactionExpirationEpoch,
   signerFromPrivateKey,
   type OctapNetwork,
@@ -16,6 +17,7 @@ export {
   type CreateShardsParams,
   type TopUpBudgetParams,
   type SubmittedChainTransaction,
+  type ChainMoveAbort,
   type SignedChainTransaction,
   type CreditAccountEvent,
   type CreditAccountEventPage,

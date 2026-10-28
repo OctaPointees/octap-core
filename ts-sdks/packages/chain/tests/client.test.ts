@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Secp256k1Keypair } from '@mysten/sui/keypairs/secp256k1';
 import { Transaction, TransactionDataBuilder } from '@mysten/sui/transactions';
-import { ObjectError, TransactionError } from '@mysten/sui/client';
+import { ObjectError, SimulationError, TransactionError } from '@mysten/sui/client';
 import { verifyTransactionSignature } from '@mysten/sui/verify';
 import {
   OctapChainClient,
   TESTNET_OCTAP_PACKAGE_CONFIG,
   eventField,
+  moveAbortOf,
   operationShardIndex,
   signerFromPrivateKey,
   transactionExpirationEpoch,
@@ -377,6 +378,17 @@ describe('digest-first submission (OCT-52)', () => {
       errorMessage: expect.stringMatching(/abort code: 0/),
       moveAbort: { module: 'credit_account', functionName: 'earn', abortCode: '0' },
     });
+  });
+
+  it('moveAbortOf reads the abort out of a build-time SimulationError, and nothing else', () => {
+    const abort = { abortCode: '0', location: { module: 'credit_account', functionName: 'earn' } };
+    const simulated = new SimulationError('Transaction resolution failed', {
+      executionError: { $kind: 'MoveAbort', message: 'abort code: 0', MoveAbort: abort } as never,
+    });
+
+    expect(moveAbortOf(simulated)).toEqual({ module: 'credit_account', functionName: 'earn', abortCode: '0' });
+    expect(moveAbortOf(new SimulationError('network down'))).toBeUndefined();
+    expect(moveAbortOf(new Error('abort code: 0'))).toBeUndefined();
   });
 
   it('creditAccountProgramId reads program_id from the object, null when it does not exist', async () => {
