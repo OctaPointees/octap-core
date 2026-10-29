@@ -6,8 +6,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: octap_dev
     ports:
-      # Each developer can override the host port in their root .env.
-      - '${POSTGRES_PORT:-5433}:5432'
+      # Host 5433, not 5432: avoids clashing with a Postgres already running on the host.
+      - '5433:5432'
     volumes:
       - octap-postgres-data:/var/lib/postgresql/data
       # Supabase roles/auth.uid() the schema's RLS policies assume; see the file itself.
