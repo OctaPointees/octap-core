@@ -1,3 +1,5 @@
+import type { RedeemVoucherResponse } from './rewards.js';
+
 export type WebhookEndpointStatus = 'ACTIVE' | 'DISABLED';
 export type WebhookDeliveryStatus = 'PENDING' | 'DELIVERED' | 'DEAD_LETTER';
 
@@ -36,7 +38,12 @@ export interface WebhookDeliveryDto {
 
 /** Every event OctaP delivers; sent as `x-octap-event-type` and as the body's `type`. */
 export type WebhookEventType =
-  'credits.earned' | 'credits.redeemed' | 'credits.earn.confirmed' | 'credits.redemption.confirmed';
+  | 'credits.earned'
+  | 'credits.redeemed'
+  | 'credits.earn.confirmed'
+  | 'credits.redemption.confirmed'
+  | 'credits.reversed'
+  | 'voucher.redeemed';
 
 /**
  * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).
@@ -74,6 +81,29 @@ export interface CreditsChainConfirmedEventData {
   blockchainDigest: string;
 }
 
+/**
+ * `credits.reversed`: a CONFIRMED earn or redemption was reversed in the ledger. Settled
+ * immediately; a chain-confirmed original is also mirrored on-chain afterwards, which sends no
+ * separate event.
+ */
+export interface ReversalEventData {
+  reversalTransactionId: string;
+  reversedTransactionId: string;
+  organizationEndUserId: string;
+  pointsAmount: number;
+  newBalance: number;
+  /** True when reversing an already-spent earn left a clawback debt. */
+  balanceWentNegative: boolean;
+}
+
+/**
+ * `voucher.redeemed`: a claimed voucher instance was used at checkout (marked REDEEMED). No points
+ * move here; claiming it already sent `credits.redeemed` for its points cost.
+ */
+export interface VoucherRedeemedEventData extends RedeemVoucherResponse {
+  organizationEndUserId: string;
+}
+
 interface WebhookEventOf<T extends WebhookEventType, D> {
   /** Stable across retries and replays (`x-octap-event-id`): dedupe on it. */
   id: string;
@@ -86,4 +116,6 @@ export type WebhookEvent =
   | WebhookEventOf<'credits.earned', CreditsEarnedEventData>
   | WebhookEventOf<'credits.redeemed', CreditsRedeemedEventData>
   | WebhookEventOf<'credits.earn.confirmed', CreditsChainConfirmedEventData>
-  | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>;
+  | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
+  | WebhookEventOf<'credits.reversed', ReversalEventData>
+  | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>;

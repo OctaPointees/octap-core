@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, jsonb, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, index, jsonb, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 
@@ -37,6 +37,11 @@ export const operations = pgTable(
   },
   (t) => [
     uniqueIndex('operations_tenant_idempotency_idx').on(t.tenantId, t.idempotencyKey),
+    // `releaseAbandonedPosHolds` runs on every POS reserve and balance read: keep it off a full scan
+    // of the tenant's history by indexing only commands that are still pending with nothing sent.
+    index('operations_pending_unsent_idx')
+      .on(t.tenantId, t.commandType, t.updatedAt)
+      .where(sql`${t.status} = 'PENDING' and ${t.suiTxDigest} is null`),
     pgPolicy('tenant_isolation_operations', {
       for: 'all',
       to: authenticatedRole,

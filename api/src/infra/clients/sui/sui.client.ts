@@ -145,6 +145,11 @@ export class SuiClientService {
     return this.client.sign(tx, this.issuerSigner);
   }
 
+  /** Read-only: the program a `CreditAccount` was opened in, or null if the object doesn't exist. */
+  async creditAccountProgramId(accountId: string): Promise<string | null> {
+    return this.client.creditAccountProgramId(accountId);
+  }
+
   /** Sends a transaction from a `sign*` method. Throwing here means the outcome is unknown, not failed. */
   async execute(signed: SignedChainTransaction): Promise<ChainCallResult> {
     this.logger.log(`executing ${signed.digest}`);

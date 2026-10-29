@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
+import { enqueueWebhookEvent } from './webhooks.repository.js';
 
 @Injectable()
 export class RewardsRepository {
@@ -142,18 +143,37 @@ export class RewardsRepository {
     });
   }
 
-  async markVoucherRedeemed(ownershipId: string) {
-    const [updated] = await this.db
-      .update(voucherOwnerships)
-      .set({
-        status: 'REDEEMED',
-        redeemedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(voucherOwnerships.id, ownershipId))
-      .returning();
-
-    return updated;
+  /**
+   * Marks an AVAILABLE instance REDEEMED and queues its `voucher.redeemed` webhook in the same
+   * transaction (outbox, OCT-244). Undefined, with nothing queued, if the instance was no longer
+   * AVAILABLE (e.g. a concurrent redeem won), so exactly one redeem is ever announced.
+   */
+  async markVoucherRedeemed(
+    ownershipId: string,
+    webhook: {
+      organizationId: string;
+      payload: (redeemed: typeof voucherOwnerships.$inferSelect) => Record<string, unknown>;
+    },
+  ) {
+    return this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(voucherOwnerships)
+        .set({
+          status: 'REDEEMED',
+          redeemedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(voucherOwnerships.id, ownershipId), eq(voucherOwnerships.status, 'AVAILABLE')))
+        .returning();
+      if (updated) {
+        await enqueueWebhookEvent(tx, {
+          organizationId: webhook.organizationId,
+          eventType: 'voucher.redeemed',
+          payload: webhook.payload(updated),
+        });
+      }
+      return updated;
+    });
   }
 
   async listOwnershipsByMember(organizationEndUserId: string) {

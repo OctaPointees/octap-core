@@ -25,9 +25,14 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `credits.redeemed` | a voucher-claim debit (ledger-only, no chain step) | `RedemptionService`, via `emit()` |
 | `credits.earn.confirmed` | the chain confirmed an earn | `CreditsRepository.confirmEarnOnChain` |
 | `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
+| `credits.reversed` | a CONFIRMED earn or redemption was reversed in the ledger (not on a replayed key) | `CreditsRepository.recordReversalTransaction` |
+| `voucher.redeemed` | a claimed voucher instance was used | `RewardsRepository.markVoucherRedeemed` |
 
 The two `*.confirmed` events are queued with `enqueueWebhookEvent(tx, ...)` inside the confirm's
 own transaction (OCT-209): they commit or roll back with it, and only the caller that wins the
 PENDING guard reaches them, so a transaction gets exactly one whether the chain-submit worker,
-POS finalize, `ChainOutcomeReconciler` or the indexer confirmed it. `ReversalService`/
-`RewardsService` emit nothing yet (see the roadmap).
+POS finalize, `ChainOutcomeReconciler` or the indexer confirmed it. `credits.reversed` and
+`voucher.redeemed` use the same outbox form (OCT-244): queued in the reversal's transaction, and
+with the conditional `AVAILABLE -> REDEEMED` update, so a losing concurrent redeem queues nothing.
+The `emit()` events (`credits.earned`, `credits.redeemed`) are best-effort relative to their write
+(see the roadmap).

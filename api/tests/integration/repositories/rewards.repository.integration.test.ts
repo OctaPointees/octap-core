@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { connectTestDb, resetDb, schema, seedMember, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
@@ -129,12 +130,41 @@ describe('RewardsRepository', () => {
     expect(found?.voucher.id).toBe(voucher.id);
     expect(found?.expiresAt).toEqual(new Date('2031-01-01T00:00:00Z'));
 
-    const redeemed = await repo.markVoucherRedeemed(ownership.id);
-    expect(redeemed.status).toBe('REDEEMED');
-    expect(redeemed.redeemedAt).toBeInstanceOf(Date);
+    const redeemed = await repo.markVoucherRedeemed(ownership.id, { organizationId: orgId, payload: () => ({}) });
+    expect(redeemed?.status).toBe('REDEEMED');
+    expect(redeemed?.redeemedAt).toBeInstanceOf(Date);
 
     const listed = await repo.listOwnershipsByMember(memberId);
     expect(listed.map((o) => [o.serialCode, o.voucher.code])).toEqual([['S-1', 'FREESHIP']]);
     expect(await repo.findOwnershipBySerial('missing')).toBeUndefined();
+  });
+});
+
+describe('voucher redeem webhook (OCT-244 outbox)', () => {
+  it('queues exactly one voucher.redeemed with the redeem; a second redeem of the instance changes and queues nothing', async () => {
+    await new WebhooksRepository(db).createEndpoint({
+      organizationId: orgId,
+      url: 'https://merchant.example/hooks',
+      secret: 'whsec_1',
+    });
+    const voucher = await createVoucher();
+    const { ownership } = await repo.claimVoucherInstance({
+      voucherId: voucher.id,
+      organizationEndUserId: memberId,
+      serialCode: 'S-1',
+    });
+    const webhook = {
+      organizationId: orgId,
+      payload: (row: { id: string; status: string }) => ({ voucherOwnershipId: row.id, status: row.status }),
+    };
+
+    const first = await repo.markVoucherRedeemed(ownership.id, webhook);
+    const second = await repo.markVoucherRedeemed(ownership.id, webhook);
+
+    expect(first?.status).toBe('REDEEMED');
+    expect(second).toBeUndefined();
+    expect(await db.select().from(schema.webhookDeliveries)).toMatchObject([
+      { eventType: 'voucher.redeemed', payload: { voucherOwnershipId: ownership.id, status: 'REDEEMED' } },
+    ]);
   });
 });

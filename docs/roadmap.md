@@ -100,10 +100,16 @@ then move the row to **Implemented** in the same pull request.
   is real follow-up work, intentionally not done in this PR — it needs real cloud KMS
   infrastructure this project doesn't have set up yet, which is a bigger decision than this
   ticket's scope.
-- A `CreditAccount` is scoped to the program it was opened in, but `credit_ownerships` stores only
-  its id, not which program. If an organization is ever re-provisioned, its members' existing
-  accounts belong to the old program and `earn` aborts on-chain (`EWrongProgram`) until their
-  `sui_credit_account_id` is cleared so the worker reopens them under the new program.
+- Re-provisioning an organization (OCT-244): a member's existing `CreditAccount` stays in the old
+  program, so their next `earn` aborts with `EWrongProgram`. The chain-submit worker then reads
+  the account's on-chain `program_id`, and only if it differs from the organization's current
+  program does it open a new account in the current program, replace `sui_credit_account_id`
+  with it and retry the earn once. If the account is already in the current program (the same abort code
+  also covers an IssuerCap for the wrong program), nothing changes and the earn fails for a human
+  to look at. What is still not handled: the credits in the old account stay there on-chain, in
+  the old program. Postgres `confirmedBalance` still counts them, but a POS redeem only sees the
+  new account's on-chain balance, and a reversal of an earn made in the old program targets the
+  new account and aborts. Moving balances between programs needs its own design.
 - Fixed (OCT-55): the worker used to open every `CreditAccount` under a placeholder address
   derived from the PG ownership row id, nobody's private key — written before Identity existed
   and never updated, which would have permanently blocked POS redemption (`beneficiary` is set
@@ -129,15 +135,18 @@ then move the row to **Implemented** in the same pull request.
   A POS finalize digest whose sponsored bytes carry no expiration can't be proven never-landed
   and is logged for a human; while it is unresolved, `/reserve` refuses to sponsor fresh bytes
   for that hold (409) so it can't turn into a second on-chain redeem. A reserve that is never
-  finalized at all still holds its points indefinitely — no hold-expiry policy yet.
+  finalized at all is released lazily (OCT-244): the member's next reserve or balance read marks
+  any of their holds that are past `ABANDONED_POS_HOLD_GRACE_MS` (30 min) and still have no
+  finalize digest FAILED, and returns those points to the available balance. Until that member
+  reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; there
+  is no scheduled sweep.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- Webhook delivery is only wired into `EarnService`/`RedemptionService`; `ReversalService` and
-  `RewardsService` don't call `WebhookDeliveryService.emit()` yet — same one-line pattern, not
-  done here to keep this change reviewable. `emit()` (the accept-time `credits.earned` and the
-  voucher `credits.redeemed`) is also not in the same DB transaction as the write that triggers it
-  (a crash in between would silently drop the event) — the chain-confirmation events already use
-  the outbox form, `enqueueWebhookEvent(tx, ...)`, and these two could move to it too. The endpoint
+- `emit()` (the accept-time `credits.earned` and the voucher-claim `credits.redeemed`) is not in
+  the same DB transaction as the write that triggers it (a crash in between, or a failed enqueue
+  that `emit()` only logs, silently drops the event). The chain-confirmation events and, since
+  OCT-244, `credits.reversed` and `voucher.redeemed` already use the outbox form,
+  `enqueueWebhookEvent(tx, ...)`; these two could move to it too. The endpoint
   `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks

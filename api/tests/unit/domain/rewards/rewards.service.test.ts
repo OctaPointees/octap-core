@@ -282,7 +282,7 @@ describe('RewardsService.redeemVoucher', () => {
       },
     );
 
-    expect(markVoucherRedeemed).toHaveBeenCalledWith('own-1');
+    expect(markVoucherRedeemed).toHaveBeenCalledWith('own-1', expect.objectContaining({ organizationId: 'org-1' }));
     expect(result).toEqual({
       voucherOwnershipId: 'own-1',
       voucherId: 'v-1',
@@ -313,6 +313,41 @@ describe('RewardsService.redeemVoucher', () => {
         findOwnershipBySerial: async () => ownership({ voucher: buildVoucher({ organizationId: 'org-2' }) }),
       }).redeemVoucher('org-1', { serialCode: 's' }),
     ).rejects.toThrow(/not found/);
+  });
+
+  it('queues voucher.redeemed with the redeem itself: the response plus the member (OCT-244)', async () => {
+    const redeemed = { ...ownership(), status: 'REDEEMED', redeemedAt: new Date('2026-10-03T00:00:00Z') };
+    let webhook: { organizationId: string; payload: (row: unknown) => unknown } | undefined;
+    const markVoucherRedeemed = vi.fn(async (_id: string, w: typeof webhook) => {
+      webhook = w;
+      return redeemed;
+    });
+
+    await service({ findOwnershipBySerial: async () => ownership(), markVoucherRedeemed }).redeemVoucher('org-1', {
+      serialCode: 'DISCOUNT10-ABCD1234',
+    });
+
+    expect(webhook?.organizationId).toBe('org-1');
+    expect(webhook?.payload(redeemed)).toEqual({
+      voucherOwnershipId: 'own-1',
+      voucherId: 'v-1',
+      organizationEndUserId: 'user-1',
+      serialCode: 'DISCOUNT10-ABCD1234',
+      status: 'REDEEMED',
+      redeemedAt: '2026-10-03T00:00:00.000Z',
+      voucherTitle: '10% Off',
+      discountType: 'PERCENTAGE',
+      discountValue: '10.00',
+    });
+  });
+
+  it('a concurrent redeem that loses the race is a 409 (nothing was queued for it)', async () => {
+    await expect(
+      service({
+        findOwnershipBySerial: async () => ownership(),
+        markVoucherRedeemed: async () => undefined,
+      }).redeemVoucher('org-1', { serialCode: 's' }),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
   });
 
   it('rejects an instance that is no longer AVAILABLE', async () => {
