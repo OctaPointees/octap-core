@@ -12,6 +12,8 @@ import type {
   VoucherDto,
   ClaimVoucherRequest,
   ClaimVoucherResponse,
+  FinalizePosRedemptionRequest,
+  FinalizePosRedemptionResponse,
   RedeemVoucherRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
@@ -217,7 +219,7 @@ export class OctaPointClient {
   }
 
   /**
-   * Claim a voucher for a member, deducting points if required.
+   * Reserve a voucher; paid claims return customer-signable bytes and remain RESERVED until chain confirmation.
    */
   async claimVoucher(
     voucherId: string,
@@ -225,6 +227,16 @@ export class OctaPointClient {
     options?: RequestOptions,
   ): Promise<ClaimVoucherResponse> {
     return this.request<ClaimVoucherResponse>(`/v1/rewards/vouchers/${voucherId}/claim`, 'POST', request, options);
+  }
+
+  /** Read persisted claim state after finalize or asynchronous chain recovery. */
+  async getVoucherClaim(ownershipId: string): Promise<ClaimVoucherResponse> {
+    return this.request<ClaimVoucherResponse>(`/v1/rewards/claims/${ownershipId}`, 'GET');
+  }
+
+  /** The customer signs returned transactionBytes with their zkLogin session; no merchant key is needed by finalize. */
+  async finalizeVoucherClaim(request: FinalizePosRedemptionRequest): Promise<FinalizePosRedemptionResponse> {
+    return this.request<FinalizePosRedemptionResponse>('/v1/credits/redeem/finalize', 'POST', request);
   }
 
   /**
