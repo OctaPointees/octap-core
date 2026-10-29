@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import {
   connectTestDb,
@@ -21,7 +22,7 @@ beforeEach(async () => {
   await resetDb(client);
   orgId = (await seedOrganization(db)).id;
   memberId = (await seedMember(db, orgId)).memberId;
-  await setOwnership(db, memberId, { confirmedBalance: 100, lifetimeEarned: 100 });
+  await setOwnership(db, memberId, { confirmedBalance: 100, lifetimeEarned: 100, suiCreditAccountId: '0xaccount' });
 });
 afterAll(() => client.end());
 const create = (overrides: Partial<Parameters<RewardsRepository['createVoucher']>[0]> = {}) =>
@@ -36,6 +37,18 @@ const create = (overrides: Partial<Parameters<RewardsRepository['createVoucher']
 const claim = (voucherId: string, key = 'claim-1', member = memberId) =>
   repo.claimVoucher(orgId, voucherId, member, key);
 const row = async (id: string) => (await db.select().from(schema.vouchers).where(eq(schema.vouchers.id, id)))[0];
+
+const credits = new CreditsRepository(db);
+const confirm = async (result: Awaited<ReturnType<typeof claim>>) => {
+  await credits.confirmPosRedemptionOnChain({
+    loyaltyTransactionId: result.transactionId!,
+    organizationEndUserId: result.organizationEndUserId,
+    pointsAmount: result.pointsCost!,
+    digest: `chain-${result.transactionId}`,
+    sender: '0xmember',
+  });
+  return repo.getClaim(orgId, result.voucherOwnershipId);
+};
 
 describe('atomic voucher conversion', () => {
   it('returns a conflict when the same voucher code is created concurrently', async () => {
@@ -89,12 +102,16 @@ describe('atomic voucher conversion', () => {
       .insert(schema.webhookEndpoints)
       .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test-secret' });
     const result = await claim(voucher.id);
-    expect(result).toMatchObject({ pointsDeducted: 25, status: 'AVAILABLE' });
-    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+    expect(result).toMatchObject({ pointsDeducted: 0, pointsCost: 25, status: 'RESERVED' });
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
+    await expect(repo.redeemVoucher(orgId, result.serialCode)).rejects.toThrow(/RESERVED/);
+    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+    const confirmed = await confirm(result);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
     expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
-    expect(await claim(voucher.id)).toEqual(result);
+    expect(await claim(voucher.id)).toEqual(confirmed);
     await repo.redeemVoucher(orgId, result.serialCode);
-    expect(await claim(voucher.id)).toEqual(result);
+    expect(await claim(voucher.id)).toMatchObject({ ...confirmed, status: 'REDEEMED' });
     expect(await db.select().from(schema.loyaltyTransactions)).toHaveLength(1);
     expect(await db.select().from(schema.voucherOwnerships)).toHaveLength(1);
     expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(2);
@@ -104,7 +121,7 @@ describe('atomic voucher conversion', () => {
     const voucher = await create();
     const results = await Promise.all(Array.from({ length: 5 }, () => claim(voucher.id)));
     expect(results.every((result) => result.voucherOwnershipId === results[0].voucherOwnershipId)).toBe(true);
-    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     const other = await create({ code: 'OTHER' });
     await expect(claim(other.id)).rejects.toMatchObject({ status: 409 });
     const second = (await seedMember(db, orgId)).memberId;
@@ -115,20 +132,20 @@ describe('atomic voucher conversion', () => {
     const voucher = await create();
     await claim(voucher.id);
     await expect(claim(voucher.id, 'claim-2')).rejects.toThrow(/already been claimed/);
-    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     expect(await db.select().from(schema.operations)).toHaveLength(1);
   });
 
   it('cannot oversell the final unit to two different members', async () => {
     const voucher = await create({ totalSupply: 1 });
     const second = (await seedMember(db, orgId)).memberId;
-    await setOwnership(db, second, { confirmedBalance: 100 });
+    await setOwnership(db, second, { confirmedBalance: 100, suiCreditAccountId: '0xsecond' });
     const results = await Promise.allSettled([claim(voucher.id), claim(voucher.id, 'claim-2', second)]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(await db.select().from(schema.voucherOwnerships)).toHaveLength(1);
     expect(
       (await getOwnership(db, memberId)).confirmedBalance + (await getOwnership(db, second)).confirmedBalance,
-    ).toBe(175);
+    ).toBe(200);
     expect((await row(voucher.id)).claimedCount).toBe(1);
   });
 
@@ -137,7 +154,7 @@ describe('atomic voucher conversion', () => {
     const second = await create({ code: 'OTHER', pointsCost: 60 });
     const results = await Promise.allSettled([claim(first.id), claim(second.id, 'claim-2')]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(40);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 60 });
     expect(await db.select().from(schema.loyaltyTransactions)).toHaveLength(1);
   });
 
@@ -164,7 +181,8 @@ describe('atomic voucher conversion', () => {
       await client.unsafe('DROP TRIGGER fail_demo_claim ON voucher_ownerships; DROP FUNCTION fail_demo_claim();');
     }
     // The failed attempt did not consume its idempotency key.
-    expect((await claim(voucher.id)).pointsDeducted).toBe(25);
+    expect((await claim(voucher.id)).pointsDeducted).toBe(0);
+    expect((await getOwnership(db, memberId)).pendingRedemption).toBe(25);
   });
 
   it('rejects insufficient funds and invalid availability without business writes', async () => {
@@ -201,7 +219,7 @@ describe('atomic voucher conversion', () => {
     const voucher = await create({ pointsCost: 25 });
     await expect(claim(voucher.id)).rejects.toThrow(/Insufficient/);
     await db.update(schema.vouchers).set({ pointsCost: 10 }).where(eq(schema.vouchers.id, voucher.id));
-    await claim(voucher.id);
+    await confirm(await claim(voucher.id));
     expect((await getOwnership(db, memberId)).confirmedBalance).toBe(10);
     expect((await db.select().from(schema.creditBuckets)).reduce((sum, bucket) => sum + bucket.remaining, 0)).toBe(10);
   });
@@ -223,6 +241,138 @@ describe('atomic voucher conversion', () => {
       .where(eq(schema.organizationEndUsers.id, memberId));
     await db.update(schema.organizations).set({ status: 'SUSPENDED' }).where(eq(schema.organizations.id, orgId));
     await expect(claim(voucher.id)).rejects.toThrow(/Organization is not active/);
+  });
+
+  it('releases stock and points on definitive failure, permits a new claim, and never applies a late confirmation', async () => {
+    const voucher = await create({ totalSupply: 1 });
+    const reserved = await claim(voucher.id);
+    await credits.failPosRedemptionOnChain({
+      loyaltyTransactionId: reserved.transactionId!,
+      organizationEndUserId: memberId,
+      pointsAmount: 25,
+    });
+    expect(await repo.getClaim(orgId, reserved.voucherOwnershipId)).toMatchObject({
+      status: 'CANCELLED',
+      pointsDeducted: 0,
+    });
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 0, status: 'ACTIVE' });
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 0 });
+    expect(await claim(voucher.id)).toMatchObject({ status: 'CANCELLED' });
+    await confirm(reserved);
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(100);
+    const retry = await claim(voucher.id, 'new-key');
+    expect(retry.voucherOwnershipId).not.toBe(reserved.voucherOwnershipId);
+    await confirm(retry);
+    await confirm(retry);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
+    await expect(repo.getClaim((await seedOrganization(db)).id, retry.voucherOwnershipId)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('does not release an unsigned claim once finalize has pinned a digest; abandonment prevents late execution', async () => {
+    const voucher = await create();
+    const reserved = await claim(voucher.id);
+    const operationsRepo = new OperationsRepository(db);
+    const params = {
+      loyaltyTransactionId: reserved.transactionId!,
+      organizationEndUserId: memberId,
+      pointsAmount: 25,
+      onlyIfUnsubmitted: true,
+    };
+    await operationsRepo.recordSubmitDigestForCommand({
+      tenantId: orgId,
+      idempotencyKey: 'claim-1',
+      suiTxDigest: 'submitted',
+      expirationEpoch: 5n,
+    });
+    expect(await credits.failPosRedemptionOnChain(params)).toBe(false);
+    expect((await repo.getClaim(orgId, reserved.voucherOwnershipId)).status).toBe('RESERVED');
+    await confirm(reserved);
+    const other = await create({ code: 'OTHER' });
+    const abandoned = await claim(other.id, 'abandoned');
+    expect(await credits.failPosRedemptionOnChain({ ...params, loyaltyTransactionId: abandoned.transactionId! })).toBe(
+      true,
+    );
+    expect(
+      await operationsRepo.recordSubmitDigestForCommand({
+        tenantId: orgId,
+        idempotencyKey: 'abandoned',
+        suiTxDigest: 'late',
+        expirationEpoch: 5n,
+      }),
+    ).toBeNull();
+    expect((await row(other.id)).claimedCount).toBe(0);
+  });
+
+  it('reverses the voucher claim using its original on-chain reference and cancels the unused coupon', async () => {
+    const result = await confirm(await claim((await create()).id));
+    const original = await credits.getLoyaltyTransactionById(result.transactionId!);
+    await credits.recordReversalTransaction({
+      organizationId: orgId,
+      original: original!,
+      idempotencyKey: 'refund',
+      reason: 'refund',
+    });
+    const reversal = (await db.select().from(schema.operations)).find(
+      (o) => o.commandType === 'CREDIT_REVERSAL_CHAIN_SUBMIT',
+    );
+    expect(reversal?.payload).toMatchObject({ chainKey: `voucher-claim-${result.voucherOwnershipId}` });
+    expect((await repo.getClaim(orgId, result.voucherOwnershipId)).status).toBe('CANCELLED');
+    await expect(repo.redeemVoucher(orgId, result.serialCode)).rejects.toThrow(/CANCELLED/);
+  });
+
+  it('retains the confirmed debit when an issued coupon later expires', async () => {
+    const result = await confirm(await claim((await create()).id));
+    await db
+      .update(schema.voucherOwnerships)
+      .set({ status: 'EXPIRED' })
+      .where(eq(schema.voucherOwnerships.id, result.voucherOwnershipId));
+    expect(await repo.getClaim(orgId, result.voucherOwnershipId)).toMatchObject({
+      status: 'EXPIRED',
+      pointsDeducted: 25,
+    });
+  });
+
+  it('lazy balance cleanup cancels an abandoned coupon and releases both its points and stock exactly once', async () => {
+    const voucher = await create({ totalSupply: 1 });
+    const reserved = await claim(voucher.id);
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    const member = { organizationId: orgId, organizationEndUserId: memberId };
+    expect(await credits.releaseAbandonedPosHoldsForMember(member)).toBe(25);
+    expect(await credits.releaseAbandonedPosHoldsForMember(member)).toBe(0);
+    expect(await repo.getClaim(orgId, reserved.voucherOwnershipId)).toMatchObject({
+      status: 'CANCELLED',
+      pointsDeducted: 0,
+    });
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 0 });
+    expect(await row(voucher.id)).toMatchObject({ status: 'ACTIVE', claimedCount: 0 });
+  });
+
+  it('continuing an unsigned voucher refreshes its age, while a submitted claim is never released by age', async () => {
+    const first = await claim((await create()).id);
+    const second = await claim((await create({ code: 'SECOND' })).id, 'claim-2');
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    await db
+      .update(schema.operations)
+      .set({ suiTxDigest: 'submitted' })
+      .where(eq(schema.operations.idempotencyKey, 'claim-2'));
+    expect((await claim(first.voucherId)).status).toBe('RESERVED');
+    expect(
+      await credits.releaseAbandonedPosHoldsForMember({ organizationId: orgId, organizationEndUserId: memberId }),
+    ).toBe(0);
+    expect((await repo.getClaim(orgId, second.voucherOwnershipId)).status).toBe('RESERVED');
+    expect((await getOwnership(db, memberId)).pendingRedemption).toBe(50);
+  });
+
+  it('a failed new claim still commits abandonment cleanup of the previous attempt', async () => {
+    const first = await claim((await create({ totalSupply: 1 })).id);
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    const costly = await create({ code: 'COSTLY', pointsCost: 500 });
+    await expect(claim(costly.id, 'too-expensive')).rejects.toThrow(/Insufficient/);
+    expect((await repo.getClaim(orgId, first.voucherOwnershipId)).status).toBe('CANCELLED');
+    expect((await row(first.voucherId)).claimedCount).toBe(0);
+    expect((await getOwnership(db, memberId)).pendingRedemption).toBe(0);
   });
 
   it('supports free reward replay without a points debit and rejects keys owned by other commands', async () => {
@@ -271,7 +421,7 @@ describe('single-use redemption and lifecycle locking', () => {
 
   it('allows only one simultaneous redemption and rejects foreign organizations', async () => {
     const voucher = await create();
-    const result = await claim(voucher.id);
+    const result = await confirm(await claim(voucher.id));
     const other = await seedOrganization(db);
     await expect(repo.redeemVoucher(other.id, result.serialCode)).rejects.toMatchObject({ status: 404 });
     const results = await Promise.allSettled([
@@ -280,12 +430,12 @@ describe('single-use redemption and lifecycle locking', () => {
     ]);
     expect(results.filter((value) => value.status === 'fulfilled')).toHaveLength(1);
     expect((await repo.findOwnershipBySerial(result.serialCode))?.status).toBe('REDEEMED');
-    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
   });
 
   it('rejects expired ownership, preserves issued benefits when paused and freezes economic fields', async () => {
     const voucher = await create();
-    const result = await claim(voucher.id);
+    const result = await confirm(await claim(voucher.id));
     await expect(repo.updateVoucher(orgId, voucher.id, { pointsCost: 30 }, () => {})).rejects.toMatchObject({
       status: 409,
     });
@@ -305,7 +455,7 @@ describe('single-use redemption and lifecycle locking', () => {
 
 describe('voucher redeem outbox retained from OCT-244', () => {
   it('concurrent serial uses announce exactly one voucher.redeemed in the same transaction', async () => {
-    const result = await claim((await create()).id);
+    const result = await confirm(await claim((await create()).id));
     await db
       .insert(schema.webhookEndpoints)
       .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test' });

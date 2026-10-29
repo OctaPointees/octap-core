@@ -1,6 +1,15 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp } from '../support/app.js';
-import { resetDb, seedCredential, seedMember, seedOrganization, setOwnership } from '../support/db.js';
+import {
+  schema,
+  resetDb,
+  seedProgram,
+  seedCredential,
+  seedMember,
+  seedOrganization,
+  setOwnership,
+} from '../support/db.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
@@ -16,7 +25,8 @@ beforeEach(async () => {
   orgId = (await seedOrganization(ctx.db)).id;
   memberId = (await seedMember(ctx.db, orgId)).memberId;
   auth = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read', 'write'] })).rawKey}` };
-  await setOwnership(ctx.db, memberId, { confirmedBalance: 100 });
+  await setOwnership(ctx.db, memberId, { confirmedBalance: 100, suiCreditAccountId: '0xaccount' });
+  await seedProgram(ctx.db, orgId);
 });
 
 afterAll(async () => {
@@ -102,7 +112,7 @@ describe('rewards over HTTP', () => {
     await ctx.http().post(`/v1/rewards/vouchers/${another.body.id}/claim`).set(auth).send(body).expect(409);
     expect(
       (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance,
-    ).toBe(75);
+    ).toBe(100);
   });
   it('create -> list/get -> claim (deducting points) -> redeem the serial -> member’s vouchers', async () => {
     const created = await createVoucher({
@@ -125,10 +135,28 @@ describe('rewards over HTTP', () => {
       .send({ organizationEndUserId: memberId, idempotencyKey: 'claim-1' })
       .expect(201);
     expect(claimed.body).toMatchObject({
-      pointsDeducted: 60,
-      status: 'AVAILABLE',
+      pointsDeducted: 0,
+      pointsCost: 60,
+      status: 'RESERVED',
       serialCode: expect.stringMatching(/^COFFEE-[0-9A-F]{16}$/),
     });
+    expect((await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body).toMatchObject({
+      confirmedBalance: 100,
+      pendingRedemption: 60,
+    });
+    await ctx
+      .http()
+      .post('/v1/rewards/vouchers/redeem')
+      .set(auth)
+      .send({ serialCode: claimed.body.serialCode })
+      .expect(400);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claimed.body.digest, signature: 'customer-signature' })
+      .expect(201);
+    const status = await ctx.http().get(`/v1/rewards/claims/${claimed.body.voucherOwnershipId}`).set(auth).expect(200);
+    expect(status.body).toMatchObject({ status: 'AVAILABLE', pointsDeducted: 60 });
     expect(
       (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance,
     ).toBe(40);
@@ -157,6 +185,91 @@ describe('rewards over HTTP', () => {
 
     const mine = (await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200)).body;
     expect(mine).toMatchObject([{ status: 'REDEEMED', voucher: { code: 'coffee' } }]);
+  });
+
+  it('keeps an unknown or invalid-signature claim reserved and releases it only on a definitive chain failure', async () => {
+    const voucher = await createVoucher({
+      code: 'recover',
+      title: 'Recover',
+      discountType: 'FREE_ITEM',
+      pointsCost: 25,
+      totalSupply: 1,
+    }).expect(201);
+    const request = { organizationEndUserId: memberId, idempotencyKey: 'recover-claim' };
+    const claim = (
+      await ctx.http().post(`/v1/rewards/vouchers/${voucher.body.id}/claim`).set(auth).send(request).expect(201)
+    ).body;
+    ctx.adapters.enoki.executeSponsoredTransaction.mockRejectedValueOnce(new Error('invalid signature'));
+    await ctx.http().post('/v1/credits/redeem/finalize').send({ digest: claim.digest, signature: 'bad' }).expect(400);
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claim.voucherOwnershipId}`).set(auth).expect(200)).body.status,
+    ).toBe('RESERVED');
+    expect((await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body).toMatchObject({
+      confirmedBalance: 100,
+      pendingRedemption: 25,
+    });
+    ctx.adapters.suiBuilder.waitForTransaction.mockRejectedValueOnce(new Error('RPC timeout'));
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claim.digest, signature: 'customer-signature' })
+      .expect(500);
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claim.voucherOwnershipId}`).set(auth).expect(200)).body.status,
+    ).toBe('RESERVED');
+    ctx.adapters.suiBuilder.waitForTransaction.mockResolvedValueOnce({
+      digest: claim.digest,
+      status: 'failure',
+      errorMessage: 'EInsufficientBalance',
+      events: [],
+    } as never);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claim.digest, signature: 'customer-signature' })
+      .expect(400);
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claim.voucherOwnershipId}`).set(auth).expect(200)).body,
+    ).toMatchObject({ status: 'CANCELLED', pointsDeducted: 0 });
+    expect((await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body).toMatchObject({
+      confirmedBalance: 100,
+      pendingRedemption: 0,
+    });
+    expect((await ctx.http().get(`/v1/rewards/vouchers/${voucher.body.id}`).set(auth).expect(200)).body).toMatchObject({
+      claimedCount: 0,
+      status: 'ACTIVE',
+    });
+    const other = await seedOrganization(ctx.db);
+    await ctx
+      .http()
+      .get(`/v1/rewards/claims/${claim.voucherOwnershipId}`)
+      .set({ authorization: `Bearer ${(await seedCredential(ctx.db, other.id)).rawKey}` })
+      .expect(404);
+  });
+
+  it('replays a settled claim even if its program later becomes unavailable', async () => {
+    const voucher = await createVoucher({
+      code: 'settled',
+      title: 'Settled',
+      discountType: 'FREE_ITEM',
+      pointsCost: 25,
+    }).expect(201);
+    const body = { organizationEndUserId: memberId, idempotencyKey: 'settled-claim' };
+    const path = `/v1/rewards/vouchers/${voucher.body.id}/claim`;
+    const claim = (await ctx.http().post(path).set(auth).send(body).expect(201)).body;
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claim.digest, signature: 'customer-signature' })
+      .expect(201);
+    await ctx.db
+      .update(schema.programs)
+      .set({ status: 'PROVISIONING' })
+      .where(eq(schema.programs.organizationId, orgId));
+    expect((await ctx.http().post(path).set(auth).send(body).expect(201)).body).toMatchObject({
+      status: 'AVAILABLE',
+      pointsDeducted: 25,
+    });
   });
 
   it('a claim the member can’t afford is refused and changes nothing', async () => {

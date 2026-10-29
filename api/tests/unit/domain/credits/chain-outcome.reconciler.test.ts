@@ -90,6 +90,18 @@ describe('ChainOutcomeReconciler', () => {
     });
   });
 
+  it('abandons an unsigned voucher claim but yields if finalize has already pinned its digest', async () => {
+    const operation = posFinalize({
+      suiTxDigest: null,
+      payload: { organizationEndUserId: 'user-1', pointsAmount: 80, voucherOwnershipId: 'coupon' },
+    });
+    const failPosRedemptionOnChain = vi.fn(async () => false);
+    const { reconciler, ops } = fixture({ operations: [operation], creditsRepo: { failPosRedemptionOnChain } });
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['waiting']);
+    expect(failPosRedemptionOnChain).toHaveBeenCalledWith(expect.objectContaining({ onlyIfUnsubmitted: true }));
+    expect(ops.settleFromChain).not.toHaveBeenCalled();
+  });
+
   it('confirms a timed-out earn that landed from its digest, never sending it again', async () => {
     const { ops, credits, reconciler } = fixture({
       operations: [unknownEarn()],

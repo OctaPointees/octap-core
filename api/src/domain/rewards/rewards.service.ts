@@ -2,6 +2,9 @@ import { Injectable, BadRequestException, ConflictException, NotFoundException }
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { PosRedemptionService } from '../credits/pos-redemption.service.js';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import { requireProgramConfig } from '../programs/program-config.js';
 import { validateVoucher } from './voucher-validation.js';
 import type {
   CreateVoucherRequest,
@@ -19,6 +22,8 @@ export class RewardsService {
   constructor(
     private readonly rewardsRepo: RewardsRepository,
     private readonly creditsRepo: CreditsRepository,
+    private readonly posRedemption: PosRedemptionService,
+    private readonly programsRepo: ProgramsRepository,
   ) {}
 
   async createVoucher(organizationId: string, req: CreateVoucherRequest): Promise<VoucherDto> {
@@ -81,7 +86,37 @@ export class RewardsService {
         'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
       );
     }
-    return this.rewardsRepo.claimVoucher(organizationId, voucherId, req.organizationEndUserId, key);
+    const previousOperation = await this.creditsRepo.findOperationForClaim(organizationId, key);
+    const voucher = await this.getVoucher(organizationId, voucherId);
+    if (!previousOperation && voucher.pointsCost > 0) {
+      if (!req.idempotencyKey) throw new BadRequestException('idempotencyKey is required for paid voucher claims');
+      await requireProgramConfig(this.programsRepo, organizationId);
+      if (!(await this.creditsRepo.findBeneficiaryAddress(req.organizationEndUserId)))
+        throw new BadRequestException('Member has no linked Sui address');
+    }
+    const claim = await this.rewardsRepo.claimVoucher(organizationId, voucherId, req.organizationEndUserId, key);
+    if (claim.status !== 'RESERVED' || !claim.transactionId) return claim;
+    await requireProgramConfig(this.programsRepo, organizationId);
+    const transaction = await this.creditsRepo.getLoyaltyTransactionById(claim.transactionId);
+    const ownership = await this.creditsRepo.getOrCreateCreditOwnership(req.organizationEndUserId);
+    const operation = previousOperation ?? (await this.creditsRepo.findOperationForClaim(organizationId, key));
+    if (!transaction || !operation) throw new ConflictException('Claim reservation is missing');
+    const sponsored = await this.posRedemption.sponsorReservation(
+      organizationId,
+      {
+        organizationEndUserId: req.organizationEndUserId,
+        pointsAmount: claim.pointsCost!,
+        idempotencyKey: key,
+      },
+      { transaction, accountId: ownership.suiCreditAccountId, isNew: false, submittedDigest: operation.suiTxDigest },
+      `voucher-claim-${claim.voucherOwnershipId}`,
+    );
+    if (sponsored.status !== 'PENDING') return this.rewardsRepo.getClaim(organizationId, claim.voucherOwnershipId);
+    return { ...claim, digest: sponsored.digest, transactionBytes: sponsored.transactionBytes };
+  }
+
+  async getClaim(organizationId: string, ownershipId: string): Promise<ClaimVoucherResponse> {
+    return this.rewardsRepo.getClaim(organizationId, ownershipId);
   }
 
   async redeemVoucher(organizationId: string, req: RedeemVoucherRequest): Promise<RedeemVoucherResponse> {

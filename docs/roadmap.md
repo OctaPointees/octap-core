@@ -50,12 +50,8 @@ then move the row to **Implemented** in the same pull request.
 
 - **Earn** is chain-dispatched (worker, IssuerCap-signed) and **POS redemption** is now also
   chain-dispatched (customer-signed, Enoki-sponsored, see the row above) — but the *other* redeem
-  path, `RedemptionService`/`POST /v1/credits/redeem` (used for voucher claims — an internal
-  points-ledger debit, not a cash-out), is deliberately still Postgres-only and untouched: a
-  voucher claim was never meant to need the member's own signature, so there is nothing to wire
-  there. `credit_account::redeem` requires the beneficiary's own signature (Move-enforced, not a
-  bug) — a worker signing with the IssuerCap key would abort on-chain every time, which is why POS
-  redemption needed its own reserve/finalize flow instead of reusing the earn worker's pattern.
+  path, `RedemptionService`/`POST /v1/credits/redeem`, remains a legacy Postgres-only API. Paid voucher claims now reserve stock and points atomically, require a customer signature through the same sponsored redeem/finalize pipeline, and activate only after chain confirmation (OCT-231). Coupon catalog and serial records remain in PostgreSQL.
+
 - POS redemption's reserve/finalize split has no equivalent of Harbor's `/resume` endpoint for a
   package-version cutover mid-reserve (not applicable yet — this repo has no published-package
   migration story at all) and no admin/grant revocation race handling (POS redemption grants
@@ -137,11 +133,10 @@ then move the row to **Implemented** in the same pull request.
   finalized at all is released lazily (OCT-244): the member's next reserve or balance read marks
   any of their holds that are past `ABANDONED_POS_HOLD_GRACE_MS` (30 min) and still have no
   finalize digest FAILED, and returns those points to the available balance. Until that member
-  reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; there
-  is no scheduled sweep.
+  reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; unsigned voucher claims also have a worker sweep; submitted digests are never released by age alone.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- `emit()` (the accept-time `credits.earned` and the voucher-claim `credits.redeemed`) is not in
+- `emit()` (the accept-time `credits.earned` and the legacy PostgreSQL-only `credits.redeemed`) is not in
   the same DB transaction as the write that triggers it (a crash in between, or a failed enqueue
   that `emit()` only logs, silently drops the event). The chain-confirmation events and, since
   OCT-244, `credits.reversed` and `voucher.redeemed` already use the outbox form,
@@ -156,8 +151,7 @@ then move the row to **Implemented** in the same pull request.
   non-expiring on-chain balance too. Reversing an earn whose credits were already spent (or have
   expired) is accepted in Postgres but aborts on-chain (`EBucketUnavailable`), so that account's
   two balances differ until a human settles it; the mirror command is FAILED with the abort and
-  nothing retries it. A voucher-claim REDEEM never reached the chain, so its reversal has no
-  mirror.
+  nothing retries it. Paid voucher claims use the same on-chain reversal pipeline, keyed by `voucher-claim-<ownershipId>`. Historical Postgres-only claims still have no chain receipt.
 - **Expiry** (OCT-49) is lazy: due buckets are swept whenever the balance is read or spent, not
   by a scheduled job. Every balance check (POS reserve, voucher claim) and `GET /balance` sweeps
   first; only the informational `newBalance` in earn/POS-finalize responses can show a

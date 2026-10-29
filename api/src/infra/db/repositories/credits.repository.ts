@@ -8,6 +8,7 @@ import {
   loyaltyTransactions,
 } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
+import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
 import { acceptCommand } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
@@ -188,6 +189,30 @@ export async function expireDueBuckets(
   return forfeited;
 }
 
+/** Settle the reserved coupon in the same transaction as the point hold. Lock catalog before balance. */
+async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, confirmed: boolean) {
+  const claim = await tx.query.voucherOwnerships.findFirst({
+    where: eq(voucherOwnerships.loyaltyTransactionId, loyaltyTransactionId),
+  });
+  if (!claim || claim.status !== 'RESERVED') return;
+  await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, claim.voucherId)).for('update');
+  const [changed] = await tx
+    .update(voucherOwnerships)
+    .set({ status: confirmed ? 'AVAILABLE' : 'CANCELLED', updatedAt: new Date() })
+    .where(and(eq(voucherOwnerships.id, claim.id), eq(voucherOwnerships.status, 'RESERVED')))
+    .returning();
+  if (changed && !confirmed) {
+    await tx
+      .update(vouchers)
+      .set({
+        claimedCount: sql`${vouchers.claimedCount} - 1`,
+        status: sql`case when ${vouchers.status} = 'DEPLETED' then 'ACTIVE'::voucher_status else ${vouchers.status} end`,
+        updatedAt: new Date(),
+      })
+      .where(eq(vouchers.id, claim.voucherId));
+  }
+}
+
 /** The durable command a POS reserve is accepted under (OCT-55). */
 const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
 
@@ -260,7 +285,9 @@ export async function releaseAbandonedPosHolds(
         ),
       ),
     )
-    .returning({ pointsAmount: loyaltyTransactions.pointsAmount });
+    .returning({ id: loyaltyTransactions.id, pointsAmount: loyaltyTransactions.pointsAmount });
+  // Voucher claims share this command pipeline: release their coupon/stock in the same transaction.
+  for (const row of released) await settleVoucherClaim(tx, row.id, false);
   const total = released.reduce((sum, row) => sum + Number(row.pointsAmount), 0);
   if (total === 0) {
     return 0;
@@ -680,6 +707,17 @@ export class CreditsRepository {
    * caller must not sponsor a new on-chain transaction for it, only resume reporting on the
    * existing one.
    */
+  async findOperationForClaim(organizationId: string, idempotencyKey: string) {
+    return this.db.query.operations.findFirst({
+      where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
+    });
+  }
+
+  async findVoucherClaimTransaction(ownershipId: string) {
+    const claim = await this.db.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.id, ownershipId) });
+    return claim?.loyaltyTransactionId ? this.getLoyaltyTransactionById(claim.loyaltyTransactionId) : undefined;
+  }
+
   async reservePosRedemption(params: {
     organizationId: string;
     organizationEndUserId: string;
@@ -812,6 +850,7 @@ export class CreditsRepository {
         return null;
       }
 
+      await settleVoucherClaim(tx, params.loyaltyTransactionId, true);
       const [blockchainTx] = await tx
         .insert(blockchainTransactions)
         .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
@@ -858,12 +897,43 @@ export class CreditsRepository {
     loyaltyTransactionId: string;
     organizationEndUserId: string;
     pointsAmount: number;
+    onlyIfUnsubmitted?: boolean;
   }) {
     return this.db.transaction(async (tx) => {
+      let abandonedCommandId: string | undefined;
+      if (params.onlyIfUnsubmitted) {
+        const [command] = await tx
+          .select()
+          .from(operations)
+          .where(
+            and(
+              eq(operations.commandType, 'CREDIT_POS_REDEEM_RESERVE'),
+              sql`${operations.payload}->>'voucherOwnershipId' is not null`,
+              eq(
+                operations.idempotencyKey,
+                sql`(select idempotency_key from loyalty_transactions where id = ${params.loyaltyTransactionId})`,
+              ),
+              eq(
+                operations.tenantId,
+                sql`(select organization_id from loyalty_transactions where id = ${params.loyaltyTransactionId})`,
+              ),
+            ),
+          )
+          .for('update');
+        if (!command || command.suiTxDigest) return false;
+        abandonedCommandId = command.id;
+      }
       if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
-        return;
+        return false;
       }
 
+      if (abandonedCommandId) {
+        await tx
+          .update(operations)
+          .set({ status: 'FAILED', errorMessage: 'Unsigned voucher claim expired', updatedAt: new Date() })
+          .where(eq(operations.id, abandonedCommandId));
+      }
+      await settleVoucherClaim(tx, params.loyaltyTransactionId, false);
       await tx
         .update(loyaltyTransactions)
         .set({ status: 'FAILED', updatedAt: new Date() })
@@ -876,6 +946,7 @@ export class CreditsRepository {
           .set({ pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount, updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
       }
+      return true;
     });
   }
 
@@ -903,9 +974,17 @@ export class CreditsRepository {
         .where(eq(loyaltyTransactions.id, params.original.id))
         .returning();
 
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.original.organizationEndUserId),
+      const coupon = await tx.query.voucherOwnerships.findFirst({
+        where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
       });
+      if (coupon) {
+        await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, coupon.voucherId)).for('share');
+        await tx
+          .update(voucherOwnerships)
+          .set({ status: 'CANCELLED', updatedAt: new Date() })
+          .where(and(eq(voucherOwnerships.id, coupon.id), eq(voucherOwnerships.status, 'AVAILABLE')));
+      }
+      const ownership = await lockOwnership(tx, params.original.organizationEndUserId);
       if (!ownership) {
         throw new Error('Credit ownership not found for this member');
       }
@@ -945,7 +1024,7 @@ export class CreditsRepository {
         .returning();
 
       // Mirror it on-chain (OCT-50) only if the original reached the chain: a chain-dispatched earn
-      // or a POS redemption. A voucher-claim REDEEM never left Postgres, so there is nothing to undo.
+      // POS redemption or a customer-signed voucher claim.
       if (params.original.blockchainTransactionId) {
         await acceptCommand(tx, {
           tenantId: params.organizationId,
@@ -958,7 +1037,12 @@ export class CreditsRepository {
             organizationEndUserId: params.original.organizationEndUserId,
             // The original's on-chain handle: an earn's `operation_key` is its idempotency key, a
             // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts).
-            chainKey: params.original.transactionType === 'EARN' ? params.original.idempotencyKey : params.original.id,
+            chainKey:
+              params.original.transactionType === 'EARN'
+                ? params.original.idempotencyKey
+                : params.original.receiptReference?.startsWith('voucher-claim-')
+                  ? params.original.receiptReference
+                  : params.original.id,
           },
         });
       }

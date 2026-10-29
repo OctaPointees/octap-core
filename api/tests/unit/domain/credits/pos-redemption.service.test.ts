@@ -492,39 +492,20 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
     expect(settleFromChain).toHaveBeenLastCalledWith('op-pos-1', 'FAILED', 'EInsufficientBalance');
   });
 
-  it('settles nothing when the reserve operation was already settled (no operation id)', async () => {
-    await service({
-      redis: await redisWithCachedReserve(),
-      creditsRepo: {
-        findBeneficiaryAddress: async () => '0xbeneficiary',
-        findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'PENDING' }),
-        confirmPosRedemptionOnChain: async () => ({ id: 'btx-1' }),
-        getOrCreateCreditOwnership: async () => ({ confirmedBalance: 150 }),
-      },
-      sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
-      suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'success', events: [] }) },
-      operationsRepo: {
-        recordSubmitDigestForCommand: async () => null,
-        settleFromChain: () => expect.fail('nothing to settle'),
-      },
-    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
-
+  it('refuses execution after settlement or when a different digest already owns the operation', async () => {
+    const executeSponsoredRedeem = vi.fn();
     await expect(
       service({
         redis: await redisWithCachedReserve(),
         creditsRepo: {
           findBeneficiaryAddress: async () => '0xbeneficiary',
           findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'PENDING' }),
-          failPosRedemptionOnChain: async () => {},
         },
-        sponsoredTx: { executeSponsoredRedeem: async () => ({ digest: 'digest-1' }) },
-        suiBuilder: { waitForTransaction: async () => ({ digest: 'digest-1', status: 'failure', events: [] }) },
-        operationsRepo: {
-          recordSubmitDigestForCommand: async () => null,
-          settleFromChain: () => expect.fail('nothing to settle'),
-        },
+        sponsoredTx: { executeSponsoredRedeem },
+        operationsRepo: { recordSubmitDigestForCommand: async () => null },
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
-    ).rejects.toThrow(/Redeem failed on-chain/);
+    ).rejects.toMatchObject({ status: 409 });
+    expect(executeSponsoredRedeem).not.toHaveBeenCalled();
   });
 
   it('refuses to execute a finalize whose hold was already released (OCT-244), and drops its cache', async () => {

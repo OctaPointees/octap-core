@@ -228,10 +228,18 @@ export class CheckpointIndexerProcessor {
   ): Promise<EventOutcome> {
     // POS redemption passes the loyalty transaction id as `reference` (pos-redemption.service.ts).
     const loyaltyTransactionId = decodeBytesField(event.json?.reference);
-    if (!loyaltyTransactionId || !UUID_PATTERN.test(loyaltyTransactionId)) {
+    const claimId = loyaltyTransactionId?.startsWith('voucher-claim-')
+      ? loyaltyTransactionId.slice('voucher-claim-'.length)
+      : null;
+    if (
+      !loyaltyTransactionId ||
+      !(UUID_PATTERN.test(loyaltyTransactionId) || (claimId && UUID_PATTERN.test(claimId)))
+    ) {
       return 'skipped';
     }
-    const loyaltyTx = await this.creditsRepo.getLoyaltyTransactionById(loyaltyTransactionId);
+    const loyaltyTx = claimId
+      ? await this.creditsRepo.findVoucherClaimTransaction(claimId)
+      : await this.creditsRepo.getLoyaltyTransactionById(loyaltyTransactionId);
     if (
       !loyaltyTx ||
       loyaltyTx.transactionType !== 'REDEEM' ||

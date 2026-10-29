@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
 import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { PROGRAMS_REPO } from '../../../helpers/fixtures.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildVoucher } from '../../../helpers/fixtures.js';
 
-const sameOrgMember = stub<CreditsRepository>({ findMemberOrganizationId: async () => 'org-1' });
+const sameOrgMember = stub<CreditsRepository>({
+  findMemberOrganizationId: async () => 'org-1',
+  findOperationForClaim: async () => undefined,
+});
 
 function ownership(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,7 +28,12 @@ function ownership(overrides: Record<string, unknown> = {}) {
 }
 
 function service(rewardsRepo: { [K in keyof RewardsRepository]?: unknown }, creditsRepo = sameOrgMember) {
-  return new RewardsService(stub<RewardsRepository>(rewardsRepo), creditsRepo);
+  return new RewardsService(
+    stub<RewardsRepository>({ findVoucherById: async () => buildVoucher({ pointsCost: 0 }), ...rewardsRepo }),
+    creditsRepo,
+    stub<PosRedemptionService>({}),
+    PROGRAMS_REPO,
+  );
 }
 
 describe('RewardsService.createVoucher', () => {
@@ -120,6 +130,51 @@ describe('RewardsService claims and redemption', () => {
     await service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId });
     expect(claimVoucher).toHaveBeenLastCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`);
   });
+  it('sponsors the atomic paid reservation without issuing a usable voucher or debiting points', async () => {
+    const claim = {
+      voucherOwnershipId: 'ownership-1',
+      voucherId: 'v-1',
+      organizationEndUserId: memberId,
+      status: 'RESERVED',
+      pointsCost: 25,
+      pointsDeducted: 0,
+      transactionId: 'tx-1',
+      serialCode: 'CODE',
+      claimedAt: '2026-10-29T00:00:00Z',
+    };
+    const sponsorReservation = vi.fn(async () => ({ status: 'PENDING', digest: 'digest', transactionBytes: 'bytes' }));
+    const rewards = new RewardsService(
+      stub<RewardsRepository>({
+        findVoucherById: async () => buildVoucher({ pointsCost: 25 }),
+        claimVoucher: async () => claim,
+      }),
+      stub<CreditsRepository>({
+        findBeneficiaryAddress: async () => '0xmember',
+        getLoyaltyTransactionById: async () => ({ id: 'tx-1' }),
+        getOrCreateCreditOwnership: async () => ({ suiCreditAccountId: '0xaccount' }),
+        findOperationForClaim: vi
+          .fn()
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce({ suiTxDigest: null })
+          .mockResolvedValueOnce(undefined),
+      }),
+      stub<PosRedemptionService>({ sponsorReservation }),
+      PROGRAMS_REPO,
+    );
+    await expect(
+      rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: 'claim-key' }),
+    ).resolves.toMatchObject({ status: 'RESERVED', pointsDeducted: 0, digest: 'digest', transactionBytes: 'bytes' });
+    expect(sponsorReservation).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ pointsAmount: 25 }),
+      expect.anything(),
+      'voucher-claim-ownership-1',
+    );
+    await expect(rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId })).rejects.toThrow(
+      /idempotencyKey is required/,
+    );
+  });
+
   it('rejects malformed members and claim keys before reaching the database', async () => {
     const claimVoucher = vi.fn();
     const rewards = service({ claimVoucher });

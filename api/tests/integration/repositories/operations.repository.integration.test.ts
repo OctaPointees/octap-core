@@ -226,6 +226,47 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     expect(await statusOf(pending.id)).toMatchObject({ status: 'PENDING', suiTxDigest: 'D-POS' });
   });
 
+  it('pins the first finalize digest and lists only sufficiently old unsigned voucher claims for abandonment', async () => {
+    await insertOperation({ idempotencyKey: 'pin', commandType: 'CREDIT_POS_REDEEM_RESERVE' });
+    const pin = (digest: string) =>
+      repo.recordSubmitDigestForCommand({
+        tenantId: orgId,
+        idempotencyKey: 'pin',
+        suiTxDigest: digest,
+        expirationEpoch: 5n,
+      });
+    expect(await pin('first')).toBeTruthy();
+    expect(await pin('second')).toBeNull();
+    expect(await pin('first')).toBeTruthy();
+    const expired = await insertOperation({
+      idempotencyKey: 'unsigned',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      payload: { voucherOwnershipId: 'coupon' },
+      updatedAt: ago(31 * 60 * 1000),
+    });
+    await insertOperation({
+      idempotencyKey: 'fresh',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      payload: { voucherOwnershipId: 'coupon' },
+      updatedAt: ago(10 * 60 * 1000),
+    });
+    await insertOperation({
+      idempotencyKey: 'pos',
+      commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      updatedAt: ago(40 * 60 * 1000),
+    });
+    expect(
+      (
+        await repo.listUnresolvedChainOutcomes({
+          unknownCommandTypes: [],
+          posCommandType: 'CREDIT_POS_REDEEM_RESERVE',
+          olderThanMs: 5 * 60 * 1000,
+          limit: 20,
+        })
+      ).map((o) => o.id),
+    ).toEqual([expired.id]);
+  });
+
   it('listUnresolvedChainOutcomes returns old UNKNOWN earns and POS finalizes with a digest, oldest first', async () => {
     const old = ago(10 * 60 * 1000);
     const earnUnknown = await insertOperation({
