@@ -8,7 +8,12 @@ import { closeDemoResources } from '../lib/close-demo-resources.mjs';
 
 const memberId = '11111111-1111-4111-8111-111111111111';
 const voucherId = '22222222-2222-4222-8222-222222222222';
-const config = { memberId, voucherId, idempotencyKey: 'sdk-demo-test-001' };
+const config = {
+  memberId,
+  voucherId,
+  idempotencyKey: 'sdk-demo-test-001',
+  signTransaction: async () => 'customer-signature',
+};
 
 test('cleanup attempts database and containers even after an earlier closer fails', async () => {
   const calls = [];
@@ -52,7 +57,7 @@ async function fixture(t, overrides = {}) {
       id: 'ownership-1',
       voucherId,
       serialCode: 'COFFEE-ABC',
-      status: state.redeemed ? 'REDEEMED' : 'AVAILABLE',
+      status: state.redeemed ? 'REDEEMED' : state.confirmed ? 'AVAILABLE' : 'RESERVED',
     };
     if (req.url.endsWith('/balance')) {
       return send({
@@ -92,12 +97,28 @@ async function fixture(t, overrides = {}) {
     if (req.url.endsWith('/claim')) {
       if (state.claimFails) return send({ message: 'Claim failed' }, 503);
       state.claimed = true;
+      return send({
+        ...ownership,
+        voucherOwnershipId: ownership.id,
+        pointsDeducted: 0,
+        pointsCost: 25,
+        digest: 'claim-digest',
+        transactionBytes: 'claim-bytes',
+        organizationEndUserId: state.claimMemberId ?? memberId,
+      });
+    }
+    if (req.url.endsWith('/finalize')) {
+      assert.equal(body.signature, 'customer-signature');
+      state.confirmed = true;
       state.balance -= 25;
+      return send({ status: 'CONFIRMED', blockchainDigest: body.digest });
+    }
+    if (req.url.startsWith('/v1/rewards/claims/')) {
       return send({
         ...ownership,
         voucherOwnershipId: ownership.id,
         pointsDeducted: 25,
-        organizationEndUserId: state.claimMemberId ?? memberId,
+        organizationEndUserId: memberId,
       });
     }
     if (req.url.endsWith('/redeem')) {
@@ -124,9 +145,10 @@ test('public SDK spends points once, redeems the claimed serial and reads persis
   assert.equal(result.after.confirmedBalance, 75);
   assert.equal(result.ownership.status, 'REDEEMED');
   const writes = calls.filter((call) => call.method === 'POST');
-  assert.equal(writes.length, 2);
+  assert.equal(writes.length, 3);
   assert.deepEqual(writes[0].body, { organizationEndUserId: memberId, idempotencyKey: config.idempotencyKey });
-  assert.deepEqual(writes[1].body, { serialCode: 'COFFEE-ABC' });
+  assert.deepEqual(writes[1].body, { digest: 'claim-digest', signature: 'customer-signature' });
+  assert.deepEqual(writes[2].body, { serialCode: 'COFFEE-ABC' });
   assert.ok(calls.every((call) => call.authorization === 'Bearer fixture-key'));
   assert.ok(logs.some((line) => line.includes('100 → 75')));
   assert.ok(logs.every((line) => !line.includes('fixture-key')));
@@ -135,7 +157,7 @@ test('public SDK spends points once, redeems the claimed serial and reads persis
     runVoucherDemo(client, { ...config, idempotencyKey: 'another-run' }, () => {}),
     /already owns/,
   );
-  assert.equal(calls.filter((call) => call.method === 'POST').length, 2);
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 3);
 });
 
 for (const [name, state, message] of [
@@ -179,7 +201,7 @@ test('failed redemption preserves a printed claim recovery reference without ret
     runVoucherDemo(client, config, (line) => logs.push(line)),
     OctaApiError,
   );
-  assert.equal(calls.filter((call) => call.method === 'POST').length, 2);
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 3);
   assert.ok(logs.some((line) => line.includes('ownership-1') && line.includes('COFFEE-ABC')));
 });
 
@@ -208,4 +230,13 @@ test('configuration requires explicit prepared fixture IDs and a stable run refe
     () => readDemoConfig({ ...env, OCTAP_API_URL: 'https://user:pass@example.com' }),
     /without credentials/,
   );
+});
+
+test('without a customer signer the demo leaves a pending claim and never redeems it', async (t) => {
+  const { client, calls, state } = await fixture(t);
+  const result = await runVoucherDemo(client, { ...config, signTransaction: undefined }, () => {});
+  assert.equal(result.pending, true);
+  assert.equal(result.claim.status, 'RESERVED');
+  assert.equal(state.balance, 100);
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 1);
 });
