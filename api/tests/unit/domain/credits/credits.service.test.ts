@@ -19,6 +19,7 @@ describe('CreditsService.getBalance', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async (id: string) => (id === 'user-org1' ? 'org-1' : 'org-2'),
       expireDueBucketsForMember: async () => 0,
+      releaseAbandonedPosHoldsForMember: async () => 0,
       getOrCreateCreditOwnership: async () => settled,
     });
     const service = new CreditsService(repo, noCursor);
@@ -32,6 +33,7 @@ describe('CreditsService.getBalance', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       expireDueBucketsForMember: async () => 0,
+      releaseAbandonedPosHoldsForMember: async () => 0,
       getOrCreateCreditOwnership: async () => ownership,
     });
     const indexerRepo = stub<IndexerRepository>({
@@ -62,6 +64,7 @@ describe('CreditsService.getBalance', () => {
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       expireDueBucketsForMember: async () => 0,
+      releaseAbandonedPosHoldsForMember: async () => 0,
       getOrCreateCreditOwnership: async () => settled,
     });
 
@@ -76,6 +79,7 @@ describe('CreditsService.getBalance', () => {
         order.push(['expire', member]);
         return 2500;
       },
+      releaseAbandonedPosHoldsForMember: async () => 0,
       getOrCreateCreditOwnership: async () => {
         order.push(['read']);
         return { ...settled, confirmedBalance: 0, lifetimeEarned: 2500 };
@@ -86,6 +90,28 @@ describe('CreditsService.getBalance', () => {
 
     expect(order).toEqual([['expire', { organizationId: 'org-1', organizationEndUserId: 'user-1' }], ['read']]);
     expect(balance.confirmedBalance).toBe(0);
+  });
+});
+
+describe('CreditsService.getBalance abandoned POS holds (OCT-244)', () => {
+  it('releases the member’s abandoned POS holds before reading the balance', async () => {
+    const order: unknown[] = [];
+    const repo = stub<CreditsRepository>({
+      findMemberOrganizationId: async () => 'org-1',
+      expireDueBucketsForMember: async () => 0,
+      releaseAbandonedPosHoldsForMember: async (member: unknown) => {
+        order.push(['release', member]);
+        return 50;
+      },
+      getOrCreateCreditOwnership: async () => {
+        order.push(['read']);
+        return settled;
+      },
+    });
+
+    await new CreditsService(repo, noCursor).getBalance('org-1', 'user-1');
+
+    expect(order).toEqual([['release', { organizationId: 'org-1', organizationEndUserId: 'user-1' }], ['read']]);
   });
 });
 

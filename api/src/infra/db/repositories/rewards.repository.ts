@@ -8,7 +8,8 @@ import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.
 import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
-import { expireDueBuckets } from './credits.repository.js';
+import { enqueueWebhookEvent } from './webhooks.repository.js';
+import { ABANDONED_POS_HOLD_GRACE_MS, releaseAbandonedPosHolds, expireDueBuckets } from './credits.repository.js';
 import { acceptCommand, OperationPayloadConflictError } from './operations.repository.js';
 
 type Voucher = typeof vouchers.$inferSelect;
@@ -119,6 +120,12 @@ export class RewardsRepository {
     memberId: string,
     idempotencyKey: string,
   ): Promise<ClaimVoucherResponse> {
+    // Commit cleanup even if the subsequent claim fails its stock/balance checks.
+    await this.db.transaction((tx) =>
+      releaseAbandonedPosHolds(tx, { organizationId, organizationEndUserId: memberId }, ABANDONED_POS_HOLD_GRACE_MS, {
+        exceptIdempotencyKey: idempotencyKey,
+      }),
+    );
     try {
       return await this.db.transaction(async (tx) => {
         await tx.execute(
@@ -138,6 +145,17 @@ export class RewardsRepository {
         if (!isNew) {
           const saved = operation.payload as { result?: ClaimVoucherResponse };
           if (!saved?.result) throw new ConflictException('Claim has no saved result; inspect the original operation');
+          // A caller actively continuing an unsigned claim refreshes its abandonment clock.
+          await tx
+            .update(operations)
+            .set({ updatedAt: new Date() })
+            .where(
+              and(
+                eq(operations.id, operation.id),
+                eq(operations.status, 'PENDING'),
+                sql`${operations.suiTxDigest} is null`,
+              ),
+            );
           const current = await this.getClaim(organizationId, saved.result.voucherOwnershipId, tx);
           return current;
         }
@@ -343,6 +361,21 @@ export class RewardsRepository {
         .set({ status: 'REDEEMED', redeemedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(voucherOwnerships.id, ownership.id), eq(voucherOwnerships.status, 'AVAILABLE')))
         .returning();
+      await enqueueWebhookEvent(tx, {
+        organizationId,
+        eventType: 'voucher.redeemed',
+        payload: {
+          voucherOwnershipId: updated.id,
+          voucherId: updated.voucherId,
+          organizationEndUserId: updated.organizationEndUserId,
+          serialCode: updated.serialCode,
+          status: updated.status,
+          redeemedAt: updated.redeemedAt!.toISOString(),
+          voucherTitle: voucher.title,
+          discountType: voucher.discountType,
+          discountValue: voucher.discountValue,
+        },
+      });
       return { ownership: updated, voucher };
     });
   }

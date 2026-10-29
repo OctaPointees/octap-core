@@ -1,0 +1,1 @@
+CREATE INDEX "operations_pending_unsent_idx" ON "operations" USING btree ("tenant_id","command_type","updated_at") WHERE "operations"."status" = 'PENDING' and "operations"."sui_tx_digest" is null;

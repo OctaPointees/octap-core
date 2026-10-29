@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { PosRedemptionService, RESERVE_TTL_SECONDS } from '#domain/credits/pos-redemption.service.js';
+import { ABANDONED_POS_HOLD_GRACE_MS } from '#infra/db/repositories/credits.repository.js';
 import {
   OperationPayloadConflictError,
   type OperationsRepository,
@@ -496,12 +497,37 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
     await expect(
       service({
         redis: await redisWithCachedReserve(),
-        creditsRepo: { findBeneficiaryAddress: async () => '0xbeneficiary' },
+        creditsRepo: {
+          findBeneficiaryAddress: async () => '0xbeneficiary',
+          findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'PENDING' }),
+        },
         sponsoredTx: { executeSponsoredRedeem },
         operationsRepo: { recordSubmitDigestForCommand: async () => null },
       }).finalize({ digest: 'digest-1', signature: 'sig-1' }),
     ).rejects.toMatchObject({ status: 409 });
     expect(executeSponsoredRedeem).not.toHaveBeenCalled();
+  });
+
+  it('refuses to execute a finalize whose hold was already released (OCT-244), and drops its cache', async () => {
+    const redis = await redisWithCachedReserve();
+    const finalize = service({
+      redis,
+      creditsRepo: {
+        findBeneficiaryAddress: async () => '0xbeneficiary',
+        findTransactionByIdForOrganization: async () => buildLoyaltyTransaction({ status: 'FAILED' }),
+      },
+      sponsoredTx: { executeSponsoredRedeem: () => expect.fail('must not spend on-chain points for a released hold') },
+      operationsRepo: {
+        recordSubmitDigestForCommand: async () => null,
+        settleFromChain: () => expect.fail('nothing to settle'),
+      },
+    }).finalize({ digest: 'digest-1', signature: 'sig-1' });
+
+    await expect(finalize).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/released/),
+    });
+    expect(await redis.get('pos-redeem:reserve:digest-1')).toBeNull();
   });
 
   it('reads the expiration epoch out of real sponsored bytes', async () => {
@@ -549,5 +575,13 @@ describe('PosRedemptionService outcome-unknown finalize (OCT-52)', () => {
 
     await expect(reserve).rejects.toMatchObject({ status: 409 });
     await expect(reserve).rejects.toThrow(/digest-sent-before/);
+  });
+});
+
+describe('POS hold expiry (OCT-244)', () => {
+  it('releases an abandoned hold only after every digest sponsored for it has left the cache', () => {
+    // Otherwise a finalize could execute cached bytes for a hold that was already released, and
+    // the redeem would land on-chain with no hold left to confirm it against.
+    expect(ABANDONED_POS_HOLD_GRACE_MS).toBeGreaterThan(RESERVE_TTL_SECONDS * 1000);
   });
 });

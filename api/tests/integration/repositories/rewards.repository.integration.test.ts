@@ -114,7 +114,7 @@ describe('atomic voucher conversion', () => {
     expect(await claim(voucher.id)).toMatchObject({ ...confirmed, status: 'REDEEMED' });
     expect(await db.select().from(schema.loyaltyTransactions)).toHaveLength(1);
     expect(await db.select().from(schema.voucherOwnerships)).toHaveLength(1);
-    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(1);
+    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(2);
   });
 
   it('serializes simultaneous retries of one key and rejects changed payloads', async () => {
@@ -334,6 +334,47 @@ describe('atomic voucher conversion', () => {
     });
   });
 
+  it('lazy balance cleanup cancels an abandoned coupon and releases both its points and stock exactly once', async () => {
+    const voucher = await create({ totalSupply: 1 });
+    const reserved = await claim(voucher.id);
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    const member = { organizationId: orgId, organizationEndUserId: memberId };
+    expect(await credits.releaseAbandonedPosHoldsForMember(member)).toBe(25);
+    expect(await credits.releaseAbandonedPosHoldsForMember(member)).toBe(0);
+    expect(await repo.getClaim(orgId, reserved.voucherOwnershipId)).toMatchObject({
+      status: 'CANCELLED',
+      pointsDeducted: 0,
+    });
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 0 });
+    expect(await row(voucher.id)).toMatchObject({ status: 'ACTIVE', claimedCount: 0 });
+  });
+
+  it('continuing an unsigned voucher refreshes its age, while a submitted claim is never released by age', async () => {
+    const first = await claim((await create()).id);
+    const second = await claim((await create({ code: 'SECOND' })).id, 'claim-2');
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    await db
+      .update(schema.operations)
+      .set({ suiTxDigest: 'submitted' })
+      .where(eq(schema.operations.idempotencyKey, 'claim-2'));
+    expect((await claim(first.voucherId)).status).toBe('RESERVED');
+    expect(
+      await credits.releaseAbandonedPosHoldsForMember({ organizationId: orgId, organizationEndUserId: memberId }),
+    ).toBe(0);
+    expect((await repo.getClaim(orgId, second.voucherOwnershipId)).status).toBe('RESERVED');
+    expect((await getOwnership(db, memberId)).pendingRedemption).toBe(50);
+  });
+
+  it('a failed new claim still commits abandonment cleanup of the previous attempt', async () => {
+    const first = await claim((await create({ totalSupply: 1 })).id);
+    await db.update(schema.operations).set({ updatedAt: new Date(Date.now() - 31 * 60 * 1000) });
+    const costly = await create({ code: 'COSTLY', pointsCost: 500 });
+    await expect(claim(costly.id, 'too-expensive')).rejects.toThrow(/Insufficient/);
+    expect((await repo.getClaim(orgId, first.voucherOwnershipId)).status).toBe('CANCELLED');
+    expect((await row(first.voucherId)).claimedCount).toBe(0);
+    expect((await getOwnership(db, memberId)).pendingRedemption).toBe(0);
+  });
+
   it('supports free reward replay without a points debit and rejects keys owned by other commands', async () => {
     const voucher = await create({ pointsCost: 0 });
     const result = await claim(voucher.id);
@@ -409,5 +450,35 @@ describe('single-use redemption and lifecycle locking', () => {
       .set({ expiresAt: null })
       .where(eq(schema.voucherOwnerships.id, result.voucherOwnershipId));
     expect((await repo.redeemVoucher(orgId, result.serialCode)).ownership.status).toBe('REDEEMED');
+  });
+});
+
+describe('voucher redeem outbox retained from OCT-244', () => {
+  it('concurrent serial uses announce exactly one voucher.redeemed in the same transaction', async () => {
+    const result = await confirm(await claim((await create()).id));
+    await db
+      .insert(schema.webhookEndpoints)
+      .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test' });
+    const attempts = await Promise.allSettled([
+      repo.redeemVoucher(orgId, result.serialCode),
+      repo.redeemVoucher(orgId, result.serialCode),
+    ]);
+    expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+    const delivered = await db.select().from(schema.webhookDeliveries);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      eventType: 'voucher.redeemed',
+      payload: {
+        voucherOwnershipId: result.voucherOwnershipId,
+        voucherId: result.voucherId,
+        organizationEndUserId: memberId,
+        serialCode: result.serialCode,
+        status: 'REDEEMED',
+        voucherTitle: 'Coffee',
+        discountType: 'FREE_ITEM',
+        discountValue: null,
+      },
+    });
+    expect((delivered[0].payload as Record<string, unknown>).redeemedAt).toEqual(expect.any(String));
   });
 });

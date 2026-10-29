@@ -1,5 +1,5 @@
 {
-  "id": "1054810d-b876-4266-9d9e-5b7506abab9b",
+  "id": "8f214fcc-5d97-4fa3-8e31-ff047e2bd4c4",
   "prevId": "8ee3c588-2e3a-4963-893a-87799a265a93",
   "version": "7",
   "dialect": "postgresql",
@@ -1590,7 +1590,6 @@
             }
           ],
           "isUnique": true,
-          "where": "\"voucher_ownerships\".\"status\" <> 'CANCELLED'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2430,6 +2429,34 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "operations_pending_unsent_idx": {
+          "name": "operations_pending_unsent_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "command_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"operations\".\"status\" = 'PENDING' and \"operations\".\"sui_tx_digest\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

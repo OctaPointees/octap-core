@@ -19,6 +19,8 @@ export class CreditsService {
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
     // Lazy expiry: a bucket past its `expires_at_ms` must not count, even before the chain says so.
     await this.creditsRepo.expireDueBucketsForMember({ organizationId, organizationEndUserId });
+    // Same lazy rule for an abandoned POS reserve (OCT-244): its hold must not linger in `pendingRedemption`.
+    await this.creditsRepo.releaseAbandonedPosHoldsForMember({ organizationId, organizationEndUserId });
     const [ownership, cursor] = await Promise.all([
       this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId),
       this.indexerRepo.getCursor(CREDIT_ACCOUNT_STREAM),

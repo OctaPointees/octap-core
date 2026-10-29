@@ -47,6 +47,14 @@ non-empty, equal-length shard pair; anything else throws `ProgramNotProvisionedE
   before its program disappeared fails cleanly (`FAILED`, reservation released) instead of
   writing into another organization's program.
 
+Re-provisioning an organization that already has members is handled on their next earn
+(OCT-244): their accounts are still in the old program, so `earn` aborts with `EWrongProgram`.
+`ChainSubmitProcessor` then reads the account's on-chain `program_id` and reopens the account in
+the current program only if that id really is a different program. The old account's credits are
+not moved; see `docs/roadmap.md`. This is not the same as a package republish: there every
+object, accounts included, belongs to the abandoned package, so `contracts/sui/DEPLOYMENTS.md`'s
+manual reset still applies.
+
 Reasons it rejects: no `programs` row, a row still `PROVISIONING`, a row missing on-chain ids, or
 a row provisioned before OCT-41's shards (migration `0005` backfilled those with no shards — they
 need re-provisioning). To onboard any organization, run `scripts/provision-program.mjs`.

@@ -6,6 +6,8 @@ Loyalty points for an organization's end users.
 - `earn.service.ts`: earn points, idempotent on `idempotencyKey`.
 - `redemption.service.ts`: legacy PostgreSQL-only redemption endpoint. Paid voucher claims no longer call it.
 - `pos-redemption.service.ts`: shared customer-signed on-chain redemption lifecycle for POS and paid voucher claims. Reserve points first, sponsor bytes, obtain the customer's signature and finalize. Rewards reserves its stock/ownership and points atomically before calling the shared sponsorship method. Only a chain verdict activates a paid voucher and debits the confirmed projection.
+Unsigned POS/voucher holds are released after 30 minutes on the next balance read or POS reserve; voucher claims also have worker recovery. Cleanup cancels reserved coupons and returns stock in the same transaction. Holds with a submitted digest are left to chain reconciliation.
+
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
   is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
   the clawback debt when an earn was already spent — there's no separate debt ledger. If the
