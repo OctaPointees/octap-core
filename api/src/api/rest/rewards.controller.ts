@@ -59,6 +59,15 @@ export class RewardsController {
     return this.rewardsService.claimVoucher(tenant.organizationId, voucherId, body);
   }
 
+  @Get('claims/:id')
+  @Scopes('read')
+  async getClaim(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<ClaimVoucherResponse> {
+    return this.rewardsService.getClaim(tenant.organizationId, id);
+  }
+
   @Post('vouchers/redeem')
   @Scopes('write')
   async redeemVoucher(

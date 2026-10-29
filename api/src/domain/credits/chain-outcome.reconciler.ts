@@ -201,11 +201,13 @@ export class ChainOutcomeReconciler {
         operation.idempotencyKey,
       );
       if (loyaltyTx) {
-        await this.creditsRepo.failPosRedemptionOnChain({
+        const released = await this.creditsRepo.failPosRedemptionOnChain({
           loyaltyTransactionId: loyaltyTx.id,
           organizationEndUserId: payload.organizationEndUserId,
           pointsAmount: payload.pointsAmount,
+          ...(!operation.suiTxDigest ? { onlyIfUnsubmitted: true } : {}),
         });
+        if (released === false) return 'waiting';
       }
     }
     await this.operationsRepo.settleFromChain(operation.id, 'FAILED', reason);

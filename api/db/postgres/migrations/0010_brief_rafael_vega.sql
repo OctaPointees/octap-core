@@ -1,0 +1,2 @@
+DROP INDEX "voucher_ownership_voucher_member_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "voucher_ownership_voucher_member_idx" ON "voucher_ownerships" USING btree ("voucher_id","organization_end_user_id") WHERE "voucher_ownerships"."status" <> 'CANCELLED';

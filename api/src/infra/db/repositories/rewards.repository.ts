@@ -1,6 +1,6 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { eq, desc, and, sql, ne } from 'drizzle-orm';
 import type { ClaimVoucherResponse, CreateVoucherRequest } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
@@ -8,9 +8,8 @@ import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.
 import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
-import { consumeBuckets, expireDueBuckets } from './credits.repository.js';
+import { expireDueBuckets } from './credits.repository.js';
 import { acceptCommand, OperationPayloadConflictError } from './operations.repository.js';
-import { enqueueWebhookEvent } from './webhooks.repository.js';
 
 type Voucher = typeof vouchers.$inferSelect;
 type VoucherPatch = Partial<
@@ -65,7 +64,10 @@ export class RewardsRepository {
       if (!current) throw new NotFoundException('Voucher not found');
       const merged = { ...current, ...patch };
       validate(merged);
-      if (current.claimedCount > 0) {
+      const hasClaims =
+        current.claimedCount > 0 ||
+        !!(await tx.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.voucherId, id) }));
+      if (hasClaims) {
         for (const key of ['code', 'pointsCost', 'discountType', 'discountValue', 'startsAt', 'expiresAt'] as const) {
           const oldValue = current[key] instanceof Date ? current[key].getTime() : current[key];
           const newValue = merged[key] instanceof Date ? merged[key].getTime() : merged[key];
@@ -110,7 +112,7 @@ export class RewardsRepository {
       throw new BadRequestException('Member is not active');
   }
 
-  /** PostgreSQL is authoritative for this off-chain conversion; no Sui redemption is dispatched. */
+  /** Atomically reserve stock and spendable points; only a chain verdict can confirm a paid claim. */
   async claimVoucher(
     organizationId: string,
     voucherId: string,
@@ -125,18 +127,19 @@ export class RewardsRepository {
         const previous = await tx.query.operations.findFirst({
           where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
         });
-        if (previous && previous.commandType !== 'VOUCHER_CLAIM')
+        if (previous && !['VOUCHER_CLAIM', 'CREDIT_POS_REDEEM_RESERVE'].includes(previous.commandType))
           throw new OperationPayloadConflictError(idempotencyKey);
         const { operation, isNew } = await acceptCommand(tx, {
           tenantId: organizationId,
           idempotencyKey,
-          commandType: 'VOUCHER_CLAIM',
+          commandType: 'CREDIT_POS_REDEEM_RESERVE',
           payload: { voucherId, memberId },
         });
         if (!isNew) {
           const saved = operation.payload as { result?: ClaimVoucherResponse };
           if (!saved?.result) throw new ConflictException('Claim has no saved result; inspect the original operation');
-          return saved.result;
+          const current = await this.getClaim(organizationId, saved.result.voucherOwnershipId, tx);
+          return current;
         }
         const [voucher] = await tx
           .select()
@@ -153,7 +156,11 @@ export class RewardsRepository {
         if (voucher.totalSupply !== null && voucher.claimedCount >= voucher.totalSupply)
           throw new BadRequestException('Voucher is completely depleted');
         const existing = await tx.query.voucherOwnerships.findFirst({
-          where: and(eq(voucherOwnerships.voucherId, voucherId), eq(voucherOwnerships.organizationEndUserId, memberId)),
+          where: and(
+            eq(voucherOwnerships.voucherId, voucherId),
+            eq(voucherOwnerships.organizationEndUserId, memberId),
+            ne(voucherOwnerships.status, 'CANCELLED'),
+          ),
         });
         if (existing) throw new BadRequestException('Voucher has already been claimed by this member');
         const pointsCost = Number(voucher.pointsCost);
@@ -167,6 +174,7 @@ export class RewardsRepository {
         });
         if (usedKey) throw new OperationPayloadConflictError(idempotencyKey);
         let loyaltyTransactionId: string | undefined;
+        const ownershipId = randomUUID();
         if (pointsCost > 0) {
           // This takes the same ownership lock used by other balance writers before spending.
           await expireDueBuckets(tx, { organizationId, organizationEndUserId: memberId });
@@ -194,38 +202,28 @@ export class RewardsRepository {
               transactionType: 'REDEEM',
               pointsAmount: pointsCost,
               idempotencyKey,
-              receiptReference: `Claim Voucher: ${voucher.code}`,
-              status: 'CONFIRMED',
-              metadata: { voucherId },
+              receiptReference: `voucher-claim-${ownershipId}`,
+              status: 'PENDING',
+              metadata: { voucherId, voucherOwnershipId: ownershipId },
             })
             .returning();
           loyaltyTransactionId = transaction.id;
-          const newBalance = Number(balance.confirmedBalance) - pointsCost;
+          if (!balance.suiCreditAccountId) throw new BadRequestException('Member has no on-chain CreditAccount yet');
           await tx
             .update(creditOwnerships)
             .set({
-              confirmedBalance: newBalance,
-              lifetimeRedeemed: Number(balance.lifetimeRedeemed) + pointsCost,
+              pendingRedemption: Number(balance.pendingRedemption) + pointsCost,
               updatedAt: now,
             })
             .where(eq(creditOwnerships.id, balance.id));
-          await consumeBuckets(tx, balance.id, pointsCost);
-          await enqueueWebhookEvent(tx, {
-            organizationId,
-            eventType: 'credits.redeemed',
-            payload: {
-              transactionId: transaction.id,
-              organizationEndUserId: memberId,
-              pointsAmount: pointsCost,
-              newBalance,
-            },
-          });
         }
         const [ownership] = await tx
           .insert(voucherOwnerships)
           .values({
+            id: ownershipId,
             voucherId,
             organizationEndUserId: memberId,
+            status: pointsCost > 0 ? 'RESERVED' : 'AVAILABLE',
             serialCode: `${voucher.code.toUpperCase()}-${randomBytes(8).toString('hex').toUpperCase()}`,
             loyaltyTransactionId,
             expiresAt: voucher.expiresAt,
@@ -246,13 +244,29 @@ export class RewardsRepository {
           organizationEndUserId: memberId,
           serialCode: ownership.serialCode,
           status: ownership.status,
-          pointsDeducted: pointsCost,
+          pointsDeducted: 0,
+          pointsCost,
+          transactionId: loyaltyTransactionId ?? null,
+          digest: null,
+          transactionBytes: null,
           claimedAt: ownership.claimedAt.toISOString(),
           expiresAt: ownership.expiresAt?.toISOString() ?? null,
         };
         await tx
           .update(operations)
-          .set({ status: 'COMPLETED', payload: { voucherId, memberId, result }, updatedAt: now })
+          .set({
+            commandType: pointsCost > 0 ? 'CREDIT_POS_REDEEM_RESERVE' : 'VOUCHER_CLAIM',
+            status: pointsCost > 0 ? 'PENDING' : 'COMPLETED',
+            payload: {
+              voucherId,
+              memberId,
+              organizationEndUserId: memberId,
+              pointsAmount: pointsCost,
+              voucherOwnershipId: ownershipId,
+              result,
+            },
+            updatedAt: now,
+          })
           .where(eq(operations.id, operation.id));
         return result;
       });
@@ -264,6 +278,36 @@ export class RewardsRepository {
       }
       throw error;
     }
+  }
+
+  /** Tenant-scoped persisted state, also used after recovery/indexer settlement. */
+  async getClaim(organizationId: string, ownershipId: string, db: DrizzleDb = this.db): Promise<ClaimVoucherResponse> {
+    const [row] = await db
+      .select({
+        ownership: voucherOwnerships,
+        pointsCost: vouchers.pointsCost,
+        transactionStatus: loyaltyTransactions.status,
+      })
+      .from(voucherOwnerships)
+      .innerJoin(vouchers, eq(vouchers.id, voucherOwnerships.voucherId))
+      .leftJoin(loyaltyTransactions, eq(loyaltyTransactions.id, voucherOwnerships.loyaltyTransactionId))
+      .where(and(eq(voucherOwnerships.id, ownershipId), eq(vouchers.organizationId, organizationId)));
+    if (!row) throw new NotFoundException('Voucher claim not found');
+    const o = row.ownership;
+    return {
+      voucherOwnershipId: o.id,
+      voucherId: o.voucherId,
+      organizationEndUserId: o.organizationEndUserId,
+      serialCode: o.serialCode,
+      status: o.status,
+      pointsCost: Number(row.pointsCost),
+      pointsDeducted: row.transactionStatus === 'CONFIRMED' ? Number(row.pointsCost) : 0,
+      transactionId: o.loyaltyTransactionId,
+      digest: null,
+      transactionBytes: null,
+      claimedAt: o.claimedAt.toISOString(),
+      expiresAt: o.expiresAt?.toISOString() ?? null,
+    };
   }
 
   async findOwnershipBySerial(serialCode: string) {

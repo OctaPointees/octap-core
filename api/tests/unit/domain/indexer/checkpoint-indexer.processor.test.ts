@@ -303,6 +303,23 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
     expect(store.row?.lastCheckpoint).toBe('700');
   });
 
+  it('settles a customer-signed voucher claim from its ownership reference', async () => {
+    const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
+    const findVoucherClaimTransaction = vi.fn(async () => pendingRedeemRow());
+    const confirmPosRedemptionOnChain = vi.fn(async () => ({ id: 'receipt' }));
+    await processor(
+      store.repo,
+      { findCreditOwnershipBySuiAccountId: ownedAccount, findVoucherClaimTransaction, confirmPosRedemptionOnChain },
+      { markSubmittedFromChain: async () => {} },
+      { listCreditAccountEvents: async () => page([redeemedEvent(b64(`voucher-claim-${LOYALTY_ID}`))]) },
+    ).processNextPage();
+    expect(findVoucherClaimTransaction).toHaveBeenCalledWith(LOYALTY_ID);
+    expect(confirmPosRedemptionOnChain).toHaveBeenCalledWith(
+      expect.objectContaining({ loyaltyTransactionId: LOYALTY_ID, pointsAmount: 50 }),
+      expect.anything(),
+    );
+  });
+
   it('a terminal empty page leaves the cursor where it was', async () => {
     const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C5', lastCheckpoint: '800' });
     store.repo.commitPage = async () => expect.fail('nothing to commit');

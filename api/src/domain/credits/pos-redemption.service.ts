@@ -47,10 +47,9 @@ const idemKey = (organizationId: string, idempotencyKey: string): string =>
   `pos-redeem:idem:${organizationId}:${idempotencyKey}`;
 
 /**
- * Real on-chain customer-signed redemption (OCT-55) — `RedemptionService`/`/v1/credits/redeem`
- * stays untouched and keeps serving voucher claims (an internal points ledger debit, no chain
- * interaction, no customer signature needed). This is a separate action: cashing points out at
- * POS, which `credit_account::redeem` requires the beneficiary's own signature for.
+ * Customer-signed on-chain redemption shared by POS and paid voucher claims.
+ * RewardsRepository reserves points and stock atomically, then calls sponsorReservation;
+ * both channels use finalize and the same indexer/reconciler settlement methods.
  *
  * Two calls, not one, because the chain's own gas-sponsorship lifecycle has a signing step in
  * between that belongs to the customer's device, not this process:
@@ -106,6 +105,15 @@ export class PosRedemptionService {
       throw new BadRequestException(err instanceof Error ? err.message : 'Failed to reserve redemption');
     }
 
+    return this.sponsorReservation(organizationId, request, reserved);
+  }
+
+  async sponsorReservation(
+    organizationId: string,
+    request: ReservePosRedemptionRequest,
+    reserved: Awaited<ReturnType<CreditsRepository['reservePosRedemption']>>,
+    reference?: string,
+  ): Promise<ReservePosRedemptionResponse> {
     const { transaction, accountId, isNew, submittedDigest } = reserved;
 
     if (transaction.status !== 'PENDING') {
@@ -159,7 +167,7 @@ export class PosRedemptionService {
       beneficiaryAddress,
       accountId,
       cost: BigInt(request.pointsAmount),
-      reference: new TextEncoder().encode(transaction.id),
+      reference: new TextEncoder().encode(reference ?? transaction.receiptReference ?? transaction.id),
     });
 
     const entry: CachedReserve = {
@@ -204,6 +212,8 @@ export class PosRedemptionService {
       suiTxDigest: request.digest,
       expirationEpoch: expirationOf(cached.transactionBytes),
     });
+
+    if (!operationId) throw new ConflictException('Redemption is settled or another digest is already being resolved');
 
     let executed: { digest: string };
     try {
