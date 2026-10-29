@@ -244,3 +244,15 @@ describe('OctaApiError', () => {
     expect(new OctaApiError(500, 'Oops', null, 'custom').message).toBe('custom');
   });
 });
+
+describe('customer-signed voucher claims', () => {
+  it('reads claim state and finalizes with a customer signature without a merchant credential', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ status: 'AVAILABLE' }));
+    const client = createOctaPointClient({ fetchFn });
+    expect((await client.getVoucherClaim('coupon')).status).toBe('AVAILABLE');
+    expect(last().url).toContain('/v1/rewards/claims/coupon');
+    await client.finalizeVoucherClaim({ digest: 'digest', signature: 'customer-signature' });
+    expect(last()).toMatchObject({ method: 'POST', body: { digest: 'digest', signature: 'customer-signature' } });
+    expect(last().headers.authorization).toBeUndefined();
+  });
+});
