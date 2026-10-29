@@ -14,7 +14,7 @@ only ever runs against the program provisioned for it.
   mint) and logs the minted object ids for manual repair.
 - Worker-only, registered directly in `worker.module.ts` (not `domain/domain.module.ts`, which
   `AppModule` also imports): it depends on `infra/clients/sui/program-admin.client.ts`, which
-  holds `SUI_PROGRAM_ADMIN_PRIVATE_KEY` — an `AdminCap` signer with a much larger blast radius
+  signs with the program admin key (`SUI_PROGRAM_ADMIN_KMS_KEY_ID`; see `docs/kms-signer.md`) — an `AdminCap` signer with a much larger blast radius
   than the earn-only `IssuerCap` signer, so it must never reach the HTTP process.
 - `topUpBudget()` refills an organization's issuance budget (`budget_shard::top_up`, signed by the
   same `AdminCap` key) when its budget shards drain, split across shards like the initial budget.

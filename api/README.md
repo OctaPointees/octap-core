@@ -6,8 +6,8 @@ workers/processors; HTTP startup never starts job consumers.
 The worker runs `ChainSubmitWorker` (`src/domain/credits/chain-submit.worker.ts`), which polls
 `operations` for `CREDIT_EARN_CHAIN_SUBMIT` rows and dispatches them to the `octap` Sui package via
 `src/infra/clients/sui`. That client is imported only by `worker.module.ts`, never by
-`infra/infrastructure.module.ts`, so the signer key in `SUI_ISSUER_PRIVATE_KEY` never has to live
-in the HTTP process. See the root `.env.example` for the `SUI_*` variables it needs and
+`infra/infrastructure.module.ts`, so the issuer signer (an AWS KMS key; `docs/kms-signer.md`) is never
+reachable from the HTTP process. See the root `.env.example` for the `SUI_*` variables it needs and
 `docs/roadmap.md`'s known gaps for what's still missing.
 
 ## Layers

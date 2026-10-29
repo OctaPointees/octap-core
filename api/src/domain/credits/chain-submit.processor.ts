@@ -125,7 +125,7 @@ export class ChainSubmitProcessor {
         await this.creditsRepo.recordReversalOnChain({
           reversalTransactionId: payload.reversalTransactionId,
           digest: result.digest,
-          sender: this.suiClient.issuerAddress(),
+          sender: await this.suiClient.issuerAddress(),
         });
         await this.operationsRepo.markSubmitted(operation.id, result.digest);
         this.logger.log(`reversal ${payload.reversalTransactionId} mirrored on-chain: digest=${result.digest}`);
@@ -332,7 +332,7 @@ export class ChainSubmitProcessor {
         confirmedPointsAmount,
         bucketExpiresAtMs,
         digest,
-        sender: this.suiClient.issuerAddress(),
+        sender: await this.suiClient.issuerAddress(),
       });
       await this.operationsRepo.markSubmitted(operation.id, digest);
       this.logger.log(

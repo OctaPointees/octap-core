@@ -19,7 +19,7 @@ Move source.
 | Publish tx | `DYv3YrwCm1XhixAaJ7sQU25TxjzKCXLvVu33tncVJwHz` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
-| Issuer address (`SUI_ISSUER_PRIVATE_KEY`, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+| Issuer address (issuer signer, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
 
 Fresh publish for OCT-50 (`reverse_earn`/`reverse_redeem`): `Bucket`, `CreditAccount` and
 `OperationShard`'s table value changed shape, and `budget_shard::debit` /
@@ -35,12 +35,12 @@ shards directly.
 
 There is no committed program. Each organization's `ProgramControl`, `PolicyVersion`,
 `IssuerCap` and operation/budget shards are created by `scripts/provision-program.mjs` (signed by
-`SUI_PROGRAM_ADMIN_PRIVATE_KEY`, which keeps that program's `AdminCap`) and recorded in that
+the program admin signer, which keeps that program's `AdminCap`) and recorded in that
 organization's `programs` row — the API reads them from there for every earn, never from source.
 
-`IssuerCap`s are minted directly to the issuer address above, whose secret only ever lives in a
-local `.env`'s `SUI_ISSUER_PRIVATE_KEY` (never committed, never shown in a terminal transcript) —
-the key `ChainSubmitWorker` signs with. Who can `earn` vs who can `pause`/rotate policy is decided
+`IssuerCap`s are minted directly to the issuer address above — the key `ChainSubmitWorker` signs
+with. That key lives in AWS KMS as `alias/octap-testnet-issuer` (`SUI_ISSUER_KMS_KEY_ID`, see
+`docs/kms-signer.md`), imported from the original raw key, so the address above is unchanged. Who can `earn` vs who can `pause`/rotate policy is decided
 entirely by which capability object a signer holds, so moving an `IssuerCap` later is just
 `sui client transfer`, never a contract or deployment change.
 

@@ -6,7 +6,7 @@ import { ProgramsService } from '../api/dist/domain/programs/programs.service.js
 /**
  * Refills an organization's on-chain issuance budget without re-provisioning its program, e.g.
  * after a demo program's budget shard drained and every earn started aborting with
- * `EBudgetExceeded`. Signed by `SUI_PROGRAM_ADMIN_PRIVATE_KEY` (the program's `AdminCap` holder);
+ * `EBudgetExceeded`. Signed by the program admin signer (the program's `AdminCap` holder);
  * `amount` is split across the program's budget shards like the initial budget.
  * Usage: node scripts/top-up-budget.mjs <organizationId> <amount>
  */

@@ -117,11 +117,11 @@ describe('ProgramAdminClient.provisionProgram', () => {
     await expect(admin.provisionProgram(PARAMS)).rejects.toThrow(message);
   });
 
-  it('needs SUI_PROGRAM_ADMIN_PRIVATE_KEY before signing', async () => {
+  it('needs a program admin signer before signing', async () => {
     const { admin } = adminWith([]);
     vi.stubEnv('SUI_PROGRAM_ADMIN_PRIVATE_KEY', '');
     await expect(admin.provisionProgram(PARAMS)).rejects.toThrow(
-      /SUI_PROGRAM_ADMIN_PRIVATE_KEY for the program admin adapter/,
+      /Missing signer for the program admin adapter: set SUI_PROGRAM_ADMIN_KMS_KEY_ID/,
     );
   });
 

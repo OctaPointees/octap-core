@@ -84,22 +84,21 @@ then move the row to **Implemented** in the same pull request.
   instead by a new Move test, `credit_account_tests.move`'s
   `earn_rejects_issuer_cap_scoped_to_a_different_program`, plus unit tests with a mocked
   `ProgramAdminClient`.
-- `SUI_PROGRAM_ADMIN_PRIVATE_KEY` is a second raw private key sitting in `.env`, alongside
-  `SUI_ISSUER_PRIVATE_KEY` — adequate on testnet, but not how a comparable Sui backend we have
-  local access to (Walrus Console / Harbor, `D:\CommandOSS\harbor`) handles this at all: its
-  `SuiKmsSignerService` (`api/src/infra/clients/sui-kms-signer.client.ts`) holds **zero** raw
-  private keys. The actual signer lives in Google Cloud KMS; the app only holds a key reference
-  (`KMS_KEY_OMNIBUS_SIGNER`) and calls KMS's `asymmetricSign` RPC — the private key material
-  never exists in app memory, on disk, or in an env var, and production refuses to boot without
-  KMS configured (`config/env.ts`'s `"FATAL: production requires KMS"` guard). It also uses a
-  single omnibus signer rather than one raw key per capability type: per-tenant scoping is done
-  at the application/DB layer (`active-signers.repository.ts` tracks a `serviceSignerAddress`
-  per API key; granting access adds that address to an on-chain permissioned-group/ACL) instead
-  of minting a separate capability object under a separate backend-held key per tenant. Adopting
-  this here (a KMS-backed signer, one key instead of two, authorization via DB-tracked grants)
-  is real follow-up work, intentionally not done in this PR — it needs real cloud KMS
-  infrastructure this project doesn't have set up yet, which is a bigger decision than this
-  ticket's scope.
+- Worker signers are AWS KMS keys (OCT-245, `docs/kms-signer.md`): the issuer and program admin
+  keys are two `ECC_NIST_EDWARDS25519` KMS keys, signed through Mysten's `@mysten/aws-kms-signer`
+  with the AWS SDK's default credential chain, so no private key material sits in app memory, on
+  disk, or in an env var. On testnet the existing raw keys were imported into KMS, so both
+  addresses and every cap they hold stayed put; the dev team signs through one shared IAM user
+  scoped to `kms:Sign` on the two keys, Harbor's service-account model. AWS was chosen over the GCP KMS that Harbor (`D:\CommandOSS\harbor`,
+  `SuiKmsSignerService`) uses; its design carried over (scheme read from the key, public key
+  cached, production refuses raw keys), its GCP client code didn't need to. The two keys stay
+  separate, each with its own IAM role, so a hosted worker can't sign with the `AdminCap` key. A raw `SUI_*_PRIVATE_KEY` still works as a local fallback when no KMS key is
+  set (contributors without AWS access), and is refused on mainnet. Still deferred: mainnet keys with a
+  stricter key policy and the worker on AWS compute with no access keys at all; Harbor's
+  single-omnibus-signer model with per-tenant authorization tracked in the DB; `IssuerCap`/
+  `AdminCap` revocation (no `revoke`/`burn` in the Move contracts); spend-anomaly alerting on the
+  shared signers. Live KMS latency is measured with `scripts/check-kms-signer.mjs` and recorded in
+  `docs/kms-signer.md` (about 0.5 s per signature from Vietnam to `ap-southeast-2`).
 - Re-provisioning an organization (OCT-244): a member's existing `CreditAccount` stays in the old
   program, so their next `earn` aborts with `EWrongProgram`. The chain-submit worker then reads
   the account's on-chain `program_id`, and only if it differs from the organization's current

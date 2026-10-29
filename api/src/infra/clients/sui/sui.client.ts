@@ -3,7 +3,6 @@ import {
   OctapChainClient,
   eventField,
   operationShardIndex,
-  signerFromPrivateKey,
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
@@ -11,9 +10,8 @@ import {
   type SignedChainTransaction,
   type SubmittedChainTransaction,
 } from '@octap/chain';
-import type { Signer } from '@mysten/sui/cryptography';
-import { requireEnv } from '../require-env.js';
 import { configForNetwork } from './network-config.js';
+import { ISSUER_SIGNER, loadSigner, memoizeSigner } from './signer.js';
 
 export interface ChainCallResult extends SubmittedChainTransaction {
   /** Convenience lookup: the first value of `field` on any event named `::<eventSuffix>`. */
@@ -30,8 +28,9 @@ function toChainCallResult(result: SubmittedChainTransaction): ChainCallResult {
 /**
  * Worker-only adapter to `@octap/chain`. Registered in `worker.module.ts`, never in
  * `infra/infrastructure.module.ts` — `AppModule` (the internet-facing HTTP process) has no reason
- * to hold `SUI_ISSUER_PRIVATE_KEY` in memory at all, only the worker process that actually
- * dispatches chain transactions does.
+ * to reach the issuer signer at all, only the worker process that actually dispatches chain
+ * transactions does. The signer is the AWS KMS key in `SUI_ISSUER_KMS_KEY_ID` (or, off mainnet,
+ * the raw `SUI_ISSUER_PRIVATE_KEY`) — see `signer.ts`.
  *
  * Program-agnostic: every call takes the calling organization's `OctapProgramConfig`, resolved
  * from its `programs` row by `domain/programs`' `resolveProgramConfig`. Only the package id is
@@ -42,7 +41,7 @@ export class SuiClientService {
   private readonly logger = new Logger(SuiClientService.name);
   private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
   private chainClient?: OctapChainClient;
-  private signer?: Signer;
+  private readonly issuerSigner = memoizeSigner(() => loadSigner(ISSUER_SIGNER, this.network, this.logger));
 
   private get client(): OctapChainClient {
     if (!this.chainClient) {
@@ -56,16 +55,9 @@ export class SuiClientService {
     return this.chainClient;
   }
 
-  private get issuerSigner(): Signer {
-    if (!this.signer) {
-      this.signer = signerFromPrivateKey(requireEnv('SUI_ISSUER_PRIVATE_KEY', 'Sui chain adapter'));
-    }
-    return this.signer;
-  }
-
   /** The address every call in this service signs with — for stamping `blockchainTransactions.sender`. */
-  issuerAddress(): string {
-    return this.issuerSigner.getPublicKey().toSuiAddress();
+  async issuerAddress(): Promise<string> {
+    return (await this.issuerSigner()).toSuiAddress();
   }
 
   async openAccount(program: OctapProgramConfig, beneficiary: string): Promise<ChainCallResult> {
@@ -76,7 +68,7 @@ export class SuiClientService {
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(`opening credit account for ${beneficiary} in program ${program.programControlId}`);
-    return toChainCallResult(await this.client.signAndExecute(tx, this.issuerSigner));
+    return toChainCallResult(await this.client.signAndExecute(tx, await this.issuerSigner()));
   }
 
   /**
@@ -104,7 +96,7 @@ export class SuiClientService {
     this.logger.log(
       `earn ${params.purchaseAmount} purchase units -> account ${params.accountId} in program ${program.programControlId}`,
     );
-    return this.client.sign(tx, this.issuerSigner);
+    return this.client.sign(tx, await this.issuerSigner());
   }
 
   /**
@@ -127,7 +119,7 @@ export class SuiClientService {
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(`reverse earn ${params.operationKey} on account ${params.accountId}`);
-    return this.client.sign(tx, this.issuerSigner);
+    return this.client.sign(tx, await this.issuerSigner());
   }
 
   /** Builds and signs a `reverse_redeem` of the redemption named `reference`, without sending it. */
@@ -142,7 +134,7 @@ export class SuiClientService {
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(`reverse redeem ${params.reference} on account ${params.accountId}`);
-    return this.client.sign(tx, this.issuerSigner);
+    return this.client.sign(tx, await this.issuerSigner());
   }
 
   /** Read-only: the program a `CreditAccount` was opened in, or null if the object doesn't exist. */
