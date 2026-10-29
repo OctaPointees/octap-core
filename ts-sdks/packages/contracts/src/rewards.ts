@@ -39,6 +39,7 @@ export interface VoucherDto {
 
 export interface ClaimVoucherRequest {
   organizationEndUserId: string;
+  /** Required for paid claims; persist the same key across retries. */
   idempotencyKey?: string;
 }
 
@@ -48,7 +49,13 @@ export interface ClaimVoucherResponse {
   organizationEndUserId: string;
   serialCode: string;
   status: VoucherOwnershipStatus;
+  /** Zero until the customer-signed debit is confirmed on-chain. */
   pointsDeducted: number;
+  pointsCost?: number;
+  transactionId?: string | null;
+  /** Paid claims are RESERVED until finalize/indexer confirmation. */
+  digest?: string | null;
+  transactionBytes?: string | null;
   claimedAt: string;
   expiresAt?: string | null;
 }
