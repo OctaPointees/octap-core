@@ -36,7 +36,7 @@ export function readDemoConfig(env = process.env) {
 /** All business requests go through the public merchant SDK. No mutations are retried. */
 export async function runVoucherDemo(client, config, log = console.log) {
   const { memberId, voucherId, idempotencyKey } = config;
-  log('Node merchant SDK demo: points → voucher → redemption (PostgreSQL-backed).');
+  log('Node SDK demo: customer-signed voucher claim and redemption.');
   const before = await client.getBalance(memberId);
   const voucher = await client.getVoucher(voucherId);
   if (before.stale || before.pendingEarn !== 0 || before.pendingRedemption !== 0) {
@@ -67,9 +67,26 @@ export async function runVoucherDemo(client, config, log = console.log) {
   }
   log(`Before: ${before.confirmedBalance} confirmed points; reward cost: ${voucher.pointsCost}.`);
   log(`Claim reference: ${idempotencyKey}. Mutations will not be automatically retried.`);
-  const claim = await client.claimVoucher(voucherId, { organizationEndUserId: memberId, idempotencyKey });
+  let claim = await client.claimVoucher(voucherId, { organizationEndUserId: memberId, idempotencyKey });
   // Print the recovery reference before attempting the next mutation.
   log(`Claim created: ${claim.voucherOwnershipId}; serial: ${claim.serialCode}; status: ${claim.status}.`);
+  if (claim.voucherId !== voucherId || claim.organizationEndUserId !== memberId) {
+    throw new Error('Unexpected claim result. Inspect ownership and balance before continuing.');
+  }
+  if (claim.status === 'RESERVED') {
+    if (!claim.digest || !claim.transactionBytes || claim.pointsDeducted !== 0)
+      throw new Error('Invalid pending claim');
+    if (!config.signTransaction) {
+      log(`Customer signature required for digest ${claim.digest}. Transaction bytes: ${claim.transactionBytes}`);
+      log(
+        'Sign these bytes in the customer zkLogin session, call finalizeVoucherClaim, then read getVoucherClaim. Do not redeem a RESERVED serial.',
+      );
+      return { before, claim, pending: true };
+    }
+    const signature = await config.signTransaction(claim.transactionBytes, claim.digest);
+    await client.finalizeVoucherClaim({ digest: claim.digest, signature });
+    claim = await client.getVoucherClaim(claim.voucherOwnershipId);
+  }
   if (
     claim.status !== 'AVAILABLE' ||
     claim.pointsDeducted !== voucher.pointsCost ||
@@ -99,7 +116,9 @@ export async function runVoucherDemo(client, config, log = console.log) {
     throw new Error('Persisted result differs from the expected demo outcome. Inspect records; do not re-claim.');
   }
   log(`Verified: ${before.confirmedBalance} → ${after.confirmedBalance} points; voucher REDEEMED.`);
-  log(`Points transaction: ${transaction.id}. This voucher conversion is not proof of an on-chain redemption.`);
+  log(
+    `Points transaction: ${transaction.id}. The paid claim was confirmed through the customer-signed redemption pipeline.`,
+  );
   return { before, after, claim, redeemed, ownership, transaction };
 }
 

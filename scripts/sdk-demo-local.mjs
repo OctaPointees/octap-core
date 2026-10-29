@@ -7,7 +7,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { GenericContainer, Wait } from 'testcontainers';
-import { NestFactory } from '@nestjs/core';
+import { Test } from '@nestjs/testing';
 import { createOctaPointClient } from '@octap/sdk';
 import { runVoucherDemo } from './sdk-voucher-demo.mjs';
 import { closeDemoResources } from './lib/close-demo-resources.mjs';
@@ -49,17 +49,38 @@ try {
   const memberId = randomUUID();
   await database.begin(async (tx) => {
     await tx`insert into organizations (id, slug, name) values (${organizationId}, 'sdk-local-demo', 'SDK local demo')`;
-    await tx`insert into end_users (id, display_name) values (${endUserId}, 'Prepared SDK demo member')`;
+    await tx`insert into end_users (id, display_name, sui_address) values (${endUserId}, 'Prepared SDK demo member', '0xdemomember')`;
     await tx`insert into organization_end_users (id, organization_id, end_user_id) values (${memberId}, ${organizationId}, ${endUserId})`;
-    await tx`insert into credit_ownerships (organization_end_user_id, confirmed_balance) values (${memberId}, 100)`;
+    await tx`insert into credit_ownerships (organization_end_user_id, confirmed_balance, sui_credit_account_id) values (${memberId}, 100, '0xdemoaccount')`;
     await tx`insert into loyalty_transactions (organization_id, organization_end_user_id, transaction_type, points_amount, idempotency_key, status, metadata)
       values (${organizationId}, ${memberId}, 'ADJUSTMENT', 100, 'sdk-demo-initial-balance', 'CONFIRMED', '{"demo":true,"syntheticBalance":true}')`;
     await tx`insert into api_credentials (organization_id, name, key_prefix, key_hash, scopes)
       values (${organizationId}, 'disposable-sdk-demo', ${credential.prefix}, ${credential.hash}, '["read","write"]')`;
   });
+  await database`insert into programs (organization_id, status, program_control_id, policy_version_id, issuer_cap_id, policy_version, earn_bps, expiry_ms, shard_count, total_budget, operation_shard_ids, budget_shard_ids)
+    values (${organizationId}, 'ACTIVE', '0xprogram', '0xpolicy', '0xissuer', 1, 100, 86400000, 1, 10000, ARRAY['0xop'], ARRAY['0xbudget'])`;
+  const { EnokiClient } = await import('../api/dist/infra/clients/enoki/enoki.client.js');
+  const { SuiTransactionBuilderClient } =
+    await import('../api/dist/infra/clients/sui/sui-transaction-builder.client.js');
   const { AppModule } = await import('../api/dist/app.module.js');
   const { POSTGRES_CLIENT } = await import('../api/dist/infra/db/postgres.provider.js');
-  app = await NestFactory.create(AppModule, { rawBody: true, logger: false, abortOnError: false });
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(EnokiClient)
+    .useValue({
+      createSponsoredTransaction: async () => ({ bytes: 'mock-customer-signable-bytes', digest: 'mock-chain-digest' }),
+      executeSponsoredTransaction: async ({ digest, signature }) => {
+        assert.equal(signature, 'mock-customer-signature');
+        return { digest };
+      },
+    })
+    .overrideProvider(SuiTransactionBuilderClient)
+    .useValue({
+      redeemMoveCallTarget: '0xpkg::credit_account::redeem',
+      buildRedeemTransactionKind: async () => new Uint8Array([1]),
+      waitForTransaction: async (digest) => ({ digest, status: 'success', events: [] }),
+    })
+    .compile();
+  app = moduleRef.createNestApplication({ rawBody: true, logger: false });
   apiDatabase = app.get(POSTGRES_CLIENT);
   await app.listen(0, '127.0.0.1');
   const client = createOctaPointClient({
@@ -74,16 +95,22 @@ try {
     pointsCost: 25,
     totalSupply: 1,
   });
-  const config = { memberId, voucherId: voucher.id, idempotencyKey: 'sdk-demo-local-claim' };
+  const config = {
+    memberId,
+    voucherId: voucher.id,
+    idempotencyKey: 'sdk-demo-local-claim',
+    signTransaction: async () => 'mock-customer-signature',
+  };
   console.log(
-    'Prepared a synthetic 100-point member and a 25-point reward. No chain calls or user credentials are used.',
+    'Prepared a synthetic 100-point member and a 25-point reward. Chain sponsorship, signature and verdict are mocked; API, holds and PostgreSQL settlement are real.',
   );
   const result = await runVoucherDemo(client, config);
   const replay = await client.claimVoucher(voucher.id, {
     organizationEndUserId: memberId,
     idempotencyKey: config.idempotencyKey,
   });
-  assert.deepEqual(replay, result.claim);
+  assert.equal(replay.voucherOwnershipId, result.claim.voucherOwnershipId);
+  assert.equal(replay.status, 'REDEEMED');
   await assert.rejects(
     client.redeemVoucher({ serialCode: result.claim.serialCode }),
     (error) => error.statusCode === 400,
