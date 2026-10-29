@@ -3,11 +3,12 @@
 The worker signs Sui transactions with two keys: the **issuer** key (holds every program's
 `IssuerCap`; signs `open_account`, `earn`, reversals) and the **program admin** key (holds each
 program's `AdminCap`; signs provisioning and budget top-ups). This page covers how those keys
-live in AWS KMS: what was decided, how to provision them once, how a developer or a deployed
+live in AWS KMS: what was decided, how they were provisioned, how a developer or a deployed
 worker gets access, and what each signature costs.
 
-Code: [`api/src/infra/clients/sui/signer.ts`](../api/src/infra/clients/sui/signer.ts). Smoke
-test and latency check: [`scripts/check-kms-signer.mjs`](../scripts/check-kms-signer.mjs).
+Code: [`api/src/infra/clients/sui/signer.ts`](../api/src/infra/clients/sui/signer.ts). Setup:
+[`scripts/setup-kms-signers.mjs`](../scripts/setup-kms-signers.mjs). Smoke test and latency
+check: [`scripts/check-kms-signer.mjs`](../scripts/check-kms-signer.mjs).
 
 ## Decisions
 
@@ -15,212 +16,121 @@ test and latency check: [`scripts/check-kms-signer.mjs`](../scripts/check-kms-si
 | --- | --- | --- |
 | Provider | AWS KMS | Team choice (OCT-245). The private key never leaves KMS; the worker holds only a key reference and calls `kms:Sign`. |
 | Signer code | Mysten's `@mysten/aws-kms-signer`, not a hand-rolled `@aws-sdk/client-kms` adapter | Mysten maintains it next to `@mysten/sui`. It reads the scheme from the key's `KeySpec`, and it handles DER decoding and secp256k1 low-S normalization (the pieces Harbor wrote by hand for GCP). It accepts any AWS credential provider, so we pass the AWS SDK's own `defaultProvider()` chain. Retries KMS 5xx/429 with backoff. |
-| Key spec | `ECC_NIST_EDWARDS25519` (Ed25519, `ED25519_SHA_512`) | Same scheme as today's raw keys. KMS has supported it since Nov 2025. Ed25519 has none of ECDSA's signature malleability, so there is no low-S step. `ECC_SECG_P256K1` (what Harbor uses on GCP) also works unchanged, because the scheme comes from the key. Pick it only if you have a reason to. |
-| One key or two | **Two keys**, `alias/octap-testnet-issuer` and `alias/octap-testnet-program-admin` | The split exists because the blast radii differ: an `AdminCap` can mint `IssuerCap`s and rotate policy. Two keys only help if different principals can use them, so each key gets its own IAM role (below). The long-running worker never holds `kms:Sign` on the admin key. |
-| Credentials | AWS SDK default chain (`@aws-sdk/credential-provider-node`) | The same code works everywhere. On a laptop it uses a named profile (assume-role, SSO or `aws login`). On a non-AWS host it uses env keys. On AWS compute (ECS task role, EKS Pod Identity/IRSA, EC2 instance profile) there is no downloadable credential at all. |
-| Raw keys | Local fallback only, refused on mainnet | When `SUI_*_KMS_KEY_ID` is unset, `SUI_*_PRIVATE_KEY` still works, with a warning, so a contributor without AWS access can still run the worker locally. On `SUI_NETWORK=mainnet` the worker refuses a raw key: mainnet signs through KMS or not at all (Harbor's "production requires KMS" guard). The shared testnet/staging worker should always run on KMS. |
-| Region | `ap-southeast-1` (Singapore) | The closest KMS region to the team (Vietnam). Any region works, because a key ARN carries its own. |
+| Key spec | `ECC_NIST_EDWARDS25519` (Ed25519, `ED25519_SHA_512`) | Same scheme as the existing Sui keys. Ed25519 has none of ECDSA's signature malleability, so there is no low-S step. `ECC_SECG_P256K1` (what Harbor uses on GCP) also works unchanged, because the scheme comes from the key. |
+| Testnet key material | **Imported** (`Origin=EXTERNAL`) from the existing raw keys | Keeps both Sui addresses, and with them every `IssuerCap`, `AdminCap` and the package `UpgradeCap` already on testnet: no cap transfers, no re-provisioning. The cost is that the key material existed outside KMS once; the raw keys stay as an offline backup held only by the signer manager (below). |
+| Mainnet key material | KMS-generated (`Origin=AWS_KMS`) | A mainnet key should never have existed outside KMS. New keys mean new addresses, which mainnet starts with anyway. |
+| One key or two | **Two keys**, `alias/octap-testnet-issuer` and `alias/octap-testnet-program-admin` | The blast radii differ: an `AdminCap` can mint `IssuerCap`s and rotate policy. Two keys let a hosted worker hold `kms:Sign` on the issuer key only (one role per key, below). |
+| Who can sign | One shared signer identity for the dev team, the IAM user `octap-testnet-signer` | Harbor's model: one GCP service account with `cloudkms.signerVerifier` on a dev key ring, its credential handed to developers. Here the user can call `kms:Sign` and `kms:GetPublicKey` on the two keys and nothing else in AWS. Revoking it is deleting its access key. A developer gets signing, never the key. |
+| Credentials | AWS SDK default chain (`@aws-sdk/credential-provider-node`) | The same code works everywhere: a named profile on a laptop (access key, `aws login`, SSO, assume-role), env keys on a non-AWS host, a task role/pod identity/instance profile on AWS compute. |
+| Raw keys | Local fallback only, refused on mainnet | When `SUI_*_KMS_KEY_ID` is unset, `SUI_*_PRIVATE_KEY` still works, with a warning. On `SUI_NETWORK=mainnet` the worker refuses a raw key: mainnet signs through KMS or not at all (Harbor's "production requires KMS" guard). |
+| Region | `ap-southeast-2` (Sydney) | The AWS project the keys live in is limited to one region until advanced features are on. A key ARN carries its own region, so moving later only changes config. |
 
 ## Environment
 
-| Variable | Example | Notes |
+| Variable | Value | Notes |
 | --- | --- | --- |
 | `SUI_ISSUER_KMS_KEY_ID` | `alias/octap-testnet-issuer` | Key id, key ARN, alias name, or alias ARN. |
 | `SUI_PROGRAM_ADMIN_KMS_KEY_ID` | `alias/octap-testnet-program-admin` | Same forms. |
-| `AWS_REGION` | `ap-southeast-1` | Needed unless the key id is an ARN. |
-| `AWS_PROFILE` | `octap-testnet-worker` | Or any other source the default chain reads. **Never** put access keys for a human in `.env`. |
+| `AWS_REGION` | `ap-southeast-2` | Needed unless the key id is an ARN. |
+| `AWS_PROFILE` | `octap-testnet-signer` | Or any other source the default chain reads. **Never** put access keys in `.env`. |
 
-The public key is fetched once per process, on first use (`GetPublicKey`). Each transaction then
-costs exactly one `Sign` call. A failed load (throttling, expired credentials) is not cached, so
-the next attempt retries it.
+None of these are secrets. The public key is fetched once per process, on first use
+(`GetPublicKey`). Each transaction then costs exactly one `Sign` call. A failed load (throttling,
+expired credentials) is not cached, so the next attempt retries it.
 
-## One-time provisioning (AWS account admin)
+## What exists (testnet)
 
-These steps need an identity that can create KMS keys and IAM roles. Replace `<ACCOUNT_ID>`
-throughout. Everything is tagged `project=octap, env=testnet` so it's easy to find and audit.
+AWS account `967307910342`, region `ap-southeast-2`, everything tagged `project=octap, env=testnet`:
 
-### 1. Create the two keys
+| Resource | Name | Signs as / can do |
+| --- | --- | --- |
+| KMS key (imported Ed25519) | `alias/octap-testnet-issuer` | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+| KMS key (imported Ed25519) | `alias/octap-testnet-program-admin` | `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` (also the deploy wallet holding the `UpgradeCap`) |
+| IAM user | `octap-testnet-signer` | `kms:Sign` + `kms:GetPublicKey` on both keys |
+| IAM role | `OctapTestnetIssuerSigner` | `kms:Sign` + `kms:GetPublicKey` on the issuer key, for a worker on AWS compute |
+| IAM role | `OctapTestnetProgramAdmin` | `kms:Sign` + `kms:GetPublicKey` on the admin key, `kms:GetPublicKey` on the issuer key |
 
-```bash
-export AWS_REGION=ap-southeast-1
-for role in issuer program-admin; do
-  KEY_ID=$(aws kms create-key \
-    --key-spec ECC_NIST_EDWARDS25519 --key-usage SIGN_VERIFY \
-    --description "OctaP testnet Sui ${role} signer" \
-    --tags TagKey=project,TagValue=octap TagKey=env,TagValue=testnet TagKey=signer,TagValue=$role \
-    --query KeyMetadata.KeyId --output text)
-  aws kms create-alias --alias-name alias/octap-testnet-$role --target-key-id "$KEY_ID"
-  echo "$role: arn:aws:kms:$AWS_REGION:<ACCOUNT_ID>:key/$KEY_ID"
-done
-```
+The **signer manager** (one person) owns this: they hold the offline raw-key backup, issue and
+revoke `octap-testnet-signer` access keys, and keep both addresses funded with testnet SUI.
+Funding needs no key: send SUI to the addresses above from the faucet or any wallet.
 
-Keep the default key policy, which delegates to IAM. Permissions are granted by the role policies
-below. Note the two key ARNs; the policies need ARNs, not aliases.
+## Provisioning (signer manager, once per environment)
 
-### 2. One role per key
-
-Trust policy for both roles (`trust.json`). Any principal in the account that is *also* allowed
-`sts:AssumeRole` on the role by its own IAM policy can assume it:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{ "Effect": "Allow", "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:root" }, "Action": "sts:AssumeRole" }]
-}
-```
-
-`issuer-signer.json`: signs with the issuer key only.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["kms:Sign", "kms:GetPublicKey"],
-    "Resource": "<ISSUER_KEY_ARN>"
-  }]
-}
-```
-
-`program-admin-signer.json`: signs with the admin key. It can also *read* the issuer public key,
-because provisioning mints each new `IssuerCap` to the issuer's address. It can't sign with it.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Effect": "Allow", "Action": ["kms:Sign", "kms:GetPublicKey"], "Resource": "<PROGRAM_ADMIN_KEY_ARN>" },
-    { "Effect": "Allow", "Action": "kms:GetPublicKey", "Resource": "<ISSUER_KEY_ARN>" }
-  ]
-}
-```
+From the repo root, signed in to the AWS CLI as an identity that can manage KMS and IAM, with
+the raw keys to import in `.env`:
 
 ```bash
-aws iam create-role --role-name OctapTestnetIssuerSigner --assume-role-policy-document file://trust.json \
-  --max-session-duration 43200 --tags Key=project,Value=octap Key=env,Value=testnet
-aws iam put-role-policy --role-name OctapTestnetIssuerSigner --policy-name kms-sign \
-  --policy-document file://issuer-signer.json
-aws iam create-role --role-name OctapTestnetProgramAdmin --assume-role-policy-document file://trust.json \
-  --tags Key=project,Value=octap Key=env,Value=testnet
-aws iam put-role-policy --role-name OctapTestnetProgramAdmin --policy-name kms-sign \
-  --policy-document file://program-admin-signer.json
+AWS_PROFILE=<admin profile> node --env-file=.env scripts/setup-kms-signers.mjs
 ```
 
-### 3. A developer group whose only power is assuming those roles
+For each signer the script creates an `Origin=EXTERNAL` Ed25519 key and its alias, fetches an
+RSA-4096 wrapping key and import token, wraps the raw key (PKCS#8) under RSAES-OAEP-SHA-256 in
+memory, imports it with no expiry, and checks that the address KMS now signs as is the raw key's
+address. It then creates or updates the signer user and the two roles. Re-running only verifies.
+The default key policy (delegate to IAM) is kept, so the IAM policies are the whole grant.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": "sts:AssumeRole",
-    "Resource": [
-      "arn:aws:iam::<ACCOUNT_ID>:role/OctapTestnetIssuerSigner",
-      "arn:aws:iam::<ACCOUNT_ID>:role/OctapTestnetProgramAdmin"
-    ]
-  }]
-}
-```
+Then issue the team credential:
 
 ```bash
-aws iam create-group --group-name octap-testnet-devs
-aws iam put-group-policy --group-name octap-testnet-devs --policy-name assume-signer-roles \
-  --policy-document file://assume-signer-roles.json
-# per developer:
-aws iam create-user --user-name <name> --tags Key=project,Value=octap
-aws iam add-user-to-group --user-name <name> --group-name octap-testnet-devs
-aws iam create-access-key --user-name <name>   # hand the result to that developer, once
+aws iam create-access-key --user-name octap-testnet-signer
 ```
 
-That access key is the developer's **single scoped credential**. On its own it can't sign
-anything or touch any other AWS resource. It can only obtain short-lived role sessions, and
-CloudTrail records which developer each `Sign` came from. If the team uses IAM Identity Center
-(SSO), use a permission set with the same `sts:AssumeRole` statement instead of IAM users.
+AWS shows the secret once. Hand it to each developer privately (never in chat history, a repo or
+`.env`). When someone leaves or the key may have leaked: create a new access key, hand it out,
+then `aws iam delete-access-key` the old one. Signing stops for the old key immediately.
 
-### 4. Fund the two addresses
-
-```bash
-AWS_PROFILE=octap-testnet-admin node --env-file=.env scripts/check-kms-signer.mjs both 3
-```
-
-This prints each signer's Sui address. Fund both from the testnet faucet: they pay their own gas.
-Record the issuer address in `contracts/sui/DEPLOYMENTS.md`.
+Finally, remove `SUI_ISSUER_PRIVATE_KEY` and `SUI_PROGRAM_ADMIN_PRIVATE_KEY` from every `.env`
+and keep one offline backup (a password manager entry the signer manager alone can open). With
+imported material, that backup is the only way back if a KMS key is ever deleted.
 
 ## Developer setup (each teammate, once)
 
 ```bash
-aws configure --profile octap-dev   # paste the access key from step 3; region ap-southeast-1
+aws configure --profile octap-testnet-signer   # the access key from the signer manager; region ap-southeast-2
 ```
 
-Add to `~/.aws/config`:
-
-```ini
-[profile octap-testnet-worker]
-role_arn = arn:aws:iam::<ACCOUNT_ID>:role/OctapTestnetIssuerSigner
-source_profile = octap-dev
-region = ap-southeast-1
-
-[profile octap-testnet-admin]
-role_arn = arn:aws:iam::<ACCOUNT_ID>:role/OctapTestnetProgramAdmin
-source_profile = octap-dev
-region = ap-southeast-1
-```
-
-In `.env` (no secrets in here, only references):
+In `.env`:
 
 ```dotenv
-AWS_REGION=ap-southeast-1
-AWS_PROFILE=octap-testnet-worker
+AWS_REGION=ap-southeast-2
+AWS_PROFILE=octap-testnet-signer
 SUI_ISSUER_KMS_KEY_ID=alias/octap-testnet-issuer
 SUI_PROGRAM_ADMIN_KMS_KEY_ID=alias/octap-testnet-program-admin
 SUI_ISSUER_PRIVATE_KEY=
 SUI_PROGRAM_ADMIN_PRIVATE_KEY=
 ```
 
-The worker then runs as the issuer role. Admin-key scripts override the profile from the shell,
-and Node's `--env-file` never overrides a variable that is already set:
+Then everything runs as before:
 
 ```bash
 node --env-file=.env api/dist/worker.js
-AWS_PROFILE=octap-testnet-admin node --env-file=.env scripts/provision-program.mjs <orgId> 500 365 1000000
-AWS_PROFILE=octap-testnet-admin node --env-file=.env scripts/top-up-budget.mjs <orgId> 100000
-node --env-file=.env scripts/check-kms-signer.mjs issuer 20   # smoke + latency
+node --env-file=.env scripts/provision-program.mjs <orgId> 500 365 1000000
+node --env-file=.env scripts/top-up-budget.mjs <orgId> 100000
+node --env-file=.env scripts/check-kms-signer.mjs both 20   # smoke + latency
 ```
+
+A member of the AWS project can skip the access key: `aws login --profile octap-dev` and
+`AWS_PROFILE=octap-dev` work too, signing under their own identity.
 
 ## The deployed testnet/staging worker
 
 The testnet deployment is also the staging environment real users touch, so it gets the
 production shape wherever the host allows:
 
-- **On AWS compute** (ECS/Fargate, EKS, EC2): attach `OctapTestnetIssuerSigner`'s policy to the
-  task role, pod identity or instance profile. Don't set any AWS key variables; the default chain
-  picks up the role. This is the target shape for mainnet too.
-- **On a non-AWS host**: create a dedicated IAM user `octap-testnet-worker`. Attach
-  `issuer-signer.json` to it directly (only the issuer key, never the admin key), and store its
-  access key in the host's secret store as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Rotate
-  that key on a schedule. Provisioning and top-ups still run from a developer machine under the
-  admin role, never from the hosted worker.
-
-## Moving off the old raw keys
-
-The KMS addresses are new addresses, so anything the old raw-key addresses own stays with them:
-
-- **Existing programs' `AdminCap`s and `IssuerCap`s** belong to the old addresses. Both caps have
-  `store`, so the old key can hand them over: `sui client transfer --object-id <cap>
-  --to <new address>`. Transferring keeps every existing program and `CreditAccount` working.
-  Re-provisioning the organizations also works: the worker reopens members' accounts in the new
-  program on their next earn (OCT-244). But credits already in the old accounts stay in the old
-  program; see `docs/roadmap.md`.
-- After that, delete the raw keys from every `.env` and drain the old addresses' SUI.
+- **On AWS compute** (ECS/Fargate, EKS, EC2): use `OctapTestnetIssuerSigner` as the task role,
+  pod identity or instance profile. Don't set any AWS key variables; the default chain picks up
+  the role. This is the target shape for mainnet too.
+- **On a non-AWS host**: create a dedicated IAM user `octap-testnet-worker` with only the issuer
+  role's policy (never the admin key), and store its access key in the host's secret store as
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Don't reuse the team's signer key there.
+  Provisioning and top-ups run from a developer machine, never from the hosted worker.
 
 ## Latency and cost
 
 - **Per transaction**: one `Sign` round trip to KMS, added to the build → sign → execute → wait
-  path. Checkpoint finality is the dominant term. Measure the KMS share on your own machine with
-  `scripts/check-kms-signer.mjs`, and record the numbers in the table below whenever the key
-  location or the deployment changes.
-- **Per process**: one `GetPublicKey` plus a credential resolution on first use (assume-role adds
-  an STS call), then cached.
+  path. Measure it with `scripts/check-kms-signer.mjs`, and record the numbers below whenever the
+  key location or the deployment changes.
+- **Per process**: one `GetPublicKey` plus a credential resolution on first use, then cached.
 - **CI and the test suite: zero KMS calls.** Unit tests point the real `AwsKmsSigner` at a fake
   KMS endpoint that signs with a local key (`api/tests/unit/infra/clients/signer.test.ts`).
   `api/tests/setup.ts` deletes `SUI_*_KMS_KEY_ID`, so a developer's shell can't leak a real key
@@ -233,18 +143,21 @@ The KMS addresses are new addresses, so anything the old raw-key addresses own s
 
 Accepted trade-off: the extra round trip is not cached or batched away. A signature can't be
 reused, and holding key material locally to save that time is exactly what this change removes.
+From Vietnam, Sydney costs about half a second per signature; a worker hosted in or near
+`ap-southeast-2` pays a small fraction of that.
 
-| Date | From | Key region | `GetPublicKey` (cold) | `Sign` p50 / p95 |
+| Date | From | Key region | `GetPublicKey` (cold) | `Sign` p50 / p95 (20 samples) |
 | --- | --- | --- | --- | --- |
-| _pending first provisioning_ | | `ap-southeast-1` | | |
+| 2026-10-30 | Laptop, Vietnam (`aws login` profile) | `ap-southeast-2` | 2,693 ms issuer (first credential resolution), 383 ms admin | issuer 521 / 727 ms; admin 519 / 851 ms |
 
 ## Still deferred (not part of OCT-245)
 
-- Mainnet keys and their stricter key policy: named key administrators separate from key users,
-  `kms:ScheduleKeyDeletion` denied to everyone but a break-glass role, a CloudWatch alarm on
-  `Sign` by any unexpected principal, and the worker on AWS compute with no access keys at all.
-- **Key loss is cap loss.** KMS keys can't be exported and an asymmetric key can't be rotated in
-  place. Rotating means a new key, then transferring every cap to the new address. Deleting a key
-  waits 7–30 days (use 30). Treat a pending deletion as an incident.
+- Mainnet keys and their stricter key policy: KMS-generated material, named key administrators
+  separate from key users, `kms:ScheduleKeyDeletion` denied to everyone but a break-glass role, a
+  CloudWatch alarm on `Sign` by any unexpected principal, and the worker on AWS compute with no
+  access keys at all.
+- **Key loss is cap loss.** An asymmetric KMS key can't be rotated in place. Rotating means a new
+  key, then transferring every cap to the new address. Deleting a key waits 7–30 days (use 30).
+  Treat a pending deletion as an incident.
 - Per-tenant key separation, `IssuerCap`/`AdminCap` revocation, and spend-anomaly detection: see
   `docs/roadmap.md`.

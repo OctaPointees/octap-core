@@ -87,17 +87,18 @@ then move the row to **Implemented** in the same pull request.
 - Worker signers are AWS KMS keys (OCT-245, `docs/kms-signer.md`): the issuer and program admin
   keys are two `ECC_NIST_EDWARDS25519` KMS keys, signed through Mysten's `@mysten/aws-kms-signer`
   with the AWS SDK's default credential chain, so no private key material sits in app memory, on
-  disk, or in an env var. AWS was chosen over the GCP KMS that Harbor (`D:\CommandOSS\harbor`,
+  disk, or in an env var. On testnet the existing raw keys were imported into KMS, so both
+  addresses and every cap they hold stayed put; the dev team signs through one shared IAM user
+  scoped to `kms:Sign` on the two keys, Harbor's service-account model. AWS was chosen over the GCP KMS that Harbor (`D:\CommandOSS\harbor`,
   `SuiKmsSignerService`) uses; its design carried over (scheme read from the key, public key
   cached, production refuses raw keys), its GCP client code didn't need to. The two keys stay
-  separate and sit behind separate IAM roles, so the long-running worker can't sign with the
-  `AdminCap` key. A raw `SUI_*_PRIVATE_KEY` still works as a local fallback when no KMS key is
+  separate, each with its own IAM role, so a hosted worker can't sign with the `AdminCap` key. A raw `SUI_*_PRIVATE_KEY` still works as a local fallback when no KMS key is
   set (contributors without AWS access), and is refused on mainnet. Still deferred: mainnet keys with a
   stricter key policy and the worker on AWS compute with no access keys at all; Harbor's
   single-omnibus-signer model with per-tenant authorization tracked in the DB; `IssuerCap`/
   `AdminCap` revocation (no `revoke`/`burn` in the Move contracts); spend-anomaly alerting on the
   shared signers. Live KMS latency is measured with `scripts/check-kms-signer.mjs` and recorded in
-  `docs/kms-signer.md` once the testnet keys are provisioned — not measured yet when this shipped.
+  `docs/kms-signer.md` (about 0.5 s per signature from Vietnam to `ap-southeast-2`).
 - Re-provisioning an organization (OCT-244): a member's existing `CreditAccount` stays in the old
   program, so their next `earn` aborts with `EWrongProgram`. The chain-submit worker then reads
   the account's on-chain `program_id`, and only if it differs from the organization's current

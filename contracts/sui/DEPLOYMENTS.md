@@ -39,8 +39,8 @@ the program admin signer, which keeps that program's `AdminCap`) and recorded in
 organization's `programs` row — the API reads them from there for every earn, never from source.
 
 `IssuerCap`s are minted directly to the issuer address above — the key `ChainSubmitWorker` signs
-with. That key belongs in AWS KMS (`SUI_ISSUER_KMS_KEY_ID`, see `docs/kms-signer.md`); the address
-above is still the pre-KMS raw key's, until the KMS issuer address replaces it here. Who can `earn` vs who can `pause`/rotate policy is decided
+with. That key lives in AWS KMS as `alias/octap-testnet-issuer` (`SUI_ISSUER_KMS_KEY_ID`, see
+`docs/kms-signer.md`), imported from the original raw key, so the address above is unchanged. Who can `earn` vs who can `pause`/rotate policy is decided
 entirely by which capability object a signer holds, so moving an `IssuerCap` later is just
 `sui client transfer`, never a contract or deployment change.
 
