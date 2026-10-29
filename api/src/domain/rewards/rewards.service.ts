@@ -1,7 +1,7 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
-import type { vouchers } from '#infra/db/schema/rewards.schema.js';
+import type { voucherOwnerships, vouchers } from '#infra/db/schema/rewards.schema.js';
 import { RedemptionService } from '../credits/redemption.service.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type {
@@ -137,18 +137,27 @@ export class RewardsService {
       throw new BadRequestException('Voucher has expired');
     }
 
-    const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id);
-
-    return {
-      voucherOwnershipId: updated.id,
-      voucherId: updated.voucherId,
-      serialCode: updated.serialCode,
-      status: updated.status,
-      redeemedAt: updated.redeemedAt?.toISOString() ?? new Date().toISOString(),
+    const toResponse = (redeemed: typeof voucherOwnerships.$inferSelect): RedeemVoucherResponse => ({
+      voucherOwnershipId: redeemed.id,
+      voucherId: redeemed.voucherId,
+      serialCode: redeemed.serialCode,
+      status: redeemed.status,
+      redeemedAt: redeemed.redeemedAt?.toISOString() ?? new Date().toISOString(),
       voucherTitle: ownership.voucher.title,
       discountType: ownership.voucher.discountType,
       discountValue: ownership.voucher.discountValue,
-    };
+    });
+
+    // `voucher.redeemed` (the response plus the member) is queued with the status change itself.
+    const updated = await this.rewardsRepo.markVoucherRedeemed(ownership.id, {
+      organizationId,
+      payload: (redeemed) => ({ ...toResponse(redeemed), organizationEndUserId: redeemed.organizationEndUserId }),
+    });
+    if (!updated) {
+      // A concurrent redeem of the same serial won: only that one is announced.
+      throw new ConflictException('Voucher was already redeemed');
+    }
+    return toResponse(updated);
   }
 
   async listMemberVouchers(organizationId: string, organizationEndUserId: string): Promise<VoucherOwnershipDto[]> {

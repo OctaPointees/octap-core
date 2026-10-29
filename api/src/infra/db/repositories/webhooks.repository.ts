@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { webhookEndpoints, webhookDeliveries } from '../schema/webhooks.schema.js';
 
@@ -124,10 +124,14 @@ export class WebhooksRepository {
    * and it pushes `nextAttemptAt` out by `DELIVERY_CLAIM_LEASE_MS` so a poll that starts after
    * the claim committed doesn't see the row as due again. The processor's own outcome
    * (`markDelivered`/`scheduleRetry`/`markDeadLetter`) replaces the lease.
+   *
+   * "Due" is judged on the database clock (`now()`), the same clock that stamped
+   * `nextAttemptAt` on enqueue: a JS `Date` is truncated to the millisecond, so a delivery
+   * enqueued earlier in that same millisecond would compare as not yet due and be skipped.
    */
   async claimDueDeliveries(limit = 10) {
     const candidates = await this.db.query.webhookDeliveries.findMany({
-      where: and(eq(webhookDeliveries.status, 'PENDING'), lte(webhookDeliveries.nextAttemptAt, new Date())),
+      where: and(eq(webhookDeliveries.status, 'PENDING'), lte(webhookDeliveries.nextAttemptAt, sql`now()`)),
       orderBy: [asc(webhookDeliveries.nextAttemptAt)],
       limit,
     });

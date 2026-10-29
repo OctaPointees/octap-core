@@ -71,6 +71,13 @@
       "when": 1792715408729,
       "tag": "0009_operations_sui_tx_expiration_epoch",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793178146954,
+      "tag": "0010_operations_pending_unsent_idx",
+      "breakpoints": true
     }
   ]
 }

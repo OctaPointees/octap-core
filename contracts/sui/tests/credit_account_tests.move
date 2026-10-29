@@ -191,6 +191,38 @@ fun expired_buckets_are_not_spendable() {
     ts::end(scenario);
 }
 
+/// Re-provisions the organization from `setup`: a second program with its own
+/// policy, IssuerCap (sent to `ISSUER_B`) and shards. `MEMBER`'s account from
+/// `setup` stays in the first program. Returns the new program, policy,
+/// operation shard and budget shard ids.
+fun reprovision(scenario: &mut ts::Scenario): (ID, ID, ID, ID) {
+    ts::next_tx(scenario, ADMIN);
+    let admin_cap_b = program_control::create_program(ts::ctx(scenario));
+    let admin_cap_b_id = object::id(&admin_cap_b);
+    transfer::public_transfer(admin_cap_b, ADMIN);
+
+    ts::next_tx(scenario, ADMIN);
+    let program_b_id = ts::most_recent_id_shared<ProgramControl>().destroy_some();
+    let admin_cap_b = ts::take_from_sender_by_id<AdminCap>(scenario, admin_cap_b_id);
+    policy_version::publish(&admin_cap_b, program_b_id, 1, 100, DAY_MS, ts::ctx(scenario));
+    ts::return_to_sender(scenario, admin_cap_b);
+
+    ts::next_tx(scenario, ADMIN);
+    let policy_b_id = ts::most_recent_immutable_id<PolicyVersion>().destroy_some();
+    let mut program_b = ts::take_shared_by_id<ProgramControl>(scenario, program_b_id);
+    let admin_cap_b = ts::take_from_sender_by_id<AdminCap>(scenario, admin_cap_b_id);
+    let policy_b = ts::take_immutable_by_id<PolicyVersion>(scenario, policy_b_id);
+    program_control::activate_policy(&admin_cap_b, &mut program_b, &policy_b, ts::ctx(scenario));
+    program_control::issue_cap(&admin_cap_b, &program_b, ISSUER_B, ts::ctx(scenario));
+    let operation_shard_ids = operation_shard::create_shards(&admin_cap_b, program_b_id, 1, ts::ctx(scenario));
+    let budget_shard_ids = budget_shard::create_shards(&admin_cap_b, program_b_id, DEFAULT_BUDGET, 1, ts::ctx(scenario));
+    ts::return_immutable(policy_b);
+    ts::return_shared(program_b);
+    ts::return_to_sender(scenario, admin_cap_b);
+
+    (program_b_id, policy_b_id, operation_shard_ids[0], budget_shard_ids[0])
+}
+
 #[test, expected_failure(abort_code = 0)] // credit_account::EWrongProgram
 fun earn_rejects_issuer_cap_scoped_to_a_different_program() {
     let mut scenario = ts::begin(ADMIN);
@@ -244,6 +276,111 @@ fun earn_rejects_issuer_cap_scoped_to_a_different_program() {
     ts::return_to_sender(&scenario, issuer_cap_b);
     ts::return_immutable(policy_a);
     ts::return_shared(program_a);
+    clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+
+// Re-provisioning (OCT-244), the counterpart of the test above: here the
+// IssuerCap, program, policy and shards are all the organization's *current*
+// ones, and only the member's account predates them. The cap check passes and
+// the account's own `program_id` check aborts, with the same `EWrongProgram`
+// code. This is the abort `ChainSubmitProcessor.reopenIfStale` recovers from.
+#[test, expected_failure(abort_code = 0, location = octap::credit_account)] // credit_account::EWrongProgram
+fun earn_rejects_account_opened_in_a_previous_program() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let stale_account_id = ts::most_recent_id_shared<CreditAccount>().destroy_some();
+    let (program_b_id, policy_b_id, op_shard_b_id, budget_b_id) = reprovision(&mut scenario);
+
+    ts::next_tx(&mut scenario, ISSUER_B);
+    let program_b = ts::take_shared_by_id<ProgramControl>(&scenario, program_b_id);
+    let policy_b = ts::take_immutable_by_id<PolicyVersion>(&scenario, policy_b_id);
+    let issuer_cap_b = ts::take_from_sender<IssuerCap>(&scenario);
+    let mut stale_account = ts::take_shared_by_id<CreditAccount>(&scenario, stale_account_id);
+    let mut op_shard_b = ts::take_shared_by_id<OperationShard>(&scenario, op_shard_b_id);
+    let mut budget_b = ts::take_shared_by_id<BudgetShard>(&scenario, budget_b_id);
+    let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
+    credit_account::earn(
+        &issuer_cap_b,
+        &program_b,
+        &policy_b,
+        &mut stale_account,
+        &mut op_shard_b,
+        &mut budget_b,
+        10_000,
+        b"op-1",
+        &clock,
+        ts::ctx(&mut scenario),
+    );
+
+    ts::return_shared(budget_b);
+    ts::return_shared(op_shard_b);
+    ts::return_shared(stale_account);
+    ts::return_to_sender(&scenario, issuer_cap_b);
+    ts::return_immutable(policy_b);
+    ts::return_shared(program_b);
+    clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+// The recovery itself: a new account opened for the same member in the
+// current program earns normally, and the stale one is left in the old program.
+#[test]
+fun account_reopened_in_the_current_program_earns() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let stale_account_id = ts::most_recent_id_shared<CreditAccount>().destroy_some();
+    let (program_b_id, policy_b_id, op_shard_b_id, budget_b_id) = reprovision(&mut scenario);
+
+    ts::next_tx(&mut scenario, ISSUER_B);
+    let program_b = ts::take_shared_by_id<ProgramControl>(&scenario, program_b_id);
+    let issuer_cap_b = ts::take_from_sender<IssuerCap>(&scenario);
+    credit_account::open_account(&issuer_cap_b, &program_b, MEMBER, ts::ctx(&mut scenario));
+    ts::return_to_sender(&scenario, issuer_cap_b);
+    ts::return_shared(program_b);
+
+    ts::next_tx(&mut scenario, ISSUER_B);
+    let reopened_id = ts::most_recent_id_shared<CreditAccount>().destroy_some();
+    assert!(reopened_id != stale_account_id, 0);
+    let program_b = ts::take_shared_by_id<ProgramControl>(&scenario, program_b_id);
+    let policy_b = ts::take_immutable_by_id<PolicyVersion>(&scenario, policy_b_id);
+    let issuer_cap_b = ts::take_from_sender<IssuerCap>(&scenario);
+    let mut reopened = ts::take_shared_by_id<CreditAccount>(&scenario, reopened_id);
+    let mut op_shard_b = ts::take_shared_by_id<OperationShard>(&scenario, op_shard_b_id);
+    let mut budget_b = ts::take_shared_by_id<BudgetShard>(&scenario, budget_b_id);
+    let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
+    credit_account::earn(
+        &issuer_cap_b,
+        &program_b,
+        &policy_b,
+        &mut reopened,
+        &mut op_shard_b,
+        &mut budget_b,
+        10_000,
+        b"op-1",
+        &clock,
+        ts::ctx(&mut scenario),
+    );
+    assert!(credit_account::program_id(&reopened) == program_b_id, 1);
+    assert!(credit_account::beneficiary(&reopened) == MEMBER, 2);
+    assert!(credit_account::spendable(&reopened, &clock) == 100, 3);
+
+    ts::return_shared(budget_b);
+    ts::return_shared(op_shard_b);
+    ts::return_shared(reopened);
+    ts::return_to_sender(&scenario, issuer_cap_b);
+    ts::return_immutable(policy_b);
+    ts::return_shared(program_b);
+
+    let stale_account = ts::take_shared_by_id<CreditAccount>(&scenario, stale_account_id);
+    assert!(credit_account::program_id(&stale_account) != program_b_id, 4);
+    ts::return_shared(stale_account);
+
     clock::destroy_for_testing(clock);
     ts::end(scenario);
 }
