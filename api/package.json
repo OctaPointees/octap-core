@@ -19,11 +19,13 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/credential-provider-node": "^3.972.90",
+    "@mysten/aws-kms-signer": "^0.3.33",
+    "@mysten/enoki": "^1.3.1",
+    "@mysten/sui": "^2.38.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
-    "@mysten/enoki": "^1.3.1",
-    "@mysten/sui": "^2.36.0",
     "@octap/chain": "0.0.0",
     "@octap/contracts": "0.0.0",
     "dotenv": "^18.0.5",

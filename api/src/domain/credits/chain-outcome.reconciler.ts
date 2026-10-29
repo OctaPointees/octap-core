@@ -145,7 +145,7 @@ export class ChainOutcomeReconciler {
       confirmedPointsAmount: Number(amount),
       bucketExpiresAtMs: bucketExpiresAtMs === undefined ? null : Number(bucketExpiresAtMs),
       digest: outcome.digest,
-      sender: this.suiClient.issuerAddress(),
+      sender: await this.suiClient.issuerAddress(),
     });
     await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
     this.logger.log(`earn ${payload.loyaltyTransactionId} confirmed from digest ${outcome.digest}`);
@@ -157,7 +157,7 @@ export class ChainOutcomeReconciler {
     await this.creditsRepo.recordReversalOnChain({
       reversalTransactionId: payload.reversalTransactionId,
       digest: outcome.digest,
-      sender: this.suiClient.issuerAddress(),
+      sender: await this.suiClient.issuerAddress(),
     });
     await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
     this.logger.log(`reversal ${payload.reversalTransactionId} mirrored on-chain from digest ${outcome.digest}`);

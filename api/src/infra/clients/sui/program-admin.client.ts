@@ -2,15 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   OctapChainClient,
   eventField,
-  signerFromPrivateKey,
   TESTNET_OCTAP_PACKAGE_CONFIG,
   MAINNET_OCTAP_PACKAGE_CONFIG,
   type OctapNetwork,
   type SubmittedChainTransaction,
 } from '@octap/chain';
-import type { Signer } from '@mysten/sui/cryptography';
-import { requireEnv } from '../require-env.js';
 import { configForNetwork } from './network-config.js';
+import { PROGRAM_ADMIN_SIGNER, loadSigner, memoizeSigner } from './signer.js';
 
 export interface ProvisionedProgram {
   programId: string;
@@ -59,18 +57,19 @@ function shardIdsByIndex(result: SubmittedChainTransaction, eventSuffix: string)
  * budget shards — a one-time
  * provisioning action per organization, not a per-request chain call (see `domain/programs`).
  *
- * Holds `SUI_PROGRAM_ADMIN_PRIVATE_KEY`, deliberately a different key from
- * `SUI_ISSUER_PRIVATE_KEY`: an `AdminCap` can create programs, pause them, rotate policy, and
- * mint `IssuerCap`s — a much larger blast radius than the earn-only `IssuerCap` signer, so it
- * must never be the same key and must never reach the HTTP process. Registered only in
- * `worker.module.ts`, same rule as `SuiClientService`.
+ * Signs with the program admin key (`SUI_PROGRAM_ADMIN_KMS_KEY_ID`, or off mainnet the raw
+ * `SUI_PROGRAM_ADMIN_PRIVATE_KEY` — see `signer.ts`), deliberately a different key from the
+ * issuer's: an `AdminCap` can create programs, pause them, rotate policy, and mint `IssuerCap`s —
+ * a much larger blast radius than the earn-only `IssuerCap` signer, so it must never be the same
+ * key and must never reach the HTTP process. Registered only in `worker.module.ts`, same rule as
+ * `SuiClientService`.
  */
 @Injectable()
 export class ProgramAdminClient {
   private readonly logger = new Logger(ProgramAdminClient.name);
   private readonly network: OctapNetwork = (process.env.SUI_NETWORK as OctapNetwork | undefined) ?? 'testnet';
   private chainClient?: OctapChainClient;
-  private signer?: Signer;
+  private readonly adminSigner = memoizeSigner(() => loadSigner(PROGRAM_ADMIN_SIGNER, this.network, this.logger));
 
   private get client(): OctapChainClient {
     if (!this.chainClient) {
@@ -82,13 +81,6 @@ export class ProgramAdminClient {
       this.chainClient = new OctapChainClient({ network: this.network, package: pkg });
     }
     return this.chainClient;
-  }
-
-  private get adminSigner(): Signer {
-    if (!this.signer) {
-      this.signer = signerFromPrivateKey(requireEnv('SUI_PROGRAM_ADMIN_PRIVATE_KEY', 'program admin adapter'));
-    }
-    return this.signer;
   }
 
   /**
@@ -115,7 +107,7 @@ export class ProgramAdminClient {
 
     const createTx = this.client.buildCreateProgramTransaction();
     createTx.setGasBudget(50_000_000);
-    const created = await this.client.signAndExecute(createTx, this.adminSigner);
+    const created = await this.client.signAndExecute(createTx, await this.adminSigner());
     if (created.status !== 'success') {
       throw new Error(created.errorMessage ?? 'create_program failed on-chain');
     }
@@ -134,7 +126,7 @@ export class ProgramAdminClient {
       expiryMs: params.expiryMs,
     });
     publishTx.setGasBudget(50_000_000);
-    const published = await this.client.signAndExecute(publishTx, this.adminSigner);
+    const published = await this.client.signAndExecute(publishTx, await this.adminSigner());
     if (published.status !== 'success') {
       throw new Error(published.errorMessage ?? 'policy_version::publish failed on-chain');
     }
@@ -152,7 +144,7 @@ export class ProgramAdminClient {
       shards: { shardCount: params.shardCount, totalBudget: params.totalBudget },
     });
     activateTx.setGasBudget(50_000_000);
-    const activated = await this.client.signAndExecute(activateTx, this.adminSigner);
+    const activated = await this.client.signAndExecute(activateTx, await this.adminSigner());
     if (activated.status !== 'success') {
       throw new Error(activated.errorMessage ?? 'activate_policy/issue_cap/create_shards failed on-chain');
     }
@@ -199,7 +191,7 @@ export class ProgramAdminClient {
       })),
     });
     tx.setGasBudget(50_000_000);
-    const result = await this.client.signAndExecute(tx, this.adminSigner);
+    const result = await this.client.signAndExecute(tx, await this.adminSigner());
     if (result.status !== 'success') {
       throw new Error(result.errorMessage ?? 'budget_shard::top_up failed on-chain');
     }

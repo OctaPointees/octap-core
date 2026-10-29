@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@mysten/bcs": "^2.1.2",
-    "@mysten/sui": "^2.36.0"
+    "@mysten/sui": "^2.38.0"
   },
   "devDependencies": {
     "@mysten/codegen": "^0.12.19"
