@@ -13,8 +13,8 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
- * Worker-only (see `worker.module.ts`): depends on `ProgramAdminClient`, which holds
- * `SUI_PROGRAM_ADMIN_PRIVATE_KEY`. Not a `domain/domain.module.ts` feature module for the same
+ * Worker-only (see `worker.module.ts`): depends on `ProgramAdminClient`, which signs with the
+ * program admin key. Not a `domain/domain.module.ts` feature module for the same
  * reason `ChainSubmitProcessor` isn't — that module is also imported by `AppModule`, and this
  * signer must never reach the HTTP process.
  */

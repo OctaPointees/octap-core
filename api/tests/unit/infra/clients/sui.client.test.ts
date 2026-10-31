@@ -74,17 +74,17 @@ describe('SuiClientService', () => {
     );
   });
 
-  it('issuerAddress derives from SUI_ISSUER_PRIVATE_KEY, and fails loudly without it', () => {
+  it('issuerAddress derives from the issuer signer, and fails loudly without one', async () => {
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', '');
-    expect(() => new SuiClientService().issuerAddress()).toThrow(
-      /Missing required env var SUI_ISSUER_PRIVATE_KEY for the Sui chain adapter/,
+    await expect(new SuiClientService().issuerAddress()).rejects.toThrow(
+      /Missing signer for the Sui chain adapter: set SUI_ISSUER_KMS_KEY_ID/,
     );
 
     const keypair = Ed25519Keypair.generate();
     vi.stubEnv('SUI_ISSUER_PRIVATE_KEY', keypair.getSecretKey());
     const service = new SuiClientService();
-    expect(service.issuerAddress()).toBe(keypair.getPublicKey().toSuiAddress());
-    expect(service.issuerAddress()).toBe(keypair.getPublicKey().toSuiAddress());
+    expect(await service.issuerAddress()).toBe(keypair.getPublicKey().toSuiAddress());
+    expect(await service.issuerAddress()).toBe(keypair.getPublicKey().toSuiAddress());
   });
 
   it('openAccount opens under the given program and exposes eventField on the result', async () => {

@@ -50,8 +50,9 @@ These apply to every PR. Lint, format, and typecheck enforce what they can; the 
   happen together go in one `db.transaction`. Helpers that must join the caller's transaction (like
   `acceptCommand`) take a `tx`, not open their own.
 - **Chain and vendors**: `@mysten/*` is only imported under `api/src/infra/clients/`; Move calls are
-  built in `@octap/chain`. Signer keys (`SUI_ISSUER_PRIVATE_KEY`, `SUI_PROGRAM_ADMIN_PRIVATE_KEY`) are
-  only read by worker-only modules, never by anything `AppModule` loads.
+  built in `@octap/chain`. Signers (AWS KMS keys via `infra/clients/sui/signer.ts`, raw
+  `SUI_*_PRIVATE_KEY` only off mainnet) are only reached by worker-only modules, never by anything
+  `AppModule` loads. See `docs/kms-signer.md`.
 - **Redis**: inject the shared ioredis client with `@Inject(REDIS_CLIENT)`; never create another
   connection.
 - **HTTP out**: global `fetch` (webhook delivery, SDKs). No axios or other HTTP client.

@@ -28,7 +28,7 @@ const app = await NestFactory.createApplicationContext(WorkerModule, { logger: f
 const programs = app.get(ProgramsService);
 const sui = app.get(SuiClientService);
 
-const issuerRecipient = sui.issuerAddress();
+const issuerRecipient = await sui.issuerAddress();
 const program = await programs.provisionForOrganization({
   organizationId,
   earnBps,

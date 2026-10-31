@@ -35,7 +35,7 @@ environment variables to `.env.example` in the same change.
 Exception: if the vendor credential must never exist in the HTTP process's memory (a signer key,
 not an API key behind a read-only client), import that vendor module directly in
 `worker.module.ts` instead of `infra/infrastructure.module.ts`, and say so in both the client's
-module doc and its own `README.md`. `infra/clients/sui` does this for `SUI_ISSUER_PRIVATE_KEY`.
+module doc and its own `README.md`. `infra/clients/sui` does this for its signers (`docs/kms-signer.md`).
 
 ## Workers
 

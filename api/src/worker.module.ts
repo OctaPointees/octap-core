@@ -13,8 +13,8 @@ import { CheckpointIndexerProcessor } from './domain/indexer/checkpoint-indexer.
 import { ProgramsService } from './domain/programs/programs.service.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
-// the internet-facing HTTP process (AppModule) has no reason to ever hold SUI_ISSUER_PRIVATE_KEY
-// or SUI_PROGRAM_ADMIN_PRIVATE_KEY in memory. ProgramsService lives here rather than in
+// the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
+// admin signer (AWS KMS keys, or raw keys off mainnet; infra/clients/sui/signer.ts). ProgramsService lives here rather than in
 // domain/domain.module.ts for the same reason ChainSubmitProcessor does: that module reaches
 // AppModule too.
 @Module({
