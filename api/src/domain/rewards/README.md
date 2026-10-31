@@ -16,7 +16,20 @@ Paid voucher claims reuse the customer-signed `credit_account::redeem` pipeline.
 
 The customer's device sends `{ digest, signature }` to the existing public `POST /v1/credits/redeem/finalize` endpoint. Only the customer's chain-verified signature authorizes spending; merchant keys stay on trusted servers. A successful chain verdict, indexer event, or digest reconciliation atomically debits the point projection, consumes buckets, releases the point hold and activates the ownership. The existing `credits.redemption.confirmed` outbox event includes the chain digest. A RESERVED serial cannot be redeemed. `GET /v1/rewards/claims/:ownershipId` reads the tenant-scoped persisted state after asynchronous recovery; retrying claim also returns its current state.
 
-The chain reference is `voucher-claim-<ownershipId>`, allowing the existing indexer and `reverse_redeem` path to match the claim. Reversing the claim invalidates an unused coupon. Existing reversal limitations documented in the roadmap still apply.
+The chain reference is `voucher-claim-<ownershipId>`, allowing the existing indexer and `reverse_redeem` path to match the claim.
+
+### Reversing a claim
+
+A merchant reverses a paid claim through `POST /v1/credits/transactions/:transactionId/reverse` on its REDEEM transaction. The points and the coupon move together:
+
+| Coupon when reversed | Result |
+| --- | --- |
+| RESERVED | Not reversible: the transaction is still PENDING. Failure or abandonment releases it instead. |
+| AVAILABLE, not past its expiry | The coupon is CANCELLED, its unit returns to the catalog (a DEPLETED voucher becomes ACTIVE again) and the points are refunded, in one transaction. |
+| REDEEMED | 409. The benefit was delivered, so nothing changes. To compensate the member, issue an earn with its own reason. |
+| EXPIRED, or AVAILABLE past its expiry | 409. The benefit lapsed under the voucher's terms; same as REDEEMED. |
+
+The reversal locks the voucher row before cancelling the coupon, as redemption does, so a coupon used at checkout while it is being reversed ends up either REDEEMED with the points kept or CANCELLED with the points refunded, never both. Free claims have no REDEEM transaction and so cannot be reversed. Existing reversal limitations documented in the roadmap still apply.
 
 Definitive chain failure cancels the ownership and releases stock and points together. An unsigned claim is abandoned after 30 minutes by the worker reconciler or lazily on a balance read, POS reserve or another voucher claim. Both paths cancel reserved coupons and return their stock in the same transaction as releasing the point hold. Continuing the same unsigned claim refreshes its abandonment clock. The expiration path locks and rechecks the operation before releasing anything, so it cannot release a claim concurrently submitted by finalize. Submitted digests remain reserved until their outcome is known, including after Redis cache expiry. A different digest cannot replace an already-submitted digest. Sponsorship errors leave the durable reservation retryable with the same key; otherwise the unsigned-claim timeout releases it.
 

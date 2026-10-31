@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, or, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -201,15 +201,29 @@ async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, c
     .set({ status: confirmed ? 'AVAILABLE' : 'CANCELLED', updatedAt: new Date() })
     .where(and(eq(voucherOwnerships.id, claim.id), eq(voucherOwnerships.status, 'RESERVED')))
     .returning();
-  if (changed && !confirmed) {
-    await tx
-      .update(vouchers)
-      .set({
-        claimedCount: sql`${vouchers.claimedCount} - 1`,
-        status: sql`case when ${vouchers.status} = 'DEPLETED' then 'ACTIVE'::voucher_status else ${vouchers.status} end`,
-        updatedAt: new Date(),
-      })
-      .where(eq(vouchers.id, claim.voucherId));
+  if (changed && !confirmed) await returnVoucherUnit(tx, claim.voucherId);
+}
+
+/** Puts a cancelled coupon's unit back in the catalog; the caller holds the voucher row lock. */
+async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
+  await tx
+    .update(vouchers)
+    .set({
+      claimedCount: sql`${vouchers.claimedCount} - 1`,
+      status: sql`case when ${vouchers.status} = 'DEPLETED' then 'ACTIVE'::voucher_status else ${vouchers.status} end`,
+      updatedAt: new Date(),
+    })
+    .where(eq(vouchers.id, voucherId));
+}
+
+/** Thrown by `recordReversalTransaction` for a voucher claim whose coupon can no longer be taken back. */
+export class VoucherClaimNotReversibleError extends Error {
+  constructor(couponStatus: string) {
+    super(
+      `This voucher claim cannot be reversed: its coupon is ${couponStatus}. ` +
+        'Only an unused coupon is refunded; compensate the member with an earn instead.',
+    );
+    this.name = 'VoucherClaimNotReversibleError';
   }
 }
 
@@ -972,6 +986,12 @@ export class CreditsRepository {
    * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
    * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop
    * if two reversal requests for the same original race each other.
+   *
+   * A paid voucher claim's points and coupon move together: reversing it cancels the coupon and
+   * returns its unit to the catalog, and only while the coupon is unused and unexpired. Otherwise
+   * the benefit was already delivered (or lapsed) and this throws `VoucherClaimNotReversibleError`
+   * without writing anything. The catalog lock serializes this against `redeemVoucher`, so a
+   * coupon is either used or refunded, never both.
    */
   async recordReversalTransaction(params: {
     organizationId: string;
@@ -980,22 +1000,38 @@ export class CreditsRepository {
     reason?: string;
   }) {
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+      const coupon = await tx.query.voucherOwnerships.findFirst({
+        where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
+      });
+      if (coupon) {
+        await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, coupon.voucherId)).for('update');
+        const now = new Date();
+        const [cancelled] = await tx
+          .update(voucherOwnerships)
+          .set({ status: 'CANCELLED', updatedAt: now })
+          .where(
+            and(
+              eq(voucherOwnerships.id, coupon.id),
+              eq(voucherOwnerships.status, 'AVAILABLE'),
+              or(isNull(voucherOwnerships.expiresAt), gt(voucherOwnerships.expiresAt, now)),
+            ),
+          )
+          .returning({ id: voucherOwnerships.id });
+        if (!cancelled) {
+          const [current] = await tx
+            .select({ status: voucherOwnerships.status })
+            .from(voucherOwnerships)
+            .where(eq(voucherOwnerships.id, coupon.id));
+          throw new VoucherClaimNotReversibleError(current.status === 'AVAILABLE' ? 'EXPIRED' : current.status);
+        }
+        await returnVoucherUnit(tx, coupon.voucherId);
+      }
+
       const [reversedOriginal] = await tx
         .update(loyaltyTransactions)
         .set({ status: 'REVERSED', updatedAt: new Date() })
         .where(eq(loyaltyTransactions.id, params.original.id))
         .returning();
-
-      const coupon = await tx.query.voucherOwnerships.findFirst({
-        where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
-      });
-      if (coupon) {
-        await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, coupon.voucherId)).for('share');
-        await tx
-          .update(voucherOwnerships)
-          .set({ status: 'CANCELLED', updatedAt: new Date() })
-          .where(and(eq(voucherOwnerships.id, coupon.id), eq(voucherOwnerships.status, 'AVAILABLE')));
-      }
       const ownership = await lockOwnership(tx, params.original.organizationEndUserId);
       if (!ownership) {
         throw new Error('Credit ownership not found for this member');

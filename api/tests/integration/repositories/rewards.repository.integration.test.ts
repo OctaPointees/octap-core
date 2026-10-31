@@ -308,21 +308,76 @@ describe('atomic voucher conversion', () => {
     expect((await row(other.id)).claimedCount).toBe(0);
   });
 
-  it('reverses the voucher claim using its original on-chain reference and cancels the unused coupon', async () => {
-    const result = await confirm(await claim((await create()).id));
-    const original = await credits.getLoyaltyTransactionById(result.transactionId!);
-    await credits.recordReversalTransaction({
+  const reverseClaim = async (result: Awaited<ReturnType<typeof confirm>>, idempotencyKey = 'refund') =>
+    credits.recordReversalTransaction({
       organizationId: orgId,
-      original: original!,
-      idempotencyKey: 'refund',
+      original: (await credits.getLoyaltyTransactionById(result.transactionId!))!,
+      idempotencyKey,
       reason: 'refund',
     });
+
+  it('reverses an unused claim with its original on-chain reference, cancelling the coupon and returning its unit', async () => {
+    const voucher = await create({ totalSupply: 1 });
+    const result = await confirm(await claim(voucher.id));
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+    await reverseClaim(result);
     const reversal = (await db.select().from(schema.operations)).find(
       (o) => o.commandType === 'CREDIT_REVERSAL_CHAIN_SUBMIT',
     );
     expect(reversal?.payload).toMatchObject({ chainKey: `voucher-claim-${result.voucherOwnershipId}` });
     expect((await repo.getClaim(orgId, result.voucherOwnershipId)).status).toBe('CANCELLED');
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 0, status: 'ACTIVE' });
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(100);
     await expect(repo.redeemVoucher(orgId, result.serialCode)).rejects.toThrow(/CANCELLED/);
+  });
+
+  it.each([
+    ['REDEEMED', 'used at checkout', (serial: string) => repo.redeemVoucher(orgId, serial).then(() => undefined)],
+    [
+      'EXPIRED',
+      'marked expired',
+      (serial: string) =>
+        db
+          .update(schema.voucherOwnerships)
+          .set({ status: 'EXPIRED' })
+          .where(eq(schema.voucherOwnerships.serialCode, serial))
+          .then(() => undefined),
+    ],
+    [
+      'EXPIRED',
+      'past its expiry but not yet marked',
+      (serial: string) =>
+        db
+          .update(schema.voucherOwnerships)
+          .set({ expiresAt: new Date(Date.now() - 1000) })
+          .where(eq(schema.voucherOwnerships.serialCode, serial))
+          .then(() => undefined),
+    ],
+  ] as const)('refuses to reverse a claim whose coupon is %s (%s) and writes nothing', async (status, _, settle) => {
+    const voucher = await create();
+    const result = await confirm(await claim(voucher.id));
+    await settle(result.serialCode);
+    await expect(reverseClaim(result)).rejects.toThrow(new RegExp(`coupon is ${status}`));
+    expect(await credits.getLoyaltyTransactionById(result.transactionId!)).toMatchObject({ status: 'CONFIRMED' });
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+    expect((await row(voucher.id)).claimedCount).toBe(1);
+    expect(
+      (await db.select().from(schema.loyaltyTransactions)).filter((t) => t.transactionType === 'REVERSAL'),
+    ).toHaveLength(0);
+  });
+
+  it('a coupon used and reversed at the same time is either used or refunded, never both', async () => {
+    const result = await confirm(await claim((await create()).id));
+    const [used, reversed] = await Promise.allSettled([
+      repo.redeemVoucher(orgId, result.serialCode),
+      reverseClaim(result),
+    ]);
+    expect([used.status, reversed.status].sort()).toEqual(['fulfilled', 'rejected']);
+    const coupon = await repo.getClaim(orgId, result.voucherOwnershipId);
+    const balance = (await getOwnership(db, memberId)).confirmedBalance;
+    expect({ coupon: coupon.status, balance }).toEqual(
+      used.status === 'fulfilled' ? { coupon: 'REDEEMED', balance: 75 } : { coupon: 'CANCELLED', balance: 100 },
+    );
   });
 
   it('retains the confirmed debit when an issued coupon later expires', async () => {

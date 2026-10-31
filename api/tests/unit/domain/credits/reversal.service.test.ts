@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ReversalService } from '#domain/credits/reversal.service.js';
-import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { VoucherClaimNotReversibleError, type CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
@@ -188,6 +188,21 @@ describe('ReversalService', () => {
     ).rejects.toMatchObject({
       name: 'ConflictException',
       message: expect.stringMatching(/unique constraint/),
+    });
+  });
+
+  it('a voucher claim whose coupon was already used is a conflict naming the coupon status', async () => {
+    const repo = stub<CreditsRepository>({
+      findTransactionByIdempotency: async () => undefined,
+      findTransactionByIdForOrganization: async () => confirmedEarn({ transactionType: 'REDEEM' }),
+      recordReversalTransaction: async () => {
+        throw new VoucherClaimNotReversibleError('REDEEMED');
+      },
+    });
+
+    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/coupon is REDEEMED/),
     });
   });
 
