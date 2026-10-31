@@ -1,3 +1,4 @@
+import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp } from '../support/app.js';
@@ -306,5 +307,128 @@ describe('rewards over HTTP', () => {
     await createVoucher({ title: 'no code' }).expect(400);
     await ctx.http().post(`/v1/rewards/vouchers/${created.body.id}/claim`).set(auth).send({}).expect(400);
     await ctx.http().post('/v1/rewards/vouchers/redeem').set(auth).send({}).expect(400);
+  });
+});
+
+describe('voucher refund policy over HTTP', () => {
+  const settings = {
+    allowUnused: true,
+    allowExpired: false,
+    allowRedeemed: false,
+    restockUnused: true,
+    refundWindowDays: null as number | null,
+  };
+  const request = { ...settings, allowExpired: true, refundWindowDays: 30, reason: 'Customer service policy' };
+  const path = '/v1/rewards/refund-policy';
+
+  it('requires admin scope to publish/history, scopes reads to the credential tenant, and records each version', async () => {
+    expect((await ctx.http().get(path).set(auth).expect(200)).body).toMatchObject(DEFAULT_VOUCHER_REFUND_POLICY);
+    await ctx.http().put(path).set(auth).send(request).expect(403);
+    await ctx
+      .http()
+      .get(path + '/history')
+      .set(auth)
+      .expect(403);
+    const admin = await seedCredential(ctx.db, orgId, { scopes: ['admin'] });
+    const adminAuth = { authorization: `Bearer ${admin.rawKey}` };
+    const first = await ctx.http().put(path).set(adminAuth).send(request).expect(200);
+    expect(first.body).toMatchObject({
+      version: 1,
+      allowExpired: true,
+      reason: request.reason,
+      createdByCredentialId: admin.credential.id,
+    });
+    const simultaneous = await Promise.all([
+      ctx
+        .http()
+        .put(path)
+        .set(adminAuth)
+        .send({ ...request, reason: 'Version A' }),
+      ctx
+        .http()
+        .put(path)
+        .set(adminAuth)
+        .send({ ...request, reason: 'Version B' }),
+    ]);
+    expect(simultaneous.map((r) => r.status)).toEqual([200, 200]);
+    expect(simultaneous.map((r) => r.body.version).sort()).toEqual([2, 3]);
+    expect(
+      (
+        await ctx
+          .http()
+          .get(path + '/history')
+          .set(adminAuth)
+          .expect(200)
+      ).body.map((r: { version: number }) => r.version),
+    ).toEqual([3, 2, 1]);
+    expect((await ctx.http().get(path).set(auth).expect(200)).body.version).toBe(3);
+    const firstPage = await ctx
+      .http()
+      .get(path + '/history?limit=2')
+      .set(adminAuth)
+      .expect(200);
+    expect(firstPage.body.map((row: { version: number }) => row.version)).toEqual([3, 2]);
+    const secondPage = await ctx
+      .http()
+      .get(path + '/history?limit=2&beforeVersion=2')
+      .set(adminAuth)
+      .expect(200);
+    expect(secondPage.body.map((row: { version: number }) => row.version)).toEqual([1]);
+    for (const query of [
+      'limit=0',
+      'limit=101',
+      'limit=1.5',
+      'beforeVersion=0',
+      'beforeVersion=2147483648',
+      'beforeVersion=no',
+    ]) {
+      await ctx
+        .http()
+        .get(path + '/history?' + query)
+        .set(adminAuth)
+        .expect(400);
+    }
+
+    const other = await seedOrganization(ctx.db);
+    const foreign = { authorization: `Bearer ${(await seedCredential(ctx.db, other.id)).rawKey}` };
+    expect((await ctx.http().get(path).set(foreign).expect(200)).body.version).toBe(0);
+    expect(
+      (
+        await ctx
+          .http()
+          .get(path + '/history')
+          .set(foreign)
+          .expect(200)
+      ).body,
+    ).toEqual([]);
+    await ctx.http().put(path).set(foreign).set('x-organization-id', orgId).send(request).expect(403);
+  });
+
+  it('validates full policy replacements and exposes the snapshot on claim/member reads', async () => {
+    const admin = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId)).rawKey}` };
+    await ctx
+      .http()
+      .put(path)
+      .set(admin)
+      .send({ ...request, reason: '' })
+      .expect(400);
+    await ctx
+      .http()
+      .put(path)
+      .set(admin)
+      .send({ ...request, refundWindowDays: -1 })
+      .expect(400);
+    await ctx.http().put(path).set(admin).send(request).expect(200);
+    const voucher = await createVoucher({ code: 'SNAPSHOT', title: 'Snapshot', discountType: 'FREE_ITEM' }).expect(201);
+    const claim = await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${voucher.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'snapshot' })
+      .expect(201);
+    expect(claim.body.refundPolicy).toMatchObject({ version: 1, allowExpired: true, refundWindowDays: 30 });
+    const owned = await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200);
+    expect(owned.body[0].refundPolicy).toEqual(claim.body.refundPolicy);
+    await ctx.http().get(path).expect(401);
   });
 });

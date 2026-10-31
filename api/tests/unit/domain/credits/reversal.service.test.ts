@@ -1,3 +1,4 @@
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import { VoucherClaimNotReversibleError, type CreditsRepository } from '#infra/db/repositories/credits.repository.js';
@@ -49,6 +50,7 @@ describe('ReversalService', () => {
       original: confirmedEarn(),
       idempotencyKey: 'reverse-1',
       reason: 'Chargeback from payment provider',
+      evaluateRefund: evaluateVoucherRefund,
     });
   });
 

@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { eq, desc, and, sql, ne } from 'drizzle-orm';
-import type { ClaimVoucherResponse, CreateVoucherRequest } from '@octap/contracts';
+import { DEFAULT_VOUCHER_REFUND_POLICY, type ClaimVoucherResponse, type CreateVoucherRequest } from '@octap/contracts';
+import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
 import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
@@ -187,6 +188,7 @@ export class RewardsRepository {
 
       const result: ClaimVoucherResponse = {
         voucherOwnershipId: ownership.id,
+        refundPolicy: ownership.refundPolicySnapshot,
         voucherId,
         organizationEndUserId: memberId,
         serialCode: ownership.serialCode,
@@ -319,10 +321,20 @@ export class RewardsRepository {
     voucher: Voucher,
     params: { memberId: string; ownershipId: string; loyaltyTransactionId?: string },
   ) {
+    const [policy] = await tx
+      .select()
+      .from(voucherRefundPolicies)
+      .where(eq(voucherRefundPolicies.organizationId, voucher.organizationId))
+      .orderBy(desc(voucherRefundPolicies.version))
+      .limit(1);
+    const refundPolicySnapshot = policy
+      ? { ...policy.policy, version: policy.version }
+      : { ...DEFAULT_VOUCHER_REFUND_POLICY };
     const [ownership] = await tx
       .insert(voucherOwnerships)
       .values({
         id: params.ownershipId,
+        refundPolicySnapshot,
         voucherId: voucher.id,
         organizationEndUserId: params.memberId,
         status: params.loyaltyTransactionId ? 'RESERVED' : 'AVAILABLE',
@@ -359,6 +371,7 @@ export class RewardsRepository {
     const o = row.ownership;
     return {
       voucherOwnershipId: o.id,
+      refundPolicy: o.refundPolicySnapshot,
       voucherId: o.voucherId,
       organizationEndUserId: o.organizationEndUserId,
       serialCode: o.serialCode,

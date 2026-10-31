@@ -1,3 +1,4 @@
+import type { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import { describe, expect, it, vi } from 'vitest';
 import { CreditsController } from '#api/rest/credits.controller.js';
 import { RewardsController } from '#api/rest/rewards.controller.js';
@@ -121,7 +122,7 @@ describe('RewardsController', () => {
       redeemVoucher: ok({ status: 'REDEEMED' }),
       listMemberVouchers: ok([]),
     };
-    const c = new RewardsController(stub<RewardsService>(service));
+    const c = new RewardsController(stub<RewardsService>(service), stub<RefundPolicyService>({}));
     const voucher = { code: 'C', title: 'T', discountType: 'PERCENTAGE' as const };
 
     await c.createVoucher(tenant, voucher);

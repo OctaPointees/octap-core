@@ -1,5 +1,6 @@
+import type { VoucherRefundContext, VoucherRefundDecision } from '#domain/rewards/refund-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, or, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -218,10 +219,10 @@ async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
 
 /** Thrown by `recordReversalTransaction` for a voucher claim whose coupon can no longer be taken back. */
 export class VoucherClaimNotReversibleError extends Error {
-  constructor(couponStatus: string) {
+  constructor(couponStatus: string, reason?: string) {
     super(
-      `This voucher claim cannot be reversed: its coupon is ${couponStatus}. ` +
-        'Only an unused coupon is refunded; compensate the member with an earn instead.',
+      `This voucher claim cannot be reversed: its coupon is ${couponStatus}. ${reason ?? ''} ` +
+        'Check the coupon refund terms or issue separate compensation.',
     );
     this.name = 'VoucherClaimNotReversibleError';
   }
@@ -1032,43 +1033,45 @@ export class CreditsRepository {
    * if two reversal requests for the same original race each other.
    *
    * A paid voucher claim's points and coupon move together: reversing it cancels the coupon and
-   * returns its unit to the catalog, and only while the coupon is unused and unexpired. Otherwise
-   * the benefit was already delivered (or lapsed) and this throws `VoucherClaimNotReversibleError`
-   * without writing anything. The catalog lock serializes this against `redeemVoucher`, so a
-   * coupon is either used or refunded, never both.
+   * returns stock when the coupon's claim-time policy permits it. The domain evaluator runs under
+   * catalog/ownership locks; denied refunds throw `VoucherClaimNotReversibleError` without writes.
+   * An explicitly allowed used/expired refund preserves benefit history and never returns stock.
    */
   async recordReversalTransaction(params: {
     organizationId: string;
     original: typeof loyaltyTransactions.$inferSelect;
     idempotencyKey: string;
     reason?: string;
+    evaluateRefund: (coupon: VoucherRefundContext, nowMs: number) => VoucherRefundDecision;
   }) {
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
-      const coupon = await tx.query.voucherOwnerships.findFirst({
+      const found = await tx.query.voucherOwnerships.findFirst({
         where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
       });
-      if (coupon) {
-        await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, coupon.voucherId)).for('update');
-        const now = new Date();
-        const [cancelled] = await tx
+      let refundAudit: Record<string, unknown> = {};
+      if (found) {
+        await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, found.voucherId)).for('update');
+        const [coupon] = await tx
+          .select()
+          .from(voucherOwnerships)
+          .where(eq(voucherOwnerships.id, found.id))
+          .for('update');
+        const nowMs = Date.now();
+        const decision = params.evaluateRefund(coupon, nowMs);
+        if (!decision.allowed) throw new VoucherClaimNotReversibleError(decision.couponStatus, decision.reason);
+        await tx
           .update(voucherOwnerships)
-          .set({ status: 'CANCELLED', updatedAt: now })
-          .where(
-            and(
-              eq(voucherOwnerships.id, coupon.id),
-              eq(voucherOwnerships.status, 'AVAILABLE'),
-              or(isNull(voucherOwnerships.expiresAt), gt(voucherOwnerships.expiresAt, now)),
-            ),
-          )
-          .returning({ id: voucherOwnerships.id });
-        if (!cancelled) {
-          const [current] = await tx
-            .select({ status: voucherOwnerships.status })
-            .from(voucherOwnerships)
-            .where(eq(voucherOwnerships.id, coupon.id));
-          throw new VoucherClaimNotReversibleError(current.status === 'AVAILABLE' ? 'EXPIRED' : current.status);
-        }
-        await returnVoucherUnit(tx, coupon.voucherId);
+          .set({ status: decision.nextStatus, updatedAt: new Date(nowMs) })
+          .where(eq(voucherOwnerships.id, coupon.id));
+        if (decision.restock) await returnVoucherUnit(tx, coupon.voucherId);
+        refundAudit = {
+          voucherRefund: {
+            policy: coupon.refundPolicySnapshot,
+            couponStatus: coupon.status,
+            restocked: decision.restock,
+            decision: decision.reason,
+          },
+        };
       }
 
       const [reversedOriginal] = await tx
@@ -1111,7 +1114,7 @@ export class CreditsRepository {
           receiptReference: params.reason,
           status: 'CONFIRMED',
           reversesTransactionId: params.original.id,
-          metadata: { reversedTransactionType: params.original.transactionType },
+          metadata: { reversedTransactionType: params.original.transactionType, ...refundAudit },
         })
         .returning();
 

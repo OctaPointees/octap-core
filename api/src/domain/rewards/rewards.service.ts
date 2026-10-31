@@ -206,6 +206,7 @@ export class RewardsService {
       .filter((o) => o.voucher.organizationId === organizationId)
       .map((o) => ({
         id: o.id,
+        refundPolicy: o.refundPolicySnapshot,
         voucherId: o.voucherId,
         organizationEndUserId: o.organizationEndUserId,
         serialCode: o.serialCode,

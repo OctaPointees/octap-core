@@ -1,3 +1,4 @@
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository, VoucherClaimNotReversibleError } from '#infra/db/repositories/credits.repository.js';
 import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
@@ -56,6 +57,7 @@ export class ReversalService {
         original,
         idempotencyKey: request.idempotencyKey,
         reason: request.reason,
+        evaluateRefund: evaluateVoucherRefund,
       });
 
       return {

@@ -182,6 +182,15 @@ then move the row to **Implemented** in the same pull request.
   by member, not by organization directly), so it relies on application code regardless of
   role/session context.
 
+## Voucher refund policy settings
+
+Organization refund terms are configured through `GET/PUT /v1/rewards/refund-policy` and an admin-only
+history endpoint. Versions are append-only, coupons snapshot their claim-time terms, and refunds
+are evaluated under row locks with atomic balance, coupon and stock effects. Node SDK methods and
+policy actor/reason auditing are included. This is separate from the on-chain points policy.
+Used/expired refunds are opt-in and preserve benefit history without restocking. Console-role
+permissions, approval queues and a frontend settings screen remain future work.
+
 ## Not started
 
 Suggested location follows the existing pattern: `api/src/domain/<feature>` for services and

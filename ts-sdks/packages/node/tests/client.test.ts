@@ -265,3 +265,38 @@ describe('customer-signed voucher claims', () => {
     expect(last().headers['x-organization-id']).toBe('org-override');
   });
 });
+
+describe('voucher refund policy SDK', () => {
+  it('reads, replaces and lists policies through tenant-scoped API methods', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ version: 1 }));
+    const client = createOctaPointClient({ credentials: { apiKey: 'admin' }, fetchFn });
+    const signal = new AbortController().signal;
+    const request = {
+      allowUnused: true,
+      allowExpired: true,
+      allowRedeemed: false,
+      restockUnused: false,
+      refundWindowDays: 7,
+      reason: 'New terms',
+    };
+    await client.getVoucherRefundPolicy({ signal, organizationId: 'org' });
+    expect(last()).toMatchObject({
+      method: 'GET',
+      url: 'http://localhost:3000/v1/rewards/refund-policy',
+      headers: { 'x-organization-id': 'org' },
+    });
+    await client.setVoucherRefundPolicy(request, { signal });
+    expect(last()).toMatchObject({ method: 'PUT', body: request });
+    await client.listVoucherRefundPolicyHistory();
+    expect(last()).toMatchObject({ method: 'GET', url: 'http://localhost:3000/v1/rewards/refund-policy/history' });
+    await client.listVoucherRefundPolicyHistory(
+      { limit: 2, beforeVersion: 7 },
+      { organizationId: 'another-org', signal },
+    );
+    expect(last()).toMatchObject({
+      method: 'GET',
+      url: 'http://localhost:3000/v1/rewards/refund-policy/history?limit=2&beforeVersion=7',
+      headers: { 'x-organization-id': 'another-org' },
+    });
+  });
+});
