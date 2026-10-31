@@ -90,6 +90,18 @@ describe('ChainOutcomeReconciler', () => {
     });
   });
 
+  it('abandons an unsigned voucher claim but yields if finalize has already pinned its digest', async () => {
+    const operation = posFinalize({
+      suiTxDigest: null,
+      payload: { organizationEndUserId: 'user-1', pointsAmount: 80, voucherOwnershipId: 'coupon' },
+    });
+    const failPosRedemptionOnChain = vi.fn(async () => false);
+    const { reconciler, ops } = fixture({ operations: [operation], creditsRepo: { failPosRedemptionOnChain } });
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['waiting']);
+    expect(failPosRedemptionOnChain).toHaveBeenCalledWith(expect.objectContaining({ onlyIfUnsubmitted: true }));
+    expect(ops.settleFromChain).not.toHaveBeenCalled();
+  });
+
   it('confirms a timed-out earn that landed from its digest, never sending it again', async () => {
     const { ops, credits, reconciler } = fixture({
       operations: [unknownEarn()],
@@ -228,6 +240,17 @@ describe('ChainOutcomeReconciler', () => {
       sender: '0xbeneficiary',
     });
     expect(ops.settleFromChain).toHaveBeenCalledWith('op-pos', 'SUBMITTED');
+  });
+
+  it('settles a failed POS operation after its loyalty transaction was already settled before a crash', async () => {
+    const { ops, reconciler } = fixture({
+      operations: [posFinalize()],
+      epoch: 6n,
+      creditsRepo: { failPosRedemptionOnChain: async () => 'already-settled' },
+    });
+
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed']);
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-pos', 'FAILED', expect.stringMatching(/never landed/));
   });
 
   it('a landed POS finalize with no loyalty row or beneficiary is left for a human', async () => {

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
 
@@ -148,6 +148,7 @@ export class OperationsRepository {
           eq(operations.tenantId, params.tenantId),
           eq(operations.idempotencyKey, params.idempotencyKey),
           inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+          or(isNull(operations.suiTxDigest), eq(operations.suiTxDigest, params.suiTxDigest)),
         ),
       )
       .returning({ id: operations.id });
@@ -176,7 +177,13 @@ export class OperationsRepository {
           and(
             eq(operations.commandType, params.posCommandType),
             inArray(operations.status, ['PENDING', 'UNKNOWN']),
-            isNotNull(operations.suiTxDigest),
+            or(
+              isNotNull(operations.suiTxDigest),
+              and(
+                sql`${operations.payload} ? 'voucherOwnershipId'`,
+                lt(operations.updatedAt, new Date(Date.now() - 30 * 60 * 1000)),
+              ),
+            ),
           ),
         ),
       ),

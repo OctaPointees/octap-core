@@ -54,9 +54,9 @@ export class CreditsController {
   }
 
   /**
-   * Real on-chain customer-signed redemption (OCT-55) — separate from `redeem` above, which
-   * stays Postgres-only for voucher claims. Merchant-authenticated: the POS, not the customer,
-   * initiates "redeem N points for this member"; the customer's own device signs afterward.
+   * Customer-signed POS redemption. Paid voucher claims share the sponsorship/finalize
+   * pipeline after atomically reserving their own stock and points. The merchant initiates;
+   * the customer's device signs.
    */
   @Post('redeem/reserve')
   @Scopes('write')

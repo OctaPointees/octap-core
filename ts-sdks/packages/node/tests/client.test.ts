@@ -20,6 +20,18 @@ function recordingFetch(respond: (url: string, init: RequestInit) => unknown = (
 }
 
 describe('OctaPointClient', () => {
+  it('updates voucher lifecycle fields through the authenticated public PATCH method', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ id: 'voucher-1', status: 'PAUSED' }));
+    const client = createOctaPointClient({ credentials: { apiKey: 'test-key' }, organizationId: 'org-1', fetchFn });
+    const voucher = await client.updateVoucher('voucher-1', { status: 'PAUSED', totalSupply: null });
+    expect(voucher.status).toBe('PAUSED');
+    expect(last()).toMatchObject({
+      method: 'PATCH',
+      url: 'http://localhost:3000/v1/rewards/vouchers/voucher-1',
+      body: { status: 'PAUSED', totalSupply: null },
+      headers: { authorization: 'Bearer test-key', 'x-organization-id': 'org-1' },
+    });
+  });
   it('earnPoints and redeemPoints send authenticated JSON requests, with a per-call org override', async () => {
     const { fetchFn, last } = recordingFetch((_url, init) => {
       const body = JSON.parse(String(init.body));
@@ -230,5 +242,17 @@ describe('OctaApiError', () => {
       'a is required, b is required',
     );
     expect(new OctaApiError(500, 'Oops', null, 'custom').message).toBe('custom');
+  });
+});
+
+describe('customer-signed voucher claims', () => {
+  it('reads claim state and finalizes with a customer signature without a merchant credential', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ status: 'AVAILABLE' }));
+    const client = createOctaPointClient({ fetchFn });
+    expect((await client.getVoucherClaim('coupon')).status).toBe('AVAILABLE');
+    expect(last().url).toContain('/v1/rewards/claims/coupon');
+    await client.finalizeVoucherClaim({ digest: 'digest', signature: 'customer-signature' });
+    expect(last()).toMatchObject({ method: 'POST', body: { digest: 'digest', signature: 'customer-signature' } });
+    expect(last().headers.authorization).toBeUndefined();
   });
 });

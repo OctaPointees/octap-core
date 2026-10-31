@@ -3,6 +3,8 @@ import type {
   LoyaltyTransactionDto,
   VoucherDto,
   ClaimVoucherResponse,
+  FinalizePosRedemptionRequest,
+  FinalizePosRedemptionResponse,
   VoucherOwnershipDto,
   GoogleLoginResponse,
   EnrollMemberResponse,
@@ -117,6 +119,16 @@ export class OctaBrowserClient {
       },
       organizationId,
     );
+  }
+
+  /** Read persisted claim state after finalize or asynchronous chain recovery. */
+  async getVoucherClaim(ownershipId: string): Promise<ClaimVoucherResponse> {
+    return this.request<ClaimVoucherResponse>(`/v1/rewards/claims/${ownershipId}`, 'GET');
+  }
+
+  /** The customer signs returned transactionBytes with their zkLogin session; no merchant key is needed by finalize. */
+  async finalizeVoucherClaim(request: FinalizePosRedemptionRequest): Promise<FinalizePosRedemptionResponse> {
+    return this.request<FinalizePosRedemptionResponse>('/v1/credits/redeem/finalize', 'POST', request);
   }
 
   /**

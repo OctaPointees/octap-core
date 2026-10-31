@@ -78,6 +78,13 @@
       "when": 1793178146954,
       "tag": "0010_operations_pending_unsent_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793289375928,
+      "tag": "0011_voucher_claim_reservations",
+      "breakpoints": true
     }
   ]
 }

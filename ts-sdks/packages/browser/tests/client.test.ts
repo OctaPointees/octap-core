@@ -127,3 +127,19 @@ describe('OctaBrowserClient', () => {
     );
   });
 });
+
+describe('customer-signed voucher claims', () => {
+  it('finalizes from the customer device without a merchant key and reads persisted state', async () => {
+    const { last } = stubFetch(() => ({ body: { status: 'AVAILABLE' } }));
+    const client = createBrowserClient({ apiBaseUrl: 'https://api.example.com' });
+    await client.finalizeVoucherClaim({ digest: 'digest', signature: 'customer-signature' });
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'https://api.example.com/v1/credits/redeem/finalize',
+      body: { digest: 'digest', signature: 'customer-signature' },
+    });
+    expect(last().headers.authorization).toBeUndefined();
+    expect((await client.getVoucherClaim('coupon')).status).toBe('AVAILABLE');
+    expect(last().url).toBe('https://api.example.com/v1/rewards/claims/coupon');
+  });
+});

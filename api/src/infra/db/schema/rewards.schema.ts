@@ -88,6 +88,8 @@ export const voucherOwnerships = pgTable(
   },
   (t) => [
     uniqueIndex('voucher_ownership_serial_idx').on(t.serialCode),
-    uniqueIndex('voucher_ownership_voucher_member_idx').on(t.voucherId, t.organizationEndUserId),
+    uniqueIndex('voucher_ownership_voucher_member_idx')
+      .on(t.voucherId, t.organizationEndUserId)
+      .where(sql`${t.status} <> 'CANCELLED'`),
   ],
 );
