@@ -103,6 +103,9 @@ describe('atomic voucher conversion', () => {
       .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test-secret' });
     const result = await claim(voucher.id);
     expect(result).toMatchObject({ pointsDeducted: 0, pointsCost: 25, status: 'RESERVED' });
+    expect(await db.select().from(schema.operations)).toMatchObject([
+      { commandType: 'VOUCHER_CLAIM_RESERVE', status: 'PENDING' },
+    ]);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     await expect(repo.redeemVoucher(orgId, result.serialCode)).rejects.toThrow(/RESERVED/);
     expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(0);
@@ -380,6 +383,9 @@ describe('atomic voucher conversion', () => {
     const result = await claim(voucher.id);
     expect(await claim(voucher.id)).toEqual(result);
     expect(await db.select().from(schema.loyaltyTransactions)).toHaveLength(0);
+    expect(await db.select().from(schema.operations)).toMatchObject([
+      { commandType: 'VOUCHER_CLAIM', status: 'COMPLETED' },
+    ]);
     const second = await create({ code: 'SECOND' });
     await db
       .insert(schema.operations)

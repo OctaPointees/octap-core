@@ -214,7 +214,17 @@ async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, c
 }
 
 /** The durable command a POS reserve is accepted under (OCT-55). */
-const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
+export const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
+
+/**
+ * A paid voucher claim's hold (OCT-231). Signed, finalized and settled exactly like a POS reserve,
+ * but it also holds catalog stock, so `ChainOutcomeReconciler` releases it once it is abandoned
+ * unsigned instead of waiting for the member's next balance read.
+ */
+export const VOUCHER_CLAIM_RESERVE_COMMAND_TYPE = 'VOUCHER_CLAIM_RESERVE';
+
+/** Every command whose hold settles through a customer-signed `credit_account::redeem`. */
+export const CUSTOMER_REDEEM_COMMAND_TYPES = [POS_RESERVE_COMMAND_TYPE, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE];
 
 /**
  * How long a POS reserve that was never finalized keeps its points held before the member's next
@@ -226,7 +236,7 @@ export const ABANDONED_POS_HOLD_GRACE_MS = 30 * 60 * 1000;
 
 /**
  * Lazy hold expiry (OCT-244), same lazy pattern as `expireDueBuckets`: releases this member's POS
- * reserves that were never finalized, so an abandoned reserve can't lock points in
+ * reserves and paid voucher claims that were never finalized, so an abandoned reserve can't lock points in
  * `pendingRedemption` forever. Each is marked FAILED and its points return to the available
  * balance.
  *
@@ -257,7 +267,7 @@ export async function releaseAbandonedPosHolds(
     .where(
       and(
         eq(operations.tenantId, member.organizationId),
-        eq(operations.commandType, POS_RESERVE_COMMAND_TYPE),
+        inArray(operations.commandType, CUSTOMER_REDEEM_COMMAND_TYPES),
         eq(operations.status, 'PENDING'),
         isNull(operations.suiTxDigest),
         lt(operations.updatedAt, new Date(nowMs - graceMs)),
@@ -745,7 +755,7 @@ export class CreditsRepository {
       const { operation, isNew } = await acceptCommand(tx, {
         tenantId: params.organizationId,
         idempotencyKey: params.idempotencyKey,
-        commandType: 'CREDIT_POS_REDEEM_RESERVE',
+        commandType: POS_RESERVE_COMMAND_TYPE,
         payload: {
           organizationEndUserId: params.organizationEndUserId,
           pointsAmount: params.pointsAmount,
@@ -905,24 +915,23 @@ export class CreditsRepository {
     return this.db.transaction(async (tx) => {
       let abandonedCommandId: string | undefined;
       if (params.onlyIfUnsubmitted) {
-        const [command] = await tx
-          .select()
-          .from(operations)
-          .where(
-            and(
-              eq(operations.commandType, 'CREDIT_POS_REDEEM_RESERVE'),
-              sql`${operations.payload}->>'voucherOwnershipId' is not null`,
-              eq(
-                operations.idempotencyKey,
-                sql`(select idempotency_key from loyalty_transactions where id = ${params.loyaltyTransactionId})`,
-              ),
-              eq(
-                operations.tenantId,
-                sql`(select organization_id from loyalty_transactions where id = ${params.loyaltyTransactionId})`,
-              ),
-            ),
-          )
-          .for('update');
+        const hold = await tx.query.loyaltyTransactions.findFirst({
+          columns: { organizationId: true, idempotencyKey: true },
+          where: eq(loyaltyTransactions.id, params.loyaltyTransactionId),
+        });
+        const [command] = hold
+          ? await tx
+              .select()
+              .from(operations)
+              .where(
+                and(
+                  eq(operations.tenantId, hold.organizationId),
+                  eq(operations.idempotencyKey, hold.idempotencyKey),
+                  eq(operations.commandType, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE),
+                ),
+              )
+              .for('update')
+          : [];
         if (!command || command.suiTxDigest) return false;
         abandonedCommandId = command.id;
       }

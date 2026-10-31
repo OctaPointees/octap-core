@@ -9,10 +9,19 @@ import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
-import { ABANDONED_POS_HOLD_GRACE_MS, releaseAbandonedPosHolds, expireDueBuckets } from './credits.repository.js';
+import {
+  ABANDONED_POS_HOLD_GRACE_MS,
+  VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+  releaseAbandonedPosHolds,
+  expireDueBuckets,
+} from './credits.repository.js';
 import { acceptCommand, OperationPayloadConflictError } from './operations.repository.js';
 
 type Voucher = typeof vouchers.$inferSelect;
+
+/** A free claim completes at once; a paid one is accepted under this type, then becomes a reserve. */
+const VOUCHER_CLAIM_COMMAND_TYPE = 'VOUCHER_CLAIM';
+const CLAIM_COMMAND_TYPES = [VOUCHER_CLAIM_COMMAND_TYPE, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE];
 type VoucherPatch = Partial<
   Omit<typeof vouchers.$inferInsert, 'id' | 'organizationId' | 'claimedCount' | 'createdAt' | 'updatedAt'>
 >;
@@ -134,12 +143,12 @@ export class RewardsRepository {
         const previous = await tx.query.operations.findFirst({
           where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
         });
-        if (previous && !['VOUCHER_CLAIM', 'CREDIT_POS_REDEEM_RESERVE'].includes(previous.commandType))
+        if (previous && !CLAIM_COMMAND_TYPES.includes(previous.commandType))
           throw new OperationPayloadConflictError(idempotencyKey);
         const { operation, isNew } = await acceptCommand(tx, {
           tenantId: organizationId,
           idempotencyKey,
-          commandType: 'CREDIT_POS_REDEEM_RESERVE',
+          commandType: VOUCHER_CLAIM_COMMAND_TYPE,
           payload: { voucherId, memberId },
         });
         if (!isNew) {
@@ -273,7 +282,7 @@ export class RewardsRepository {
         await tx
           .update(operations)
           .set({
-            commandType: pointsCost > 0 ? 'CREDIT_POS_REDEEM_RESERVE' : 'VOUCHER_CLAIM',
+            commandType: pointsCost > 0 ? VOUCHER_CLAIM_RESERVE_COMMAND_TYPE : VOUCHER_CLAIM_COMMAND_TYPE,
             status: pointsCost > 0 ? 'PENDING' : 'COMPLETED',
             payload: {
               voucherId,
