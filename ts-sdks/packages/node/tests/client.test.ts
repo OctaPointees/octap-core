@@ -255,4 +255,13 @@ describe('customer-signed voucher claims', () => {
     expect(last()).toMatchObject({ method: 'POST', body: { digest: 'digest', signature: 'customer-signature' } });
     expect(last().headers.authorization).toBeUndefined();
   });
+
+  it('accepts per-request options like every other client method', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ status: 'AVAILABLE' }));
+    const client = createOctaPointClient({ fetchFn });
+    await client.getVoucherClaim('coupon', { organizationId: 'org-override' });
+    expect(last().headers['x-organization-id']).toBe('org-override');
+    await client.finalizeVoucherClaim({ digest: 'digest', signature: 'sig' }, { organizationId: 'org-override' });
+    expect(last().headers['x-organization-id']).toBe('org-override');
+  });
 });
