@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
-import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import { RewardsRuleError, type RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
-import { PROGRAMS_REPO } from '../../../helpers/fixtures.js';
+import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
-import { buildVoucher } from '../../../helpers/fixtures.js';
+import { PROGRAMS_REPO, buildVoucher, programsRepoFor } from '../../../helpers/fixtures.js';
 
 const sameOrgMember = stub<CreditsRepository>({
   findMemberOrganizationId: async () => 'org-1',
@@ -130,8 +130,8 @@ describe('RewardsService claims and redemption', () => {
     await service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId });
     expect(claimVoucher).toHaveBeenLastCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`);
   });
-  it('sponsors the atomic paid reservation without issuing a usable voucher or debiting points', async () => {
-    const claim = {
+  describe('a paid claim', () => {
+    const reserved = {
       voucherOwnershipId: 'ownership-1',
       voucherId: 'v-1',
       organizationEndUserId: memberId,
@@ -142,37 +142,124 @@ describe('RewardsService claims and redemption', () => {
       serialCode: 'CODE',
       claimedAt: '2026-10-29T00:00:00Z',
     };
-    const sponsorReservation = vi.fn(async () => ({ status: 'PENDING', digest: 'digest', transactionBytes: 'bytes' }));
-    const rewards = new RewardsService(
-      stub<RewardsRepository>({
-        findVoucherById: async () => buildVoucher({ pointsCost: 25 }),
-        claimVoucher: async () => claim,
-      }),
-      stub<CreditsRepository>({
-        findBeneficiaryAddress: async () => '0xmember',
-        getLoyaltyTransactionById: async () => ({ id: 'tx-1' }),
-        getOrCreateCreditOwnership: async () => ({ suiCreditAccountId: '0xaccount' }),
-        findOperationForClaim: vi
-          .fn()
-          .mockResolvedValueOnce(undefined)
-          .mockResolvedValueOnce({ suiTxDigest: null })
-          .mockResolvedValueOnce(undefined),
-      }),
-      stub<PosRedemptionService>({ sponsorReservation }),
-      PROGRAMS_REPO,
-    );
+    const hold = { transaction: { id: 'tx-1' }, accountId: '0xaccount', submittedDigest: null };
+
+    function paidClaim({
+      claim = reserved as Record<string, unknown>,
+      previousOperation = undefined as unknown,
+      beneficiary = '0xmember' as string | null,
+      programs = PROGRAMS_REPO,
+      sponsored = { status: 'PENDING', digest: 'digest', transactionBytes: 'bytes' } as Record<string, unknown>,
+    } = {}) {
+      const claimVoucher = vi.fn(async () => claim);
+      const sponsorReservation = vi.fn(async () => sponsored);
+      const findVoucherClaimHold = vi.fn(async () => hold);
+      const getClaim = vi.fn(async () => ({ ...reserved, status: 'CANCELLED' }));
+      const rewards = new RewardsService(
+        stub<RewardsRepository>({
+          findVoucherById: async () => buildVoucher({ pointsCost: 25 }),
+          claimVoucher,
+          getClaim,
+        }),
+        stub<CreditsRepository>({
+          findBeneficiaryAddress: async () => beneficiary,
+          findOperationForClaim: async () => previousOperation,
+          findVoucherClaimHold,
+        }),
+        stub<PosRedemptionService>({ sponsorReservation }),
+        programs,
+      );
+      const run = (idempotencyKey: string | null = 'claim-key') =>
+        rewards.claimVoucher('org-1', 'v-1', {
+          organizationEndUserId: memberId,
+          idempotencyKey: idempotencyKey ?? undefined,
+        });
+      return { run, claimVoucher, sponsorReservation, findVoucherClaimHold, getClaim };
+    }
+
+    it('sponsors the reservation it just made, returning signable bytes without debiting points', async () => {
+      const { run, sponsorReservation, findVoucherClaimHold } = paidClaim();
+
+      await expect(run()).resolves.toMatchObject({
+        status: 'RESERVED',
+        pointsDeducted: 0,
+        digest: 'digest',
+        transactionBytes: 'bytes',
+      });
+      expect(findVoucherClaimHold).toHaveBeenCalledWith('org-1', 'claim-key');
+      expect(sponsorReservation).toHaveBeenCalledWith(
+        'org-1',
+        { organizationEndUserId: memberId, pointsAmount: 25, idempotencyKey: 'claim-key' },
+        hold,
+      );
+    });
+
+    it('requires an explicit idempotency key', async () => {
+      const { run, claimVoucher } = paidClaim();
+      await expect(run(null)).rejects.toThrow(/idempotencyKey is required/);
+      expect(claimVoucher).not.toHaveBeenCalled();
+    });
+
+    it('refuses an organization with no provisioned program before reserving anything', async () => {
+      const { run, claimVoucher } = paidClaim({ programs: programsRepoFor({}) });
+      await expect(run()).rejects.toThrow(/no on-chain program provisioned/);
+      expect(claimVoucher).not.toHaveBeenCalled();
+    });
+
+    it('refuses a member with no linked Sui address before reserving anything', async () => {
+      const { run, claimVoucher } = paidClaim({ beneficiary: null });
+      await expect(run()).rejects.toThrow(/no linked Sui address/);
+      expect(claimVoucher).not.toHaveBeenCalled();
+    });
+
+    it('a retry under an accepted key skips the prechecks and resumes signing', async () => {
+      const { run, claimVoucher, sponsorReservation } = paidClaim({
+        previousOperation: { suiTxDigest: null },
+        beneficiary: null,
+      });
+      await expect(run(null)).resolves.toMatchObject({ digest: 'digest' });
+      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`);
+      expect(sponsorReservation).toHaveBeenCalledOnce();
+    });
+
+    it('a retry still refuses to sponsor once the program is gone', async () => {
+      const { run, sponsorReservation } = paidClaim({
+        previousOperation: { suiTxDigest: null },
+        programs: programsRepoFor({}),
+      });
+      await expect(run()).rejects.toThrow(/no on-chain program provisioned/);
+      expect(sponsorReservation).not.toHaveBeenCalled();
+    });
+
+    it('a claim the chain already settled is reported as is, with nothing to sign', async () => {
+      const { run, sponsorReservation } = paidClaim({
+        previousOperation: { suiTxDigest: 'D' },
+        claim: { ...reserved, status: 'AVAILABLE', pointsDeducted: 25 },
+      });
+      await expect(run()).resolves.toMatchObject({ status: 'AVAILABLE', pointsDeducted: 25 });
+      expect(sponsorReservation).not.toHaveBeenCalled();
+    });
+
+    it('re-reads the claim when the hold settled between reserving and sponsoring', async () => {
+      const { run, getClaim } = paidClaim({ sponsored: { status: 'FAILED', digest: null, transactionBytes: null } });
+      await expect(run()).resolves.toMatchObject({ status: 'CANCELLED' });
+      expect(getClaim).toHaveBeenCalledWith('org-1', 'ownership-1');
+    });
+  });
+
+  it.each([
+    [new RewardsRuleError('NOT_FOUND', 'Voucher not found'), 'NotFoundException'],
+    [new RewardsRuleError('INVALID', 'Insufficient points'), 'BadRequestException'],
+    [new RewardsRuleError('CONFLICT', 'Claim has no saved result'), 'ConflictException'],
+    [new OperationPayloadConflictError('claim-key'), 'ConflictException'],
+    [Object.assign(new Error('duplicate key'), { code: '23505' }), 'ConflictException'],
+  ])('maps the repository failure %s to %s', async (failure, name) => {
+    const claimVoucher = vi.fn(async () => {
+      throw failure;
+    });
     await expect(
-      rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: 'claim-key' }),
-    ).resolves.toMatchObject({ status: 'RESERVED', pointsDeducted: 0, digest: 'digest', transactionBytes: 'bytes' });
-    expect(sponsorReservation).toHaveBeenCalledWith(
-      'org-1',
-      expect.objectContaining({ pointsAmount: 25 }),
-      expect.anything(),
-      'voucher-claim-ownership-1',
-    );
-    await expect(rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId })).rejects.toThrow(
-      /idempotencyKey is required/,
-    );
+      service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId }),
+    ).rejects.toMatchObject({ name });
   });
 
   it('rejects malformed members and claim keys before reaching the database', async () => {

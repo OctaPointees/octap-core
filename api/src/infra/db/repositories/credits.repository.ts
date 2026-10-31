@@ -94,7 +94,7 @@ async function trimBucketsToBalance(tx: DrizzleDb, ownership: { id: string; conf
  * Debits `amount` from live buckets, nearest expiry first (same order as `redeem` on-chain). If
  * buckets run out, the rest came from points that have no bucket (see `creditBuckets`).
  */
-export async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: number, nowMs = Date.now()) {
+async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: number, nowMs = Date.now()) {
   const live = await tx
     .select()
     .from(creditBuckets)
@@ -236,6 +236,21 @@ export const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
  * unsigned instead of waiting for the member's next balance read.
  */
 export const VOUCHER_CLAIM_RESERVE_COMMAND_TYPE = 'VOUCHER_CLAIM_RESERVE';
+
+const VOUCHER_CLAIM_REFERENCE_PREFIX = 'voucher-claim-';
+
+/**
+ * A paid claim's receipt reference, also passed as the on-chain `reference` of its
+ * `credit_account::redeem`, so the indexer and `reverse_redeem` can find the claim from the chain.
+ */
+export const voucherClaimReference = (ownershipId: string) => `${VOUCHER_CLAIM_REFERENCE_PREFIX}${ownershipId}`;
+
+/** The claim's ownership id, or null when `reference` is not a voucher claim's. */
+export function parseVoucherClaimReference(reference: string | null | undefined): string | null {
+  return reference?.startsWith(VOUCHER_CLAIM_REFERENCE_PREFIX)
+    ? reference.slice(VOUCHER_CLAIM_REFERENCE_PREFIX.length)
+    : null;
+}
 
 /** Every command whose hold settles through a customer-signed `credit_account::redeem`. */
 export const CUSTOMER_REDEEM_COMMAND_TYPES = [POS_RESERVE_COMMAND_TYPE, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE];
@@ -721,16 +736,6 @@ export class CreditsRepository {
     });
   }
 
-  /**
-   * Durably accepts a POS redemption request (OCT-55): moves `pointsAmount` into
-   * `pendingRedemption` rather than deducting `confirmedBalance` yet — Sui is authoritative for
-   * whether `credit_account::redeem` actually lands, not this request. Gated by OCT-43's
-   * `acceptCommand`, checked *before* any balance/account read, so a reused idempotency key with
-   * a different `organizationEndUserId`/`pointsAmount` is a clean conflict and never touches a
-   * balance. `isNew: false` means this exact command was already accepted in a prior call — the
-   * caller must not sponsor a new on-chain transaction for it, only resume reporting on the
-   * existing one.
-   */
   async findOperationForClaim(organizationId: string, idempotencyKey: string) {
     return this.db.query.operations.findFirst({
       where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
@@ -742,6 +747,45 @@ export class CreditsRepository {
     return claim?.loyaltyTransactionId ? this.getLoyaltyTransactionById(claim.loyaltyTransactionId) : undefined;
   }
 
+  /**
+   * The hold behind a paid voucher claim, in the shape `PosRedemptionService.sponsorReservation`
+   * takes: its REDEEM row, the member's on-chain account and any digest finalize already pinned.
+   */
+  async findVoucherClaimHold(organizationId: string, idempotencyKey: string) {
+    const [hold] = await this.db
+      .select({
+        transaction: loyaltyTransactions,
+        accountId: creditOwnerships.suiCreditAccountId,
+        submittedDigest: operations.suiTxDigest,
+      })
+      .from(loyaltyTransactions)
+      .innerJoin(
+        operations,
+        and(
+          eq(operations.tenantId, loyaltyTransactions.organizationId),
+          eq(operations.idempotencyKey, loyaltyTransactions.idempotencyKey),
+        ),
+      )
+      .leftJoin(creditOwnerships, eq(creditOwnerships.organizationEndUserId, loyaltyTransactions.organizationEndUserId))
+      .where(
+        and(
+          eq(loyaltyTransactions.organizationId, organizationId),
+          eq(loyaltyTransactions.idempotencyKey, idempotencyKey),
+        ),
+      );
+    return hold;
+  }
+
+  /**
+   * Durably accepts a POS redemption request (OCT-55): moves `pointsAmount` into
+   * `pendingRedemption` rather than deducting `confirmedBalance` yet — Sui is authoritative for
+   * whether `credit_account::redeem` actually lands, not this request. Gated by OCT-43's
+   * `acceptCommand`, checked *before* any balance/account read, so a reused idempotency key with
+   * a different `organizationEndUserId`/`pointsAmount` is a clean conflict and never touches a
+   * balance. `isNew: false` means this exact command was already accepted in a prior call — the
+   * caller must not sponsor a new on-chain transaction for it, only resume reporting on the
+   * existing one.
+   */
   async reservePosRedemption(params: {
     organizationId: string;
     organizationEndUserId: string;
@@ -1084,11 +1128,12 @@ export class CreditsRepository {
             reversedTransactionType: params.original.transactionType,
             organizationEndUserId: params.original.organizationEndUserId,
             // The original's on-chain handle: an earn's `operation_key` is its idempotency key, a
-            // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts).
+            // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts),
+            // a voucher claim's is its receipt reference (`voucherClaimReference`).
             chainKey:
               params.original.transactionType === 'EARN'
                 ? params.original.idempotencyKey
-                : params.original.receiptReference?.startsWith('voucher-claim-')
+                : parseVoucherClaimReference(params.original.receiptReference)
                   ? params.original.receiptReference
                   : params.original.id,
           },

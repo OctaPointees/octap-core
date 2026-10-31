@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
-import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { CreditsRepository, parseVoucherClaimReference } from '#infra/db/repositories/credits.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
@@ -226,11 +226,10 @@ export class CheckpointIndexerProcessor {
     organizationEndUserId: string,
     amount: number,
   ): Promise<EventOutcome> {
-    // POS redemption passes the loyalty transaction id as `reference` (pos-redemption.service.ts).
+    // POS redemption passes the loyalty transaction id as `reference` (pos-redemption.service.ts),
+    // a paid voucher claim its `voucherClaimReference`.
     const loyaltyTransactionId = decodeBytesField(event.json?.reference);
-    const claimId = loyaltyTransactionId?.startsWith('voucher-claim-')
-      ? loyaltyTransactionId.slice('voucher-claim-'.length)
-      : null;
+    const claimId = parseVoucherClaimReference(loyaltyTransactionId);
     if (
       !loyaltyTransactionId ||
       !(UUID_PATTERN.test(loyaltyTransactionId) || (claimId && UUID_PATTERN.test(claimId)))

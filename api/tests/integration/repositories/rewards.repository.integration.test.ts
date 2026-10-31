@@ -55,7 +55,7 @@ describe('atomic voucher conversion', () => {
     const results = await Promise.allSettled([create(), create(), create()]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     for (const result of results) {
-      if (result.status === 'rejected') expect(result.reason).toMatchObject({ status: 409 });
+      if (result.status === 'rejected') expect(result.reason).toMatchObject({ kind: 'CONFLICT' });
     }
     expect(await repo.listVouchersByOrganization(orgId)).toHaveLength(1);
   });
@@ -126,9 +126,9 @@ describe('atomic voucher conversion', () => {
     expect(results.every((result) => result.voucherOwnershipId === results[0].voucherOwnershipId)).toBe(true);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     const other = await create({ code: 'OTHER' });
-    await expect(claim(other.id)).rejects.toMatchObject({ status: 409 });
+    await expect(claim(other.id)).rejects.toThrow(/different payload/);
     const second = (await seedMember(db, orgId)).memberId;
-    await expect(claim(voucher.id, 'claim-1', second)).rejects.toMatchObject({ status: 409 });
+    await expect(claim(voucher.id, 'claim-1', second)).rejects.toThrow(/different payload/);
   });
 
   it('does not deduct points for another key after a member already claimed', async () => {
@@ -230,9 +230,11 @@ describe('atomic voucher conversion', () => {
   it('enforces organization and member eligibility even for free rewards', async () => {
     const voucher = await create({ pointsCost: 0 });
     const other = await seedOrganization(db);
-    await expect(repo.claimVoucher(other.id, voucher.id, memberId, 'other-key')).rejects.toMatchObject({ status: 404 });
+    await expect(repo.claimVoucher(other.id, voucher.id, memberId, 'other-key')).rejects.toMatchObject({
+      kind: 'NOT_FOUND',
+    });
     const foreignMember = (await seedMember(db, other.id)).memberId;
-    await expect(claim(voucher.id, 'foreign-key', foreignMember)).rejects.toMatchObject({ status: 404 });
+    await expect(claim(voucher.id, 'foreign-key', foreignMember)).rejects.toMatchObject({ kind: 'NOT_FOUND' });
     await db
       .update(schema.organizationEndUsers)
       .set({ status: 'BLOCKED' })
@@ -269,7 +271,7 @@ describe('atomic voucher conversion', () => {
     await confirm(retry);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
     await expect(repo.getClaim((await seedOrganization(db)).id, retry.voucherOwnershipId)).rejects.toMatchObject({
-      status: 404,
+      kind: 'NOT_FOUND',
     });
   });
 
@@ -445,7 +447,7 @@ describe('atomic voucher conversion', () => {
     await db
       .insert(schema.operations)
       .values({ tenantId: orgId, idempotencyKey: 'earn-key', commandType: 'CREDIT_EARN_CHAIN_SUBMIT', payload: {} });
-    await expect(claim(second.id, 'earn-key')).rejects.toMatchObject({ status: 409 });
+    await expect(claim(second.id, 'earn-key')).rejects.toThrow(/different payload/);
   });
 });
 
@@ -457,23 +459,23 @@ describe('single-use redemption and lifecycle locking', () => {
       '10.00',
     );
     await expect(repo.updateVoucher(orgId, voucher.id, { discountValue: '11' }, () => {})).rejects.toMatchObject({
-      status: 409,
+      kind: 'CONFLICT',
     });
   });
 
   it('does not activate expired rewards or reduce stock below claimed supply', async () => {
     const expired = await create({ code: 'EXPIRED', status: 'DRAFT', expiresAt: new Date(Date.now() - 1000) });
     await expect(repo.updateVoucher(orgId, expired.id, { status: 'ACTIVE' }, () => {})).rejects.toMatchObject({
-      status: 400,
+      kind: 'INVALID',
     });
     const voucher = await create({ totalSupply: 2 });
     await claim(voucher.id);
     await expect(repo.updateVoucher(orgId, voucher.id, { totalSupply: 0 }, () => {})).rejects.toMatchObject({
-      status: 409,
+      kind: 'CONFLICT',
     });
     await repo.updateVoucher(orgId, voucher.id, { totalSupply: 1 }, () => {});
     await expect(repo.updateVoucher(orgId, voucher.id, { status: 'ACTIVE' }, () => {})).rejects.toMatchObject({
-      status: 409,
+      kind: 'CONFLICT',
     });
     const restocked = await repo.updateVoucher(orgId, voucher.id, { totalSupply: 2 }, () => {});
     expect(restocked.status).toBe('DEPLETED');
@@ -484,7 +486,7 @@ describe('single-use redemption and lifecycle locking', () => {
     const voucher = await create();
     const result = await confirm(await claim(voucher.id));
     const other = await seedOrganization(db);
-    await expect(repo.redeemVoucher(other.id, result.serialCode)).rejects.toMatchObject({ status: 404 });
+    await expect(repo.redeemVoucher(other.id, result.serialCode)).rejects.toMatchObject({ kind: 'NOT_FOUND' });
     const results = await Promise.allSettled([
       repo.redeemVoucher(orgId, result.serialCode),
       repo.redeemVoucher(orgId, result.serialCode),
@@ -498,7 +500,7 @@ describe('single-use redemption and lifecycle locking', () => {
     const voucher = await create();
     const result = await confirm(await claim(voucher.id));
     await expect(repo.updateVoucher(orgId, voucher.id, { pointsCost: 30 }, () => {})).rejects.toMatchObject({
-      status: 409,
+      kind: 'CONFLICT',
     });
     await repo.updateVoucher(orgId, voucher.id, { status: 'PAUSED' }, () => {});
     await db
