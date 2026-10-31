@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { CreditsRepository, VoucherClaimNotReversibleError } from '#infra/db/repositories/credits.repository.js';
 import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
 
 @Injectable()
@@ -68,8 +68,11 @@ export class ReversalService {
         idempotencyKey: reversal.idempotencyKey,
       };
     } catch (err: unknown) {
-      // Most likely cause: a concurrent reversal of the same original already won the race
-      // against the unique index on reverses_transaction_id.
+      if (err instanceof VoucherClaimNotReversibleError) {
+        throw new ConflictException(err.message);
+      }
+      // Otherwise the most likely cause: a concurrent reversal of the same original already won
+      // the race against the unique index on reverses_transaction_id.
       const message = err instanceof Error ? err.message : 'Failed to reverse transaction';
       throw new ConflictException(message);
     }

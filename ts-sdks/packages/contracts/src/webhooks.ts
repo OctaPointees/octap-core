@@ -58,7 +58,7 @@ export interface CreditsEarnedEventData {
   newBalance: number;
 }
 
-/** `credits.redeemed`: a voucher-claim debit, settled in the ledger immediately (no chain step). */
+/** `credits.redeemed`: a legacy `POST /v1/credits/redeem` debit, settled in the ledger immediately (no chain step). */
 export interface CreditsRedeemedEventData {
   transactionId: string;
   organizationEndUserId: string;
@@ -98,7 +98,7 @@ export interface ReversalEventData {
 
 /**
  * `voucher.redeemed`: a claimed voucher instance was used at checkout (marked REDEEMED). No points
- * move here; claiming it already sent `credits.redeemed` for its points cost.
+ * move here; a paid claim already sent `credits.redemption.confirmed` for its points cost.
  */
 export interface VoucherRedeemedEventData extends RedeemVoucherResponse {
   organizationEndUserId: string;

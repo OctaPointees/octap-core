@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import { RewardsRepository, RewardsRuleError } from '#infra/db/repositories/rewards.repository.js';
+import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { PosRedemptionService } from '../credits/pos-redemption.service.js';
@@ -16,6 +17,31 @@ import type {
   RedeemVoucherResponse,
   VoucherOwnershipDto,
 } from '@octap/contracts';
+
+/** postgres-js reports `code` directly; drizzle wraps it in an error whose `cause` carries it. */
+function isUniqueViolation(error: unknown): boolean {
+  const e = error as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === '23505' || e?.cause?.code === '23505';
+}
+
+/** Maps the repositories' rule errors to the HTTP status a merchant can act on; others pass through. */
+function toHttpError(error: unknown): unknown {
+  if (error instanceof RewardsRuleError) {
+    if (error.kind === 'NOT_FOUND') return new NotFoundException(error.message);
+    if (error.kind === 'CONFLICT') return new ConflictException(error.message);
+    return new BadRequestException(error.message);
+  }
+  if (error instanceof OperationPayloadConflictError) return new ConflictException(error.message);
+  return error;
+}
+
+async function mapErrors<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    throw toHttpError(error);
+  }
+}
 
 @Injectable()
 export class RewardsService {
@@ -36,20 +62,22 @@ export class RewardsService {
       throw new BadRequestException('An expired voucher cannot be activated');
     }
 
-    const created = await this.rewardsRepo.createVoucher({
-      organizationId,
-      code: req.code,
-      title: req.title,
-      description: req.description,
-      pointsCost: req.pointsCost ?? 0,
-      discountType: req.discountType,
-      discountValue: req.discountValue,
-      totalSupply: req.totalSupply,
-      startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
-      expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
-      metadata: req.metadata,
-      status: req.status,
-    });
+    const created = await mapErrors(
+      this.rewardsRepo.createVoucher({
+        organizationId,
+        code: req.code,
+        title: req.title,
+        description: req.description,
+        pointsCost: req.pointsCost ?? 0,
+        discountType: req.discountType,
+        discountValue: req.discountValue,
+        totalSupply: req.totalSupply,
+        startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
+        expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
+        metadata: req.metadata,
+        status: req.status,
+      }),
+    );
 
     return this.mapVoucherDto(created);
   }
@@ -86,44 +114,47 @@ export class RewardsService {
         'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
       );
     }
-    const previousOperation = await this.creditsRepo.findOperationForClaim(organizationId, key);
     const voucher = await this.getVoucher(organizationId, voucherId);
-    if (!previousOperation && voucher.pointsCost > 0) {
+    // A retry under an accepted key skips these: it only reports or resumes the existing claim.
+    const isNewPaidClaim =
+      voucher.pointsCost > 0 && !(await this.creditsRepo.findOperationForClaim(organizationId, key));
+    if (isNewPaidClaim) {
       if (!req.idempotencyKey) throw new BadRequestException('idempotencyKey is required for paid voucher claims');
       await requireProgramConfig(this.programsRepo, organizationId);
       if (!(await this.creditsRepo.findBeneficiaryAddress(req.organizationEndUserId)))
         throw new BadRequestException('Member has no linked Sui address');
     }
-    const claim = await this.rewardsRepo.claimVoucher(organizationId, voucherId, req.organizationEndUserId, key);
+    let claim: ClaimVoucherResponse;
+    try {
+      claim = await this.rewardsRepo.claimVoucher(organizationId, voucherId, req.organizationEndUserId, key);
+    } catch (error) {
+      if (isUniqueViolation(error))
+        throw new ConflictException('Claim conflicts with an existing operation or voucher ownership');
+      throw toHttpError(error);
+    }
     if (claim.status !== 'RESERVED' || !claim.transactionId) return claim;
-    await requireProgramConfig(this.programsRepo, organizationId);
-    const transaction = await this.creditsRepo.getLoyaltyTransactionById(claim.transactionId);
-    const ownership = await this.creditsRepo.getOrCreateCreditOwnership(req.organizationEndUserId);
-    const operation = previousOperation ?? (await this.creditsRepo.findOperationForClaim(organizationId, key));
-    if (!transaction || !operation) throw new ConflictException('Claim reservation is missing');
+
+    if (!isNewPaidClaim) await requireProgramConfig(this.programsRepo, organizationId);
+    const hold = await this.creditsRepo.findVoucherClaimHold(organizationId, key);
+    if (!hold) throw new ConflictException('Claim reservation is missing');
     const sponsored = await this.posRedemption.sponsorReservation(
       organizationId,
-      {
-        organizationEndUserId: req.organizationEndUserId,
-        pointsAmount: claim.pointsCost!,
-        idempotencyKey: key,
-      },
-      { transaction, accountId: ownership.suiCreditAccountId, isNew: false, submittedDigest: operation.suiTxDigest },
-      `voucher-claim-${claim.voucherOwnershipId}`,
+      { organizationEndUserId: req.organizationEndUserId, pointsAmount: claim.pointsCost!, idempotencyKey: key },
+      hold,
     );
-    if (sponsored.status !== 'PENDING') return this.rewardsRepo.getClaim(organizationId, claim.voucherOwnershipId);
+    if (sponsored.status !== 'PENDING') return this.getClaim(organizationId, claim.voucherOwnershipId);
     return { ...claim, digest: sponsored.digest, transactionBytes: sponsored.transactionBytes };
   }
 
   async getClaim(organizationId: string, ownershipId: string): Promise<ClaimVoucherResponse> {
-    return this.rewardsRepo.getClaim(organizationId, ownershipId);
+    return mapErrors(this.rewardsRepo.getClaim(organizationId, ownershipId));
   }
 
   async redeemVoucher(organizationId: string, req: RedeemVoucherRequest): Promise<RedeemVoucherResponse> {
     if (!req || typeof req.serialCode !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(req.serialCode)) {
       throw new BadRequestException('serialCode must contain 1-100 letters, numbers, underscores or hyphens');
     }
-    const { ownership, voucher } = await this.rewardsRepo.redeemVoucher(organizationId, req.serialCode);
+    const { ownership, voucher } = await mapErrors(this.rewardsRepo.redeemVoucher(organizationId, req.serialCode));
     return {
       voucherOwnershipId: ownership.id,
       voucherId: ownership.voucherId,
@@ -160,9 +191,8 @@ export class RewardsService {
       });
       return this.mapVoucherDto(updated);
     } catch (error) {
-      const e = error as { code?: string; cause?: { code?: string } };
-      if (e?.code === '23505' || e?.cause?.code === '23505') throw new ConflictException('Voucher code already exists');
-      throw error;
+      if (isUniqueViolation(error)) throw new ConflictException('Voucher code already exists');
+      throw toHttpError(error);
     }
   }
 

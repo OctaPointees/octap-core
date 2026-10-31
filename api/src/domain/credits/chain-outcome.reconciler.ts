@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eventField, type SubmittedChainTransaction } from '@octap/chain';
-import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import {
+  ABANDONED_POS_HOLD_GRACE_MS,
+  CUSTOMER_REDEEM_COMMAND_TYPES,
+  CreditsRepository,
+  VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+} from '#infra/db/repositories/credits.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 export const EARN_COMMAND_TYPE = 'CREDIT_EARN_CHAIN_SUBMIT';
-export const POS_REDEEM_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';
 export const REVERSAL_COMMAND_TYPE = 'CREDIT_REVERSAL_CHAIN_SUBMIT';
 
 /** Long enough that a healthy submit (or the indexer) has settled it first; this is the fallback. */
@@ -50,7 +54,9 @@ export type ReconcileOutcome = 'confirmed' | 'failed' | 'waiting';
  * Postgres reversal stands either way).
  *
  * An earn with no digest at all never had anything sent (the digest is recorded before sending),
- * so it is released straight away.
+ * so it is released straight away. So is a paid voucher claim left unsigned past
+ * `ABANDONED_POS_HOLD_GRACE_MS`, which would otherwise hold catalog stock until the member's next
+ * balance read; it yields if finalize pins a digest first.
  */
 @Injectable()
 export class ChainOutcomeReconciler {
@@ -66,7 +72,9 @@ export class ChainOutcomeReconciler {
   async reconcileOnce(): Promise<ReconcileOutcome[]> {
     const due = await this.operationsRepo.listUnresolvedChainOutcomes({
       unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
-      posCommandType: POS_REDEEM_COMMAND_TYPE,
+      customerRedeemCommandTypes: CUSTOMER_REDEEM_COMMAND_TYPES,
+      abandonedUnsignedCommandType: VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+      abandonedAfterMs: ABANDONED_POS_HOLD_GRACE_MS,
       olderThanMs: RECONCILE_AFTER_MS,
       limit: BATCH_SIZE,
     });
@@ -94,8 +102,8 @@ export class ChainOutcomeReconciler {
 
   private async reconcile(operation: Operation, currentEpoch: () => Promise<bigint>): Promise<ReconcileOutcome> {
     if (!operation.suiTxDigest) {
-      // Only worker-signed commands get here (POS rows need a digest to be listed): nothing was
-      // ever sent.
+      // A worker-signed command, or a voucher claim the customer never signed: nothing was ever
+      // sent. (A POS reserve needs a digest to be listed.)
       return this.fail(operation, 'no transaction was ever sent for this command');
     }
 
@@ -194,7 +202,7 @@ export class ChainOutcomeReconciler {
         organizationEndUserId: payload.organizationEndUserId,
         reservedPointsAmount: payload.pointsAmount,
       });
-    } else if (operation.commandType === POS_REDEEM_COMMAND_TYPE) {
+    } else if (CUSTOMER_REDEEM_COMMAND_TYPES.includes(operation.commandType)) {
       const payload = operation.payload as unknown as PosRedeemPayload;
       const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(
         operation.tenantId,

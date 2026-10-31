@@ -230,13 +230,16 @@ export class OctaPointClient {
   }
 
   /** Read persisted claim state after finalize or asynchronous chain recovery. */
-  async getVoucherClaim(ownershipId: string): Promise<ClaimVoucherResponse> {
-    return this.request<ClaimVoucherResponse>(`/v1/rewards/claims/${ownershipId}`, 'GET');
+  async getVoucherClaim(ownershipId: string, options?: RequestOptions): Promise<ClaimVoucherResponse> {
+    return this.request<ClaimVoucherResponse>(`/v1/rewards/claims/${ownershipId}`, 'GET', undefined, options);
   }
 
   /** The customer signs returned transactionBytes with their zkLogin session; no merchant key is needed by finalize. */
-  async finalizeVoucherClaim(request: FinalizePosRedemptionRequest): Promise<FinalizePosRedemptionResponse> {
-    return this.request<FinalizePosRedemptionResponse>('/v1/credits/redeem/finalize', 'POST', request);
+  async finalizeVoucherClaim(
+    request: FinalizePosRedemptionRequest,
+    options?: RequestOptions,
+  ): Promise<FinalizePosRedemptionResponse> {
+    return this.request<FinalizePosRedemptionResponse>('/v1/credits/redeem/finalize', 'POST', request, options);
   }
 
   /**

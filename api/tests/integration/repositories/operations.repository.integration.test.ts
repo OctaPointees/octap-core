@@ -178,6 +178,11 @@ describe('OperationsRepository', () => {
 
 describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
   const ago = (ms: number) => new Date(Date.now() - ms);
+  const customerRedeem = {
+    customerRedeemCommandTypes: ['CREDIT_POS_REDEEM_RESERVE', 'VOUCHER_CLAIM_RESERVE'],
+    abandonedUnsignedCommandType: 'VOUCHER_CLAIM_RESERVE',
+    abandonedAfterMs: 30 * 60 * 1000,
+  };
 
   it('recordSubmitDigest stores digest + expiration on an unsettled row and never touches a settled one', async () => {
     const open = await insertOperation({ idempotencyKey: 'open', status: 'PROCESSING' });
@@ -240,26 +245,26 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     expect(await pin('first')).toBeTruthy();
     const expired = await insertOperation({
       idempotencyKey: 'unsigned',
-      commandType: 'CREDIT_POS_REDEEM_RESERVE',
-      payload: { voucherOwnershipId: 'coupon' },
+      commandType: 'VOUCHER_CLAIM_RESERVE',
       updatedAt: ago(31 * 60 * 1000),
     });
     await insertOperation({
       idempotencyKey: 'fresh',
-      commandType: 'CREDIT_POS_REDEEM_RESERVE',
-      payload: { voucherOwnershipId: 'coupon' },
+      commandType: 'VOUCHER_CLAIM_RESERVE',
       updatedAt: ago(10 * 60 * 1000),
     });
     await insertOperation({
       idempotencyKey: 'pos',
       commandType: 'CREDIT_POS_REDEEM_RESERVE',
+      // The command type decides abandonment, not what the payload happens to carry.
+      payload: { voucherOwnershipId: 'coupon' },
       updatedAt: ago(40 * 60 * 1000),
     });
     expect(
       (
         await repo.listUnresolvedChainOutcomes({
           unknownCommandTypes: [],
-          posCommandType: 'CREDIT_POS_REDEEM_RESERVE',
+          ...customerRedeem,
           olderThanMs: 5 * 60 * 1000,
           limit: 20,
         })
@@ -267,7 +272,7 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
     ).toEqual([expired.id]);
   });
 
-  it('listUnresolvedChainOutcomes returns old UNKNOWN earns and POS finalizes with a digest, oldest first', async () => {
+  it('listUnresolvedChainOutcomes returns old UNKNOWN earns and customer redeems with a digest, oldest first', async () => {
     const old = ago(10 * 60 * 1000);
     const earnUnknown = await insertOperation({
       idempotencyKey: 'e-unknown',
@@ -279,6 +284,12 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
       commandType: 'CREDIT_POS_REDEEM_RESERVE',
       suiTxDigest: 'D-POS',
       updatedAt: old,
+    });
+    const claimWithDigest = await insertOperation({
+      idempotencyKey: 'claim-digest',
+      commandType: 'VOUCHER_CLAIM_RESERVE',
+      suiTxDigest: 'D-CLAIM',
+      updatedAt: ago(15 * 60 * 1000),
     });
     await insertOperation({ idempotencyKey: 'e-fresh', status: 'UNKNOWN' });
     await insertOperation({ idempotencyKey: 'e-pending', status: 'PENDING', updatedAt: old });
@@ -299,12 +310,12 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
 
     const due = await repo.listUnresolvedChainOutcomes({
       unknownCommandTypes: ['CREDIT_EARN_CHAIN_SUBMIT'],
-      posCommandType: 'CREDIT_POS_REDEEM_RESERVE',
+      ...customerRedeem,
       olderThanMs: 5 * 60 * 1000,
       limit: 10,
     });
 
-    expect(due.map((o) => o.id)).toEqual([earnUnknown.id, posWithDigest.id]);
+    expect(due.map((o) => o.id)).toEqual([earnUnknown.id, claimWithDigest.id, posWithDigest.id]);
   });
 
   it('settleFromChain settles PENDING or UNKNOWN once, and reports when someone else already settled it', async () => {

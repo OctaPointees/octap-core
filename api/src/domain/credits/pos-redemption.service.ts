@@ -45,6 +45,8 @@ function expirationOf(transactionBytes: string): bigint | null {
   }
 }
 
+type ReservedHold = Awaited<ReturnType<CreditsRepository['reservePosRedemption']>>;
+
 const reserveKey = (digest: string): string => `pos-redeem:reserve:${digest}`;
 const idemKey = (organizationId: string, idempotencyKey: string): string =>
   `pos-redeem:idem:${organizationId}:${idempotencyKey}`;
@@ -93,7 +95,7 @@ export class PosRedemptionService {
     // program — so there is nothing further to resolve, only to refuse an unprovisioned one.
     await requireProgramConfig(this.programsRepo, organizationId);
 
-    let reserved: Awaited<ReturnType<CreditsRepository['reservePosRedemption']>>;
+    let reserved: ReservedHold;
     try {
       reserved = await this.creditsRepo.reservePosRedemption({
         organizationId,
@@ -111,13 +113,24 @@ export class PosRedemptionService {
     return this.sponsorReservation(organizationId, request, reserved);
   }
 
+  /**
+   * Sponsors the customer-signable redeem for an existing hold, or replays the bytes still cached
+   * for it. The on-chain `reference` is the hold's receipt reference (a voucher claim's
+   * `voucherClaimReference`), else its transaction id.
+   */
   async sponsorReservation(
     organizationId: string,
     request: ReservePosRedemptionRequest,
-    reserved: Awaited<ReturnType<CreditsRepository['reservePosRedemption']>>,
-    reference?: string,
+    hold: {
+      transaction: ReservedHold['transaction'];
+      accountId: string | null;
+      /** Digest a finalize already tried to execute for this hold (OCT-52), if any. */
+      submittedDigest: string | null;
+      /** A hold this request just created has no cached bytes to replay yet. */
+      isNew?: boolean;
+    },
   ): Promise<ReservePosRedemptionResponse> {
-    const { transaction, accountId, isNew, submittedDigest } = reserved;
+    const { transaction, accountId, isNew, submittedDigest } = hold;
 
     if (transaction.status !== 'PENDING') {
       // Settled by an earlier call under this idempotency key (CONFIRMED or FAILED) — nothing
@@ -170,7 +183,7 @@ export class PosRedemptionService {
       beneficiaryAddress,
       accountId,
       cost: BigInt(request.pointsAmount),
-      reference: new TextEncoder().encode(reference ?? transaction.receiptReference ?? transaction.id),
+      reference: new TextEncoder().encode(transaction.receiptReference ?? transaction.id),
     });
 
     const entry: CachedReserve = {

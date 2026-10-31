@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
 
@@ -159,12 +159,17 @@ export class OperationsRepository {
    * Commands whose chain outcome nobody has learned, untouched for `olderThanMs`, oldest first:
    * UNKNOWN chain-submit earns, and POS redemptions whose finalize recorded a digest but never
    * settled (`executeSponsoredRedeem` or the wait after it threw). A POS reserve with no digest was
-   * never finalized, so there is nothing on-chain to ask about.
+   * never finalized, so there is nothing on-chain to ask about; only an unsigned hold of
+   * `abandonedUnsignedCommandType` is listed, once it is old enough to be abandoned.
    */
   async listUnresolvedChainOutcomes(params: {
     /** Worker-signed commands: only an UNKNOWN one needs settling (earn, reversal). */
     unknownCommandTypes: string[];
-    posCommandType: string;
+    /** Customer-signed redeems: listed once their finalize recorded a digest. */
+    customerRedeemCommandTypes: string[];
+    /** The customer-signed command whose unsigned hold is released here, past `abandonedAfterMs`. */
+    abandonedUnsignedCommandType: string;
+    abandonedAfterMs: number;
     olderThanMs: number;
     limit: number;
   }) {
@@ -175,13 +180,13 @@ export class OperationsRepository {
         or(
           and(inArray(operations.commandType, params.unknownCommandTypes), eq(operations.status, 'UNKNOWN')),
           and(
-            eq(operations.commandType, params.posCommandType),
+            inArray(operations.commandType, params.customerRedeemCommandTypes),
             inArray(operations.status, ['PENDING', 'UNKNOWN']),
             or(
               isNotNull(operations.suiTxDigest),
               and(
-                sql`${operations.payload} ? 'voucherOwnershipId'`,
-                lt(operations.updatedAt, new Date(Date.now() - 30 * 60 * 1000)),
+                eq(operations.commandType, params.abandonedUnsignedCommandType),
+                lt(operations.updatedAt, new Date(Date.now() - params.abandonedAfterMs)),
               ),
             ),
           ),

@@ -4,9 +4,14 @@ import {
   ChainOutcomeReconciler,
   EARN_COMMAND_TYPE,
   REVERSAL_COMMAND_TYPE,
-  POS_REDEEM_COMMAND_TYPE,
 } from '#domain/credits/chain-outcome.reconciler.js';
-import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import {
+  ABANDONED_POS_HOLD_GRACE_MS,
+  CUSTOMER_REDEEM_COMMAND_TYPES,
+  POS_RESERVE_COMMAND_TYPE,
+  VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+  type CreditsRepository,
+} from '#infra/db/repositories/credits.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
@@ -21,7 +26,7 @@ const unknownEarn = (overrides: Partial<Operation> = {}) =>
 const posFinalize = (overrides: Partial<Operation> = {}) =>
   buildOperation({
     id: 'op-pos',
-    commandType: POS_REDEEM_COMMAND_TYPE,
+    commandType: POS_RESERVE_COMMAND_TYPE,
     idempotencyKey: 'pos-idem-1',
     status: 'PENDING',
     suiTxDigest: 'DIGEST-P',
@@ -84,17 +89,36 @@ describe('ChainOutcomeReconciler', () => {
     await expect(reconciler.reconcileOnce()).resolves.toEqual([]);
     expect(ops.listUnresolvedChainOutcomes).toHaveBeenCalledWith({
       unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
-      posCommandType: POS_REDEEM_COMMAND_TYPE,
+      customerRedeemCommandTypes: CUSTOMER_REDEEM_COMMAND_TYPES,
+      abandonedUnsignedCommandType: VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+      abandonedAfterMs: ABANDONED_POS_HOLD_GRACE_MS,
       olderThanMs: 5 * 60 * 1000,
       limit: 20,
     });
   });
 
-  it('abandons an unsigned voucher claim but yields if finalize has already pinned its digest', async () => {
-    const operation = posFinalize({
-      suiTxDigest: null,
-      payload: { organizationEndUserId: 'user-1', pointsAmount: 80, voucherOwnershipId: 'coupon' },
+  const unsignedClaim = () =>
+    posFinalize({ commandType: VOUCHER_CLAIM_RESERVE_COMMAND_TYPE, suiTxDigest: null, suiTxExpirationEpoch: null });
+
+  it('abandons an unsigned voucher claim, releasing its hold before settling the command', async () => {
+    const failPosRedemptionOnChain = vi.fn(async () => true);
+    const { reconciler, ops, reader } = fixture({
+      operations: [unsignedClaim()],
+      creditsRepo: { failPosRedemptionOnChain },
     });
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed']);
+    expect(failPosRedemptionOnChain).toHaveBeenCalledWith({
+      loyaltyTransactionId: 'tx-pos-1',
+      organizationEndUserId: 'user-1',
+      pointsAmount: 80,
+      onlyIfUnsubmitted: true,
+    });
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-pos', 'FAILED', expect.stringMatching(/ever sent/));
+    expect(reader.findTransaction).not.toHaveBeenCalled();
+  });
+
+  it('abandons an unsigned voucher claim but yields if finalize has already pinned its digest', async () => {
+    const operation = unsignedClaim();
     const failPosRedemptionOnChain = vi.fn(async () => false);
     const { reconciler, ops } = fixture({ operations: [operation], creditsRepo: { failPosRedemptionOnChain } });
     await expect(reconciler.reconcileOnce()).resolves.toEqual(['waiting']);
