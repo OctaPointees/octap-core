@@ -265,8 +265,8 @@ export const ABANDONED_POS_HOLD_GRACE_MS = 30 * 60 * 1000;
 
 /**
  * Lazy hold expiry (OCT-244), same lazy pattern as `expireDueBuckets`: releases this member's POS
- * reserves and paid voucher claims that were never finalized, so an abandoned reserve can't lock points in
- * `pendingRedemption` forever. Each is marked FAILED and its points return to the available
+ * reserves and paid voucher claims that were never finalized, so an abandoned reserve can't lock
+ * points in `pendingRedemption` forever. Each is marked FAILED and its points return to the available
  * balance.
  *
  * Only a hold whose command is still PENDING **with no recorded finalize digest** qualifies: once

@@ -71,8 +71,8 @@ export class ReversalService {
       if (err instanceof VoucherClaimNotReversibleError) {
         throw new ConflictException(err.message);
       }
-      // Otherwise the most likely cause: a concurrent reversal of the same original already won the race
-      // against the unique index on reverses_transaction_id.
+      // Otherwise the most likely cause: a concurrent reversal of the same original already won
+      // the race against the unique index on reverses_transaction_id.
       const message = err instanceof Error ? err.message : 'Failed to reverse transaction';
       throw new ConflictException(message);
     }

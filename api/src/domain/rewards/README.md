@@ -10,7 +10,7 @@ Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/
 
 ## Consistency and ledger boundary
 
-Paid voucher claims reuse the customer-signed `credit_account::redeem` pipeline. Sui is authoritative for the debit; PostgreSQL stores the voucher catalog/serials and projects the confirmed point balance.
+Paid voucher claims reuse the customer-signed `credit_account::redeem` pipeline under their own durable command type, `VOUCHER_CLAIM_RESERVE` (a free claim is `VOUCHER_CLAIM`), so recovery never has to inspect a payload to tell a claim from a POS reserve. Sui is authoritative for the debit; PostgreSQL stores the voucher catalog/serials and projects the confirmed point balance.
 
 `POST /v1/rewards/vouchers/:id/claim` requires a stable idempotency key for a paid reward. In one PostgreSQL transaction it locks catalog stock and the member balance, creates a PENDING REDEEM, holds points in `pendingRedemption`, reserves supply and creates a RESERVED ownership. It does not debit `confirmedBalance`, consume live buckets or emit a confirmation webhook yet. The response includes `transactionId`, `pointsCost`, `pointsDeducted: 0`, `digest` and `transactionBytes` for the customer's zkLogin/Enoki session to sign. Free rewards require no chain debit and become AVAILABLE immediately.
 

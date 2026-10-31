@@ -24,7 +24,7 @@ function isUniqueViolation(error: unknown): boolean {
   return e?.code === '23505' || e?.cause?.code === '23505';
 }
 
-/** Maps the repository's rule errors to the HTTP status a merchant can act on; anything else passes through. */
+/** Maps the repositories' rule errors to the HTTP status a merchant can act on; others pass through. */
 function toHttpError(error: unknown): unknown {
   if (error instanceof RewardsRuleError) {
     if (error.kind === 'NOT_FOUND') return new NotFoundException(error.message);
