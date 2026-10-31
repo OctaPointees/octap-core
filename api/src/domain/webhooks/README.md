@@ -26,7 +26,7 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `credits.earn.confirmed` | the chain confirmed an earn | `CreditsRepository.confirmEarnOnChain` |
 | `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
 | `credits.reversed` | a CONFIRMED earn or redemption was reversed in the ledger (not on a replayed key) | `CreditsRepository.recordReversalTransaction` |
-| `voucher.redeemed` | a claimed voucher instance was used | `RewardsRepository.markVoucherRedeemed` |
+| `voucher.redeemed` | a claimed voucher instance was used | `RewardsRepository.redeemVoucher` |
 
 The two `*.confirmed` events are queued with `enqueueWebhookEvent(tx, ...)` inside the confirm's
 own transaction (OCT-209): they commit or roll back with it, and only the caller that wins the

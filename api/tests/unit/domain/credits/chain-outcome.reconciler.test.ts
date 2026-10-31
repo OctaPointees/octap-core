@@ -242,6 +242,17 @@ describe('ChainOutcomeReconciler', () => {
     expect(ops.settleFromChain).toHaveBeenCalledWith('op-pos', 'SUBMITTED');
   });
 
+  it('settles a failed POS operation after its loyalty transaction was already settled before a crash', async () => {
+    const { ops, reconciler } = fixture({
+      operations: [posFinalize()],
+      epoch: 6n,
+      creditsRepo: { failPosRedemptionOnChain: async () => 'already-settled' },
+    });
+
+    await expect(reconciler.reconcileOnce()).resolves.toEqual(['failed']);
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-pos', 'FAILED', expect.stringMatching(/never landed/));
+  });
+
   it('a landed POS finalize with no loyalty row or beneficiary is left for a human', async () => {
     const { ops, credits, reconciler } = fixture({
       operations: [posFinalize()],

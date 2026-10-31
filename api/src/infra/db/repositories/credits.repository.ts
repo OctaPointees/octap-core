@@ -892,7 +892,10 @@ export class CreditsRepository {
     });
   }
 
-  /** Releases a POS redemption's pending hold (confirmedBalance untouched) and marks it FAILED. */
+  /**
+   * Releases a POS hold and marks it FAILED. Returns false when abandonment must yield to
+   * finalize, and 'already-settled' when a previous attempt has already settled the loyalty row.
+   */
   async failPosRedemptionOnChain(params: {
     loyaltyTransactionId: string;
     organizationEndUserId: string;
@@ -924,7 +927,7 @@ export class CreditsRepository {
         abandonedCommandId = command.id;
       }
       if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
-        return false;
+        return 'already-settled' as const;
       }
 
       if (abandonedCommandId) {
