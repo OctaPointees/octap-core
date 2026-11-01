@@ -365,7 +365,7 @@ describe('atomic voucher conversion', () => {
     const voucher = await create();
     const result = await confirm(await claim(voucher.id));
     await settle(result.serialCode);
-    await expect(reverseClaim(result)).rejects.toThrow(new RegExp(`coupon is ${status}`));
+    await expect(reverseClaim(result)).rejects.toThrow(new RegExp(`coupon status: ${status}`));
     expect(await credits.getLoyaltyTransactionById(result.transactionId!)).toMatchObject({ status: 'CONFIRMED' });
     expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
     expect((await row(voucher.id)).claimedCount).toBe(1);

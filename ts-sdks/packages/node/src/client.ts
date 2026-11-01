@@ -195,9 +195,6 @@ export class OctaPointClient {
   // REWARDS & VOUCHERS API
   // ==========================================
 
-  /**
-   * Create a new voucher definition.
-   */
   /** Current terms for future voucher claims. */
   async getVoucherRefundPolicy(options?: RequestOptions): Promise<VoucherRefundPolicyDto> {
     return this.request('/v1/rewards/refund-policy', 'GET', undefined, options);
@@ -211,6 +208,7 @@ export class OctaPointClient {
     return this.request('/v1/rewards/refund-policy', 'PUT', request, options);
   }
 
+  /** Lists immutable policy versions, newest first; requires an admin-scoped credential. */
   async listVoucherRefundPolicyHistory(
     query: ListVoucherRefundPolicyHistoryRequest = {},
     options?: RequestOptions,
@@ -221,6 +219,7 @@ export class OctaPointClient {
     });
   }
 
+  /** Create a new voucher definition. */
   async createVoucher(request: CreateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>('/v1/rewards/vouchers', 'POST', request, options);
   }

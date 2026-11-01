@@ -311,6 +311,143 @@ describe('rewards over HTTP', () => {
 });
 
 describe('voucher refund policy over HTTP', () => {
+  it.each(['REDEEMED', 'EXPIRED', 'AVAILABLE_PAST_EXPIRY'] as const)(
+    'requires authenticated admin scope for a policy-enabled %s refund and rolls back denied writes',
+    async (state) => {
+      const admin = {
+        authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read', 'write', 'admin'] })).rawKey}`,
+      };
+      await ctx
+        .http()
+        .put('/v1/rewards/refund-policy')
+        .set(admin)
+        .send({
+          allowUnused: true,
+          allowExpired: true,
+          allowRedeemed: true,
+          restockUnused: true,
+          refundWindowDays: null,
+          reason: 'Exceptional service recovery refunds',
+        })
+        .expect(200);
+      const voucher = await createVoucher({
+        code: 'ADMIN-REFUND',
+        title: 'Service recovery',
+        discountType: 'FREE_ITEM',
+        pointsCost: 25,
+        totalSupply: 1,
+      }).expect(201);
+      const { body: claim } = await ctx
+        .http()
+        .post(`/v1/rewards/vouchers/${voucher.body.id}/claim`)
+        .set(auth)
+        .send({ organizationEndUserId: memberId, idempotencyKey: 'admin-refund-claim' })
+        .expect(201);
+      await ctx
+        .http()
+        .post('/v1/credits/redeem/finalize')
+        .send({ digest: claim.digest, signature: 'customer-signature' })
+        .expect(201);
+      if (state === 'REDEEMED') {
+        await ctx
+          .http()
+          .post('/v1/rewards/vouchers/redeem')
+          .set(auth)
+          .send({ serialCode: claim.serialCode })
+          .expect(201);
+      } else {
+        await ctx.db
+          .update(schema.voucherOwnerships)
+          .set({
+            status: state === 'EXPIRED' ? 'EXPIRED' : 'AVAILABLE',
+            expiresAt: new Date(Date.now() - 1000),
+          })
+          .where(eq(schema.voucherOwnerships.id, claim.voucherOwnershipId));
+      }
+      const reversePath = `/v1/credits/transactions/${claim.transactionId}/reverse`;
+      const input = { idempotencyKey: 'admin-refund', reason: 'Service recovery', scopes: ['admin'] };
+      // Forged body scopes must not elevate the writer's credential.
+      const denied = await ctx.http().post(reversePath).set(auth).send(input).expect(403);
+      expect(denied.body.message).toContain('admin-scoped credential');
+      const original = await ctx.db.query.loyaltyTransactions.findFirst({
+        where: eq(schema.loyaltyTransactions.id, claim.transactionId),
+      });
+      expect(original?.status).toBe('CONFIRMED');
+      expect(
+        await ctx.db
+          .select()
+          .from(schema.loyaltyTransactions)
+          .where(eq(schema.loyaltyTransactions.transactionType, 'REVERSAL')),
+      ).toEqual([]);
+      expect(
+        (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance,
+      ).toBe(75);
+      const foreignOrg = await seedOrganization(ctx.db);
+      const foreign = { authorization: `Bearer ${(await seedCredential(ctx.db, foreignOrg.id)).rawKey}` };
+      await ctx.http().post(reversePath).set(foreign).send(input).expect(404);
+      const result = await ctx.http().post(reversePath).set(admin).send(input).expect(201);
+      expect(result.body.newBalance).toBe(100);
+      expect((await ctx.http().post(reversePath).set(admin).send(input).expect(201)).body.reversalTransactionId).toBe(
+        result.body.reversalTransactionId,
+      );
+      const coupon = await ctx.db.query.voucherOwnerships.findFirst({
+        where: eq(schema.voucherOwnerships.id, claim.voucherOwnershipId),
+      });
+      expect(coupon?.status).toBe(state === 'REDEEMED' ? 'REDEEMED' : 'EXPIRED');
+      expect(
+        (await ctx.http().get(`/v1/rewards/vouchers/${voucher.body.id}`).set(auth).expect(200)).body,
+      ).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+    },
+  );
+
+  it('allows a write-scoped credential to cancel an unused coupon without restocking when configured', async () => {
+    const admin = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId)).rawKey}` };
+    await ctx
+      .http()
+      .put('/v1/rewards/refund-policy')
+      .set(admin)
+      .send({
+        allowUnused: true,
+        allowExpired: false,
+        allowRedeemed: false,
+        restockUnused: false,
+        refundWindowDays: 1,
+        reason: 'Each claim consumes a limited campaign allocation',
+      })
+      .expect(200);
+    const voucher = await createVoucher({
+      code: 'NO-RESTOCK',
+      title: 'Limited allocation',
+      discountType: 'FREE_ITEM',
+      pointsCost: 25,
+      totalSupply: 1,
+    }).expect(201);
+    const { body: claim } = await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${voucher.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'no-restock-claim' })
+      .expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claim.digest, signature: 'customer-signature' })
+      .expect(201);
+    const reversal = await ctx
+      .http()
+      .post(`/v1/credits/transactions/${claim.transactionId}/reverse`)
+      .set(auth)
+      .send({ idempotencyKey: 'no-restock-refund', reason: 'Customer cancellation' })
+      .expect(201);
+    expect(reversal.body.newBalance).toBe(100);
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claim.voucherOwnershipId}`).set(auth).expect(200)).body.status,
+    ).toBe('CANCELLED');
+    expect((await ctx.http().get(`/v1/rewards/vouchers/${voucher.body.id}`).set(auth).expect(200)).body).toMatchObject({
+      claimedCount: 1,
+      status: 'DEPLETED',
+    });
+  });
   const settings = {
     allowUnused: true,
     allowExpired: false,

@@ -1,4 +1,3 @@
-import type { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import { describe, expect, it, vi } from 'vitest';
 import { CreditsController } from '#api/rest/credits.controller.js';
 import { RewardsController } from '#api/rest/rewards.controller.js';
@@ -11,6 +10,7 @@ import type { RedemptionService } from '#domain/credits/redemption.service.js';
 import type { ReversalService } from '#domain/credits/reversal.service.js';
 import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import type { RewardsService } from '#domain/rewards/rewards.service.js';
+import type { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import type { IdentityService } from '#domain/identity/identity.service.js';
 import type { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
 import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
@@ -81,11 +81,15 @@ describe('CreditsController', () => {
     const c = controller({ reversal: { reverseTransaction } });
 
     await c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: 'k', reason: 'chargeback' });
-    expect(reverseTransaction).toHaveBeenCalledWith('org-1', {
-      transactionId: 'tx-1',
-      idempotencyKey: 'k',
-      reason: 'chargeback',
-    });
+    expect(reverseTransaction).toHaveBeenCalledWith(
+      'org-1',
+      {
+        transactionId: 'tx-1',
+        idempotencyKey: 'k',
+        reason: 'chargeback',
+      },
+      tenant.scopes,
+    );
     await bad(
       c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: '', reason: 'x' }),
       /idempotencyKey and reason are required/,

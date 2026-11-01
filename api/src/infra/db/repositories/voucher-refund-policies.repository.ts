@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, lt } from 'drizzle-orm';
 import type {
   SetVoucherRefundPolicyRequest,
   VoucherRefundPolicyDto,
@@ -8,7 +8,7 @@ import type {
 import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { withRls } from '../rls.js';
-import { apiCredentials } from '../schema/organizations.schema.js';
+import { apiCredentials, organizations } from '../schema/organizations.schema.js';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 
 export class RefundPolicyOrganizationNotFoundError extends Error {}
@@ -67,34 +67,41 @@ export class VoucherRefundPoliciesRepository {
   }
 
   async publish(organizationId: string, credentialId: string, request: SetVoucherRefundPolicyRequest) {
-    return withRls(this.db, { tenantId: organizationId }, async (tx) => {
-      // Drizzle has no advisory-lock builder; allocate a unique next version per tenant.
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${'voucher-refund-policy:' + organizationId}, 0))`,
-      );
-      const [credential] = await tx
-        .select({ id: apiCredentials.id })
-        .from(apiCredentials)
-        .where(and(eq(apiCredentials.id, credentialId), eq(apiCredentials.organizationId, organizationId)));
-      if (!credential) throw new RefundPolicyOrganizationNotFoundError();
-      const [latest] = await tx
-        .select({ version: voucherRefundPolicies.version })
-        .from(voucherRefundPolicies)
-        .where(eq(voucherRefundPolicies.organizationId, organizationId))
-        .orderBy(desc(voucherRefundPolicies.version))
-        .limit(1);
-      const { reason, ...policy } = request;
-      const [row] = await tx
-        .insert(voucherRefundPolicies)
-        .values({
-          organizationId,
-          version: (latest?.version ?? 0) + 1,
-          policy,
-          reason: reason.trim(),
-          createdByCredentialId: credentialId,
-        })
-        .returning();
-      return toPolicyDto(row);
+    return this.db.transaction(async (tx) => {
+      // Serialize version allocation per tenant, including its first publication.
+      // Lock before entering API-key RLS: organizations exposes human memberships,
+      // not API-credential tenants. Policy/credential reads and writes remain under RLS.
+      const [organization] = await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for('update');
+      if (!organization) throw new RefundPolicyOrganizationNotFoundError();
+      return withRls(tx, { tenantId: organizationId }, async (tx) => {
+        const [credential] = await tx
+          .select({ id: apiCredentials.id })
+          .from(apiCredentials)
+          .where(and(eq(apiCredentials.id, credentialId), eq(apiCredentials.organizationId, organizationId)));
+        if (!credential) throw new RefundPolicyOrganizationNotFoundError();
+        const [latest] = await tx
+          .select({ version: voucherRefundPolicies.version })
+          .from(voucherRefundPolicies)
+          .where(eq(voucherRefundPolicies.organizationId, organizationId))
+          .orderBy(desc(voucherRefundPolicies.version))
+          .limit(1);
+        const { reason, ...policy } = request;
+        const [row] = await tx
+          .insert(voucherRefundPolicies)
+          .values({
+            organizationId,
+            version: (latest?.version ?? 0) + 1,
+            policy,
+            reason: reason.trim(),
+            createdByCredentialId: credentialId,
+          })
+          .returning();
+        return toPolicyDto(row);
+      });
     });
   }
 }

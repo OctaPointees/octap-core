@@ -1,17 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import type { SetVoucherRefundPolicyRequest, VoucherRefundPolicySnapshot } from '@octap/contracts';
-
-export interface VoucherRefundContext {
-  status: string;
-  claimedAt: Date;
-  expiresAt: Date | null;
-  refundPolicySnapshot: VoucherRefundPolicySnapshot;
-}
-
-/** Only allowed decisions carry a new coupon state and stock effect. */
-export type VoucherRefundDecision =
-  | { allowed: false; couponStatus: string; reason: string }
-  | { allowed: true; nextStatus: 'CANCELLED' | 'REDEEMED' | 'EXPIRED'; restock: boolean; reason: string };
+import type { SetVoucherRefundPolicyRequest } from '@octap/contracts';
+import type { VoucherRefundContext, VoucherRefundDecision } from '#infra/db/repositories/credits.repository.js';
 
 export function validateRefundPolicy(input: SetVoucherRefundPolicyRequest): void {
   if (!input || typeof input !== 'object' || Array.isArray(input))
@@ -38,7 +27,7 @@ export function evaluateVoucherRefund(coupon: VoucherRefundContext, nowMs = Date
   const expired = coupon.status === 'EXPIRED' || (coupon.expiresAt !== null && coupon.expiresAt.getTime() <= nowMs);
   const couponStatus = coupon.status === 'AVAILABLE' && expired ? 'EXPIRED' : coupon.status;
   const deny = (reason: string): VoucherRefundDecision => ({ allowed: false, couponStatus, reason });
-  if (!['AVAILABLE', 'EXPIRED', 'REDEEMED'].includes(coupon.status)) return deny(`Coupon is ${coupon.status}`);
+  if (!['AVAILABLE', 'EXPIRED', 'REDEEMED'].includes(coupon.status)) return deny('This coupon state is not refundable');
   if (policy.refundWindowDays !== null && nowMs >= coupon.claimedAt.getTime() + policy.refundWindowDays * 86400000)
     return deny('The refund window has ended');
   // Delivery takes precedence over expiry: refunding a used coupon never replenishes catalog stock.

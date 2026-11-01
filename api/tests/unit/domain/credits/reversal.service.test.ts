@@ -1,4 +1,3 @@
-import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import { VoucherClaimNotReversibleError, type CreditsRepository } from '#infra/db/repositories/credits.repository.js';
@@ -50,7 +49,7 @@ describe('ReversalService', () => {
       original: confirmedEarn(),
       idempotencyKey: 'reverse-1',
       reason: 'Chargeback from payment provider',
-      evaluateRefund: evaluateVoucherRefund,
+      evaluateRefund: expect.any(Function),
     });
   });
 
@@ -198,13 +197,14 @@ describe('ReversalService', () => {
       findTransactionByIdempotency: async () => undefined,
       findTransactionByIdForOrganization: async () => confirmedEarn({ transactionType: 'REDEEM' }),
       recordReversalTransaction: async () => {
-        throw new VoucherClaimNotReversibleError('REDEEMED');
+        throw new VoucherClaimNotReversibleError('REDEEMED', 'Redeemed coupon refunds are disabled');
       },
     });
 
     await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toMatchObject({
       name: 'ConflictException',
-      message: expect.stringMatching(/coupon is REDEEMED/),
+      message:
+        'This voucher claim cannot be reversed: Redeemed coupon refunds are disabled (coupon status: REDEEMED). Check the coupon refund terms or issue separate compensation.',
     });
   });
 

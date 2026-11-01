@@ -94,7 +94,7 @@ export class CreditsController {
     if (!body.idempotencyKey || !body.reason) {
       throw new BadRequestException('idempotencyKey and reason are required');
     }
-    return this.reversalService.reverseTransaction(tenant.organizationId, { transactionId, ...body });
+    return this.reversalService.reverseTransaction(tenant.organizationId, { transactionId, ...body }, tenant.scopes);
   }
 
   @Get('members/:memberId/balance')

@@ -1,5 +1,5 @@
-import type { VoucherRefundContext, VoucherRefundDecision } from '#domain/rewards/refund-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
+import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
 import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
@@ -219,14 +219,26 @@ async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
 
 /** Thrown by `recordReversalTransaction` for a voucher claim whose coupon can no longer be taken back. */
 export class VoucherClaimNotReversibleError extends Error {
-  constructor(couponStatus: string, reason?: string) {
+  constructor(couponStatus: string, reason: string) {
     super(
-      `This voucher claim cannot be reversed: its coupon is ${couponStatus}. ${reason ?? ''} ` +
+      `This voucher claim cannot be reversed: ${reason.replace(/[.]+$/, '')} (coupon status: ${couponStatus}). ` +
         'Check the coupon refund terms or issue separate compensation.',
     );
     this.name = 'VoucherClaimNotReversibleError';
   }
 }
+
+export interface VoucherRefundContext {
+  status: string;
+  claimedAt: Date;
+  expiresAt: Date | null;
+  refundPolicySnapshot: VoucherRefundPolicySnapshot;
+}
+
+/** Only allowed decisions carry a new coupon state and stock effect. */
+export type VoucherRefundDecision =
+  | { allowed: false; couponStatus: string; reason: string }
+  | { allowed: true; nextStatus: 'CANCELLED' | 'REDEEMED' | 'EXPIRED'; restock: boolean; reason: string };
 
 /** The durable command a POS reserve is accepted under (OCT-55). */
 export const POS_RESERVE_COMMAND_TYPE = 'CREDIT_POS_REDEEM_RESERVE';

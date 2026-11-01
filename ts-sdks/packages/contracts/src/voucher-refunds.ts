@@ -1,8 +1,11 @@
 /** Merchant refund terms, independent of the on-chain points earn/expiry policy. */
 export interface VoucherRefundPolicy {
   allowUnused: boolean;
+  /** Opt-in only; refund execution additionally requires an admin-scoped credential. */
   allowExpired: boolean;
+  /** Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution. */
   allowRedeemed: boolean;
+  /** False permanently consumes the campaign allocation even when an unused coupon is canceled. */
   restockUnused: boolean;
   /** Elapsed days since claim; null means no time limit. The boundary is exclusive. */
   refundWindowDays: number | null;

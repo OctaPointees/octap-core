@@ -1,6 +1,6 @@
-import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { CreditsRepository, expireDueBuckets } from '#infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';

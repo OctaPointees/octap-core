@@ -1,7 +1,7 @@
-import type { VoucherRefundContext } from '#domain/rewards/refund-policy.js';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VOUCHER_REFUND_POLICY, type SetVoucherRefundPolicyRequest } from '@octap/contracts';
 import { evaluateVoucherRefund, validateRefundPolicy } from '#domain/rewards/refund-policy.js';
+import type { VoucherRefundContext } from '#infra/db/repositories/credits.repository.js';
 
 const now = Date.parse('2030-01-10T00:00:00Z');
 const coupon = (overrides: Partial<VoucherRefundContext> = {}): VoucherRefundContext => ({
