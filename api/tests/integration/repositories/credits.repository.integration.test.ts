@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { CreditsRepository, expireDueBuckets } from '#infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
@@ -721,6 +722,7 @@ describe('reversal', () => {
     const original = await getLoyaltyTransaction(db, earn.id);
 
     const { reversal, reversedOriginal, newBalance } = await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original,
       idempotencyKey: 'rev-1',
@@ -750,6 +752,7 @@ describe('reversal', () => {
     });
 
     const { newBalance } = await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original: transaction,
       idempotencyKey: 'rev',
@@ -760,10 +763,20 @@ describe('reversal', () => {
 
   it('the unique index rejects a second reversal of the same original', async () => {
     const earn = await getLoyaltyTransaction(db, (await confirmedEarn(10)).id);
-    await repo.recordReversalTransaction({ organizationId: orgId, original: earn, idempotencyKey: 'rev-1' });
+    await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
+      organizationId: orgId,
+      original: earn,
+      idempotencyKey: 'rev-1',
+    });
 
     await expect(
-      repo.recordReversalTransaction({ organizationId: orgId, original: earn, idempotencyKey: 'rev-2' }),
+      repo.recordReversalTransaction({
+        evaluateRefund: evaluateVoucherRefund,
+        organizationId: orgId,
+        original: earn,
+        idempotencyKey: 'rev-2',
+      }),
     ).rejects.toThrow();
   });
 
@@ -772,6 +785,7 @@ describe('reversal', () => {
     const original = await getLoyaltyTransaction(db, earn.id);
 
     const { reversal } = await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original,
       idempotencyKey: 'rev',
@@ -806,7 +820,12 @@ describe('reversal', () => {
       idempotencyKey: 'voucher-redeem',
     });
 
-    await repo.recordReversalTransaction({ organizationId: orgId, original: transaction, idempotencyKey: 'rev' });
+    await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
+      organizationId: orgId,
+      original: transaction,
+      idempotencyKey: 'rev',
+    });
 
     expect(
       await db
@@ -819,6 +838,7 @@ describe('reversal', () => {
   it('recordReversalOnChain links the mirror digest to the reversal exactly once', async () => {
     const earn = await confirmedEarn(100);
     const { reversal } = await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original: await getLoyaltyTransaction(db, earn.id),
       idempotencyKey: 'rev',
@@ -857,7 +877,12 @@ describe('reversal', () => {
     });
 
     await expect(
-      repo.recordReversalTransaction({ organizationId: orgId, original: orphan, idempotencyKey: 'rev' }),
+      repo.recordReversalTransaction({
+        evaluateRefund: evaluateVoucherRefund,
+        organizationId: orgId,
+        original: orphan,
+        idempotencyKey: 'rev',
+      }),
     ).rejects.toThrow(/Credit ownership not found/);
   });
 });
@@ -892,12 +917,18 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
     await db.delete(schema.webhookDeliveries);
 
     const { reversal } = await repo.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original: earn,
       idempotencyKey: 'rev-1',
     });
     await expect(
-      repo.recordReversalTransaction({ organizationId: orgId, original: earn, idempotencyKey: 'rev-2' }),
+      repo.recordReversalTransaction({
+        evaluateRefund: evaluateVoucherRefund,
+        organizationId: orgId,
+        original: earn,
+        idempotencyKey: 'rev-2',
+      }),
     ).rejects.toThrow();
 
     expect(await deliveries()).toMatchObject([

@@ -17,6 +17,9 @@ import type {
   RedeemVoucherRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
+  SetVoucherRefundPolicyRequest,
+  ListVoucherRefundPolicyHistoryRequest,
+  VoucherRefundPolicyDto,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError } from './errors/index.js';
@@ -192,9 +195,31 @@ export class OctaPointClient {
   // REWARDS & VOUCHERS API
   // ==========================================
 
-  /**
-   * Create a new voucher definition.
-   */
+  /** Current terms for future voucher claims. */
+  async getVoucherRefundPolicy(options?: RequestOptions): Promise<VoucherRefundPolicyDto> {
+    return this.request('/v1/rewards/refund-policy', 'GET', undefined, options);
+  }
+
+  /** Publishes immutable terms for future claims; requires an admin-scoped credential. */
+  async setVoucherRefundPolicy(
+    request: SetVoucherRefundPolicyRequest,
+    options?: RequestOptions,
+  ): Promise<VoucherRefundPolicyDto> {
+    return this.request('/v1/rewards/refund-policy', 'PUT', request, options);
+  }
+
+  /** Lists immutable policy versions, newest first; requires an admin-scoped credential. */
+  async listVoucherRefundPolicyHistory(
+    query: ListVoucherRefundPolicyHistoryRequest = {},
+    options?: RequestOptions,
+  ): Promise<VoucherRefundPolicyDto[]> {
+    return this.request('/v1/rewards/refund-policy/history', 'GET', undefined, options, {
+      limit: query.limit,
+      beforeVersion: query.beforeVersion,
+    });
+  }
+
+  /** Create a new voucher definition. */
   async createVoucher(request: CreateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>('/v1/rewards/vouchers', 'POST', request, options);
   }

@@ -8,8 +8,10 @@ import { WebhooksRepository } from './repositories/webhooks.repository.js';
 import { IdentityRepository } from './repositories/identity.repository.js';
 import { IndexerRepository } from './repositories/indexer.repository.js';
 import { ProgramsRepository } from './repositories/programs.repository.js';
+import { VoucherRefundPoliciesRepository } from './repositories/voucher-refund-policies.repository.js';
 
 const repositories = [
+  VoucherRefundPoliciesRepository,
   CreditsRepository,
   RewardsRepository,
   OperationsRepository,

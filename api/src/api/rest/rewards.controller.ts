@@ -1,4 +1,18 @@
-import { Controller, Post, Get, Patch, Body, Param, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Put,
+  Patch,
+  Query,
+  ParseIntPipe,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  BadRequestException,
+} from '@nestjs/common';
+import type { SetVoucherRefundPolicyRequest } from '@octap/contracts';
+import { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
@@ -13,7 +27,32 @@ import type { VoucherDto, ClaimVoucherResponse, RedeemVoucherResponse, VoucherOw
 
 @Controller('v1/rewards')
 export class RewardsController {
-  constructor(private readonly rewardsService: RewardsService) {}
+  constructor(
+    private readonly rewardsService: RewardsService,
+    private readonly refundPolicy: RefundPolicyService,
+  ) {}
+
+  @Get('refund-policy')
+  @Scopes('read')
+  getRefundPolicy(@Tenant() tenant: TenantContext) {
+    return this.refundPolicy.current(tenant.organizationId);
+  }
+
+  @Get('refund-policy/history')
+  @Scopes('admin')
+  getRefundPolicyHistory(
+    @Tenant() tenant: TenantContext,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('beforeVersion', new ParseIntPipe({ optional: true })) beforeVersion?: number,
+  ) {
+    return this.refundPolicy.history(tenant.organizationId, { limit, beforeVersion });
+  }
+
+  @Put('refund-policy')
+  @Scopes('admin')
+  setRefundPolicy(@Tenant() tenant: TenantContext, @Body() body: SetVoucherRefundPolicyRequest) {
+    return this.refundPolicy.publish(tenant.organizationId, tenant.credentialId, body);
+  }
 
   @Post('vouchers')
   @Scopes('write')

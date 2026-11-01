@@ -3,6 +3,7 @@ export * from './organizations.schema.js';
 export * from './members.schema.js';
 export * from './credits.schema.js';
 export * from './rewards.schema.js';
+export * from './voucher-refund-policies.schema.js';
 export * from './billing.schema.js';
 export * from './operations.schema.js';
 export * from './webhooks.schema.js';

@@ -1,3 +1,5 @@
+import type { VoucherRefundPolicySnapshot } from './voucher-refunds.js';
+
 export type VoucherStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED';
 export type VoucherOwnershipStatus = 'AVAILABLE' | 'RESERVED' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
 export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_ITEM';
@@ -44,6 +46,7 @@ export interface ClaimVoucherRequest {
 }
 
 export interface ClaimVoucherResponse {
+  refundPolicy?: VoucherRefundPolicySnapshot;
   voucherOwnershipId: string;
   voucherId: string;
   organizationEndUserId: string;
@@ -77,6 +80,7 @@ export interface RedeemVoucherResponse {
 }
 
 export interface VoucherOwnershipDto {
+  refundPolicy?: VoucherRefundPolicySnapshot;
   id: string;
   voucherId: string;
   organizationEndUserId: string;

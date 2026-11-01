@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { CreditsRepository, VoucherClaimNotReversibleError } from '#infra/db/repositories/credits.repository.js';
 import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
 
@@ -9,6 +16,7 @@ export class ReversalService {
   async reverseTransaction(
     organizationId: string,
     request: ReverseTransactionRequest,
+    credentialScopes: readonly string[] = [],
   ): Promise<ReverseTransactionResponse> {
     const existingByIdempotency = await this.creditsRepo.findTransactionByIdempotency(
       organizationId,
@@ -56,6 +64,17 @@ export class ReversalService {
         original,
         idempotencyKey: request.idempotencyKey,
         reason: request.reason,
+        evaluateRefund: (coupon, nowMs) => {
+          const decision = evaluateVoucherRefund(coupon, nowMs);
+          // Check the locked coupon's effective state, including AVAILABLE past expiry.
+          // Request fields cannot grant scopes; only the authenticated tenant context can.
+          if (decision.allowed && decision.nextStatus !== 'CANCELLED' && !credentialScopes.includes('admin')) {
+            throw new ForbiddenException(
+              'An admin-scoped credential is required to refund a redeemed or expired coupon',
+            );
+          }
+          return decision;
+        },
       });
 
       return {
@@ -68,6 +87,7 @@ export class ReversalService {
         idempotencyKey: reversal.idempotencyKey,
       };
     } catch (err: unknown) {
+      if (err instanceof ForbiddenException) throw err;
       if (err instanceof VoucherClaimNotReversibleError) {
         throw new ConflictException(err.message);
       }

@@ -1,3 +1,7 @@
+import { withRls } from '#infra/db/rls.js';
+import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
+import { VoucherRefundPoliciesRepository } from '#infra/db/repositories/voucher-refund-policies.repository.js';
+import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
@@ -9,6 +13,7 @@ import {
   schema,
   seedMember,
   seedOrganization,
+  seedCredential,
   setOwnership,
   getOwnership,
   insertLoyaltyTransaction,
@@ -312,6 +317,7 @@ describe('atomic voucher conversion', () => {
 
   const reverseClaim = async (result: Awaited<ReturnType<typeof confirm>>, idempotencyKey = 'refund') =>
     credits.recordReversalTransaction({
+      evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original: (await credits.getLoyaltyTransactionById(result.transactionId!))!,
       idempotencyKey,
@@ -359,7 +365,7 @@ describe('atomic voucher conversion', () => {
     const voucher = await create();
     const result = await confirm(await claim(voucher.id));
     await settle(result.serialCode);
-    await expect(reverseClaim(result)).rejects.toThrow(new RegExp(`coupon is ${status}`));
+    await expect(reverseClaim(result)).rejects.toThrow(new RegExp(`coupon status: ${status}`));
     expect(await credits.getLoyaltyTransactionById(result.transactionId!)).toMatchObject({ status: 'CONFIRMED' });
     expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
     expect((await row(voucher.id)).claimedCount).toBe(1);
@@ -543,5 +549,157 @@ describe('voucher redeem outbox retained from OCT-244', () => {
       },
     });
     expect((delivered[0].payload as Record<string, unknown>).redeemedAt).toEqual(expect.any(String));
+  });
+});
+
+describe('organization refund policy snapshots', () => {
+  const policies = new VoucherRefundPoliciesRepository(db);
+  const publish = async (changes: Partial<Omit<typeof DEFAULT_VOUCHER_REFUND_POLICY, 'version'>>) => {
+    const defaults = {
+      allowUnused: true,
+      allowExpired: false,
+      allowRedeemed: false,
+      restockUnused: true,
+      refundWindowDays: null as number | null,
+    };
+    const { credential } = await seedCredential(db, orgId);
+    const settings = { ...defaults, ...changes };
+    return policies.publish(orgId, credential.id, { ...settings, reason: 'Merchant refund terms' });
+  };
+  const reverse = async (result: Awaited<ReturnType<typeof confirm>>, key: string) =>
+    credits.recordReversalTransaction({
+      organizationId: orgId,
+      original: (await credits.getLoyaltyTransactionById(result.transactionId!))!,
+      idempotencyKey: key,
+      reason: 'Customer refund',
+      evaluateRefund: evaluateVoucherRefund,
+    });
+
+  it('keeps existing terms when the merchant disables unused refunds for future claims', async () => {
+    const old = await confirm(await claim((await create()).id));
+    expect(old.refundPolicy).toEqual(DEFAULT_VOUCHER_REFUND_POLICY);
+    await publish({ allowUnused: false });
+    const next = await confirm(await claim((await create({ code: 'NEW' })).id, 'new-claim'));
+    expect(next.refundPolicy).toMatchObject({ version: 1, allowUnused: false });
+    await reverse(old, 'old-refund');
+    await expect(reverse(next, 'new-refund')).rejects.toThrow(/Unused coupon refunds are disabled/);
+    expect((await repo.getClaim(orgId, old.voucherOwnershipId)).status).toBe('CANCELLED');
+    expect((await repo.getClaim(orgId, next.voucherOwnershipId)).status).toBe('AVAILABLE');
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+  });
+
+  it('refunds redeemed coupons only when permitted, retaining usage and never returning stock', async () => {
+    await publish({ allowRedeemed: true });
+    const voucher = await create({ totalSupply: 1 });
+    const issued = await confirm(await claim(voucher.id));
+    await repo.redeemVoucher(orgId, issued.serialCode);
+    const result = await reverse(issued, 'used-refund');
+    expect(result.newBalance).toBe(100);
+    expect(result.reversal.metadata).toMatchObject({
+      voucherRefund: { policy: { version: 1, allowRedeemed: true }, couponStatus: 'REDEEMED', restocked: false },
+    });
+    expect((await repo.getClaim(orgId, issued.voucherOwnershipId)).status).toBe('REDEEMED');
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+    await expect(reverse(issued, 'second-refund')).rejects.toThrow();
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(100);
+  });
+
+  it.each(['EXPIRED', 'AVAILABLE'] as const)(
+    'can refund an expired %s coupon without restoring its benefit',
+    async (status) => {
+      await publish({ allowExpired: true });
+      const voucher = await create({ totalSupply: 1 });
+      const issued = await confirm(await claim(voucher.id));
+      await db
+        .update(schema.voucherOwnerships)
+        .set({ status, expiresAt: new Date(Date.now() - 1000) })
+        .where(eq(schema.voucherOwnerships.id, issued.voucherOwnershipId));
+      await reverse(issued, 'expired-refund');
+      expect((await repo.getClaim(orgId, issued.voucherOwnershipId)).status).toBe('EXPIRED');
+      expect((await getOwnership(db, memberId)).confirmedBalance).toBe(100);
+      expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+      await expect(repo.redeemVoucher(orgId, issued.serialCode)).rejects.toThrow();
+    },
+  );
+
+  it('can refund an unused coupon without restocking', async () => {
+    await publish({ restockUnused: false });
+    const voucher = await create({ totalSupply: 1 });
+    const issued = await confirm(await claim(voucher.id));
+    await reverse(issued, 'unused-refund');
+    expect((await repo.getClaim(orgId, issued.voucherOwnershipId)).status).toBe('CANCELLED');
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+  });
+
+  it('rejects refunds beyond the claim-time policy window without any writes', async () => {
+    await publish({ refundWindowDays: 7 });
+    const issued = await confirm(await claim((await create()).id));
+    await db
+      .update(schema.voucherOwnerships)
+      .set({ claimedAt: new Date(Date.now() - 8 * 86400000) })
+      .where(eq(schema.voucherOwnerships.id, issued.voucherOwnershipId));
+    await expect(reverse(issued, 'late-refund')).rejects.toThrow(/refund window has ended/);
+    expect((await repo.getClaim(orgId, issued.voucherOwnershipId)).status).toBe('AVAILABLE');
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(75);
+  });
+
+  it('does not refund twice when an explicitly refundable used coupon is reversed concurrently', async () => {
+    await publish({ allowRedeemed: true });
+    const voucher = await create({ totalSupply: 1 });
+    const issued = await confirm(await claim(voucher.id));
+    await repo.redeemVoucher(orgId, issued.serialCode);
+    const outcomes = await Promise.allSettled([reverse(issued, 'refund-a'), reverse(issued, 'refund-b')]);
+    expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(100);
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
+    expect((await repo.getClaim(orgId, issued.voucherOwnershipId)).status).toBe('REDEEMED');
+  });
+
+  it('does not permit the application role to rewrite/delete history or read another tenant policy', async () => {
+    await publish({ allowRedeemed: true });
+    const foreign = await seedOrganization(db);
+    await withRls(db, { tenantId: foreign.id }, async (tx) => {
+      expect(await tx.select().from(schema.voucherRefundPolicies)).toEqual([]);
+    });
+    await withRls(db, { tenantId: orgId }, async (tx) => {
+      expect(await tx.update(schema.voucherRefundPolicies).set({ reason: 'Tampered' }).returning()).toEqual([]);
+      expect(await tx.delete(schema.voucherRefundPolicies).returning()).toEqual([]);
+    });
+    expect((await policies.history(orgId))[0]).toMatchObject({ version: 1, reason: 'Merchant refund terms' });
+  });
+
+  it('keeps the database baseline terms aligned with the public default policy', async () => {
+    const voucher = await create({ pointsCost: 0 });
+    const [issued] = await db
+      .insert(schema.voucherOwnerships)
+      .values({
+        voucherId: voucher.id,
+        organizationEndUserId: memberId,
+        serialCode: 'DEFAULT-SNAPSHOT',
+      })
+      .returning();
+    expect(issued.refundPolicySnapshot).toEqual(DEFAULT_VOUCHER_REFUND_POLICY);
+  });
+
+  it('retains the historical actor after a credential is removed', async () => {
+    const published = await publish({ allowUnused: false });
+    if (published.createdByCredentialId === null) throw new Error('Published policies require an actor');
+    await db.delete(schema.apiCredentials).where(eq(schema.apiCredentials.id, published.createdByCredentialId));
+    expect((await policies.current(orgId)).createdByCredentialId).toBe(published.createdByCredentialId);
+    expect((await policies.history(orgId))[0].createdByCredentialId).toBe(published.createdByCredentialId);
+  });
+
+  it('cannot publish with a credential from another tenant', async () => {
+    const other = await seedOrganization(db);
+    const { credential } = await seedCredential(db, other.id);
+    const settings = {
+      allowUnused: true,
+      allowExpired: false,
+      allowRedeemed: false,
+      restockUnused: true,
+      refundWindowDays: null as number | null,
+    };
+    await expect(policies.publish(orgId, credential.id, { ...settings, reason: 'Foreign change' })).rejects.toThrow();
+    expect(await policies.history(orgId)).toEqual([]);
   });
 });
