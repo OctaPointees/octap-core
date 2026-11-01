@@ -1,6 +1,6 @@
-import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import { createTestApp } from '../support/app.js';
 import {
   schema,
@@ -314,9 +314,8 @@ describe('voucher refund policy over HTTP', () => {
   it.each(['REDEEMED', 'EXPIRED', 'AVAILABLE_PAST_EXPIRY'] as const)(
     'requires authenticated admin scope for a policy-enabled %s refund and rolls back denied writes',
     async (state) => {
-      const admin = {
-        authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read', 'write', 'admin'] })).rawKey}`,
-      };
+      const adminCredential = await seedCredential(ctx.db, orgId, { scopes: ['read', 'write', 'admin'] });
+      const admin = { authorization: `Bearer ${adminCredential.rawKey}` };
       await ctx
         .http()
         .put('/v1/rewards/refund-policy')
@@ -387,6 +386,12 @@ describe('voucher refund policy over HTTP', () => {
       await ctx.http().post(reversePath).set(foreign).send(input).expect(404);
       const result = await ctx.http().post(reversePath).set(admin).send(input).expect(201);
       expect(result.body.newBalance).toBe(100);
+      const reversal = await ctx.db.query.loyaltyTransactions.findFirst({
+        where: eq(schema.loyaltyTransactions.id, result.body.reversalTransactionId),
+      });
+      expect(reversal?.metadata).toMatchObject({
+        voucherRefund: { refundedByCredentialId: adminCredential.credential.id },
+      });
       expect((await ctx.http().post(reversePath).set(admin).send(input).expect(201)).body.reversalTransactionId).toBe(
         result.body.reversalTransactionId,
       );
