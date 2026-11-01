@@ -221,7 +221,7 @@ async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
 export class VoucherClaimNotReversibleError extends Error {
   constructor(couponStatus: string, reason: string) {
     super(
-      `This voucher claim cannot be reversed: ${reason.replace(/[.]+$/, '')} (coupon status: ${couponStatus}). ` +
+      `This voucher claim cannot be reversed: ${reason} (coupon status: ${couponStatus}). ` +
         'Check the coupon refund terms or issue separate compensation.',
     );
     this.name = 'VoucherClaimNotReversibleError';
@@ -1055,6 +1055,7 @@ export class CreditsRepository {
     idempotencyKey: string;
     reason?: string;
     evaluateRefund: (coupon: VoucherRefundContext, nowMs: number) => VoucherRefundDecision;
+    refundedByCredentialId?: string;
   }) {
     return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
       const found = await tx.query.voucherOwnerships.findFirst({
@@ -1082,6 +1083,7 @@ export class CreditsRepository {
             couponStatus: coupon.status,
             restocked: decision.restock,
             decision: decision.reason,
+            refundedByCredentialId: params.refundedByCredentialId,
           },
         };
       }

@@ -88,8 +88,11 @@ describe('CreditsController', () => {
         idempotencyKey: 'k',
         reason: 'chargeback',
       },
-      tenant.scopes,
+      tenant,
     );
+    const withForgedId = { idempotencyKey: 'k', reason: 'chargeback', transactionId: 'tx-other' };
+    await c.reverseTransaction(tenant, 'tx-1', withForgedId);
+    expect(reverseTransaction).toHaveBeenLastCalledWith('org-1', { ...withForgedId, transactionId: 'tx-1' }, tenant);
     await bad(
       c.reverseTransaction(tenant, 'tx-1', { idempotencyKey: '', reason: 'x' }),
       /idempotencyKey and reason are required/,

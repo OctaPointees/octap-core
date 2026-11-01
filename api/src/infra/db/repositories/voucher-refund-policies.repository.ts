@@ -71,11 +71,12 @@ export class VoucherRefundPoliciesRepository {
       // Serialize version allocation per tenant, including its first publication.
       // Lock before entering API-key RLS: organizations exposes human memberships,
       // not API-credential tenants. Policy/credential reads and writes remain under RLS.
+      // NO KEY UPDATE, because FOR UPDATE would also block every insert referencing this organization.
       const [organization] = await tx
         .select({ id: organizations.id })
         .from(organizations)
         .where(eq(organizations.id, organizationId))
-        .for('update');
+        .for('no key update');
       if (!organization) throw new RefundPolicyOrganizationNotFoundError();
       return withRls(tx, { tenantId: organizationId }, async (tx) => {
         const [credential] = await tx

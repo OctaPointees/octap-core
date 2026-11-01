@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
-import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import {
   bigint,
   integer,
@@ -81,10 +80,16 @@ export const voucherOwnerships = pgTable(
       onDelete: 'set null',
     }),
     serialCode: text('serial_code').notNull().unique(),
-    refundPolicySnapshot: jsonb('refund_policy_snapshot')
-      .$type<VoucherRefundPolicySnapshot>()
-      .notNull()
-      .default(DEFAULT_VOUCHER_REFUND_POLICY),
+    // Spelled out because drizzle-kit loads this file through require(), which @octap/contracts doesn't
+    // export. An integration test keeps it equal to DEFAULT_VOUCHER_REFUND_POLICY.
+    refundPolicySnapshot: jsonb('refund_policy_snapshot').$type<VoucherRefundPolicySnapshot>().notNull().default({
+      version: 0,
+      allowUnused: true,
+      allowExpired: false,
+      allowRedeemed: false,
+      restockUnused: true,
+      refundWindowDays: null,
+    }),
     status: voucherOwnershipStatusEnum('status').default('AVAILABLE').notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
     redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
