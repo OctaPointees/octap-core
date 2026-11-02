@@ -99,6 +99,34 @@
       "when": 1793472652905,
       "tag": "0013_voucher_refund_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793612396384,
+      "tag": "0014_system_user_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793615600297,
+      "tag": "0015_console_google_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793617302619,
+      "tag": "0016_console_onboarding_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793634137093,
+      "tag": "0017_organization_setup_types",
+      "breakpoints": true
     }
   ]
 }

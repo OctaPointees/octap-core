@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module.js';
 import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { DRIZZLE_DB, type DrizzleDb } from '#infra/db/postgres.provider.js';
 import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
@@ -47,13 +48,17 @@ export type ChainAdapters = ReturnType<typeof fakeChainAdapters>;
  * the bytes actually sent), against the integration Postgres/Redis, with only the chain adapters
  * replaced.
  */
-export async function createTestApp(adapters: ChainAdapters = fakeChainAdapters()) {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+export async function createTestApp(
+  adapters: ChainAdapters = fakeChainAdapters(),
+  google?: Pick<GoogleIdentityClient, 'verify'>,
+) {
+  const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EnokiClient)
     .useValue(adapters.enoki)
     .overrideProvider(SuiTransactionBuilderClient)
-    .useValue(adapters.suiBuilder)
-    .compile();
+    .useValue(adapters.suiBuilder);
+  if (google) builder.overrideProvider(GoogleIdentityClient).useValue(google);
+  const moduleRef = await builder.compile();
   const app: INestApplication = moduleRef.createNestApplication({ rawBody: true, logger: false });
   await app.init();
   return {

@@ -30,6 +30,7 @@
     "@octap/contracts": "0.0.0",
     "dotenv": "^18.0.5",
     "drizzle-orm": "^0.45.3",
+    "google-auth-library": "^11.3.2",
     "ioredis": "^6.0.0",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",

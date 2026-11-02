@@ -10,6 +10,7 @@ export const organizationStatusEnum = pgEnum('organization_status', [
 ]);
 
 export const apiCredentialStatusEnum = pgEnum('api_credential_status', ['ACTIVE', 'REVOKED', 'EXPIRED']);
+export const organizationTypeEnum = pgEnum('organization_type', ['INDIVIDUAL_HOUSEHOLD', 'COMPANY']);
 
 /**
  * ORGANIZATION: Merchant tenants in OctaP managing loyalty programs.
@@ -20,6 +21,8 @@ export const organizations = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
+    organizationType: organizationTypeEnum('organization_type'),
+    representativeName: text('representative_name'),
     legalName: text('legal_name'),
     taxId: text('tax_id'),
     status: organizationStatusEnum('status').default('ACTIVE').notNull(),
@@ -40,6 +43,16 @@ export const organizations = pgTable(
     }),
   ],
 );
+
+/** CCCD is private to Core workflows, never exposed through the public Data API. */
+export const organizationIdentityDetails = pgTable('organization_identity_details', {
+  organizationId: uuid('organization_id')
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nationalIdEncrypted: text('national_id_encrypted').notNull(),
+  nationalIdLast4: text('national_id_last4').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}).enableRLS();
 
 /**
  * API CREDENTIAL: API keys provisioned for merchant POS and backend integration.

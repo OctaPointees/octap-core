@@ -1,10 +1,18 @@
 import { sql } from 'drizzle-orm';
-import { boolean, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { authenticatedRole, authUid } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 
-export const systemUserRoleEnum = pgEnum('system_user_role', ['SUPER_ADMIN', 'ADMIN', 'USER']);
-export const membershipRoleEnum = pgEnum('membership_role', ['OWNER', 'ADMIN', 'MANAGER', 'STAFF', 'VIEWER']);
+// Keep schema loading independent of ESM-only runtime packages for drizzle-kit.
+export const systemUserRoleEnum = pgEnum('system_user_role', ['SYSTEM_USER', 'SYSTEM_ADMIN']);
+export const membershipRoleEnum = pgEnum('membership_role', [
+  'OWNER',
+  'ADMIN',
+  'MANAGER',
+  'STAFF',
+  'VIEWER',
+  'BUSINESS_DEVELOPER',
+]);
 export const invitationStatusEnum = pgEnum('invitation_status', ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED']);
 export const changeRequestStatusEnum = pgEnum('change_request_status', [
   'PENDING',
@@ -27,10 +35,11 @@ export const systemUsers = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     email: text('email').notNull().unique(),
+    googleSubject: text('google_subject').unique(),
     passwordHash: text('password_hash'),
     fullName: text('full_name').notNull(),
     avatarUrl: text('avatar_url'),
-    isSuperAdmin: boolean('is_super_admin').default(false).notNull(),
+    systemRole: systemUserRoleEnum('system_role').default('SYSTEM_USER').notNull(),
     metadata: jsonb('metadata').default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -66,8 +75,12 @@ export const invitations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex('invitation_org_email_pending_idx').on(t.organizationId, t.email)],
-);
+  (t) => [
+    uniqueIndex('invitation_org_email_pending_idx')
+      .on(t.organizationId, t.email)
+      .where(sql`${t.status} = 'PENDING'`),
+  ],
+).enableRLS();
 
 /**
  * ORGANIZATION MEMBERSHIP: Associates System Users with Organizations with specific roles.
@@ -114,4 +127,4 @@ export const organizationChangeRequests = pgTable('organization_change_requests'
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}).enableRLS();

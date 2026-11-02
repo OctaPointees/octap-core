@@ -9,8 +9,13 @@ import { IdentityRepository } from './repositories/identity.repository.js';
 import { IndexerRepository } from './repositories/indexer.repository.js';
 import { ProgramsRepository } from './repositories/programs.repository.js';
 import { VoucherRefundPoliciesRepository } from './repositories/voucher-refund-policies.repository.js';
+import { ConsoleUsersRepository } from './repositories/console-users.repository.js';
+import { ConsoleOrganizationsRepository } from './repositories/console-organizations.repository.js';
+import { OrganizationIdentityCipher } from './organization-identity.cipher.js';
 
 const repositories = [
+  ConsoleOrganizationsRepository,
+  ConsoleUsersRepository,
   VoucherRefundPoliciesRepository,
   CreditsRepository,
   RewardsRepository,
@@ -23,7 +28,7 @@ const repositories = [
 ];
 
 @Module({
-  providers: [postgresClientProvider, drizzleProvider, ...repositories],
+  providers: [postgresClientProvider, drizzleProvider, OrganizationIdentityCipher, ...repositories],
   exports: [DRIZZLE_DB, POSTGRES_CLIENT, ...repositories],
 })
 export class PostgresModule {}
