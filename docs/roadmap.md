@@ -74,7 +74,7 @@ then move the row to **Implemented** in the same pull request.
 - Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`), limited per client IP
   (`PublicRateLimitGuard`; set `TRUSTED_PROXY_HOPS` behind a proxy, and a merchant server proxying these routes counts as one IP): the
   Google id_token is the proof of identity on login and enroll, and Enoki validates it, not this process. All merchants share one
-  Google client ID, so a token captured by one merchant is valid at another's `POST /v1/identity/verify`; spending still needs the customer's signature (accepted until per-merchant clients, see OCT-196). No customer
+  Google client ID, so a token captured by one merchant is valid at another's `POST /v1/identity/verify` and can enroll that customer there for its roughly one-hour lifetime; spending still needs the customer's signature (accepted until per-merchant clients, see OCT-196). Enroll no longer takes `externalMemberId`, because a value the caller chooses proves nothing; a merchant-side way to set it is not built. No customer
   session/bearer token is issued — balance and voucher reads still require the merchant API-key
   guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for
   signing is entirely client-side (this process only ever sees its public half); nonce/proof

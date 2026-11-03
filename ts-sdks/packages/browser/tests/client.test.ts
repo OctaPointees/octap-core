@@ -102,10 +102,10 @@ describe('OctaBrowserClient', () => {
       url: 'https://a/v1/identity/organizations/org-1/enroll',
       body: { idToken: 'google-jwt' },
     });
-    await client.enroll('google-jwt', 'org-9', 'ext-1');
+    await client.enroll('google-jwt', 'org-9');
     expect(last()).toMatchObject({
       url: 'https://a/v1/identity/organizations/org-9/enroll',
-      body: { idToken: 'google-jwt', externalMemberId: 'ext-1' },
+      body: { idToken: 'google-jwt' },
     });
   });
 

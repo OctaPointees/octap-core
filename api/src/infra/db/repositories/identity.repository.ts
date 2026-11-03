@@ -12,10 +12,6 @@ export class IdentityRepository {
     return this.db.query.endUsers.findFirst({ where: eq(endUsers.suiAddress, suiAddress) });
   }
 
-  async findEndUserById(endUserId: string) {
-    return this.db.query.endUsers.findFirst({ where: eq(endUsers.id, endUserId) });
-  }
-
   /** Returns undefined when a concurrent request already created this address's end user. */
   async createEndUser(params: { suiAddress: string }) {
     const [created] = await this.db
@@ -26,12 +22,12 @@ export class IdentityRepository {
     return created;
   }
 
-  async organizationExists(organizationId: string): Promise<boolean> {
+  async findOrganizationStatus(organizationId: string) {
     const [row] = await this.db
-      .select({ id: organizations.id })
+      .select({ status: organizations.status })
       .from(organizations)
       .where(eq(organizations.id, organizationId));
-    return row !== undefined;
+    return row?.status;
   }
 
   async findEnrollment(organizationId: string, endUserId: string) {
@@ -44,7 +40,7 @@ export class IdentityRepository {
   }
 
   /** Returns undefined when a concurrent request already enrolled this end user in this organization. */
-  async enroll(params: { organizationId: string; endUserId: string; externalMemberId?: string }) {
+  async enroll(params: { organizationId: string; endUserId: string }) {
     const [created] = await this.db
       .insert(organizationEndUsers)
       .values(params)

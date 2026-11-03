@@ -1,6 +1,6 @@
 import { HttpException, ServiceUnavailableException, type ExecutionContext } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PUBLIC_RATE_LIMIT_MAX_REQUESTS,
   PublicRateLimitGuard,
@@ -10,8 +10,11 @@ import {
 import { fakeRedis } from '../../../helpers/redis.js';
 import { stub } from '../../../helpers/stub.js';
 
+const response = { setHeader: vi.fn() };
 const contextFrom = (ip?: string) =>
-  ({ switchToHttp: () => ({ getRequest: () => ({ ip }) }) }) as unknown as ExecutionContext;
+  ({
+    switchToHttp: () => ({ getRequest: () => ({ ip }), getResponse: () => response }),
+  }) as unknown as ExecutionContext;
 
 describe('PublicRateLimitGuard', () => {
   it('allows the limit per address, then answers 429', async () => {
@@ -24,6 +27,7 @@ describe('PublicRateLimitGuard', () => {
 
     expect(rejected).toBeInstanceOf(HttpException);
     expect((rejected as HttpException).getStatus()).toBe(429);
+    expect(response.setHeader).toHaveBeenCalledWith('Retry-After', expect.stringMatching(/^\d+$/));
     await expect(guard.canActivate(contextFrom('203.0.113.2'))).resolves.toBe(true);
   });
 

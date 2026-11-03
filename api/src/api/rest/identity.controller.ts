@@ -25,8 +25,9 @@ import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 
-function requireIdToken(body: { idToken?: unknown }): string {
-  if (typeof body.idToken !== 'string' || !body.idToken) {
+/** `body` is undefined when a request has no body, or one the JSON parser does not handle. */
+function requireIdToken(body: { idToken?: unknown } | undefined): string {
+  if (typeof body?.idToken !== 'string' || !body.idToken) {
     throw new BadRequestException('idToken is required');
   }
   return body.idToken;
@@ -57,7 +58,6 @@ export class IdentityController {
     return this.identity.enrollInOrganization({
       idToken: requireIdToken(body),
       organizationId,
-      externalMemberId: body.externalMemberId,
     });
   }
 

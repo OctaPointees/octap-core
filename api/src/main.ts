@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
-import { parseTrustedProxyHops } from './infra/auth/public-rate-limit.guard.js';
+import { parseTrustedProxyHops } from '#infra/auth/public-rate-limit.guard.js';
 // rawBody: true preserves the exact request bytes on request.rawBody — request signature
 // verification (infra/auth/request-signing.util.ts) must hash what was actually sent, not a
 // re-serialized JSON.stringify(request.body), which can differ in key order/whitespace.

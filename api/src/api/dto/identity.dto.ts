@@ -4,7 +4,6 @@ export interface GoogleLoginBodyDto {
 
 export interface EnrollMemberBodyDto {
   idToken: string;
-  externalMemberId?: string;
 }
 
 export interface VerifyCustomerBodyDto {

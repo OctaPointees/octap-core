@@ -21,7 +21,7 @@ function recordingFetch(respond: (url: string, init: RequestInit) => unknown = (
 
 describe('OctaPointClient', () => {
   it('verifyCustomer posts the token with the API key and returns the verified customer', async () => {
-    const customer = { endUserId: 'eu-1', suiAddress: '0xabc', memberId: null };
+    const customer = { endUserId: 'eu-1', suiAddress: '0xabc', memberId: null, active: false };
     const { fetchFn, last } = recordingFetch(() => customer);
     const client = createOctaPointClient({ credentials: { apiKey: 'test-key' }, fetchFn });
 

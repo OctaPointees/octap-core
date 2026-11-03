@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { IdentityService } from '#domain/identity/identity.service.js';
 import type { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
 import { EnokiTokenRejectedError, type EnokiClient } from '#infra/clients/enoki/enoki.client.js';
@@ -61,8 +61,8 @@ describe('IdentityService.loginWithGoogle', () => {
 });
 
 describe('IdentityService.enrollInOrganization', () => {
-  const knownUser = { findEndUserBySuiAddress: async () => ({ id: 'end-user-1', suiAddress: '0xabc' }) };
-  const orgExists = { organizationExists: async () => true };
+  const knownUser = { findEndUserBySuiAddress: async () => ({ id: 'end-user-1', status: 'ACTIVE' }) };
+  const orgExists = { findOrganizationStatus: async () => 'ACTIVE' };
   const params = { idToken: 'jwt', organizationId: 'org-1' };
 
   it('enrolls the end user the token proves', async () => {
@@ -72,18 +72,14 @@ describe('IdentityService.enrollInOrganization', () => {
       enokiResolving(),
     );
 
-    const result = await service.enrollInOrganization({ ...params, externalMemberId: 'ext-1' });
+    const result = await service.enrollInOrganization(params);
 
-    expect(enroll).toHaveBeenCalledWith({
-      endUserId: 'end-user-1',
-      organizationId: 'org-1',
-      externalMemberId: 'ext-1',
-    });
+    expect(enroll).toHaveBeenCalledWith({ endUserId: 'end-user-1', organizationId: 'org-1' });
     expect(result).toEqual({ organizationEndUserId: 'org-end-user-1', endUserId: 'end-user-1', isNewEnrollment: true });
   });
 
   it('creates the end user when the token is the first this address has presented', async () => {
-    const createEndUser = vi.fn(async () => ({ id: 'new-user' }));
+    const createEndUser = vi.fn(async () => ({ id: 'new-user', status: 'ACTIVE' }));
     const enroll = vi.fn(async () => ({ id: 'org-end-user-1' }));
     const service = new IdentityService(
       stub<IdentityRepository>({
@@ -140,12 +136,36 @@ describe('IdentityService.enrollInOrganization', () => {
   it('rejects a missing organization before spending an Enoki call', async () => {
     const resolveZkLoginAddress = vi.fn();
     const service = new IdentityService(
-      stub<IdentityRepository>({ organizationExists: async () => false }),
+      stub<IdentityRepository>({ findOrganizationStatus: async () => undefined }),
       stub<EnokiClient>({ resolveZkLoginAddress }),
     );
 
     await expect(service.enrollInOrganization(params)).rejects.toBeInstanceOf(NotFoundException);
     expect(resolveZkLoginAddress).not.toHaveBeenCalled();
+  });
+
+  it('refuses an organization that is not active before spending an Enoki call', async () => {
+    const resolveZkLoginAddress = vi.fn();
+    const service = new IdentityService(
+      stub<IdentityRepository>({ findOrganizationStatus: async () => 'SUSPENDED' }),
+      stub<EnokiClient>({ resolveZkLoginAddress }),
+    );
+
+    await expect(service.enrollInOrganization(params)).rejects.toBeInstanceOf(ConflictException);
+    expect(resolveZkLoginAddress).not.toHaveBeenCalled();
+  });
+
+  it('refuses a blocked customer', async () => {
+    const service = new IdentityService(
+      stub<IdentityRepository>({
+        ...orgExists,
+        findEndUserBySuiAddress: async () => ({ id: 'end-user-1', status: 'BLOCKED' }),
+        enroll: () => expect.fail('should not enroll'),
+      }),
+      enokiResolving(),
+    );
+
+    await expect(service.enrollInOrganization(params)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('writes nothing for a token Enoki rejects', async () => {
@@ -168,10 +188,10 @@ describe('IdentityService.enrollInOrganization', () => {
 
 describe('IdentityService.verifyCustomer', () => {
   it('returns the member of the calling organization', async () => {
-    const findEnrollment = vi.fn(async () => ({ id: 'member-1' }));
+    const findEnrollment = vi.fn(async () => ({ id: 'member-1', status: 'ACTIVE' }));
     const service = new IdentityService(
       stub<IdentityRepository>({
-        findEndUserBySuiAddress: async () => ({ id: 'end-user-1' }),
+        findEndUserBySuiAddress: async () => ({ id: 'end-user-1', status: 'ACTIVE' }),
         findEnrollment,
         createEndUser: () => expect.fail('should not write'),
         enroll: () => expect.fail('should not write'),
@@ -183,6 +203,7 @@ describe('IdentityService.verifyCustomer', () => {
       endUserId: 'end-user-1',
       suiAddress: '0xabc',
       memberId: 'member-1',
+      active: true,
     });
     expect(findEnrollment).toHaveBeenCalledWith('org-1', 'end-user-1');
   });
@@ -190,7 +211,7 @@ describe('IdentityService.verifyCustomer', () => {
   it('returns a null memberId before enrollment', async () => {
     const service = new IdentityService(
       stub<IdentityRepository>({
-        findEndUserBySuiAddress: async () => ({ id: 'end-user-1' }),
+        findEndUserBySuiAddress: async () => ({ id: 'end-user-1', status: 'ACTIVE' }),
         findEnrollment: async () => undefined,
       }),
       enokiResolving(),
@@ -200,7 +221,23 @@ describe('IdentityService.verifyCustomer', () => {
       endUserId: 'end-user-1',
       suiAddress: '0xabc',
       memberId: null,
+      active: false,
     });
+  });
+
+  it.each([
+    ['BLOCKED', 'ACTIVE'],
+    ['ACTIVE', 'SUSPENDED'],
+  ])('reports an end user %s with a membership %s as not active', async (userStatus, memberStatus) => {
+    const service = new IdentityService(
+      stub<IdentityRepository>({
+        findEndUserBySuiAddress: async () => ({ id: 'end-user-1', status: userStatus }),
+        findEnrollment: async () => ({ id: 'member-1', status: memberStatus }),
+      }),
+      enokiResolving(),
+    );
+
+    expect(await service.verifyCustomer('jwt', 'org-1')).toMatchObject({ memberId: 'member-1', active: false });
   });
 
   it('creates nothing for an account that has never signed in', async () => {
@@ -216,6 +253,7 @@ describe('IdentityService.verifyCustomer', () => {
       endUserId: null,
       suiAddress: '0xabc',
       memberId: null,
+      active: false,
     });
   });
 
@@ -265,6 +303,21 @@ describe('IdentityService zkLogin passthroughs', () => {
     await expect(service.createZkLoginNonce({ ephemeralPublicKey: '' })).rejects.toThrow(
       /ephemeralPublicKey is required/,
     );
+  });
+
+  it('createZkLoginProof turns a rejected token into a 401', async () => {
+    const service = new IdentityService(
+      stub<IdentityRepository>(),
+      stub<EnokiClient>({
+        createZkLoginProof: async () => {
+          throw new EnokiTokenRejectedError('jwt_error');
+        },
+      }),
+    );
+
+    await expect(
+      service.createZkLoginProof({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 1 }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('createZkLoginProof renames idToken to Enoki’s jwt', async () => {

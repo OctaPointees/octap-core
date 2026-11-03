@@ -24,17 +24,15 @@ describe('IdentityRepository', () => {
   it('creates end users keyed by a unique zkLogin address and enrolls them once per organization', async () => {
     const endUser = await repo.createEndUser({ suiAddress: '0xabc' });
     expect((await repo.findEndUserBySuiAddress('0xabc'))?.id).toBe(endUser.id);
-    expect((await repo.findEndUserById(endUser.id))?.suiAddress).toBe('0xabc');
     expect(await repo.findEndUserBySuiAddress('0xnope')).toBeUndefined();
     expect(await repo.createEndUser({ suiAddress: '0xabc' })).toBeUndefined();
-    expect(await repo.organizationExists(orgId)).toBe(true);
-    expect(await repo.organizationExists('00000000-0000-0000-0000-000000000000')).toBe(false);
+    expect(await repo.findOrganizationStatus(orgId)).toBe('ACTIVE');
+    expect(await repo.findOrganizationStatus('00000000-0000-0000-0000-000000000000')).toBeUndefined();
 
-    const enrollment = await repo.enroll({ organizationId: orgId, endUserId: endUser.id, externalMemberId: 'ext-1' });
+    const enrollment = await repo.enroll({ organizationId: orgId, endUserId: endUser.id });
     expect(enrollment).toMatchObject({
       organizationId: orgId,
       endUserId: endUser.id,
-      externalMemberId: 'ext-1',
       tier: 'BRONZE',
     });
     expect((await repo.findEnrollment(orgId, endUser.id))?.id).toBe(enrollment.id);

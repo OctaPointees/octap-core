@@ -165,7 +165,7 @@ describe('IdentityController', () => {
     const c = new IdentityController(stub<IdentityService>(service));
 
     await c.googleLogin({ idToken: 'jwt' });
-    await c.enroll('org-1', { idToken: 'jwt', externalMemberId: 'ext' });
+    await c.enroll('org-1', { idToken: 'jwt' });
     await c.createNonce({ ephemeralPublicKey: 'epk' });
     await c.createProof({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 1 });
 
@@ -173,7 +173,6 @@ describe('IdentityController', () => {
     expect(service.enrollInOrganization).toHaveBeenCalledWith({
       idToken: 'jwt',
       organizationId: 'org-1',
-      externalMemberId: 'ext',
     });
     expect(service.createZkLoginNonce).toHaveBeenCalledWith({ ephemeralPublicKey: 'epk' });
     expect(service.createZkLoginProof).toHaveBeenCalledWith({
@@ -187,6 +186,7 @@ describe('IdentityController', () => {
     await bad(c.enroll('org-1', { idToken: '' }), /idToken is required/);
     await bad(c.enroll('org-1', { endUserId: 'eu' } as never), /idToken is required/);
     await bad(c.googleLogin({ idToken: 42 } as never), /idToken is required/);
+    await bad(c.googleLogin(undefined as never), /idToken is required/);
   });
 });
 

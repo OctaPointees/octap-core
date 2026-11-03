@@ -30,8 +30,27 @@ describe('EnokiClient', () => {
     await expect(enoki.resolveZkLoginAddress('jwt')).rejects.toBeInstanceOf(EnokiTokenRejectedError);
   });
 
+  it('reports a rejected token on proof requests too', async () => {
+    const enoki = withSdk({
+      createZkLoginZkp: async () => {
+        throw enokiError(401, 'jwt_error');
+      },
+    });
+    await expect(
+      enoki.createZkLoginProof({
+        network: 'testnet',
+        jwt: 'jwt',
+        ephemeralPublicKey: ephemeralPublicKey().toSuiPublicKey(),
+        randomness: 'r',
+        maxEpoch: 1,
+      }),
+    ).rejects.toBeInstanceOf(EnokiTokenRejectedError);
+  });
+
   it.each([
     [401, 'invalid_api_key'],
+    [401, 'unknown_error'],
+    [400, 'unknown_error'],
     [429, 'rate_limited'],
     [500, 'internal'],
   ])('does not blame the token for a %i %s', async (status, code) => {

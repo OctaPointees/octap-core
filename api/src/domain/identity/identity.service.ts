@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { VerifyCustomerResponse } from '@octap/contracts';
 import { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
 import {
@@ -35,24 +42,27 @@ export class IdentityService {
   async enrollInOrganization(params: {
     idToken: string;
     organizationId: string;
-    externalMemberId?: string;
   }): Promise<{ organizationEndUserId: string; endUserId: string; isNewEnrollment: boolean }> {
-    // Checked first so a request for a missing organization spends no Enoki call.
-    if (!(await this.repo.organizationExists(params.organizationId))) {
+    // Checked first so a request for an unusable organization spends no Enoki call.
+    const status = await this.repo.findOrganizationStatus(params.organizationId);
+    if (!status) {
       throw new NotFoundException(`Organization ${params.organizationId} was not found`);
     }
+    if (status !== 'ACTIVE') {
+      throw new ConflictException('This organization is not accepting members');
+    }
+
     const { endUser } = await this.findOrCreateEndUser(params.idToken);
+    if (endUser.status !== 'ACTIVE') {
+      throw new ForbiddenException('This customer account is not active');
+    }
 
     const existing = await this.repo.findEnrollment(params.organizationId, endUser.id);
     if (existing) {
       return { organizationEndUserId: existing.id, endUserId: endUser.id, isNewEnrollment: false };
     }
 
-    const created = await this.repo.enroll({
-      organizationId: params.organizationId,
-      endUserId: endUser.id,
-      externalMemberId: params.externalMemberId,
-    });
+    const created = await this.repo.enroll({ organizationId: params.organizationId, endUserId: endUser.id });
     if (created) {
       return { organizationEndUserId: created.id, endUserId: endUser.id, isNewEnrollment: true };
     }
@@ -63,24 +73,35 @@ export class IdentityService {
   /**
    * The merchant backend's check of a token its frontend handed it, like Firebase Admin
    * `verifyIdToken`. Writes nothing: a customer who has not signed in yet has a null `endUserId`,
-   * and one who has not joined this organization has a null `memberId`.
+   * and one who has not joined this organization has a null `memberId`. `active` matches what
+   * reward operations will accept for this member.
    */
   async verifyCustomer(idToken: string, organizationId: string): Promise<VerifyCustomerResponse> {
     const suiAddress = await this.resolveSuiAddress(idToken);
     const endUser = await this.repo.findEndUserBySuiAddress(suiAddress);
     if (!endUser) {
-      return { endUserId: null, suiAddress, memberId: null };
+      return { endUserId: null, suiAddress, memberId: null, active: false };
     }
     const enrollment = await this.repo.findEnrollment(organizationId, endUser.id);
-    return { endUserId: endUser.id, suiAddress, memberId: enrollment?.id ?? null };
+    return {
+      endUserId: endUser.id,
+      suiAddress,
+      memberId: enrollment?.id ?? null,
+      active: endUser.status === 'ACTIVE' && enrollment?.status === 'ACTIVE',
+    };
   }
 
   private async resolveSuiAddress(idToken: string): Promise<string> {
     if (!idToken) {
       throw new BadRequestException('idToken is required');
     }
+    const { address } = await this.refusingBadTokens(() => this.enoki.resolveZkLoginAddress(idToken));
+    return address;
+  }
+
+  private async refusingBadTokens<T>(call: () => Promise<T>): Promise<T> {
     try {
-      return (await this.enoki.resolveZkLoginAddress(idToken)).address;
+      return await call();
     } catch (err: unknown) {
       if (err instanceof EnokiTokenRejectedError) {
         throw new UnauthorizedException('The sign-in token is invalid or has expired; sign in again');
@@ -122,12 +143,14 @@ export class IdentityService {
     if (!params.idToken || !params.ephemeralPublicKey || !params.randomness || params.maxEpoch === undefined) {
       throw new BadRequestException('idToken, ephemeralPublicKey, randomness, and maxEpoch are required');
     }
-    return this.enoki.createZkLoginProof({
-      network: params.network,
-      jwt: params.idToken,
-      ephemeralPublicKey: params.ephemeralPublicKey,
-      randomness: params.randomness,
-      maxEpoch: params.maxEpoch,
-    });
+    return this.refusingBadTokens(() =>
+      this.enoki.createZkLoginProof({
+        network: params.network,
+        jwt: params.idToken,
+        ephemeralPublicKey: params.ephemeralPublicKey,
+        randomness: params.randomness,
+        maxEpoch: params.maxEpoch,
+      }),
+    );
   }
 }

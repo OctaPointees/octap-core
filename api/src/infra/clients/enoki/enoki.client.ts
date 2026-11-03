@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EnokiClient as MystenEnokiClient, EnokiClientError } from '@mysten/enoki/client';
 import { publicKeyFromSuiBytes } from '@mysten/sui/verify';
 import { toBase64 } from '@mysten/sui/utils';
@@ -22,13 +22,32 @@ export class EnokiTokenRejectedError extends Error {
 }
 
 /**
- * Enoki answers a bad token with 400/401, but also answers a bad API key with 401, so the code has
- * to separate them: a broken deployment must stay a 5xx rather than tell a customer to sign in again.
+ * Observed from the live API: a malformed token gets 401 `jwt_error`, a token for an unregistered
+ * audience gets 400 `invalid_client_id`, and a bad API key gets 401 `invalid_api_key`. Only known
+ * token failures qualify, so a broken deployment or an unreadable error stays a 5xx.
  */
 function isTokenRejection(err: unknown): err is EnokiClientError {
   return (
-    err instanceof EnokiClientError && (err.status === 400 || err.status === 401) && err.code !== 'invalid_api_key'
+    err instanceof EnokiClientError &&
+    (err.status === 400 || err.status === 401) &&
+    (err.code === 'invalid_client_id' || /jwt/i.test(err.code))
   );
+}
+
+/** Runs a call that sends an id_token to Enoki, reporting a refused token as a typed error. */
+async function rejectingBadTokens<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err: unknown) {
+    if (isTokenRejection(err)) {
+      // Also what a Google client ID missing from the Enoki portal looks like, so leave a trace.
+      if (err.code === 'invalid_client_id') {
+        new Logger('EnokiClient').warn('Enoki does not recognize this token audience; check the Enoki portal');
+      }
+      throw new EnokiTokenRejectedError(err.code);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -61,14 +80,7 @@ export class EnokiClient {
    * verifies a Google JWT on its own. Throws `EnokiTokenRejectedError` when the token is refused.
    */
   async resolveZkLoginAddress(jwt: string): Promise<{ address: string; publicKey: string; salt: string }> {
-    try {
-      return await this.sdk.getZkLogin({ jwt });
-    } catch (err: unknown) {
-      if (isTokenRejection(err)) {
-        throw new EnokiTokenRejectedError(err.code);
-      }
-      throw err;
-    }
+    return rejectingBadTokens(() => this.sdk.getZkLogin({ jwt }));
   }
 
   /**
@@ -96,13 +108,15 @@ export class EnokiClient {
     randomness: string;
     maxEpoch: number;
   }): Promise<ZkLoginProofResult> {
-    return this.sdk.createZkLoginZkp({
-      network: params.network ?? this.network,
-      jwt: params.jwt,
-      ephemeralPublicKey: publicKeyFromSuiBytes(params.ephemeralPublicKey),
-      randomness: params.randomness,
-      maxEpoch: params.maxEpoch,
-    });
+    return rejectingBadTokens(() =>
+      this.sdk.createZkLoginZkp({
+        network: params.network ?? this.network,
+        jwt: params.jwt,
+        ephemeralPublicKey: publicKeyFromSuiBytes(params.ephemeralPublicKey),
+        randomness: params.randomness,
+        maxEpoch: params.maxEpoch,
+      }),
+    );
   }
 
   /**

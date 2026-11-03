@@ -8,7 +8,8 @@ sponsored on-chain transaction boundary redemption will sign.
   its own) and binds it to a global `end_users` row. `enrollInOrganization()` idempotently joins
   the end user its id_token proves to one organization's loyalty program
   (`organization_end_users`); it never accepts an end-user id from the caller. `verifyCustomer()`
-  is the merchant backend's read-only check of the same token, behind the API-key guard. Also proxies
+  is the merchant backend's read-only check of the same token, behind the API-key guard. Enrollment
+  refuses an organization that is not ACTIVE and a customer who is not ACTIVE. Also proxies
   `createZkLoginNonce`/`createZkLoginProof` so a frontend never needs its own Enoki credential.
 - `sponsored-transaction.service.ts`: `previewSponsoredRedeem()` builds `credit_account::redeem`'s
   transaction kind (via `infra/clients/sui/sui-transaction-builder.client.ts`, which holds no

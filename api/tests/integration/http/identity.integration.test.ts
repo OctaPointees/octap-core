@@ -2,6 +2,7 @@ import { Redis } from 'ioredis';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PUBLIC_RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/public-rate-limit.guard.js';
 import { EnokiTokenRejectedError } from '#infra/clients/enoki/enoki.client.js';
+import { endUsers, organizationEndUsers } from '#infra/db/schema/members.schema.js';
 import { createTestApp } from '../support/app.js';
 import { resetDb, seedCredential, seedOrganization } from '../support/db.js';
 
@@ -34,7 +35,7 @@ describe('identity over HTTP (no merchant API key)', () => {
     const enrolled = await ctx
       .http()
       .post(`/v1/identity/organizations/${orgId}/enroll`)
-      .send({ idToken: 'google-jwt', externalMemberId: 'loyalty-card-7' })
+      .send({ idToken: 'google-jwt' })
       .expect(201);
     expect(enrolled.body.isNewEnrollment).toBe(true);
     const reenrolled = await ctx
@@ -80,6 +81,35 @@ describe('identity over HTTP (no merchant API key)', () => {
     await ctx.http().post('/v1/identity/google-login').send({ idToken: 'valid' }).expect(500);
   });
 
+  it('ignores a caller-chosen externalMemberId, which proves nothing', async () => {
+    await ctx
+      .http()
+      .post(`/v1/identity/organizations/${orgId}/enroll`)
+      .send({ idToken: 'google-jwt', externalMemberId: 'loyalty-card-7' })
+      .expect(201);
+
+    const [member] = await ctx.db.select().from(organizationEndUsers);
+    expect(member.externalMemberId).toBeNull();
+  });
+
+  it('refuses a suspended organization and a blocked customer', async () => {
+    const suspended = await seedOrganization(ctx.db, { status: 'SUSPENDED' });
+    await ctx
+      .http()
+      .post(`/v1/identity/organizations/${suspended.id}/enroll`)
+      .send({ idToken: 'google-jwt' })
+      .expect(409);
+
+    await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' }).expect(201);
+    await ctx.db.update(endUsers).set({ status: 'BLOCKED' });
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'google-jwt' }).expect(403);
+  });
+
+  it('answers 400, not 500, for a request with no JSON body', async () => {
+    await ctx.http().post('/v1/identity/google-login').expect(400);
+    await ctx.http().post('/v1/identity/google-login').set('content-type', 'text/plain').send('jwt').expect(400);
+  });
+
   it('answers 404 for a missing organization and 400 for a malformed id', async () => {
     await ctx
       .http()
@@ -119,12 +149,17 @@ describe('POST /v1/identity/verify (merchant API key)', () => {
     const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['read'] });
 
     const unknown = await verify(rawKey).expect(200);
-    expect(unknown.body).toEqual({ endUserId: null, suiAddress: '0xzklogin', memberId: null });
+    expect(unknown.body).toEqual({ endUserId: null, suiAddress: '0xzklogin', memberId: null, active: false });
     const login = await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' }).expect(201);
     expect(login.body.isNewUser).toBe(true);
 
     const notEnrolled = await verify(rawKey).expect(200);
-    expect(notEnrolled.body).toEqual({ endUserId: login.body.endUserId, suiAddress: '0xzklogin', memberId: null });
+    expect(notEnrolled.body).toEqual({
+      endUserId: login.body.endUserId,
+      suiAddress: '0xzklogin',
+      memberId: null,
+      active: false,
+    });
     const first = await ctx
       .http()
       .post(`/v1/identity/organizations/${orgId}/enroll`)
@@ -134,6 +169,7 @@ describe('POST /v1/identity/verify (merchant API key)', () => {
 
     const enrolled = await verify(rawKey).expect(200);
     expect(enrolled.body.memberId).toBe(first.body.organizationEndUserId);
+    expect(enrolled.body.active).toBe(true);
     expect(enrolled.headers['cache-control']).toBe('no-store');
   });
 
@@ -207,6 +243,7 @@ describe('public route rate limit', () => {
     const res = await ctx.http().post(path).send(body).expect(429);
 
     expect(res.body.message).toMatch(/Too many requests/);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
     enoki.forEach((fn) => expect(fn).not.toHaveBeenCalled());
   });
 

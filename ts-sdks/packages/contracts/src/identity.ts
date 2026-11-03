@@ -11,7 +11,6 @@ export interface GoogleLoginResponse {
 export interface EnrollMemberRequest {
   /** Proves which customer is enrolling; the end user is derived from it, never supplied. */
   idToken: string;
-  externalMemberId?: string;
 }
 
 export interface EnrollMemberResponse {
@@ -31,4 +30,6 @@ export interface VerifyCustomerResponse {
   suiAddress: string;
   /** The `organizationEndUserId` in the calling organization; null until the customer enrolls. */
   memberId: string | null;
+  /** True only when reward operations will accept this member: enrolled and not blocked. */
+  active: boolean;
 }
