@@ -325,6 +325,16 @@ export class ConsoleOrganizationsRepository {
           target: [organizationMemberships.organizationId, organizationMemberships.systemUserId],
           set: { role: 'OWNER', status: 'ACTIVE', updatedAt: new Date() },
         });
+      await tx.insert(organizationChangeRequests).values({
+        organizationId,
+        requestedById: userId,
+        reviewedById: userId,
+        requestType: 'TRANSFER_OWNERSHIP',
+        status: 'APPROVED',
+        payload: { bootstrap: true, previousOwnerId: null, targetUserId: targetId },
+        reason: 'System Admin assigned the first Owner of an active ownerless organization',
+        reviewedAt: new Date(),
+      });
     });
   }
   async credentials(userId: string, organizationId: string) {

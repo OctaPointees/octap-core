@@ -7,6 +7,8 @@ import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/r
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { requireProgramConfig } from '../programs/program-config.js';
+import { MemberEligibilityError } from '#infra/db/repositories/member-eligibility.js';
+import { mapMemberEligibilityError } from './member-eligibility-error.js';
 import { transactionExpirationEpoch } from '@octap/chain';
 import type {
   ReservePosRedemptionRequest,
@@ -104,6 +106,7 @@ export class PosRedemptionService {
         idempotencyKey: request.idempotencyKey,
       });
     } catch (err: unknown) {
+      if (err instanceof MemberEligibilityError) throw mapMemberEligibilityError(err);
       if (err instanceof OperationPayloadConflictError) {
         throw new ConflictException(err.message);
       }

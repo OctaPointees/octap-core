@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestApp } from './support/app.js';
-import { resetDb, schema, seedOrganization, seedMember, setOwnership } from './support/db.js';
+import { resetDb, schema, seedOrganization, seedMember, seedProgram, setOwnership } from './support/db.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { EarnService } from '#domain/credits/earn.service.js';
+import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { RewardsService } from '#domain/rewards/rewards.service.js';
 
 describe('tenant customer member directory', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
@@ -85,7 +88,7 @@ describe('tenant customer member directory', () => {
     const patch = (body: object, actor = 'owner', id = memberId) =>
       ctx.http().patch(`${path()}/${id}`).set('Authorization', bearer(actor)).send(body);
     await patch({ status: 'BLOCKED' }, 'developer').expect(403);
-    await patch({ status: 'BLOCKED', externalMemberId: 'POS-2', metadata: { source: 'POS' } }).expect(200);
+    await patch({ status: 'BLOCKED', externalMemberId: ' POS-2 ', metadata: { source: 'POS' } }).expect(200);
     const row = await ctx.http().get(`${path()}/${memberId}`).set('Authorization', bearer()).expect(200);
     expect(row.body).toMatchObject({
       status: 'BLOCKED',
@@ -125,8 +128,25 @@ describe('tenant customer member directory', () => {
       pointsAmount: 10,
       idempotencyKey: 'blocked',
     };
-    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ status: 403 });
-    await expect(credits.reservePosRedemption(params)).rejects.toMatchObject({ status: 403 });
+    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
+    await expect(credits.reservePosRedemption(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
+    await seedProgram(ctx.db, orgId);
+    const [voucher] = await ctx.db
+      .insert(schema.vouchers)
+      .values({
+        organizationId: orgId,
+        code: 'BLOCKED',
+        title: 'Blocked test',
+        discountType: 'PERCENTAGE',
+        discountValue: '10',
+      })
+      .returning();
+    const request = { organizationEndUserId: memberId, pointsAmount: 10, idempotencyKey: 'blocked-service' };
+    await expect(ctx.app.get(EarnService).executeEarn(orgId, request)).rejects.toMatchObject({ status: 403 });
+    await expect(ctx.app.get(PosRedemptionService).reserve(orgId, request)).rejects.toMatchObject({ status: 403 });
+    await expect(ctx.app.get(RewardsService).claimVoucher(orgId, voucher.id, request)).rejects.toMatchObject({
+      status: 403,
+    });
     expect(await ctx.db.select().from(schema.operations)).toEqual([]);
     await ctx.db
       .update(schema.organizationEndUsers)
@@ -137,8 +157,35 @@ describe('tenant customer member directory', () => {
       .from(schema.organizationEndUsers)
       .where(eq(schema.organizationEndUsers.id, memberId));
     await ctx.db.update(schema.endUsers).set({ status: 'BLOCKED' }).where(eq(schema.endUsers.id, member.endUserId));
-    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ status: 403 });
+    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
     await ctx.db.update(schema.organizations).set({ status: 'SUSPENDED' }).where(eq(schema.organizations.id, orgId));
-    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ status: 403 });
+    await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
+  });
+  it('creates one credit account under concurrent first earns and balance reads', async () => {
+    const { member } = await seedMember(ctx.db, orgId);
+    const credits = new CreditsRepository(ctx.db);
+    await ctx.db.delete(schema.creditOwnerships).where(eq(schema.creditOwnerships.organizationEndUserId, member.id));
+    await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        credits.recordEarnTransaction({
+          organizationId: orgId,
+          organizationEndUserId: member.id,
+          pointsAmount: 10,
+          idempotencyKey: `first-${i}`,
+        }),
+      ),
+    );
+    const accounts = await ctx.db
+      .select()
+      .from(schema.creditOwnerships)
+      .where(eq(schema.creditOwnerships.organizationEndUserId, member.id));
+    expect(accounts).toHaveLength(1);
+    expect(Number(accounts[0].pendingEarn)).toBe(40);
+    await ctx.db
+      .delete(schema.loyaltyTransactions)
+      .where(eq(schema.loyaltyTransactions.organizationEndUserId, member.id));
+    await ctx.db.delete(schema.creditOwnerships).where(eq(schema.creditOwnerships.organizationEndUserId, member.id));
+    const reads = await Promise.all(Array.from({ length: 4 }, () => credits.getOrCreateCreditOwnership(member.id)));
+    expect(new Set(reads.map((row) => row.id)).size).toBe(1);
   });
 });

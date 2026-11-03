@@ -1,9 +1,17 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import type { DrizzleDb } from '../postgres.provider.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
+
+export class MemberEligibilityError extends Error {
+  constructor(
+    readonly kind: 'FORBIDDEN' | 'NOT_FOUND',
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** Locks eligibility before accepting new work; settlement of already accepted work stays allowed. */
 export function withActiveMember<T>(
@@ -18,16 +26,16 @@ export function withActiveMember<T>(
       .from(organizations)
       .where(eq(organizations.id, organizationId))
       .for('share');
-    if (org?.status !== 'ACTIVE') throw new ForbiddenException('Organization is not active');
+    if (org?.status !== 'ACTIVE') throw new MemberEligibilityError('FORBIDDEN', 'Organization is not active');
     const [member] = await tx
       .select({ status: organizationEndUsers.status, globalStatus: endUsers.status })
       .from(organizationEndUsers)
       .innerJoin(endUsers, eq(endUsers.id, organizationEndUsers.endUserId))
       .where(and(eq(organizationEndUsers.id, memberId), eq(organizationEndUsers.organizationId, organizationId)))
       .for('share');
-    if (!member) throw new NotFoundException('Member not found in this organization');
+    if (!member) throw new MemberEligibilityError('NOT_FOUND', 'Member not found in this organization');
     if (member.status !== 'ACTIVE' || member.globalStatus !== 'ACTIVE')
-      throw new ForbiddenException('Member is not active');
+      throw new MemberEligibilityError('FORBIDDEN', 'Member is not active');
     return withRls(tx, { tenantId: organizationId, role: 'authenticated' }, action);
   });
 }

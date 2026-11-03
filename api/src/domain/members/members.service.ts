@@ -75,6 +75,10 @@ export class MembersService {
         JSON.stringify(input.metadata).length > 4096)
     )
       throw new BadRequestException('Metadata must be an object up to 4096 characters');
-    return this.run(() => this.members.patch(userId, orgId, memberId, input as MemberProfilePatch));
+    const patch = {
+      ...input,
+      ...(typeof input.externalMemberId === 'string' ? { externalMemberId: input.externalMemberId.trim() } : {}),
+    };
+    return this.run(() => this.members.patch(userId, orgId, memberId, patch as MemberProfilePatch));
   }
 }
