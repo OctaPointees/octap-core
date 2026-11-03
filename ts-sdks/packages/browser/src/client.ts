@@ -28,7 +28,13 @@ export class OctaBrowserClient {
     this.getAuthToken = options.getAuthToken;
   }
 
-  private async request<T>(path: string, method: 'GET' | 'POST' = 'GET', body?: unknown, orgId?: string): Promise<T> {
+  private async request<T>(
+    path: string,
+    method: 'GET' | 'POST' | 'PATCH' = 'GET',
+    body?: unknown,
+    orgId?: string,
+    options?: Pick<RequestInit, 'signal' | 'cache'>,
+  ): Promise<T> {
     const url = `${this.apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const headers: Record<string, string> = {
       accept: 'application/json',
@@ -51,6 +57,7 @@ export class OctaBrowserClient {
     }
 
     const response = await fetch(url, {
+      ...options,
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
