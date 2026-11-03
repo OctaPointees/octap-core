@@ -1,11 +1,12 @@
-export { OctaBrowserClient, createBrowserClient, type BrowserClientOptions } from './client.js';
-
-export type {
-  CreditBalanceSnapshot,
-  LoyaltyTransactionDto,
-  VoucherDto,
-  ClaimVoucherResponse,
-  VoucherOwnershipDto,
-  BalanceSnapshot,
-  OperationReference,
-} from '@octap/contracts';
+export {
+  OctapAuth,
+  createOctapAuth,
+  type AuthStateListener,
+  type FinalizedClaim,
+  type OctapAuthOptions,
+  type RenderOptions,
+  type SignableClaim,
+} from './auth.js';
+export type { RequestOptions } from './core-api.js';
+export { OctapAuthError, type OctapAuthErrorCode } from './errors.js';
+export type { OctapUser, Persistence } from './session-store.js';

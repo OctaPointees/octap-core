@@ -1,0 +1,808 @@
+import { SIGNATURE_SCHEME_TO_FLAG } from '@mysten/sui/cryptography';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { Transaction } from '@mysten/sui/transactions';
+import { fromBase64, toBase64 } from '@mysten/sui/utils';
+import { verifyTransactionSignature } from '@mysten/sui/verify';
+import { parseZkLoginSignature } from '@mysten/sui/zklogin';
+import type { ClaimVoucherResponse, FinalizePosRedemptionResponse } from '@octap/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { OctapAuthError, createOctapAuth, type FinalizedClaim, type SignableClaim } from '../src/index.js';
+
+// The SDK declares its own types so it can publish alone; these keep them honest against Core's.
+const _claimFits = (claim: ClaimVoucherResponse): SignableClaim => claim;
+const _finalizeFits = (response: FinalizePosRedemptionResponse): FinalizedClaim => response;
+void _claimFits;
+void _finalizeFits;
+
+const ORG = 'org-1';
+const NONCE = 'nonce-1';
+const PROOF = {
+  proofPoints: { a: ['1', '2', '3'], b: [['1', '2'], ['3', '4'], ['5', '6']], c: ['1', '2', '3'] }, // prettier-ignore
+  issBase64Details: { value: 'wiaXNzIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tIiw', indexMod4: 1 },
+  headerBase64: 'eyJhbGciOiJSUzI1NiJ9',
+  addressSeed: '123456789',
+};
+
+function jwt(payload: Record<string, unknown>) {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'RS256' })}.${encode(payload)}.sig`;
+}
+const validToken = (overrides: Record<string, unknown> = {}) =>
+  jwt({ nonce: NONCE, exp: Math.floor(Date.now() / 1000) + 3600, ...overrides });
+
+const CUSTOMER_ADDRESS = Ed25519Keypair.generate().getPublicKey().toSuiAddress();
+
+/** Sponsored-shaped transaction bytes, built offline with every field a client would have looked up. */
+async function transactionBytes(sender = CUSTOMER_ADDRESS) {
+  const tx = new Transaction();
+  tx.setSender(sender);
+  tx.setGasOwner(Ed25519Keypair.generate().getPublicKey().toSuiAddress());
+  tx.setGasPrice(1000);
+  tx.setGasBudget(10_000_000);
+  tx.setGasPayment([
+    { objectId: '0x'.padEnd(66, 'a'), version: 1, digest: 'CUvFvvP4PJ1LXkCBDdxQdHsPa4dPTAvX4NLFBkNGMPGs' },
+  ]);
+  return toBase64(await tx.build());
+}
+
+interface CoreCall {
+  path: string;
+  body: Record<string, unknown>;
+}
+
+/** A Core double answering with real `Response` objects, so body handling is exercised for real. */
+function fakeCore(overrides: Record<string, () => Response | Promise<Response>> = {}) {
+  const calls: CoreCall[] = [];
+  const routes: Record<string, () => Response | Promise<Response>> = {
+    '/v1/identity/zklogin/nonce': () =>
+      Response.json({
+        nonce: NONCE,
+        randomness: 'r',
+        epoch: 1,
+        maxEpoch: 5,
+        estimatedExpiration: Date.now() + 86_400_000,
+      }),
+    '/v1/identity/google-login': () =>
+      Response.json({ endUserId: 'eu-1', suiAddress: CUSTOMER_ADDRESS, isNewUser: true }),
+    [`/v1/identity/organizations/${ORG}/enroll`]: () =>
+      Response.json({ organizationEndUserId: 'member-1', endUserId: 'eu-1', isNewEnrollment: true }),
+    '/v1/identity/zklogin/proof': () => Response.json(PROOF),
+    '/v1/credits/redeem/finalize': () =>
+      Response.json({
+        transactionId: 'tx-1',
+        organizationEndUserId: 'member-1',
+        pointsRedeemed: 25,
+        newBalance: 75,
+        status: 'CONFIRMED',
+        blockchainDigest: 'DIGEST',
+      }),
+    ...overrides,
+  };
+  const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url).replace('https://core.test', '');
+    calls.push({ path, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    const route = routes[path];
+    if (!route) throw new Error(`Unexpected request to ${path}`);
+    return route();
+  });
+  return { calls, fetch: fetchFn as unknown as typeof fetch };
+}
+
+/** Google's script, with the callback and click listener exposed for the test to drive. */
+function installGoogle() {
+  const google = {
+    callback: undefined as undefined | ((response: { credential: string }) => void),
+    click: undefined as undefined | (() => void),
+    nonces: [] as string[],
+    disableAutoSelect: vi.fn(),
+    initialize(options: { callback: (response: { credential: string }) => void; nonce: string }) {
+      google.callback = options.callback;
+      google.nonces.push(options.nonce);
+    },
+    renderButton: vi.fn((_element: unknown, options: { click_listener: () => void }) => {
+      google.click = options.click_listener;
+    }),
+  };
+  const listeners = new Map<string, Set<() => void>>();
+  const win = {
+    google: { accounts: { id: google } },
+    setTimeout,
+    clearTimeout,
+    addEventListener(type: string, listener: () => void) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(listener);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      listeners.get(type)?.delete(listener);
+    },
+    fire(type: string) {
+      for (const listener of [...(listeners.get(type) ?? [])]) listener();
+    },
+  };
+  vi.stubGlobal('window', win);
+  vi.stubGlobal('document', {});
+  return { google, win };
+}
+
+function installSessionStorage() {
+  const data = new Map<string, string>();
+  const storage = {
+    data,
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => void data.set(key, value),
+    removeItem: (key: string) => void data.delete(key),
+  };
+  vi.stubGlobal('sessionStorage', storage);
+  return storage;
+}
+
+const element = { replaceChildren: vi.fn() } as unknown as HTMLElement;
+const authWith = (core: ReturnType<typeof fakeCore>, persistence?: 'session' | 'memory') =>
+  createOctapAuth({
+    apiBaseUrl: 'https://core.test/',
+    organizationId: ORG,
+    googleClientId: 'google-client',
+    fetch: core.fetch,
+    persistence,
+  });
+
+/** Runs the whole sign-in and waits until the auth state reports it. */
+async function signIn(auth: ReturnType<typeof authWith>, google: ReturnType<typeof installGoogle>['google']) {
+  await auth.renderGoogleButton(element);
+  const signedIn = new Promise<void>((resolve) => {
+    const stop = auth.onAuthStateChanged((user) => {
+      if (user) {
+        stop();
+        resolve();
+      }
+    });
+  });
+  google.callback!({ credential: validToken() });
+  await signedIn;
+}
+
+const errorFrom = (promise: Promise<unknown>) =>
+  promise.then(
+    () => expect.fail('expected a rejection'),
+    (err: unknown) => err as OctapAuthError,
+  );
+
+describe('sign-in', () => {
+  let google: ReturnType<typeof installGoogle>['google'];
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    installSessionStorage();
+  });
+
+  it('runs nonce, login, enroll and proof, and sends only the public half of the key', async () => {
+    const core = fakeCore();
+    const auth = authWith(core);
+
+    await signIn(auth, google);
+
+    expect(auth.currentUser).toEqual({ endUserId: 'eu-1', memberId: 'member-1', suiAddress: CUSTOMER_ADDRESS });
+    expect(element.replaceChildren).toHaveBeenCalled();
+    expect(core.calls.map((call) => call.path)).toEqual([
+      '/v1/identity/zklogin/nonce',
+      '/v1/identity/google-login',
+      `/v1/identity/organizations/${ORG}/enroll`,
+      '/v1/identity/zklogin/proof',
+    ]);
+    expect(google.nonces).toEqual([NONCE]);
+    const session = JSON.parse(
+      [...(globalThis.sessionStorage as unknown as { data: Map<string, string> }).data.values()][0],
+    ) as {
+      signer: { secretKey: string };
+    };
+    expect(session.signer.secretKey).toMatch(/^suiprivkey/);
+    expect(JSON.stringify(core.calls)).not.toContain(session.signer.secretKey);
+  });
+
+  it('notifies listeners with the current state, then on each change, until unsubscribed', async () => {
+    const auth = authWith(fakeCore());
+    const seen: unknown[] = [];
+    const stop = auth.onAuthStateChanged((user) => seen.push(user?.memberId ?? null));
+    await Promise.resolve();
+    expect(seen).toEqual([null]);
+
+    await signIn(auth, google);
+    expect(seen).toEqual([null, 'member-1']);
+    await auth.signOut();
+    expect(seen).toEqual([null, 'member-1', null]);
+
+    stop();
+    await signIn(auth, google);
+    expect(seen).toHaveLength(3);
+  });
+
+  it('does not call a listener removed before its first notification', async () => {
+    const auth = authWith(fakeCore());
+    const listener = vi.fn();
+    auth.onAuthStateChanged(listener)();
+    await Promise.resolve();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('reports a token issued for another nonce, skips the backend, and re-arms the button', async () => {
+    const core = fakeCore();
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken({ nonce: 'someone-elses' }) });
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+
+    expect(errors[0].code).toBe('nonce-mismatch');
+    expect(core.calls.map((call) => call.path)).not.toContain('/v1/identity/google-login');
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('reports an unreadable token as a nonce mismatch', async () => {
+    const auth = authWith(fakeCore());
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: 'not-a-jwt' });
+
+    await vi.waitFor(() => expect(errors[0]?.code).toBe('nonce-mismatch'));
+  });
+
+  it('reports an expired sign-in attempt', async () => {
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        Response.json({ nonce: NONCE, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() - 1 }),
+    });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken() });
+
+    await vi.waitFor(() => expect(errors[0]?.code).toBe('session-expired'));
+  });
+
+  it('reports a failure from Core and leaves a usable button', async () => {
+    const core = fakeCore({
+      [`/v1/identity/organizations/${ORG}/enroll`]: () =>
+        Response.json({ message: 'Not accepting members' }, { status: 409 }),
+    });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+
+    expect(errors[0]).toMatchObject({ code: 'api-error', status: 409, message: 'Not accepting members' });
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('reports when the button cannot be re-armed after a failure', async () => {
+    let nonceCalls = 0;
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        ++nonceCalls === 1
+          ? Response.json({ nonce: NONCE, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() + 1000 })
+          : new Response('bad gateway', { status: 502 }),
+      '/v1/identity/google-login': () => new Response('bad gateway', { status: 502 }),
+    });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken() });
+
+    await vi.waitFor(() => expect(errors).toHaveLength(2));
+  });
+
+  it('ignores a second credential while one sign-in is running', async () => {
+    let finishLogin: (response: Response) => void = () => {};
+    const core = fakeCore({
+      '/v1/identity/google-login': () => new Promise<Response>((resolve) => (finishLogin = resolve)),
+    });
+    const auth = authWith(core);
+    await auth.renderGoogleButton(element);
+
+    google.callback!({ credential: validToken() });
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(core.calls.filter((call) => call.path.endsWith('google-login'))).toHaveLength(1));
+    finishLogin(Response.json({ endUserId: 'eu-1', suiAddress: CUSTOMER_ADDRESS }));
+
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+    expect(core.calls.filter((call) => call.path.endsWith('google-login'))).toHaveLength(1);
+  });
+
+  it('wraps an unexpected failure in a typed error', async () => {
+    const auth = authWith(fakeCore());
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    google.renderButton.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+
+    google.callback!({ credential: validToken({ nonce: 'wrong' }) });
+
+    await vi.waitFor(() => expect(errors).toHaveLength(2));
+    expect(errors[1]).toBeInstanceOf(OctapAuthError);
+    expect(errors[1]).toMatchObject({ code: 'provider-unavailable', message: 'boom' });
+  });
+});
+
+describe('canceled sign-in', () => {
+  it('reports a canceled sign-in when the popup closes with no credential', async () => {
+    vi.useFakeTimers();
+    try {
+      const { google, win } = installGoogle();
+      installSessionStorage();
+      const auth = authWith(fakeCore());
+      const errors: OctapAuthError[] = [];
+      await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+      google.click!();
+      win.fire('blur');
+      win.fire('focus');
+      vi.advanceTimersByTime(1_500);
+
+      expect(errors.map((err) => err.code)).toEqual(['sign-in-canceled']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stays quiet when the credential arrives in the grace period', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { google, win } = installGoogle();
+      installSessionStorage();
+      const auth = authWith(fakeCore());
+      const errors: OctapAuthError[] = [];
+      await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+      google.click!();
+      win.fire('blur');
+      win.fire('focus');
+      google.callback!({ credential: validToken() });
+      vi.advanceTimersByTime(1_500);
+
+      expect(errors).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('Google script loading', () => {
+  it('needs a browser', async () => {
+    vi.stubGlobal('window', undefined);
+    const auth = authWith(fakeCore(), 'memory');
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'provider-unavailable' });
+  });
+
+  it('loads the script once, and retries after it fails', async () => {
+    const scripts: Array<{ src: string; onload?: () => void; onerror?: () => void; remove: () => void }> = [];
+    const win: Record<string, unknown> = { setTimeout, clearTimeout };
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', {
+      createElement: () => ({ remove: vi.fn() }),
+      head: { appendChild: (script: (typeof scripts)[number]) => scripts.push(script) },
+    });
+    const auth = authWith(fakeCore(), 'memory');
+
+    const failing = auth.renderGoogleButton(element);
+    await vi.waitFor(() => expect(scripts).toHaveLength(1));
+    expect(scripts[0].src).toBe('https://accounts.google.com/gsi/client');
+    scripts[0].onerror!();
+    await expect(errorFrom(failing)).resolves.toMatchObject({ code: 'provider-unavailable' });
+
+    const emptyLoad = auth.renderGoogleButton(element);
+    await vi.waitFor(() => expect(scripts).toHaveLength(2));
+    scripts[1].onload!();
+    await expect(errorFrom(emptyLoad)).resolves.toMatchObject({ code: 'provider-unavailable' });
+
+    const working = auth.renderGoogleButton(element);
+    const second = auth.renderGoogleButton(element);
+    await vi.waitFor(() => expect(scripts).toHaveLength(3));
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(scripts).toHaveLength(3);
+    const google = { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() };
+    win.google = { accounts: { id: google } };
+    scripts[2].onload!();
+    await Promise.all([working, second]);
+    expect(google.renderButton).toHaveBeenCalled();
+  });
+});
+
+describe('session', () => {
+  let google: ReturnType<typeof installGoogle>['google'];
+  let storage: ReturnType<typeof installSessionStorage>;
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    storage = installSessionStorage();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('restores across a reload, and asks for no new nonce while signed in', async () => {
+    await signIn(authWith(fakeCore()), google);
+
+    const core = fakeCore();
+    const reloaded = authWith(core);
+    await reloaded.renderGoogleButton(element);
+
+    expect(reloaded.currentUser?.memberId).toBe('member-1');
+    expect(await reloaded.getIdToken()).toMatch(/\./);
+    expect(core.calls).toEqual([]);
+  });
+
+  it('keeps an isolated session per organization', async () => {
+    await signIn(authWith(fakeCore()), google);
+    const other = createOctapAuth({
+      apiBaseUrl: 'https://core.test',
+      organizationId: 'org-2',
+      googleClientId: 'google-client',
+      fetch: fakeCore().fetch,
+    });
+    expect(other.currentUser).toBeNull();
+  });
+
+  it('with memory persistence writes nothing to browser storage and is gone after reload', async () => {
+    const auth = authWith(fakeCore(), 'memory');
+    await signIn(auth, google);
+
+    expect(auth.currentUser).not.toBeNull();
+    expect(storage.data.size).toBe(0);
+    expect(authWith(fakeCore(), 'memory').currentUser).toBeNull();
+  });
+
+  it('signs out, clearing storage and issuing a fresh nonce', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+
+    await auth.signOut();
+
+    expect(auth.currentUser).toBeNull();
+    expect(storage.data.size).toBe(0);
+    expect(google.disableAutoSelect).toHaveBeenCalled();
+    expect(google.nonces).toHaveLength(2);
+    await expect(errorFrom(auth.getIdToken())).resolves.toMatchObject({ code: 'not-signed-in' });
+  });
+
+  it('signs out cleanly when no button was rendered', async () => {
+    const auth = authWith(fakeCore());
+    await auth.signOut();
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('drops a stored session past maxEpoch on load', async () => {
+    await signIn(authWith(fakeCore()), google);
+    vi.useFakeTimers({ now: Date.now() + 2 * 86_400_000 });
+
+    expect(authWith(fakeCore()).currentUser).toBeNull();
+    expect(storage.data.size).toBe(0);
+  });
+
+  it('expires a live session past maxEpoch with a typed error and a new button', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    const seen: unknown[] = [];
+    auth.onAuthStateChanged((user) => seen.push(user));
+    await Promise.resolve();
+    seen.length = 0;
+    const bytes = await transactionBytes();
+    vi.useFakeTimers({ now: Date.now() + 2 * 86_400_000, toFake: ['Date'] });
+
+    await expect(errorFrom(auth.signTransaction(bytes))).resolves.toMatchObject({ code: 'session-expired' });
+
+    expect(auth.currentUser).toBeNull();
+    expect(seen).toEqual([null]);
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+  });
+
+  it('reports when the button cannot return after a session expires', async () => {
+    let nonceCalls = 0;
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        ++nonceCalls === 1
+          ? Response.json({ nonce: NONCE, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() + 86_400_000 })
+          : new Response('bad gateway', { status: 502 }),
+    });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+    const bytes = await transactionBytes();
+    vi.useFakeTimers({ now: Date.now() + 2 * 86_400_000, toFake: ['Date'] });
+
+    await errorFrom(auth.signTransaction(bytes));
+
+    await vi.waitFor(() => expect(errors[0]?.code).toBe('api-error'));
+  });
+
+  it('reports an expired id_token while the signing session still works', async () => {
+    const auth = authWith(fakeCore());
+    await auth.renderGoogleButton(element);
+    google.callback!({ credential: validToken({ exp: 1 }) });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+
+    await expect(errorFrom(auth.getIdToken())).resolves.toMatchObject({ code: 'token-expired' });
+    await expect(auth.signTransaction(await transactionBytes())).resolves.toEqual(expect.any(String));
+  });
+
+  it('returns an id_token whose expiry it cannot read, leaving the backend to judge it', async () => {
+    const auth = authWith(fakeCore());
+    await auth.renderGoogleButton(element);
+    google.callback!({ credential: jwt({ nonce: NONCE }) });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+
+    await expect(auth.getIdToken()).resolves.toEqual(expect.any(String));
+  });
+
+  it.each([
+    ['unparseable', 'not json'],
+    ['the wrong shape', JSON.stringify({ user: { endUserId: 'x' } })],
+  ])('ignores and removes a stored value that is %s', (_name, value) => {
+    storage.data.set(`octap.auth.${ORG}`, value);
+    const auth = authWith(fakeCore());
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('keeps working in memory when browser storage throws', async () => {
+    const auth0 = authWith(fakeCore());
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    });
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+
+    expect(auth.currentUser?.memberId).toBe('member-1');
+    await auth.signOut();
+    expect(auth.currentUser).toBeNull();
+    expect(auth0.currentUser).toBeNull();
+  });
+
+  it('falls back to memory when browser storage is missing or inaccessible', () => {
+    vi.stubGlobal('sessionStorage', undefined);
+    expect(authWith(fakeCore()).currentUser).toBeNull();
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get() {
+        throw new Error('denied');
+      },
+    });
+    try {
+      expect(authWith(fakeCore()).currentUser).toBeNull();
+    } finally {
+      Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: undefined, writable: true });
+    }
+  });
+});
+
+describe('signing', () => {
+  let google: ReturnType<typeof installGoogle>['google'];
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    installSessionStorage();
+  });
+
+  it('produces a zkLogin signature whose inner signature verifies over the exact bytes', async () => {
+    const core = fakeCore();
+    const auth = authWith(core);
+    await signIn(auth, google);
+    const bytes = await transactionBytes();
+
+    const signature = fromBase64(await auth.signTransaction(bytes));
+
+    expect(signature[0]).toBe(SIGNATURE_SCHEME_TO_FLAG.ZkLogin);
+    const parsed = parseZkLoginSignature(signature.slice(1));
+    expect(parsed.maxEpoch).toBe('5');
+    expect(parsed.inputs.addressSeed).toBe(PROOF.addressSeed);
+    const publicKey = await verifyTransactionSignature(fromBase64(bytes), toBase64(parsed.userSignature));
+    expect(publicKey.toSuiPublicKey()).toBe(core.calls[0].body.ephemeralPublicKey);
+  });
+
+  it('refuses to sign for another account', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    const bytes = await transactionBytes(Ed25519Keypair.generate().getPublicKey().toSuiAddress());
+
+    await expect(errorFrom(auth.signTransaction(bytes))).resolves.toMatchObject({ code: 'wrong-account' });
+  });
+
+  it('refuses bytes it cannot read', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    await expect(errorFrom(auth.signTransaction('AAAA'))).resolves.toMatchObject({ code: 'invalid-claim' });
+  });
+
+  it('needs a signed-in customer', async () => {
+    const auth = authWith(fakeCore());
+    await expect(errorFrom(auth.signTransaction('AAAA'))).resolves.toMatchObject({ code: 'not-signed-in' });
+  });
+});
+
+describe('signAndFinalize', () => {
+  const claim = async () => ({ status: 'RESERVED', digest: 'DIGEST', transactionBytes: await transactionBytes() });
+  let google: ReturnType<typeof installGoogle>['google'];
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    installSessionStorage();
+  });
+
+  it('posts the digest and signature, and returns the confirmed result', async () => {
+    const core = fakeCore();
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    const result = await auth.signAndFinalize(await claim());
+
+    expect(result).toMatchObject({ status: 'CONFIRMED', newBalance: 75, blockchainDigest: 'DIGEST' });
+    const finalize = core.calls.at(-1)!;
+    expect(finalize.path).toBe('/v1/credits/redeem/finalize');
+    expect(finalize.body).toEqual({ digest: 'DIGEST', signature: expect.any(String) });
+  });
+
+  it.each([
+    ['a free claim', { status: 'AVAILABLE' }],
+    ['a claim without bytes', { status: 'RESERVED', digest: 'D' }],
+    ['a claim without a digest', { status: 'RESERVED', transactionBytes: 'AAAA' }],
+    ['a null digest', { status: 'RESERVED', digest: null, transactionBytes: 'AAAA' }],
+  ])('refuses %s', async (_name, invalid) => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    await expect(errorFrom(auth.signAndFinalize(invalid))).resolves.toMatchObject({ code: 'invalid-claim' });
+  });
+
+  it('passes through a definite refusal from Core', async () => {
+    const core = fakeCore({
+      '/v1/credits/redeem/finalize': () => Response.json({ message: 'Bad signature' }, { status: 400 }),
+    });
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    await expect(errorFrom(auth.signAndFinalize(await claim()))).resolves.toMatchObject({
+      code: 'api-error',
+      status: 400,
+      message: 'Bad signature',
+    });
+  });
+
+  it.each([
+    ['a 409, still resolving on-chain', () => Response.json({ message: 'being resolved' }, { status: 409 })],
+    ['a 408', () => new Response('timeout', { status: 408 })],
+    ['a 5xx', () => new Response('<html>bad gateway</html>', { status: 502 })],
+    ['a dropped connection', () => Promise.reject(new TypeError('fetch failed'))],
+    ['an unreadable success', () => new Response('ok', { status: 200 })],
+  ])('never retries and reports an unknown outcome on %s', async (_name, respond) => {
+    const core = fakeCore({ '/v1/credits/redeem/finalize': respond });
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    await expect(errorFrom(auth.signAndFinalize(await claim()))).resolves.toMatchObject({ code: 'outcome-unknown' });
+    expect(core.calls.filter((call) => call.path.endsWith('finalize'))).toHaveLength(1);
+  });
+
+  it('reports an unknown outcome when the caller aborts mid-flight', async () => {
+    const controller = new AbortController();
+    const core = fakeCore({
+      '/v1/credits/redeem/finalize': () => {
+        controller.abort();
+        return Promise.reject(new DOMException('aborted', 'AbortError'));
+      },
+    });
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    await expect(errorFrom(auth.signAndFinalize(await claim(), { signal: controller.signal }))).resolves.toMatchObject({
+      code: 'outcome-unknown',
+    });
+  });
+});
+
+describe('Core errors', () => {
+  const nonceRoute = (respond: () => Response | Promise<Response>) =>
+    fakeCore({ '/v1/identity/zklogin/nonce': respond });
+
+  beforeEach(() => {
+    installGoogle();
+    installSessionStorage();
+  });
+
+  it('reads a non-JSON error body once, without a TypeError', async () => {
+    const auth = authWith(
+      nonceRoute(() => new Response('<html>Bad Gateway</html>', { status: 502, statusText: 'Bad Gateway' })),
+    );
+
+    const err = await errorFrom(auth.renderGoogleButton(element));
+
+    expect(err).toBeInstanceOf(OctapAuthError);
+    expect(err).toMatchObject({
+      code: 'api-error',
+      status: 502,
+      body: '<html>Bad Gateway</html>',
+      message: 'OctaP request failed: 502 Bad Gateway',
+    });
+  });
+
+  it('uses the message from a JSON error body', async () => {
+    const auth = authWith(nonceRoute(() => Response.json({ message: 'Too many requests' }, { status: 429 })));
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({
+      code: 'api-error',
+      status: 429,
+      message: 'Too many requests',
+    });
+  });
+
+  it('reports a success it cannot read', async () => {
+    const auth = authWith(nonceRoute(() => new Response('ok')));
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'invalid-response' });
+  });
+
+  it('reports a nonce response without a nonce', async () => {
+    const auth = authWith(nonceRoute(() => Response.json({ randomness: 'r' })));
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'invalid-response' });
+  });
+
+  it('reports a network failure', async () => {
+    const auth = authWith(nonceRoute(() => Promise.reject(new TypeError('fetch failed'))));
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({
+      code: 'network-error',
+      message: expect.stringContaining('fetch failed'),
+    });
+  });
+
+  it('reports a timeout', async () => {
+    const hanging = vi.fn(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init!.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }),
+    );
+    const auth = createOctapAuth({
+      apiBaseUrl: 'https://core.test',
+      organizationId: ORG,
+      googleClientId: 'google-client',
+      fetch: hanging as unknown as typeof fetch,
+      timeoutMs: 5,
+    });
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'timeout' });
+  });
+
+  it('uses the global fetch by default', async () => {
+    const core = fakeCore();
+    vi.stubGlobal('fetch', core.fetch);
+    const auth = createOctapAuth({
+      apiBaseUrl: 'https://core.test',
+      organizationId: ORG,
+      googleClientId: 'google-client',
+    });
+    await auth.renderGoogleButton(element);
+    expect(core.calls[0].path).toBe('/v1/identity/zklogin/nonce');
+  });
+});
+
+describe('package boundary', () => {
+  it('has no Enoki dependency and no credential option', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    expect(Object.keys(pkg.dependencies)).toEqual(['@mysten/sui']);
+    const source = await readFile(new URL('../src/auth.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/apiKey|authorization/i);
+  });
+});
