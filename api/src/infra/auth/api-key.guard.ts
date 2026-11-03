@@ -66,6 +66,8 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('API credential has expired');
     }
 
+    if (credential.organizationStatus !== 'ACTIVE') throw new ForbiddenException('Organization is not active');
+
     const claimedOrgId = request.headers['x-organization-id'];
     if (claimedOrgId && claimedOrgId !== credential.organizationId) {
       throw new ForbiddenException('The x-organization-id header does not match this API credential');

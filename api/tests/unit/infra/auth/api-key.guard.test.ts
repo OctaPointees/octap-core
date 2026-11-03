@@ -18,6 +18,7 @@ import { executionContext } from '../../../helpers/fixtures.js';
 const activeCredential = (overrides: Record<string, unknown> = {}) => ({
   id: 'cred-1',
   organizationId: 'org-1',
+  organizationStatus: 'ACTIVE',
   status: 'ACTIVE',
   expiresAt: null,
   scopes: ['read', 'write'],
