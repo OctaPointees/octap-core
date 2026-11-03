@@ -52,6 +52,8 @@ export type AuthStateListener = (user: OctapUser | null) => void;
 const DEFAULT_TIMEOUT_MS = 35_000;
 /** Finalize waits for the chain's verdict, so it gets longer than an ordinary request. */
 const FINALIZE_TIMEOUT_MS = 90_000;
+/** Browsers run a longer `setTimeout` immediately. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 export class OctapAuth {
   private readonly api: CoreApi;
@@ -63,6 +65,7 @@ export class OctapAuth {
   private provider?: IdTokenProvider;
   private button?: { element: HTMLElement; options: RenderOptions };
   private signingIn = false;
+  private expiryTimer?: number;
 
   constructor(options: OctapAuthOptions) {
     const fetchFn = options.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
@@ -75,18 +78,19 @@ export class OctapAuth {
       this.store.clear();
       this.session = null;
     }
+    this.scheduleExpiry();
   }
 
-  /** The signed-in customer, restored synchronously after a reload. */
+  /** The signed-in customer, restored synchronously after a reload. Null once the session expires. */
   get currentUser(): OctapUser | null {
-    return this.session?.user ?? null;
+    return this.session && Date.now() < this.session.signer.expiresAt ? this.session.user : null;
   }
 
   /** Calls `listener` with the current customer soon after subscribing, then on every change. */
   onAuthStateChanged(listener: AuthStateListener): () => void {
     this.listeners.add(listener);
     queueMicrotask(() => {
-      if (this.listeners.has(listener)) listener(this.currentUser);
+      if (this.listeners.has(listener)) this.call(listener);
     });
     return () => {
       this.listeners.delete(listener);
@@ -100,14 +104,18 @@ export class OctapAuth {
   async renderGoogleButton(element: HTMLElement, options: RenderOptions = {}): Promise<void> {
     this.button = { element, options };
     this.provider = createGoogleProvider(this.googleClientId, options.button);
-    if (!this.session) await this.arm();
+    if (!this.currentUser) await this.arm();
   }
 
-  /** The id_token for your backend to check with `@octap/sdk`'s `verifyCustomer`. */
+  /**
+   * The id_token for your backend to check with `@octap/sdk`'s `verifyCustomer`. Google's token lasts
+   * about an hour. When it has expired the customer is signed out, so the button returns for a new one.
+   */
   async getIdToken(): Promise<string> {
     const { idToken } = this.requireSession();
     const expiry = idTokenExpiry(idToken);
     if (expiry !== undefined && Date.now() >= expiry * 1000) {
+      this.expireSession();
       throw new OctapAuthError('token-expired', 'The sign-in token expired. Sign in again.');
     }
     return idToken;
@@ -122,9 +130,9 @@ export class OctapAuth {
   /**
    * Signs a RESERVED claim and finalizes it. The voucher is not owned until this resolves.
    *
-   * Never retried automatically. On `outcome-unknown` the transaction may still land, so read the
-   * claim from your backend, or retry the claim with the same idempotency key. Use a new key only
-   * after the claim is CANCELLED.
+   * Never retried automatically. On `outcome-unknown` the transaction may have failed or may still
+   * land, so read the claim from your backend, or retry the claim with the same idempotency key. Use
+   * a new key only after the claim is CANCELLED.
    */
   async signAndFinalize(claim: SignableClaim, options: RequestOptions = {}): Promise<FinalizedClaim> {
     if (claim.status !== 'RESERVED' || !claim.digest || !claim.transactionBytes) {
@@ -135,10 +143,12 @@ export class OctapAuth {
       return await this.api.post<FinalizedClaim>(
         '/v1/credits/redeem/finalize',
         { digest: claim.digest, signature },
-        { timeoutMs: FINALIZE_TIMEOUT_MS, ...options },
+        { ...options, timeoutMs: options.timeoutMs ?? FINALIZE_TIMEOUT_MS },
       );
     } catch (err: unknown) {
-      throw isOutcomeKnown(err)
+      // Core answers 400 for a bad signature and for an Enoki failure after sending alike, and 404 for
+      // a repeat of a finalize that already succeeded. Only a rate limit proves nothing was attempted.
+      throw err instanceof OctapAuthError && err.status === 429
         ? err
         : new OctapAuthError(
             'outcome-unknown',
@@ -148,13 +158,12 @@ export class OctapAuth {
     }
   }
 
+  /** Always ends the session. A button that cannot return is reported through `onError`. */
   async signOut(): Promise<void> {
     this.provider?.signOut();
     this.endSession();
-    if (this.button) {
-      // The button's nonce belongs to a key this session may have used, so issue a fresh one.
-      await this.arm();
-    }
+    // The button's nonce belongs to a key this session may have used, so issue a fresh one.
+    await this.rearm();
   }
 
   private requireSession(): StoredSession {
@@ -162,22 +171,51 @@ export class OctapAuth {
       throw new OctapAuthError('not-signed-in', 'No customer is signed in.');
     }
     if (Date.now() >= this.session.signer.expiresAt) {
-      this.endSession();
-      if (this.button) void this.arm().catch((err: unknown) => this.reportError(err));
+      this.expireSession();
       throw new OctapAuthError('session-expired', 'The signing session expired. Sign in again.');
     }
     return this.session;
+  }
+
+  private expireSession(): void {
+    this.endSession();
+    void this.rearm();
   }
 
   private endSession(): void {
     const hadSession = this.session !== null;
     this.store.clear();
     this.session = null;
+    this.scheduleExpiry();
     if (hadSession) this.notify();
   }
 
+  /** Lets an open page notice expiry without waiting for a call to fail. Only runs in a browser. */
+  private scheduleExpiry(): void {
+    if (typeof window === 'undefined') return;
+    window.clearTimeout(this.expiryTimer);
+    if (!this.session) return;
+    const remaining = this.session.signer.expiresAt - Date.now();
+    this.expiryTimer = window.setTimeout(
+      () => {
+        if (this.session && Date.now() >= this.session.signer.expiresAt) this.expireSession();
+        else this.scheduleExpiry();
+      },
+      Math.min(Math.max(remaining, 0), MAX_TIMER_MS),
+    );
+  }
+
   private notify(): void {
-    for (const listener of this.listeners) listener(this.currentUser);
+    for (const listener of this.listeners) this.call(listener);
+  }
+
+  /** One merchant listener's bug must not undo a sign-in, or stop the other listeners. */
+  private call(listener: AuthStateListener): void {
+    try {
+      listener(this.currentUser);
+    } catch (err: unknown) {
+      console.error('An onAuthStateChanged listener threw:', err);
+    }
   }
 
   private reportError(err: unknown): void {
@@ -185,7 +223,17 @@ export class OctapAuth {
       err instanceof OctapAuthError
         ? err
         : new OctapAuthError('provider-unavailable', err instanceof Error ? err.message : String(err));
-    this.button?.options.onError?.(error);
+    try {
+      this.button?.options.onError?.(error);
+    } catch (handlerError: unknown) {
+      console.error('The onError handler threw:', handlerError);
+    }
+  }
+
+  /** Puts a usable button back, if one was rendered, reporting rather than throwing a failure. */
+  private async rearm(): Promise<void> {
+    if (!this.button) return;
+    await this.arm().catch((err: unknown) => this.reportError(err));
   }
 
   /** Prepares a key and nonce and renders the button with them. */
@@ -207,29 +255,28 @@ export class OctapAuth {
         endUserId: string;
         organizationEndUserId: string;
       }>(`/v1/identity/organizations/${encodeURIComponent(this.organizationId)}/enroll`, { idToken });
+      if (
+        typeof suiAddress !== 'string' ||
+        typeof endUserId !== 'string' ||
+        typeof organizationEndUserId !== 'string'
+      ) {
+        throw new OctapAuthError('invalid-response', 'OctaP returned an incomplete customer.');
+      }
       const signer = await pending.prove(this.api, idToken);
 
       this.session = { user: { endUserId, memberId: organizationEndUserId, suiAddress }, idToken, signer };
       this.store.save(this.session);
+      this.scheduleExpiry();
       this.button?.element.replaceChildren();
       this.notify();
     } catch (err: unknown) {
       this.reportError(err);
       // A nonce is good for one attempt, so a failure must leave a usable button behind.
-      await this.arm().catch((rearmError: unknown) => this.reportError(rearmError));
+      await this.rearm();
     } finally {
       this.signingIn = false;
     }
   }
-}
-
-/**
- * A 4xx means Core refused the request or the chain definitely failed it. The exceptions are a 408,
- * and a 409, which is how Core reports a digest that is still being resolved on-chain.
- */
-function isOutcomeKnown(err: unknown): boolean {
-  if (!(err instanceof OctapAuthError) || err.code !== 'api-error' || err.status === undefined) return false;
-  return err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 409;
 }
 
 export function createOctapAuth(options: OctapAuthOptions): OctapAuth {

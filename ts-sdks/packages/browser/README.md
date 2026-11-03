@@ -23,7 +23,9 @@ await auth.renderGoogleButton(document.getElementById('sign-in'), {
 ```
 
 Signing in also enrolls the customer in your organization. The button renders nothing while a
-customer is signed in, and returns after they sign out or their session expires.
+customer is signed in, and returns after they sign out or their session expires. Google's token
+lasts about an hour: when `getIdToken` finds it expired, the customer is signed out, so listeners get
+`null` and the button returns.
 
 ## Prove the customer to your backend
 
@@ -52,8 +54,9 @@ if (claim.status === 'RESERVED') {
 Follow these rules, whatever your interface looks like:
 
 - A RESERVED voucher is not owned yet. Show it as pending until finalize succeeds.
-- `signAndFinalize` never retries by itself. On `outcome-unknown`, the transaction may still land.
-  Read the claim from your backend, or claim again with the **same** idempotency key.
+- `signAndFinalize` never retries by itself. On `outcome-unknown`, the transaction may have failed
+  or may still land. Read the claim from your backend, or claim again with the **same** idempotency
+  key. `status` and `body` carry what the server answered, if anything.
 - Use a new idempotency key only after the claim is CANCELLED.
 
 `auth.signTransaction(transactionBytes)` is the lower-level call: it returns the zkLogin signature
@@ -80,8 +83,9 @@ Every failure is an `OctapAuthError` with a `code`. API errors also have `status
 | `aborted`              | Your `AbortSignal` fired                                | Nothing                          |
 | `invalid-response`     | OctaP's response could not be read                      | Report it                        |
 
-`sign-in-canceled` depends on the browser returning focus when Google's popup closes, because
-Google's button reports no cancellation itself. Do not rely on it for anything beyond a message.
+`sign-in-canceled` is a best guess from the page regaining focus, because Google's button reports no
+cancellation itself. It can fire while the popup is still open if the customer clicks back to the
+page, and may not fire at all. Use it only to show a message.
 
 ## Security
 

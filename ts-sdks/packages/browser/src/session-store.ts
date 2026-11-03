@@ -1,4 +1,4 @@
-import type { SignerState } from './zklogin-signer.js';
+import { isZkProof, type SignerState } from './zklogin-signer.js';
 
 export interface OctapUser {
   endUserId: string;
@@ -44,8 +44,7 @@ function isStoredSession(value: unknown): value is StoredSession {
     typeof session.signer?.secretKey === 'string' &&
     typeof session.signer.maxEpoch === 'number' &&
     typeof session.signer.expiresAt === 'number' &&
-    typeof session.signer.proof === 'object' &&
-    session.signer.proof !== null
+    isZkProof(session.signer.proof)
   );
 }
 

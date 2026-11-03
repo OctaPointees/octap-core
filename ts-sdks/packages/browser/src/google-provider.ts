@@ -31,6 +31,8 @@ const SCRIPT_URL = 'https://accounts.google.com/gsi/client';
 const SCRIPT_TIMEOUT_MS = 20_000;
 /** A credential can arrive just after the popup closes, so wait before calling it a cancellation. */
 const CANCEL_GRACE_MS = 1_500;
+const CANCEL_POLL_MS = 250;
+const CANCEL_WATCH_LIMIT_MS = 5 * 60_000;
 
 let loading: Promise<GoogleIdentity> | undefined;
 
@@ -102,26 +104,30 @@ export function createGoogleProvider(clientId: string, buttonOptions: Record<str
 }
 
 /**
- * Google's button reports no cancellation. Its popup takes focus and gives it back when it closes,
- * so a return of focus with no credential after a short wait means the customer closed it.
+ * Google's button reports no cancellation. Its popup takes focus from this document and gives it back
+ * when it closes, so focus returning with no credential after a short wait means it was closed. This
+ * polls because Google's button is a cross-origin iframe, which makes `blur` and `focus` events on the
+ * window fire unreliably. A customer who clicks back while the popup is open also looks like this,
+ * and a credential arriving afterwards still completes the sign-in.
  */
 function watchForCancel(onCanceled: () => void): () => void {
-  let timer: number | undefined;
-  const onFocus = () => {
-    timer = window.setTimeout(() => {
+  const startedAt = Date.now();
+  let popupSeen = false;
+  let focusedSince: number | undefined;
+  const timer = window.setInterval(() => {
+    if (Date.now() - startedAt >= CANCEL_WATCH_LIMIT_MS) {
       stop();
-      onCanceled();
-    }, CANCEL_GRACE_MS);
-  };
-  const onBlur = () => {
-    window.clearTimeout(timer);
-    window.addEventListener('focus', onFocus, { once: true });
-  };
-  const stop = () => {
-    window.clearTimeout(timer);
-    window.removeEventListener('blur', onBlur);
-    window.removeEventListener('focus', onFocus);
-  };
-  window.addEventListener('blur', onBlur);
+    } else if (!document.hasFocus()) {
+      popupSeen = true;
+      focusedSince = undefined;
+    } else if (popupSeen) {
+      focusedSince ??= Date.now();
+      if (Date.now() - focusedSince >= CANCEL_GRACE_MS) {
+        stop();
+        onCanceled();
+      }
+    }
+  }, CANCEL_POLL_MS);
+  const stop = () => window.clearInterval(timer);
   return stop;
 }

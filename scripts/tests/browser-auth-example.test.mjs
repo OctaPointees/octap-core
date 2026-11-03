@@ -28,7 +28,12 @@ const merchant = {
     claims.push({ voucherId, ...request });
     return { voucherOwnershipId: 'ownership-1', status: 'RESERVED' };
   },
-  getVoucherClaim: async (ownershipId) => ({ voucherOwnershipId: ownershipId, status: 'AVAILABLE' }),
+  getVoucherClaim: async (ownershipId) => ({
+    voucherOwnershipId: ownershipId,
+    organizationEndUserId: ownershipId === 'ownership-1' ? 'member-1' : 'member-9',
+    serialCode: 'SERIAL',
+    status: 'AVAILABLE',
+  }),
 };
 
 let script;
@@ -87,8 +92,13 @@ test('a claim needs a verified, active member, whatever the page sends', async (
   ]);
 });
 
-test('reads the claim state for a verified member, and answers 404 elsewhere', async () => {
+test("reads only the verified member's own claim, and answers 404 elsewhere", async () => {
   const state = await post('/api/claim/state', 'active-token', { ownershipId: 'ownership-1' });
-  assert.deepEqual(await state.json(), { voucherOwnershipId: 'ownership-1', status: 'AVAILABLE' });
+  assert.equal((await state.json()).status, 'AVAILABLE');
+
+  const other = await post('/api/claim/state', 'active-token', { ownershipId: 'ownership-of-another-customer' });
+  assert.equal(other.status, 404);
+  assert.ok(!(await other.text()).includes('SERIAL'));
+
   assert.equal((await fetch(`${base}/nope`)).status, 404);
 });

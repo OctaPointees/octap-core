@@ -2,7 +2,7 @@
 // deploy it. The API key stays in this process and only reaches Core.
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createOctaPointClient } from '@octap/sdk';
 import { build } from 'esbuild';
 
@@ -28,7 +28,7 @@ export function readConfig(env = process.env) {
 
 export async function bundlePage() {
   const result = await build({
-    entryPoints: [new URL('app.js', here).pathname.replace(/^\/([A-Za-z]:)/, '$1')],
+    entryPoints: [fileURLToPath(new URL('app.js', here))],
     bundle: true,
     format: 'esm',
     platform: 'browser',
@@ -73,9 +73,14 @@ export function createHandler(config, merchant, page) {
       };
     },
     'POST /api/claim/state': async (request) => {
-      await verifiedMember(request);
+      const memberId = await verifiedMember(request);
       const { ownershipId } = await readJson(request);
-      return { json: await merchant.getVoucherClaim(ownershipId) };
+      const claim = await merchant.getVoucherClaim(ownershipId);
+      // Your API key can read every member's claims, and a claim holds a redeemable serial code.
+      if (claim.organizationEndUserId !== memberId) {
+        throw Object.assign(new Error('Not found'), { status: 404 });
+      }
+      return { json: claim };
     },
   };
 

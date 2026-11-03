@@ -103,25 +103,17 @@ function installGoogle() {
       google.click = options.click_listener;
     }),
   };
-  const listeners = new Map<string, Set<() => void>>();
   const win = {
     google: { accounts: { id: google } },
-    setTimeout,
-    clearTimeout,
-    addEventListener(type: string, listener: () => void) {
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type)!.add(listener);
-    },
-    removeEventListener(type: string, listener: () => void) {
-      listeners.get(type)?.delete(listener);
-    },
-    fire(type: string) {
-      for (const listener of [...(listeners.get(type) ?? [])]) listener();
-    },
+    setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
+    clearTimeout: (timer: number) => clearTimeout(timer),
+    setInterval: (...args: Parameters<typeof setInterval>) => setInterval(...args),
+    clearInterval: (timer: number) => clearInterval(timer),
   };
+  const focus = { value: true };
   vi.stubGlobal('window', win);
-  vi.stubGlobal('document', {});
-  return { google, win };
+  vi.stubGlobal('document', { hasFocus: () => focus.value });
+  return { google, win, focus };
 }
 
 function installSessionStorage() {
@@ -278,6 +270,24 @@ describe('sign-in', () => {
     expect(auth.currentUser).toBeNull();
   });
 
+  it.each([
+    ['a proof with missing fields', { '/v1/identity/zklogin/proof': () => Response.json({ proofPoints: {} }) }],
+    ['a login without an address', { '/v1/identity/google-login': () => Response.json({ endUserId: 'eu-1' }) }],
+    [
+      'an enrollment without a member',
+      { [`/v1/identity/organizations/${ORG}/enroll`]: () => Response.json({ endUserId: 'eu-1' }) },
+    ],
+  ])('refuses %s instead of a session that cannot sign', async (_name, overrides) => {
+    const auth = authWith(fakeCore(overrides));
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken() });
+
+    await vi.waitFor(() => expect(errors[0]?.code).toBe('invalid-response'));
+    expect(auth.currentUser).toBeNull();
+  });
+
   it('reports when the button cannot be re-armed after a failure', async () => {
     let nonceCalls = 0;
     const core = fakeCore({
@@ -330,45 +340,71 @@ describe('sign-in', () => {
 });
 
 describe('canceled sign-in', () => {
-  it('reports a canceled sign-in when the popup closes with no credential', async () => {
-    vi.useFakeTimers();
-    try {
-      const { google, win } = installGoogle();
-      installSessionStorage();
-      const auth = authWith(fakeCore());
-      const errors: OctapAuthError[] = [];
-      await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+  /** Clicks the button with fake timers running, returning controls for the popup's focus. */
+  async function clickedButton() {
+    const { google, focus } = installGoogle();
+    installSessionStorage();
+    const auth = authWith(fakeCore());
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    google.click!();
+    return { google, focus, errors };
+  }
 
-      google.click!();
-      win.fire('blur');
-      win.fire('focus');
-      vi.advanceTimersByTime(1_500);
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+  });
 
-      expect(errors.map((err) => err.code)).toEqual(['sign-in-canceled']);
-    } finally {
-      vi.useRealTimers();
-    }
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reports a cancellation when focus returns with no credential', async () => {
+    const { focus, errors } = await clickedButton();
+
+    focus.value = false;
+    vi.advanceTimersByTime(500);
+    expect(errors).toEqual([]);
+    focus.value = true;
+    vi.advanceTimersByTime(2_000);
+
+    expect(errors.map((err) => err.code)).toEqual(['sign-in-canceled']);
+    vi.advanceTimersByTime(10_000);
+    expect(errors).toHaveLength(1);
   });
 
   it('stays quiet when the credential arrives in the grace period', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
-      const { google, win } = installGoogle();
-      installSessionStorage();
-      const auth = authWith(fakeCore());
-      const errors: OctapAuthError[] = [];
-      await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    const { google, focus, errors } = await clickedButton();
 
-      google.click!();
-      win.fire('blur');
-      win.fire('focus');
-      google.callback!({ credential: validToken() });
-      vi.advanceTimersByTime(1_500);
+    focus.value = false;
+    vi.advanceTimersByTime(500);
+    focus.value = true;
+    vi.advanceTimersByTime(500);
+    google.callback!({ credential: validToken() });
+    vi.advanceTimersByTime(5_000);
 
-      expect(errors).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(errors).toEqual([]);
+  });
+
+  it('never reports while focus has not left the page', async () => {
+    const { errors } = await clickedButton();
+    vi.advanceTimersByTime(60_000);
+    expect(errors).toEqual([]);
+  });
+
+  it('restarts the wait if the popup takes focus again, and gives up on a popup left open', async () => {
+    const { focus, errors } = await clickedButton();
+
+    focus.value = false;
+    vi.advanceTimersByTime(500);
+    focus.value = true;
+    vi.advanceTimersByTime(500);
+    focus.value = false;
+    vi.advanceTimersByTime(6 * 60_000);
+    focus.value = true;
+    vi.advanceTimersByTime(5_000);
+
+    expect(errors).toEqual([]);
   });
 });
 
@@ -523,14 +559,153 @@ describe('session', () => {
     await vi.waitFor(() => expect(errors[0]?.code).toBe('api-error'));
   });
 
-  it('reports an expired id_token while the signing session still works', async () => {
+  it('signs out on an expired id_token, so the button returns for a new one', async () => {
     const auth = authWith(fakeCore());
     await auth.renderGoogleButton(element);
     google.callback!({ credential: validToken({ exp: 1 }) });
     await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+    const seen: unknown[] = [];
+    auth.onAuthStateChanged((user) => seen.push(user));
+    await Promise.resolve();
+    seen.length = 0;
 
     await expect(errorFrom(auth.getIdToken())).resolves.toMatchObject({ code: 'token-expired' });
-    await expect(auth.signTransaction(await transactionBytes())).resolves.toEqual(expect.any(String));
+
+    expect(auth.currentUser).toBeNull();
+    expect(seen).toEqual([null]);
+    expect(storage.data.size).toBe(0);
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+  });
+
+  it('notices maxEpoch passing on an open page, with no call to trip it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    const seen: unknown[] = [];
+    auth.onAuthStateChanged((user) => seen.push(user));
+    await Promise.resolve();
+    seen.length = 0;
+
+    vi.advanceTimersByTime(86_400_000 + 1);
+
+    expect(auth.currentUser).toBeNull();
+    expect(seen).toEqual([null]);
+    expect(storage.data.size).toBe(0);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+  });
+
+  it('checks again when a long session outlasts the longest browser timer', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        Response.json({
+          nonce: NONCE,
+          randomness: 'r',
+          maxEpoch: 5,
+          estimatedExpiration: Date.now() + 30 * 86_400_000,
+        }),
+    });
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    vi.advanceTimersByTime(2_147_483_647);
+    expect(auth.currentUser).not.toBeNull();
+
+    vi.advanceTimersByTime(30 * 86_400_000 - 2_147_483_647 + 1);
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('reads as signed out, and renders the button, once a stored session has lapsed', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    google.nonces.length = 0;
+    vi.useFakeTimers({ now: Date.now() + 2 * 86_400_000, toFake: ['Date'] });
+
+    expect(auth.currentUser).toBeNull();
+    await auth.renderGoogleButton(element);
+    expect(google.nonces).toEqual([NONCE]);
+  });
+
+  it('still resolves signOut when the button cannot return, and reports why', async () => {
+    let nonceCalls = 0;
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        ++nonceCalls === 1
+          ? Response.json({ nonce: NONCE, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() + 86_400_000 })
+          : Response.json({ message: 'Too many requests' }, { status: 429 }),
+    });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+
+    await expect(auth.signOut()).resolves.toBeUndefined();
+
+    expect(auth.currentUser).toBeNull();
+    expect(errors[0]).toMatchObject({ code: 'api-error', status: 429 });
+  });
+
+  it('survives a throwing listener: the sign-in stands and other listeners still run', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const auth = authWith(fakeCore());
+    const errors: OctapAuthError[] = [];
+    const seen: unknown[] = [];
+    auth.onAuthStateChanged(() => {
+      throw new Error('merchant bug');
+    });
+    auth.onAuthStateChanged((user) => seen.push(user?.memberId ?? null));
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+
+    expect(seen.at(-1)).toBe('member-1');
+    expect(errors).toEqual([]);
+    expect(google.nonces).toHaveLength(1);
+    expect(log).toHaveBeenCalled();
+  });
+
+  it('still re-arms when the onError handler throws', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const auth = authWith(fakeCore());
+    await auth.renderGoogleButton(element, {
+      onError: () => {
+        throw new Error('merchant bug');
+      },
+    });
+
+    google.callback!({ credential: validToken({ nonce: 'wrong' }) });
+
+    await vi.waitFor(() => expect(google.nonces).toHaveLength(2));
+    expect(log).toHaveBeenCalled();
+  });
+
+  it('ignores a stored session whose proof is not usable', () => {
+    storage.data.set(
+      `octap.auth.${ORG}`,
+      JSON.stringify({
+        user: { endUserId: 'e', memberId: 'm', suiAddress: 'a' },
+        idToken: 't',
+        signer: { secretKey: 's', maxEpoch: 1, expiresAt: Date.now() + 1000, proof: {} },
+      }),
+    );
+    expect(authWith(fakeCore()).currentUser).toBeNull();
+  });
+
+  it('gives a typed error, not a raw one, for a corrupted stored key', async () => {
+    await signIn(authWith(fakeCore()), google);
+    const key = `octap.auth.${ORG}`;
+    const stored = JSON.parse(storage.data.get(key)!) as { signer: { secretKey: string } };
+    stored.signer.secretKey = 'corrupted';
+    storage.data.set(key, JSON.stringify(stored));
+
+    const reloaded = authWith(fakeCore());
+
+    await expect(errorFrom(reloaded.signTransaction(await transactionBytes()))).resolves.toMatchObject({
+      code: 'session-expired',
+    });
   });
 
   it('returns an id_token whose expiry it cannot read, leaving the backend to judge it', async () => {
@@ -667,23 +842,23 @@ describe('signAndFinalize', () => {
     await expect(errorFrom(auth.signAndFinalize(invalid))).resolves.toMatchObject({ code: 'invalid-claim' });
   });
 
-  it('passes through a definite refusal from Core', async () => {
+  it('passes through a rate limit, the one failure that proves nothing was attempted', async () => {
     const core = fakeCore({
-      '/v1/credits/redeem/finalize': () => Response.json({ message: 'Bad signature' }, { status: 400 }),
+      '/v1/credits/redeem/finalize': () => Response.json({ message: 'Too many requests' }, { status: 429 }),
     });
     const auth = authWith(core);
     await signIn(auth, google);
 
     await expect(errorFrom(auth.signAndFinalize(await claim()))).resolves.toMatchObject({
       code: 'api-error',
-      status: 400,
-      message: 'Bad signature',
+      status: 429,
     });
   });
 
   it.each([
+    ['a 400, which Core also uses for an Enoki failure', () => Response.json({ message: 'Enoki' }, { status: 400 })],
+    ['a 404, which a repeat of a finished finalize gets', () => Response.json({ message: 'x' }, { status: 404 })],
     ['a 409, still resolving on-chain', () => Response.json({ message: 'being resolved' }, { status: 409 })],
-    ['a 408', () => new Response('timeout', { status: 408 })],
     ['a 5xx', () => new Response('<html>bad gateway</html>', { status: 502 })],
     ['a dropped connection', () => Promise.reject(new TypeError('fetch failed'))],
     ['an unreadable success', () => new Response('ok', { status: 200 })],
@@ -694,6 +869,31 @@ describe('signAndFinalize', () => {
 
     await expect(errorFrom(auth.signAndFinalize(await claim()))).resolves.toMatchObject({ code: 'outcome-unknown' });
     expect(core.calls.filter((call) => call.path.endsWith('finalize'))).toHaveLength(1);
+  });
+
+  it('keeps the long finalize timeout when a caller passes an undefined one', async () => {
+    const signals: AbortSignal[] = [];
+    const core = fakeCore();
+    const fetchFn = core.fetch;
+    const auth = createOctapAuth({
+      apiBaseUrl: 'https://core.test',
+      organizationId: ORG,
+      googleClientId: 'google-client',
+      timeoutMs: 1,
+      fetch: ((url: string, init: RequestInit) => {
+        signals.push(init.signal!);
+        return fetchFn(url, init);
+      }) as typeof fetch,
+    });
+    const ownClaim = await claim();
+    await auth.renderGoogleButton(element);
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+    const spy = vi.spyOn(AbortSignal, 'timeout');
+
+    await auth.signAndFinalize(ownClaim, { timeoutMs: undefined });
+
+    expect(spy).toHaveBeenCalledWith(90_000);
   });
 
   it('reports an unknown outcome when the caller aborts mid-flight', async () => {
@@ -754,6 +954,11 @@ describe('Core errors', () => {
 
   it('reports a nonce response without a nonce', async () => {
     const auth = authWith(nonceRoute(() => Response.json({ randomness: 'r' })));
+    await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'invalid-response' });
+  });
+
+  it('reports a nonce response without randomness', async () => {
+    const auth = authWith(nonceRoute(() => Response.json({ nonce: 'n', maxEpoch: 5, estimatedExpiration: 1 })));
     await expect(errorFrom(auth.renderGoogleButton(element))).resolves.toMatchObject({ code: 'invalid-response' });
   });
 

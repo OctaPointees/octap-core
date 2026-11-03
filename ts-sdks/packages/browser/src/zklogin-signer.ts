@@ -25,6 +25,18 @@ export interface SignerState {
   proof: ZkLoginSignatureInputs;
 }
 
+export function isZkProof(value: unknown): value is ZkLoginSignatureInputs {
+  const proof = value as Partial<ZkLoginSignatureInputs> | null;
+  return (
+    typeof proof?.addressSeed === 'string' &&
+    typeof proof.headerBase64 === 'string' &&
+    typeof proof.issBase64Details?.value === 'string' &&
+    Array.isArray(proof.proofPoints?.a) &&
+    Array.isArray(proof.proofPoints.b) &&
+    Array.isArray(proof.proofPoints.c)
+  );
+}
+
 /** A key and nonce waiting for the customer to sign in. */
 export class PendingSignIn {
   private constructor(
@@ -37,7 +49,13 @@ export class PendingSignIn {
     const params = await api.post<NonceResponse>('/v1/identity/zklogin/nonce', {
       ephemeralPublicKey: keypair.getPublicKey().toSuiPublicKey(),
     });
-    if (typeof params.nonce !== 'string' || !params.nonce || !Number.isFinite(params.estimatedExpiration)) {
+    if (
+      typeof params.nonce !== 'string' ||
+      !params.nonce ||
+      typeof params.randomness !== 'string' ||
+      !Number.isFinite(params.maxEpoch) ||
+      !Number.isFinite(params.estimatedExpiration)
+    ) {
       throw new OctapAuthError('invalid-response', 'OctaP returned an invalid sign-in nonce.', { body: params });
     }
     return new PendingSignIn(keypair, params);
@@ -70,6 +88,9 @@ export class PendingSignIn {
       randomness: this.params.randomness,
       maxEpoch: this.params.maxEpoch,
     });
+    if (!isZkProof(proof)) {
+      throw new OctapAuthError('invalid-response', 'OctaP returned an invalid signing proof.', { body: proof });
+    }
     return {
       secretKey: this.keypair.getSecretKey(),
       maxEpoch: this.params.maxEpoch,
@@ -115,6 +136,10 @@ export async function signWithZkLogin(
       'This transaction belongs to a different account than the one signed in. Sign in with that account.',
     );
   }
-  const { signature: userSignature } = await Ed25519Keypair.fromSecretKey(state.secretKey).signTransaction(bytes);
-  return getZkLoginSignature({ inputs: state.proof, maxEpoch: state.maxEpoch, userSignature });
+  try {
+    const { signature: userSignature } = await Ed25519Keypair.fromSecretKey(state.secretKey).signTransaction(bytes);
+    return getZkLoginSignature({ inputs: state.proof, maxEpoch: state.maxEpoch, userSignature });
+  } catch {
+    throw new OctapAuthError('session-expired', 'The signing session cannot be used. Sign in again.');
+  }
 }
