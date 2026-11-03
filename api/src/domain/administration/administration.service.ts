@@ -23,6 +23,8 @@ export class AdministrationService {
   }
   async propose(actor: string, orgId: string, body: Record<string, unknown>, platform: boolean) {
     const reason = this.reason(body?.reason);
+    if (!platform && body?.requestType === 'UPDATE_PROFILE')
+      throw new BadRequestException('Use the organization profile endpoint to change the display name directly');
     if (
       !['UPDATE_PROFILE', 'TRANSFER_OWNERSHIP', 'DEACTIVATE', 'SUSPEND', 'REINSTATE'].includes(
         String(body?.requestType),
@@ -60,10 +62,12 @@ export class AdministrationService {
       );
     } catch (error) {
       if (error instanceof ConsoleAccessError) throw new ForbiddenException('Owner access required');
+      if (error instanceof ConsoleConflictError) throw new ConflictException(error.message);
+      if (error instanceof ConsoleNotFoundError) throw new NotFoundException('Organization not found');
       throw error;
     }
   }
-  list(actor: string, query: Record<string, unknown>) {
+  async list(actor: string, query: Record<string, unknown>) {
     const limit = query.limit === undefined ? 25 : Number(query.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('Invalid limit');
     if (query.status !== undefined && !['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(String(query.status)))
@@ -71,7 +75,8 @@ export class AdministrationService {
     for (const key of ['cursor', 'organizationId'])
       if (query[key] !== undefined && (typeof query[key] !== 'string' || !uuid.test(query[key])))
         throw new BadRequestException(`Invalid ${key}`);
-    return this.governance.list(actor, { ...query, limit });
+    try { return await this.governance.list(actor, { ...query, limit }); }
+    catch (error) { if (error instanceof ConsoleAccessError) throw new ForbiddenException('System Admin role required'); throw error; }
   }
   async decide(actor: string, id: string, approve: boolean, reason: unknown) {
     const reviewReason = this.reason(reason);

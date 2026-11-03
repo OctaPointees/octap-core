@@ -100,14 +100,14 @@ describe('platform organization governance', () => {
     await propose('REINSTATE', {}, true).expect(409);
   });
   it('applies profile approval, rejects without effects, and lists with filters and pagination', async () => {
-    const request = await propose('UPDATE_PROFILE', { name: 'Reviewed Name' }).expect(201);
+    const request = await propose('UPDATE_PROFILE', { name: 'Reviewed Name' }, true).expect(201);
     await decide(request.body.id, 'reject').expect(201);
     await decide(request.body.id).expect(409);
     expect((await ctx.db.query.organizations.findFirst({ where: eq(schema.organizations.id, orgId) }))?.name).not.toBe(
       'Reviewed Name',
     );
-    const stale = await propose('UPDATE_PROFILE', { name: 'Old Proposal' }).expect(201);
-    const second = await propose('UPDATE_PROFILE', { name: 'Approved Name' }).expect(201);
+    const stale = await propose('UPDATE_PROFILE', { name: 'Old Proposal' }, true).expect(201);
+    const second = await propose('UPDATE_PROFILE', { name: 'Approved Name' }, true).expect(201);
     await decide(second.body.id).expect(201);
     await decide(stale.body.id).expect(409);
     expect((await ctx.db.query.organizations.findFirst({ where: eq(schema.organizations.id, orgId) }))?.name).toBe(

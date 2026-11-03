@@ -92,8 +92,8 @@ export class ConsoleOrganizationsService {
     return this.run(() => this.organizations.applications(userId, platform));
   }
   decide(userId: string, id: string, approve: boolean, reason?: unknown) {
-    if (!approve && (typeof reason !== 'string' || !reason.trim() || reason.length > 1000))
-      throw new BadRequestException('A rejection reason is required (up to 1000 characters)');
+    if (typeof reason !== 'string' || !reason.trim() || reason.length > 1000)
+      throw new BadRequestException('A review reason is required (up to 1000 characters)');
     return this.run(() =>
       this.organizations.decide(userId, id, approve, typeof reason === 'string' ? reason.trim() : undefined),
     );

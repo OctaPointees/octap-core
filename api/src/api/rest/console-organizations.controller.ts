@@ -94,8 +94,8 @@ export class PlatformOrganizationRequestsController {
   }
   @Post(':id/approve')
   @Header('Cache-Control', 'no-store')
-  approve(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string) {
-    return this.organizations.decide(request.consoleIdentity.user.id, id, true);
+  approve(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: { reason?: unknown }) {
+    return this.organizations.decide(request.consoleIdentity.user.id, id, true, body?.reason);
   }
   @Post(':id/reject')
   @Header('Cache-Control', 'no-store')

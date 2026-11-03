@@ -1,11 +1,13 @@
-import { ForbiddenException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { alias } from 'drizzle-orm/pg-core';
 import { and, asc, eq, gt, getTableColumns } from 'drizzle-orm';
 import type { GovernanceProposal } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { organizationChangeRequests, organizationMemberships, systemUsers } from '../schema/auth.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
-import { ConsoleOrganizationsRepository } from './console-organizations.repository.js';
+import { ConsoleOrganizationsRepository, ConsoleAccessError, ConsoleConflictError, ConsoleNotFoundError } from './console-organizations.repository.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
+const reviewer = alias(systemUsers, 'reviewer');
 
 @Injectable()
 export class GovernanceRepository {
@@ -19,16 +21,16 @@ export class GovernanceRepository {
       .from(systemUsers)
       .where(eq(systemUsers.id, actor))
       .for('share');
-    if (user?.role !== 'SYSTEM_ADMIN') throw new ForbiddenException('System Admin role required');
+    if (user?.role !== 'SYSTEM_ADMIN') throw new ConsoleAccessError('System Admin role required');
   }
   async propose(actor: string, orgId: string, input: GovernanceProposal, platform: boolean) {
     const action = async (tx: Tx) => {
       const [org] = await tx.select().from(organizations).where(eq(organizations.id, orgId)).for('update');
-      if (!org) throw new NotFoundException('Organization not found');
+      if (!org) throw new ConsoleNotFoundError('Organization not found');
       if (input.requestType === 'REINSTATE' ? org.status !== 'SUSPENDED' : org.status !== 'ACTIVE')
-        throw new ConflictException('Organization status does not permit this request');
+        throw new ConsoleConflictError('Organization status does not permit this request');
       if (input.requestType === 'REINSTATE' && !platform)
-        throw new ForbiddenException('Only System Admin can propose reinstatement');
+        throw new ConsoleAccessError('Only System Admin can propose reinstatement');
       const owners = await tx
         .select()
         .from(organizationMemberships)
@@ -47,7 +49,7 @@ export class GovernanceRepository {
         ...(input.requestType === 'TRANSFER_OWNERSHIP' ? { previousOwnerId: owners[0]?.systemUserId } : {}),
       };
       if (input.requestType === 'TRANSFER_OWNERSHIP') {
-        if (owners.length !== 1) throw new ConflictException('Transfer requires exactly one active Owner');
+        if (owners.length !== 1) throw new ConsoleConflictError('Transfer requires exactly one active Owner');
         const target = await this.target(tx, orgId, input.payload.targetUserId!);
         Object.assign(payload, { targetName: target.fullName, targetEmail: target.email });
       }
@@ -83,7 +85,7 @@ export class GovernanceRepository {
       .innerJoin(systemUsers, eq(systemUsers.id, organizationMemberships.systemUserId))
       .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.systemUserId, userId)));
     if (!target?.subject || target.role !== 'BUSINESS_DEVELOPER' || target.status !== 'ACTIVE')
-      throw new ConflictException('New Owner must be an active Google-bound Developer in this organization');
+      throw new ConsoleConflictError('New Owner must be an active Google-bound Developer in this organization');
     return target;
   }
   list(actor: string, query: { status?: string; cursor?: string; limit: number; organizationId?: string }) {
@@ -94,10 +96,12 @@ export class GovernanceRepository {
           ...getTableColumns(organizationChangeRequests),
           organizationName: organizations.name,
           requesterEmail: systemUsers.email,
+          reviewerEmail: reviewer.email,
         })
         .from(organizationChangeRequests)
         .leftJoin(organizations, eq(organizations.id, organizationChangeRequests.organizationId))
         .innerJoin(systemUsers, eq(systemUsers.id, organizationChangeRequests.requestedById))
+        .leftJoin(reviewer, eq(reviewer.id, organizationChangeRequests.reviewedById))
         .where(
           and(
             query.status ? eq(organizationChangeRequests.status, query.status as 'PENDING') : undefined,
@@ -125,8 +129,8 @@ export class GovernanceRepository {
         .from(organizationChangeRequests)
         .where(eq(organizationChangeRequests.id, requestId))
         .for('update');
-      if (!request?.organizationId) throw new NotFoundException('Request not found');
-      if (request.status !== 'PENDING') throw new ConflictException('Request is already terminal');
+      if (!request?.organizationId) throw new ConsoleNotFoundError('Request not found');
+      if (request.status !== 'PENDING') throw new ConsoleConflictError('Request is already terminal');
       const [org] = await tx
         .select()
         .from(organizations)
@@ -141,7 +145,7 @@ export class GovernanceRepository {
       };
       if (approve) {
         if (org.status !== payload.expectedStatus)
-          throw new ConflictException('Organization changed since this request was submitted');
+          throw new ConsoleConflictError('Organization changed since this request was submitted');
         switch (request.requestType) {
           case 'TRANSFER_OWNERSHIP': {
             const owners = await tx
@@ -156,7 +160,7 @@ export class GovernanceRepository {
               )
               .for('update');
             if (owners.length !== 1 || owners[0].systemUserId !== payload.previousOwnerId)
-              throw new ConflictException('Ownership changed since submission');
+              throw new ConsoleConflictError('Ownership changed since submission');
             await this.target(tx, org.id, payload.targetUserId!);
             await tx
               .update(organizationMemberships)
@@ -191,16 +195,16 @@ export class GovernanceRepository {
             break;
           case 'UPDATE_PROFILE':
             if (org.name !== payload.expectedName)
-              throw new ConflictException('Organization name changed since submission');
+              throw new ConsoleConflictError('Organization name changed since submission');
             if (!payload.name || payload.name.trim().length < 2 || payload.name.length > 160)
-              throw new ConflictException('Request has an invalid display name');
+              throw new ConsoleConflictError('Request has an invalid display name');
             await tx
               .update(organizations)
               .set({ name: payload.name.trim(), updatedAt: new Date() })
               .where(eq(organizations.id, org.id));
             break;
           default:
-            throw new ConflictException('Unsupported request type');
+            throw new ConsoleConflictError('Unsupported request type');
         }
       }
       await tx
