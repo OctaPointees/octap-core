@@ -5,7 +5,9 @@ import { WebhooksModule } from './webhooks/webhooks.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { MembersModule } from './members/members.module.js';
 import { AdministrationModule } from './administration/administration.module.js';
+import { OrganizationsModule } from './organizations/organizations.module.js';
 const featureModules = [
+  OrganizationsModule,
   AdministrationModule,
   MembersModule,
   CreditsModule,

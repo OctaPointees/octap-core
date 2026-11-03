@@ -17,7 +17,9 @@ import { OrganizationIdentityCipher } from './organization-identity.cipher.js';
 import { MembersRepository } from './repositories/members.repository.js';
 
 import { GovernanceRepository } from './repositories/governance.repository.js';
+import { OrganizationsRepository } from './repositories/organizations.repository.js';
 const repositories = [
+  OrganizationsRepository,
   GovernanceRepository,
   MembersRepository,
   ConsoleOperatorRepository,

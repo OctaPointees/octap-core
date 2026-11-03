@@ -75,8 +75,13 @@ export class ConsoleOrganizationsRepository {
       .for('share');
     if (user?.role !== 'SYSTEM_ADMIN') throw new ConsoleAccessError();
   }
-  async apply(userId: string, input: OrganizationApplicationInput) {
+  async apply(userId: string, input: OrganizationApplicationInput, adminActorId?: string) {
     return this.db.transaction(async (tx) => {
+      if (adminActorId) {
+        await this.admin(tx, adminActorId);
+        const owner = await tx.query.systemUsers.findFirst({ where: eq(systemUsers.id, userId) });
+        if (!owner?.googleSubject) throw new ConsoleValidationError('Initial Owner must first sign in with Google');
+      }
       const { nationalId, ...publicDetails } = input;
       const [org] = await tx
         .insert(organizations)
@@ -89,7 +94,7 @@ export class ConsoleOrganizationsRepository {
         .insert(organizationChangeRequests)
         .values({
           organizationId: org.id,
-          requestedById: userId,
+          requestedById: adminActorId ?? userId,
           requestType: 'CREATE_ORGANIZATION',
           payload: { initialOwnerId: userId, requestedSlug: input.slug },
         })
@@ -153,10 +158,14 @@ export class ConsoleOrganizationsRepository {
           updatedAt: new Date(),
         })
         .where(eq(organizations.id, org.id));
-      if (approve)
+      if (approve) {
+        const initialOwnerId = (request.payload as { initialOwnerId?: string }).initialOwnerId ?? request.requestedById;
+        const owner = await tx.query.systemUsers.findFirst({ where: eq(systemUsers.id, initialOwnerId) });
+        if (!owner?.googleSubject) throw new ConsoleConflictError('Initial Owner must have a verified Google account');
         await tx
           .insert(organizationMemberships)
-          .values({ organizationId: org.id, systemUserId: request.requestedById, role: 'OWNER' });
+          .values({ organizationId: org.id, systemUserId: initialOwnerId, role: 'OWNER' });
+      }
       await tx
         .update(organizationChangeRequests)
         .set({
