@@ -68,6 +68,97 @@ describe('console onboarding and protected portal operations', () => {
   const accept = (token: string, actor = 'developer') =>
     ctx.http().post(`/v1/console/invitations/${token}/accept`).set('Authorization', bearer(actor)).send({});
 
+  it('lets only Owners suspend and restore Developers without changing ownership', async () => {
+    const org = await approved();
+    await accept((await invite(org.id).expect(201)).body.token).expect(201);
+    const access = (actor: string, target: string, body: object) =>
+      ctx
+        .http()
+        .patch(`/v1/console/organizations/${org.id}/staff/${target}`)
+        .set('Authorization', bearer(actor))
+        .send(body);
+    for (const actor of ['developer', 'stranger', 'admin'])
+      await access(actor, ids.developer, { status: 'SUSPENDED' }).expect(403);
+    await access('owner', ids.owner, { status: 'SUSPENDED' }).expect(403);
+    await access('owner', ids.developer, { status: 'ACTIVE', role: 'OWNER' }).expect(400);
+    await access('owner', ids.developer, { status: 'DELETED' }).expect(400);
+    await access('owner', ids.stranger, { status: 'ACTIVE' }).expect(404);
+    const pending = await invite(org.id).expect(201);
+    await access('owner', ids.developer, { status: 'SUSPENDED' }).expect(200);
+    await accept(pending.body.token).expect(410);
+    await ctx
+      .http()
+      .get(`/v1/console/organizations/${org.id}/api-credentials`)
+      .set('Authorization', bearer('developer'))
+      .expect(403);
+    expect(
+      (await ctx.http().get('/v1/console/me').set('Authorization', bearer('developer'))).body.organizations,
+    ).toEqual([]);
+    await access('owner', ids.developer, { status: 'ACTIVE' }).expect(200);
+    await ctx
+      .http()
+      .get(`/v1/console/organizations/${org.id}/api-credentials`)
+      .set('Authorization', bearer('developer'))
+      .expect(200);
+  });
+  it('blocks older invitations after suspension even when the stored email changed', async () => {
+    const org = await approved();
+    await accept((await invite(org.id).expect(201)).body.token).expect(201);
+    const pending = await invite(org.id).expect(201);
+    await ctx.db
+      .update(schema.systemUsers)
+      .set({ email: 'old-profile@example.com' })
+      .where(eq(schema.systemUsers.id, ids.developer));
+    await ctx
+      .http()
+      .patch(`/v1/console/organizations/${org.id}/staff/${ids.developer}`)
+      .set('Authorization', bearer('owner'))
+      .send({ status: 'SUSPENDED' })
+      .expect(200);
+    await accept(pending.body.token).expect(410);
+    const [row] = await ctx.db
+      .select()
+      .from(schema.organizationMemberships)
+      .where(eq(schema.organizationMemberships.systemUserId, ids.developer));
+    expect(row.status).toBe('SUSPENDED');
+    await ctx
+      .http()
+      .post(`/v1/console/organizations/${org.id}/invitations/${pending.body.id}/revoke`)
+      .set('Authorization', bearer('owner'))
+      .send({})
+      .expect(201);
+    const fresh = await invite(org.id).expect(201);
+    await accept(fresh.body.token).expect(201); // A new Owner-issued invitation explicitly restores access.
+  });
+  it('bootstraps only the first Google-bound Owner of an active organization', async () => {
+    const org = await seedOrganization(ctx.db);
+    const bootstrap = (actor: string, id = org.id, target = ids.owner) =>
+      ctx
+        .http()
+        .post(`/v1/platform/organizations/${id}/owner`)
+        .set('Authorization', bearer(actor))
+        .send({ systemUserId: target });
+    await bootstrap('owner').expect(403);
+    await bootstrap('admin', org.id, 'invalid').expect(400);
+    const [legacy] = await ctx.db
+      .insert(schema.systemUsers)
+      .values({ email: 'legacy@example.com', fullName: 'Legacy' })
+      .returning();
+    await bootstrap('admin', org.id, legacy.id).expect(400);
+    const pending = await seedOrganization(ctx.db, { status: 'PENDING_APPROVAL' });
+    await bootstrap('admin', pending.id).expect(409);
+    await bootstrap('admin', '00000000-0000-4000-8000-000000000000').expect(404);
+    await ctx.db
+      .insert(schema.organizationMemberships)
+      .values({ organizationId: org.id, systemUserId: ids.owner, role: 'BUSINESS_DEVELOPER' });
+    const results = await Promise.all([bootstrap('admin'), bootstrap('admin')]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    await ctx.db
+      .update(schema.organizationMemberships)
+      .set({ status: 'SUSPENDED' })
+      .where(eq(schema.organizationMemberships.organizationId, org.id));
+    await bootstrap('admin', org.id, ids.developer).expect(409);
+  });
   it('requires Google credentials on all console/platform operations', async () => {
     await ctx.http().get('/v1/console/organization-requests').expect(401);
     await ctx.http().get('/v1/platform/organization-requests').set('Authorization', 'Bearer fake').expect(401);

@@ -122,6 +122,23 @@ export class ConsoleOrganizationsService {
   staff(userId: string, orgId: string) {
     return this.run(() => this.organizations.staff(userId, orgId));
   }
+  staffAccess(userId: string, orgId: string, targetId: string, input: Record<string, unknown>) {
+    if (
+      (input?.status !== 'ACTIVE' && input?.status !== 'SUSPENDED') ||
+      Object.keys(input).some((key) => key !== 'status')
+    )
+      throw new BadRequestException('Only ACTIVE or SUSPENDED Developer access can be changed');
+    return this.run(async () => {
+      await this.organizations.staffAccess(userId, orgId, targetId, input.status as 'ACTIVE' | 'SUSPENDED');
+      return { updated: true };
+    });
+  }
+  bootstrapOwner(userId: string, orgId: string, targetId: string) {
+    return this.run(async () => {
+      await this.organizations.bootstrapOwner(userId, orgId, targetId);
+      return { created: true };
+    });
+  }
   credentials(userId: string, orgId: string) {
     return this.run(() => this.organizations.credentials(userId, orgId));
   }

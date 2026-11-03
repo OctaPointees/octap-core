@@ -36,6 +36,16 @@ export class ConsoleOrganizationsController {
   staff(@Req() request: ConsoleRequest, @Param('organizationId', ParseUUIDPipe) orgId: string) {
     return this.organizations.staff(request.consoleIdentity.user.id, orgId);
   }
+  @Patch('organizations/:organizationId/staff/:userId')
+  @Header('Cache-Control', 'no-store')
+  staffAccess(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.organizations.staffAccess(request.consoleIdentity.user.id, orgId, userId, body);
+  }
   @Get('organizations/:organizationId/api-credentials')
   @Header('Cache-Control', 'no-store')
   credentials(@Req() request: ConsoleRequest, @Param('organizationId', ParseUUIDPipe) orgId: string) {
@@ -91,5 +101,22 @@ export class PlatformOrganizationRequestsController {
   @Header('Cache-Control', 'no-store')
   reject(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: { reason?: unknown }) {
     return this.organizations.decide(request.consoleIdentity.user.id, id, false, body?.reason);
+  }
+}
+
+@Public()
+@UseGuards(ConsoleAccessGuard)
+@PlatformAdminOnly()
+@Controller('v1/platform/organizations')
+export class PlatformOrganizationOwnersController {
+  constructor(private readonly organizations: ConsoleOrganizationsService) {}
+  @Post(':organizationId/owner')
+  @Header('Cache-Control', 'no-store')
+  bootstrap(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Body('systemUserId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.organizations.bootstrapOwner(request.consoleIdentity.user.id, orgId, userId);
   }
 }

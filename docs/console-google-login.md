@@ -76,6 +76,26 @@ OctaP SDK is installed in Web. The old mock dashboards are opt-in demo routes.
 Google subject binding and explicit platform role provisioning remain separate from
 invitation acceptance. No bootstrap email/domain rule grants System Admin automatically.
 
+## OCT-63 staff access and first Owner
+
+Owner-only `PATCH /v1/console/organizations/:organizationId/staff/:userId`
+accepts exactly `{ "status": "ACTIVE" | "SUSPENDED" }`. The target ID is a system
+user ID from the staff list. Only Business Developer memberships can be changed;
+Owner changes and role promotion are rejected. Authorization and the update run in
+one transaction, locking the organization before its memberships. System Admin
+status does not bypass tenant membership. Suspension revokes pending invitations
+for that account's stored email; acceptance also rejects invitations issued at or before
+the suspension, even if Google reports a newer verified email. Owners can explicitly
+restore access or issue a new invitation. The existing Team page provides Suspend/Restore controls.
+
+System Admin-only `POST /v1/platform/organizations/:organizationId/owner` accepts
+`{ "systemUserId": "<uuid>" }` for an existing Google-bound account. It creates the
+first Owner of an ACTIVE organization, including promoting an existing Developer.
+Any existing Owner membership, even suspended, rejects this bootstrap with 409.
+Concurrent attempts serialize on the organization. Pending applications must use
+the approval workflow. This endpoint is not ownership transfer or account recovery;
+those governance workflows remain OCT-208. There is no bootstrap form in Web.
+
 ## Organization setup types and deferred CCCD verification
 
 Migration 0017 adds nullable `organization_type` (INDIVIDUAL_HOUSEHOLD / COMPANY)
