@@ -19,11 +19,17 @@ export class ConsoleNotFoundError extends Error {}
 export class ConsoleValidationError extends Error {}
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const hashToken = (token: string) => `sha256:${createHash('sha256').update(token).digest('hex')}`;
+function requestedSlug(payload: unknown, fallback: string) {
+  const saved =
+    payload && typeof payload === 'object' ? (payload as { requestedSlug?: unknown }).requestedSlug : undefined;
+  return typeof saved === 'string' && /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/.test(saved) ? saved : fallback;
+}
 const applicationFields = {
   id: organizationChangeRequests.id,
   organizationId: organizations.id,
   name: organizations.name,
   slug: organizations.slug,
+  payload: organizationChangeRequests.payload,
   status: organizationChangeRequests.status,
   reason: organizationChangeRequests.reason,
   createdAt: organizationChangeRequests.createdAt,
@@ -85,7 +91,7 @@ export class ConsoleOrganizationsRepository {
           organizationId: org.id,
           requestedById: userId,
           requestType: 'CREATE_ORGANIZATION',
-          payload: { initialOwnerId: userId },
+          payload: { initialOwnerId: userId, requestedSlug: input.slug },
         })
         .returning();
       return request.id;
@@ -94,7 +100,7 @@ export class ConsoleOrganizationsRepository {
   async applications(userId: string, platform = false) {
     return this.db.transaction(async (tx) => {
       if (platform) await this.admin(tx, userId);
-      return tx
+      const rows = await tx
         .select(applicationFields)
         .from(organizationChangeRequests)
         .innerJoin(organizations, eq(organizations.id, organizationChangeRequests.organizationId))
@@ -108,6 +114,7 @@ export class ConsoleOrganizationsRepository {
         )
         .orderBy(desc(organizationChangeRequests.createdAt))
         .limit(100);
+      return rows.map(({ payload, ...row }) => ({ ...row, slug: requestedSlug(payload, row.slug) }));
     });
   }
   async decide(userId: string, requestId: string, approve: boolean, reason?: string) {
@@ -149,6 +156,10 @@ export class ConsoleOrganizationsRepository {
         .set({
           status: approve ? 'APPROVED' : 'REJECTED',
           reviewedById: userId,
+          payload: {
+            ...(request.payload as Record<string, unknown>),
+            requestedSlug: requestedSlug(request.payload, org.slug),
+          },
           reviewedAt: new Date(),
           reason: reason ?? null,
           updatedAt: new Date(),

@@ -114,6 +114,53 @@ person supplies a freshly issued Google ID token for this same OAuth client. Pas
 it via stdin from secure input; never put it in arguments, logs or version control.
 The script verifies the token with the same Google verifier as console login.
 
+### Obtain a fresh Google ID token
+
+Use the existing business portal with the same public Google OAuth Web client ID as
+Core's `CONSOLE_GOOGLE_CLIENT_ID`. Its origin must be registered in Google's
+Authorized JavaScript origins. This procedure needs no client secret or token-display UI.
+
+1. On a trusted development machine, open the portal and browser DevTools **Network**
+   panel before signing in. Clear earlier requests so an old credential is not selected.
+2. Click **Sign in with Google** and choose the intended account. Find the portal's
+   POST `/v1/console/auth/google` request. In **Payload / Request Payload**, copy only
+   the `idToken` string value (without JSON quotes). A legacy account can return 409;
+   the request still contains the Google credential needed for explicit linking.
+3. Run the operator command promptly on the trusted operator host. Paste the value
+   into masked input and pipe it through stdin, as shown below. Do not copy a cURL
+   command, place the token in shell arguments/history, capture it in screenshots,
+   export a HAR, or send it through an issue, chat or shared log.
+4. Clear the token from the clipboard and DevTools after use. If it expires, repeat
+   Google sign-in; do not use a Google API access token or an old Network request.
+
+PowerShell example, from the Core repository after build, using a development
+database and an existing restricted audit directory:
+
+```powershell
+$operatorToken = Read-Host 'Paste the fresh Google ID token' -AsSecureString
+try {
+  $operatorCredential = [System.Net.NetworkCredential]::new('', $operatorToken)
+  $operatorCredential.Password | node --env-file=.env scripts/console-operator.mjs --action bootstrap-admin --operator 'Your name' --reason 'Initial development admin' --audit-file 'D:\secure\console-audit.jsonl'
+  if ($LASTEXITCODE -ne 0) { throw 'Operator action did not report success; inspect its audit record.' }
+} finally {
+  $operatorToken.Dispose()
+  Remove-Variable operatorToken, operatorCredential -ErrorAction SilentlyContinue
+}
+```
+
+For an existing legacy administrator, use `--action link --user-id EXISTING_USER_UUID`
+instead of bootstrap. To select a legacy account when creating the first administrator,
+add `--user-id EXISTING_USER_UUID` to bootstrap explicitly. Never obtain a subject by
+decoding the token yourself: the script verifies it against Google before changing data.
+The credential exists briefly in process memory for stdin transport; masked input
+avoids placing its value in shell history or on screen.
+
+The documented flow does not establish real-account acceptance by itself. Run and
+inspect the script's successful audit record with a real Google account on a development
+database after merge; keep that acceptance criterion open until it has been done.
+
+### Operator commands and audit
+
 Command shape (pipe the token securely into stdin):
 
 ```text
@@ -158,3 +205,14 @@ management, never Web/Vite config or logs shared with reviewers. It grants read/
 merchant scopes; it does not grant a human SYSTEM_ADMIN role. The Developer portal reads
 safe credential metadata only. Start the configured chain-submit worker for earn/redeem
 processing. These commands are operator steps; approval alone is not an end-to-end earn test.
+
+
+## Requested slug history
+
+Creation snapshots the requested slug in `organization_change_requests.payload.requestedSlug`.
+Application listings show that value without exposing the raw request payload. Rejection still
+archives the organization and releases its public slug for another application. Decisions also
+snapshot the current slug for older pending requests that lack the field, before replacing it.
+Historical rows already rejected without a snapshot fall back to their stored organization slug;
+the original lost value cannot be reconstructed safely from the organization name. No migration
+or guess at historical slugs is performed.

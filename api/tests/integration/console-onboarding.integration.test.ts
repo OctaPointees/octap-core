@@ -150,10 +150,50 @@ describe('console onboarding and protected portal operations', () => {
     expect(
       (await ctx.http().get('/v1/console/organization-requests').set('Authorization', bearer('owner')).expect(200))
         .body[0],
-    ).toMatchObject({ status: 'REJECTED', reason: 'Please provide a valid legal name' });
+    ).toMatchObject({ status: 'REJECTED', reason: 'Please provide a valid legal name', slug: 'new-business' });
+    const platform = await ctx
+      .http()
+      .get('/v1/platform/organization-requests')
+      .set('Authorization', bearer('admin'))
+      .expect(200);
+    expect(platform.body[0].slug).toBe('new-business');
+    expect(platform.body[0]).not.toHaveProperty('payload');
+    const saved = await ctx.db.query.organizationChangeRequests.findFirst({
+      where: eq(schema.organizationChangeRequests.id, request.body.id),
+    });
+    expect(saved?.payload).toMatchObject({ requestedSlug: 'new-business', initialOwnerId: ids.owner });
     expect(await ctx.db.select().from(schema.organizationMemberships)).toEqual([]);
     expect((await ctx.db.select().from(schema.organizations))[0].status).toBe('ARCHIVED');
     await apply().expect(201); // Rejection releases the public slug for a corrected application.
+  });
+  it('backfills pending legacy request slugs before rejection and falls back for historical rows', async () => {
+    const request = await apply('legacy-business').expect(201);
+    await ctx.db
+      .update(schema.organizationChangeRequests)
+      .set({ payload: { initialOwnerId: ids.owner } })
+      .where(eq(schema.organizationChangeRequests.id, request.body.id));
+    const list = () =>
+      ctx.http().get('/v1/platform/organization-requests').set('Authorization', bearer('admin')).expect(200);
+    expect((await list()).body[0].slug).toBe('legacy-business');
+    await ctx
+      .http()
+      .post(`/v1/platform/organization-requests/${request.body.id}/reject`)
+      .set('Authorization', bearer('admin'))
+      .send({ reason: 'Please correct the application' })
+      .expect(201);
+    expect((await list()).body[0].slug).toBe('legacy-business');
+    const [org] = await ctx.db.select().from(schema.organizations);
+    expect(org.slug).toMatch(/^rejected-/);
+    await ctx.db
+      .update(schema.organizationChangeRequests)
+      .set({ payload: {} })
+      .where(eq(schema.organizationChangeRequests.id, request.body.id));
+    expect((await list()).body[0].slug).toBe(org.slug); // Already lost historical names cannot be reconstructed.
+    await ctx.db
+      .update(schema.organizationChangeRequests)
+      .set({ payload: { requestedSlug: 123 } })
+      .where(eq(schema.organizationChangeRequests.id, request.body.id));
+    expect((await list()).body[0].slug).toBe(org.slug);
   });
   it('protects owner/developer operations, tenant boundaries and safe credential metadata', async () => {
     const { id } = await approved();
