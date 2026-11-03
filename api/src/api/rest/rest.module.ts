@@ -13,10 +13,12 @@ import {
   PlatformOrganizationOwnersController,
 } from './console-organizations.controller.js';
 import { ConsoleAccessGuard } from './console-access.guard.js';
+import { MembersController } from './members.controller.js';
 @Module({
   imports: [DomainModule, AuthModule],
   providers: [ConsoleAccessGuard],
   controllers: [
+    MembersController,
     CreditsController,
     RewardsController,
     ApiCredentialsController,

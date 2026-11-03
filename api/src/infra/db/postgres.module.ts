@@ -14,7 +14,10 @@ import { ConsoleOperatorRepository } from './repositories/console-operator.repos
 import { ConsoleOrganizationsRepository } from './repositories/console-organizations.repository.js';
 import { OrganizationIdentityCipher } from './organization-identity.cipher.js';
 
+import { MembersRepository } from './repositories/members.repository.js';
+
 const repositories = [
+  MembersRepository,
   ConsoleOperatorRepository,
   ConsoleOrganizationsRepository,
   ConsoleUsersRepository,

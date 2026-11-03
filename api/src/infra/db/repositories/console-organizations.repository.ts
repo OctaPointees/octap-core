@@ -97,6 +97,12 @@ export class ConsoleOrganizationsRepository {
       return request.id;
     });
   }
+  async withAccess<T>(userId: string, organizationId: string, mutating: boolean, action: (tx: Tx) => Promise<T>) {
+    return this.db.transaction(async (tx) => {
+      await this.member(tx, userId, organizationId, mutating, mutating);
+      return action(tx);
+    });
+  }
   async applications(userId: string, platform = false) {
     return this.db.transaction(async (tx) => {
       if (platform) await this.admin(tx, userId);

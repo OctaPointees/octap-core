@@ -14,6 +14,7 @@ import { acceptCommand } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
+import { withActiveMember } from './member-eligibility.js';
 
 /**
  * Row-locks a loyalty transaction and returns it if it is still PENDING (null otherwise). Every
@@ -443,7 +444,7 @@ export class CreditsRepository {
     receiptReference?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+    return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
       let ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -822,7 +823,7 @@ export class CreditsRepository {
       }),
     );
 
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+    return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
       const { operation, isNew } = await acceptCommand(tx, {
         tenantId: params.organizationId,
         idempotencyKey: params.idempotencyKey,
