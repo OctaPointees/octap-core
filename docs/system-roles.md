@@ -21,4 +21,8 @@ Coordinate deployment with this column change: any external consumers still read
 
 Authenticated database users retain their own-profile SELECT policy and cannot assign their own system role. Do not expose role assignment in ordinary profile updates. Any future platform-admin assignment operation must enforce server-side authorization and record its actor/reason.
 
-This change implements the role representation and migration only. Google-backed console authentication, role guards and a platform user-management API are still OCT-39 follow-up work; the existing customer Google/Enoki login does not use system-user roles.
+Google-backed console authentication and platform/persona guards are implemented in OCT-39.
+The existing customer Google/Enoki login does not use system-user roles. Initial admin
+provisioning and explicit legacy Google linking are operator-only script operations;
+see [console setup](console-google-login.md#operator-bootstrap-and-explicit-account-linking).
+A general platform user-management API remains separate work.

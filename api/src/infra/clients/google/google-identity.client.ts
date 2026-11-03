@@ -40,7 +40,10 @@ export class GoogleIdentityClient {
         avatarUrl: claims.picture ?? null,
         expiresAt: claims.exp,
       };
-    } catch {
+    } catch (error) {
+      // google-auth-library prefixes certificate transport failures before rethrowing.
+      if (error instanceof Error && error.message.startsWith('Failed to retrieve verification certificates:'))
+        throw new ServiceUnavailableException('Google sign-in is temporarily unavailable. Try again later.');
       throw new UnauthorizedException('Google identity could not be verified. Sign in again.');
     }
   }

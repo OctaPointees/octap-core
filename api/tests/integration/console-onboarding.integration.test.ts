@@ -153,6 +153,7 @@ describe('console onboarding and protected portal operations', () => {
     ).toMatchObject({ status: 'REJECTED', reason: 'Please provide a valid legal name' });
     expect(await ctx.db.select().from(schema.organizationMemberships)).toEqual([]);
     expect((await ctx.db.select().from(schema.organizations))[0].status).toBe('ARCHIVED');
+    await apply().expect(201); // Rejection releases the public slug for a corrected application.
   });
   it('protects owner/developer operations, tenant boundaries and safe credential metadata', async () => {
     const { id } = await approved();

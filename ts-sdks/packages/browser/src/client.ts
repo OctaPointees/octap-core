@@ -8,15 +8,6 @@ import type {
   VoucherOwnershipDto,
   GoogleLoginResponse,
   EnrollMemberResponse,
-  ConsoleIdentity,
-  OrganizationApplicationInput,
-  OrganizationProfileInput,
-  OrganizationApplication,
-  ConsoleOrganization,
-  ConsoleStaff,
-  ConsoleInvitation,
-  CreatedConsoleInvitation,
-  ConsoleCredential,
 } from '@octap/contracts';
 
 export interface BrowserClientOptions {
@@ -27,120 +18,6 @@ export interface BrowserClientOptions {
 }
 
 export class OctaBrowserClient {
-  private consoleRequest<T>(
-    path: string,
-    method: 'GET' | 'POST' | 'PATCH' = 'GET',
-    body?: unknown,
-    signal?: AbortSignal,
-  ) {
-    return this.request<T>(path, method, body, undefined, { cache: 'no-store', signal });
-  }
-  requestConsoleOrganization(input: OrganizationApplicationInput, signal?: AbortSignal) {
-    return this.consoleRequest<{ id: string }>('/v1/console/organization-requests', 'POST', input, signal);
-  }
-  listConsoleOrganizationRequests(signal?: AbortSignal) {
-    return this.consoleRequest<OrganizationApplication[]>(
-      '/v1/console/organization-requests',
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  listPlatformOrganizationRequests(signal?: AbortSignal) {
-    return this.consoleRequest<OrganizationApplication[]>(
-      '/v1/platform/organization-requests',
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  decidePlatformOrganizationRequest(id: string, decision: 'approve' | 'reject', reason?: string, signal?: AbortSignal) {
-    return this.consoleRequest<{ organizationId: string }>(
-      `/v1/platform/organization-requests/${encodeURIComponent(id)}/${decision}`,
-      'POST',
-      { reason },
-      signal,
-    );
-  }
-  getConsoleOrganization(id: string, signal?: AbortSignal) {
-    return this.consoleRequest<ConsoleOrganization>(
-      `/v1/console/organizations/${encodeURIComponent(id)}`,
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  updateConsoleOrganizationProfile(id: string, input: OrganizationProfileInput, signal?: AbortSignal) {
-    return this.consoleRequest<{ updated: boolean }>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/profile`,
-      'PATCH',
-      input,
-      signal,
-    );
-  }
-  listConsoleStaff(id: string, signal?: AbortSignal) {
-    return this.consoleRequest<ConsoleStaff[]>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/staff`,
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  listConsoleCredentials(id: string, signal?: AbortSignal) {
-    return this.consoleRequest<ConsoleCredential[]>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/api-credentials`,
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  createConsoleInvitation(id: string, email: string, signal?: AbortSignal) {
-    return this.consoleRequest<CreatedConsoleInvitation>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/invitations`,
-      'POST',
-      { email, persona: 'BUSINESS_DEVELOPER' },
-      signal,
-    );
-  }
-  listConsoleInvitations(id: string, signal?: AbortSignal) {
-    return this.consoleRequest<ConsoleInvitation[]>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/invitations`,
-      'GET',
-      undefined,
-      signal,
-    );
-  }
-  revokeConsoleInvitation(id: string, invitationId: string, signal?: AbortSignal) {
-    return this.consoleRequest<{ revoked: boolean }>(
-      `/v1/console/organizations/${encodeURIComponent(id)}/invitations/${encodeURIComponent(invitationId)}/revoke`,
-      'POST',
-      undefined,
-      signal,
-    );
-  }
-  acceptConsoleInvitation(token: string, signal?: AbortSignal) {
-    return this.consoleRequest<{ organizationId: string }>(
-      `/v1/console/invitations/${encodeURIComponent(token)}/accept`,
-      'POST',
-      undefined,
-      signal,
-    );
-  }
-  /** Direct portal Google login; separate from customer Google/Enoki wallet enrollment. */
-  async loginConsoleWithGoogle(idToken: string, options: { signal?: AbortSignal } = {}): Promise<ConsoleIdentity> {
-    return this.request<ConsoleIdentity>('/v1/console/auth/google', 'POST', { idToken }, undefined, {
-      ...options,
-      cache: 'no-store',
-    });
-  }
-
-  /** getAuthToken must return the current Google ID token for this console request. */
-  async getConsoleIdentity(options: { signal?: AbortSignal } = {}): Promise<ConsoleIdentity> {
-    return this.request<ConsoleIdentity>('/v1/console/me', 'GET', undefined, undefined, {
-      ...options,
-      cache: 'no-store',
-    });
-  }
   private readonly apiBaseUrl: string;
   private readonly defaultOrganizationId?: string;
   private readonly getAuthToken?: () => Promise<string | null> | string | null;

@@ -1,8 +1,8 @@
 # Console Google login
 
 Set `CONSOLE_GOOGLE_CLIENT_ID` to the same Google OAuth Web client ID used by
-the business/admin portal's `VITE_GOOGLE_CLIENT_ID`. Apply migrations 0014 and
-0015 and 0016 with `npm run db:migrate` before starting this version of Core. No OAuth
+the business/admin portal's `VITE_GOOGLE_CLIENT_ID`. Apply migrations 0014 through
+0017 with `npm run db:migrate` before starting this version of Core. No OAuth
 client secret is required for this Google Identity Services ID-token flow.
 
 `POST /v1/console/auth/google` accepts `{ "idToken": "<Google ID token>" }`.
@@ -70,7 +70,7 @@ active membership is not overwritten. Bad tokens are 404; consumed/revoked/expir
 ones are 410; unauthorized actors/tenants are 403. No password/account-claim form and
 no automatic email delivery are introduced. The raw link must be shared by the Owner.
 
-Public wire shapes and optional SDK methods live in the contracts/browser packages.
+Public wire shapes live in @octap/contracts. Portal methods are not part of the customer Browser SDK.
 Web's real routes currently call Core directly with fetch and Google ID tokens; no
 OctaP SDK is installed in Web. The old mock dashboards are opt-in demo routes.
 Google subject binding and explicit platform role provisioning remain separate from
@@ -100,8 +100,61 @@ and retain it in secret management; never place it in Vite configuration or comm
 Do not overwrite the key on restart: existing ciphertext depends on it. Key rotation
 must retain the old key until data has been re-encrypted. Missing/malformed keys reject
 CCCD writes with 503 and roll back the entire operation. Requests without CCCD do not
-require the key. The local ignored .env has been configured for the development demo.
+require the key.
 
 Organization approval establishes portal membership, not verified civil identity,
 company registration, or a provisioned Sui program. CCCD document verification and
 resumable server-side onboarding drafts are still separate future work.
+
+## Operator bootstrap and explicit account linking
+
+After migrations and `npm run build`, use `scripts/console-operator.mjs` on a trusted
+operator host with Core's `DATABASE_URL` and `CONSOLE_GOOGLE_CLIENT_ID`. The target
+person supplies a freshly issued Google ID token for this same OAuth client. Pass
+it via stdin from secure input; never put it in arguments, logs or version control.
+The script verifies the token with the same Google verifier as console login.
+
+Command shape (pipe the token securely into stdin):
+
+```text
+node --env-file=.env scripts/console-operator.mjs --action bootstrap-admin --operator NAME --reason REASON --audit-file ABSOLUTE_AUDIT_PATH
+node --env-file=.env scripts/console-operator.mjs --action link --user-id EXISTING_USER_UUID --operator NAME --reason REASON --audit-file ABSOLUTE_AUDIT_PATH
+```
+
+`bootstrap-admin` creates the first SYSTEM_ADMIN or promotes the already Google-bound
+user. For a legacy email collision, explicitly include `--user-id EXISTING_USER_UUID`;
+it never links by email automatically. It refuses bootstrap once any admin exists.
+`link` requires a selected existing user ID, preserves the current system role and
+matches its email to the verified Google identity. It refuses a different existing
+subject or a subject owned by another user. To link an existing legacy admin use
+`link`, since that admin already counts as provisioned. No public provisioning endpoint
+or email/domain allowlist is added. Keep database access limited to trusted operators.
+
+The append-only JSONL audit file records operation ID, time, supplied operator/reason,
+OS username, host, action, target ID, and before/after email, role and Google subject.
+Tokens and password hashes are never recorded. `prepared` is flushed before commit;
+a failed audit write rolls back the mutation. `committed` confirms success; a prepared
+entry without committed (or failed-or-commit-unconfirmed) requires checking the database
+before retrying. Serializable transactions prevent two simultaneous initial admins.
+Retain the file outside the repository with restricted permissions and your operational
+logs; the supplied name is operator attribution, not an independently authenticated actor.
+
+## After organization approval
+
+Approval creates an ACTIVE organization and its Owner membership, not an on-chain
+program or merchant API credential. Portal UI cannot issue either yet. On a configured
+operator/worker host, after build, run:
+
+```text
+node --env-file=.env scripts/provision-program.mjs ORGANIZATION_UUID EARN_BPS EXPIRY_DAYS TOTAL_BUDGET SHARD_COUNT
+node --env-file=.env scripts/seed-dev-credential.mjs ORGANIZATION_UUID CREDENTIAL_NAME
+```
+
+Choose actual policy values and budgets, configure the existing Sui program-admin and
+issuer signer settings per docs/kms-signer.md, and fund the required testnet signers
+before provisioning. Provisioning calls the chain and records the program in Core.
+The credential command prints the raw merchant key once: store it in server-side secret
+management, never Web/Vite config or logs shared with reviewers. It grants read/write/admin
+merchant scopes; it does not grant a human SYSTEM_ADMIN role. The Developer portal reads
+safe credential metadata only. Start the configured chain-submit worker for earn/redeem
+processing. These commands are operator steps; approval alone is not an end-to-end earn test.

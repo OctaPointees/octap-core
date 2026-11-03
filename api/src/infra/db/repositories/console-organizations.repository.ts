@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, inArray, lte, desc } from 'drizzle-orm';
 import type { ConsoleIdentity, OrganizationApplicationInput, OrganizationProfileInput } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
@@ -43,8 +43,9 @@ export class ConsoleOrganizationsRepository {
   ) {}
 
   /** Privileged workflows deliberately use the server connection, with actor checks inside each transaction. */
-  private async member(tx: Tx, userId: string, organizationId: string, ownerOnly = false) {
-    const [org] = await tx.select().from(organizations).where(eq(organizations.id, organizationId)).for('update');
+  private async member(tx: Tx, userId: string, organizationId: string, ownerOnly = false, mutating = true) {
+    const lock = mutating ? 'update' : 'share';
+    const [org] = await tx.select().from(organizations).where(eq(organizations.id, organizationId)).for(lock);
     const [membership] = await tx
       .select()
       .from(organizationMemberships)
@@ -56,7 +57,7 @@ export class ConsoleOrganizationsRepository {
           inArray(organizationMemberships.role, ownerOnly ? ['OWNER'] : ['OWNER', 'BUSINESS_DEVELOPER']),
         ),
       )
-      .for('update');
+      .for(lock);
     if (org?.status !== 'ACTIVE' || !membership) throw new ConsoleAccessError();
     return { org, membership };
   }
@@ -133,7 +134,11 @@ export class ConsoleOrganizationsRepository {
         throw new ConsoleConflictError('Organization is no longer pending approval');
       await tx
         .update(organizations)
-        .set({ status: approve ? 'ACTIVE' : 'ARCHIVED', updatedAt: new Date() })
+        .set({
+          status: approve ? 'ACTIVE' : 'ARCHIVED',
+          ...(!approve ? { slug: `rejected-${randomUUID()}` } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(organizations.id, org.id));
       if (approve)
         await tx
@@ -154,7 +159,7 @@ export class ConsoleOrganizationsRepository {
   }
   async organization(userId: string, organizationId: string) {
     return this.db.transaction(async (tx) => {
-      const { org, membership } = await this.member(tx, userId, organizationId);
+      const { org, membership } = await this.member(tx, userId, organizationId, false, false);
       const masked =
         membership.role === 'OWNER'
           ? await tx
@@ -216,7 +221,7 @@ export class ConsoleOrganizationsRepository {
   }
   async staff(userId: string, organizationId: string) {
     return this.db.transaction(async (tx) => {
-      await this.member(tx, userId, organizationId, true);
+      await this.member(tx, userId, organizationId, true, false);
       const rows = await tx
         .select({
           id: systemUsers.id,
@@ -243,7 +248,7 @@ export class ConsoleOrganizationsRepository {
   }
   async credentials(userId: string, organizationId: string) {
     return this.db.transaction(async (tx) => {
-      await this.member(tx, userId, organizationId);
+      await this.member(tx, userId, organizationId, false, false);
       return tx
         .select({
           id: apiCredentials.id,
@@ -290,7 +295,7 @@ export class ConsoleOrganizationsRepository {
   }
   async invitationList(userId: string, organizationId: string) {
     return this.db.transaction(async (tx) => {
-      await this.member(tx, userId, organizationId, true);
+      await this.member(tx, userId, organizationId, true, false);
       return tx
         .select({
           id: invitations.id,

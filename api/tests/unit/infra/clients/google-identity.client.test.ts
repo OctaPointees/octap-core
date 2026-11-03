@@ -67,4 +67,10 @@ describe('GoogleIdentityClient', () => {
     vi.stubEnv('CONSOLE_GOOGLE_CLIENT_ID', '');
     await expect(new GoogleIdentityClient().verify(token())).rejects.toMatchObject({ status: 503 });
   });
+  it('reports certificate transport failures as temporary unavailability', async () => {
+    vi.mocked(OAuth2Client.prototype.getFederatedSignonCertsAsync).mockRejectedValueOnce(
+      new Error('Failed to retrieve verification certificates: connection reset'),
+    );
+    await expect(new GoogleIdentityClient().verify(token())).rejects.toMatchObject({ status: 503 });
+  });
 });

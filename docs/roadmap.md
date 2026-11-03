@@ -28,8 +28,8 @@ then move the row to **Implemented** in the same pull request.
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
-| System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 (direct Google console login and protected portal workflows implemented locally) | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
-| Console: direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding and one-time Developer invitations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
+| System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
+| Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding and one-time Developer invitations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
 | Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
@@ -78,7 +78,8 @@ then move the row to **Implemented** in the same pull request.
   `domain/programs`' `resolveProgramConfig`); there is no shared default program. An organization
   without an `ACTIVE`, sharded `programs` row gets HTTP 422 on earn and on POS redeem reserve
   (`credit_account::redeem` needs no program ids — the account records its own program). There
-  is also no `domain/organizations` (org rows are inserted out of band) or standalone
+  is no dedicated `domain/organizations` provisioning surface; console applications and
+  platform approval now create org rows. There is no standalone
   `domain/policies` versioning/preview API yet — policy publish/activate are steps inside
   `ProgramsService.provisionForOrganization`, not their own CRUD surface. Provisioning can't be
   exercised live without a real `SUI_PROGRAM_ADMIN_PRIVATE_KEY` (checked `.env`: absent) — proven
@@ -199,7 +200,7 @@ and vendor clients.
 | --- | --- | --- |
 | Identity: system-user (dashboard login) sessions | domain/identity | Separate from the Google zkLogin flow implemented above; merchant/admin dashboard login, not the end-user customer identity |
 | Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
-| Organizations and subdomains | domain/organizations | Schema exists in organizations.schema.ts |
+| Organizations and subdomains | domain/organizations | Console creation/approval and profile setup implemented; wildcard DNS and full lifecycle remain |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
@@ -208,7 +209,7 @@ and vendor clients.
 | Analytics: derived analytics export | domain/analytics; infra/clients/clickhouse; api/db/clickhouse | Analytics-only store |
 | Audit: export, Walrus/Seal evidence, verifier | domain/audit; infra/clients/walrus, seal | Outside checkout path |
 | Notifications | domain/notifications | |
-| Administration: platform governance | domain/administration | |
+| Administration: remaining platform governance | domain/administration | CREATE_ORGANIZATION approval implemented in console identity; transfer/deactivation/reinstatement remain OCT-208 |
 
 ### Workers
 

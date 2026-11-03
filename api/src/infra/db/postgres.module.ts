@@ -10,10 +10,12 @@ import { IndexerRepository } from './repositories/indexer.repository.js';
 import { ProgramsRepository } from './repositories/programs.repository.js';
 import { VoucherRefundPoliciesRepository } from './repositories/voucher-refund-policies.repository.js';
 import { ConsoleUsersRepository } from './repositories/console-users.repository.js';
+import { ConsoleOperatorRepository } from './repositories/console-operator.repository.js';
 import { ConsoleOrganizationsRepository } from './repositories/console-organizations.repository.js';
 import { OrganizationIdentityCipher } from './organization-identity.cipher.js';
 
 const repositories = [
+  ConsoleOperatorRepository,
   ConsoleOrganizationsRepository,
   ConsoleUsersRepository,
   VoucherRefundPoliciesRepository,

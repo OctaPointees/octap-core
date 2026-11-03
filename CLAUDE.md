@@ -58,7 +58,7 @@ These apply to every PR. Lint, format, and typecheck enforce what they can; the 
 - **HTTP out**: global `fetch` (webhook delivery, SDKs). No axios or other HTTP client.
 - **Validation and errors**: controllers check required body fields and throw `BadRequestException`;
   domain services throw Nest `HttpException`s (`NotFoundException`, `ConflictException`, …) with a
-  message a merchant can act on. Another tenant's resource is a 404, never a 403.
+  message a merchant can act on. Another tenant's resource is a 404, except Google console organization routes: OCT-39/OCT-63 explicitly use 403 for missing membership or an unauthorized persona.
 - **Logging**: Nest `Logger` (`new Logger(Class.name)`), never `console` in `api/src`.
 - **Config**: read an env var where it's used. Secrets are read lazily via `requireEnv` so the app
   still boots without them. Every variable goes into `.env.example` in the same change.
