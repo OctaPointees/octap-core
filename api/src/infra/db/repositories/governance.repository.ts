@@ -81,8 +81,7 @@ export class GovernanceRepository {
       })
       .from(organizationMemberships)
       .innerJoin(systemUsers, eq(systemUsers.id, organizationMemberships.systemUserId))
-      .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.systemUserId, userId)))
-      .for('update');
+      .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.systemUserId, userId)));
     if (!target?.subject || target.role !== 'BUSINESS_DEVELOPER' || target.status !== 'ACTIVE')
       throw new ConflictException('New Owner must be an active Google-bound Developer in this organization');
     return target;
