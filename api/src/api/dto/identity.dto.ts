@@ -3,8 +3,12 @@ export interface GoogleLoginBodyDto {
 }
 
 export interface EnrollMemberBodyDto {
-  endUserId: string;
+  idToken: string;
   externalMemberId?: string;
+}
+
+export interface VerifyCustomerBodyDto {
+  idToken: string;
 }
 
 export interface ZkLoginNonceBodyDto {

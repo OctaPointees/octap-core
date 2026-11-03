@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EnokiClient as MystenEnokiClient } from '@mysten/enoki/client';
+import { EnokiClient as MystenEnokiClient, EnokiClientError } from '@mysten/enoki/client';
 import { publicKeyFromSuiBytes } from '@mysten/sui/verify';
 import { toBase64 } from '@mysten/sui/utils';
 import { requireEnv } from '../require-env.js';
@@ -12,6 +12,24 @@ export type EnokiNetwork = 'mainnet' | 'testnet' | 'devnet';
  * from the method itself is the portable way to name it.
  */
 export type ZkLoginProofResult = Awaited<ReturnType<MystenEnokiClient['createZkLoginZkp']>>;
+
+/** Enoki refused the id_token itself (malformed, expired, wrong audience), not this deployment. */
+export class EnokiTokenRejectedError extends Error {
+  constructor(readonly code: string) {
+    super(`Enoki rejected the id_token (${code})`);
+    this.name = 'EnokiTokenRejectedError';
+  }
+}
+
+/**
+ * Enoki answers a bad token with 400/401, but also answers a bad API key with 401, so the code has
+ * to separate them: a broken deployment must stay a 5xx rather than tell a customer to sign in again.
+ */
+function isTokenRejection(err: unknown): err is EnokiClientError {
+  return (
+    err instanceof EnokiClientError && (err.status === 400 || err.status === 401) && err.code !== 'invalid_api_key'
+  );
+}
 
 /**
  * Thin wrapper around `@mysten/enoki/client`'s low-level `EnokiClient`. `ENOKI_API_KEY` is an app
@@ -40,10 +58,17 @@ export class EnokiClient {
   /**
    * Resolves the zkLogin Sui address Enoki derives for a provider id_token (Google today).
    * Enoki itself validates the token's signature, issuer, and audience — this process never
-   * verifies a Google JWT on its own.
+   * verifies a Google JWT on its own. Throws `EnokiTokenRejectedError` when the token is refused.
    */
   async resolveZkLoginAddress(jwt: string): Promise<{ address: string; publicKey: string; salt: string }> {
-    return this.sdk.getZkLogin({ jwt });
+    try {
+      return await this.sdk.getZkLogin({ jwt });
+    } catch (err: unknown) {
+      if (isTokenRejection(err)) {
+        throw new EnokiTokenRejectedError(err.code);
+      }
+      throw err;
+    }
   }
 
   /**

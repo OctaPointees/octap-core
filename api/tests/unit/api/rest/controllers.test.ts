@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CreditsController } from '#api/rest/credits.controller.js';
 import { RewardsController } from '#api/rest/rewards.controller.js';
-import { IdentityController } from '#api/rest/identity.controller.js';
+import { CustomerVerificationController, IdentityController } from '#api/rest/identity.controller.js';
 import { WebhooksController } from '#api/rest/webhooks.controller.js';
 import { ApiCredentialsController } from '#api/rest/api-credentials.controller.js';
 import type { CreditsService } from '#domain/credits/credits.service.js';
@@ -165,13 +165,13 @@ describe('IdentityController', () => {
     const c = new IdentityController(stub<IdentityService>(service));
 
     await c.googleLogin({ idToken: 'jwt' });
-    await c.enroll('org-1', { endUserId: 'eu', externalMemberId: 'ext' });
+    await c.enroll('org-1', { idToken: 'jwt', externalMemberId: 'ext' });
     await c.createNonce({ ephemeralPublicKey: 'epk' });
     await c.createProof({ idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 1 });
 
     expect(service.loginWithGoogle).toHaveBeenCalledWith('jwt');
     expect(service.enrollInOrganization).toHaveBeenCalledWith({
-      endUserId: 'eu',
+      idToken: 'jwt',
       organizationId: 'org-1',
       externalMemberId: 'ext',
     });
@@ -184,7 +184,24 @@ describe('IdentityController', () => {
     });
 
     await bad(c.googleLogin({ idToken: '' }), /idToken is required/);
-    await bad(c.enroll('org-1', { endUserId: '' }), /endUserId is required/);
+    await bad(c.enroll('org-1', { idToken: '' }), /idToken is required/);
+    await bad(c.enroll('org-1', { endUserId: 'eu' } as never), /idToken is required/);
+    await bad(c.googleLogin({ idToken: 42 } as never), /idToken is required/);
+  });
+});
+
+describe('CustomerVerificationController', () => {
+  it('takes the organization from the credential, never the body', async () => {
+    const service = { verifyCustomer: ok({ memberId: 'm' }) };
+    const c = new CustomerVerificationController(stub<IdentityService>(service));
+
+    await c.verify({ ...tenant, organizationId: 'org-from-key' }, {
+      idToken: 'jwt',
+      organizationId: 'org-from-body',
+    } as never);
+
+    expect(service.verifyCustomer).toHaveBeenCalledWith('jwt', 'org-from-key');
+    await bad(c.verify(tenant, { idToken: '' }), /idToken is required/);
   });
 });
 

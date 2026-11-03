@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { toBase64 } from '@mysten/sui/utils';
-import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { EnokiClientError } from '@mysten/enoki/client';
+import { EnokiClient, EnokiTokenRejectedError } from '#infra/clients/enoki/enoki.client.js';
 
 /** Swaps the lazily-built Mysten SDK client for a double. */
 function withSdk(sdk: Record<string, unknown>) {
@@ -12,7 +13,37 @@ function withSdk(sdk: Record<string, unknown>) {
 
 const ephemeralPublicKey = () => Ed25519Keypair.generate().getPublicKey();
 
+const enokiError = (status: number, code: string) =>
+  new EnokiClientError(status, JSON.stringify({ errors: [{ code, message: code }] }));
+
 describe('EnokiClient', () => {
+  // Status and code pairs observed from the live API on 2026-11-03.
+  it.each([
+    [401, 'jwt_error'],
+    [400, 'invalid_client_id'],
+  ])('reports a %i %s as a rejected token', async (status, code) => {
+    const enoki = withSdk({
+      getZkLogin: async () => {
+        throw enokiError(status, code);
+      },
+    });
+    await expect(enoki.resolveZkLoginAddress('jwt')).rejects.toBeInstanceOf(EnokiTokenRejectedError);
+  });
+
+  it.each([
+    [401, 'invalid_api_key'],
+    [429, 'rate_limited'],
+    [500, 'internal'],
+  ])('does not blame the token for a %i %s', async (status, code) => {
+    const failure = enokiError(status, code);
+    const enoki = withSdk({
+      getZkLogin: async () => {
+        throw failure;
+      },
+    });
+    await expect(enoki.resolveZkLoginAddress('jwt')).rejects.toBe(failure);
+  });
+
   it('sponsorship calls default to the deployment network, not Enoki’s mainnet default', async () => {
     vi.stubEnv('SUI_NETWORK', 'testnet');
     const createSponsoredTransaction = vi.fn(async () => ({ bytes: 'b', digest: 'd' }));

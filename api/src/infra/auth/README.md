@@ -25,6 +25,11 @@ Server-to-server authentication and tenant resolution for the REST API.
   something else proves authorization: `IdentityController` (Google id_token, validated by Enoki)
   and `POST /v1/credits/redeem/finalize` (the customer's zkLogin signature over the sponsored
   digest). A public route has no `request.tenant`.
+- `public-rate-limit.guard.ts`: the per-client-IP limit on those two public surfaces, applied with
+  `@UseGuards` because `ApiKeyGuard` returns before its own limiter on a public route. Answers 429,
+  and fails closed like the credential limiter. An IPv6 client is counted per /64. `request.ip` is
+  the direct peer unless `TRUSTED_PROXY_HOPS` says how many proxies to trust, so a client cannot
+  forge a new address with `X-Forwarded-For`.
 - `scopes.decorator.ts`, `tenant.decorator.ts`, `tenant-context.ts`: route-level plumbing.
 
 Not implemented yet: mTLS (deliberately — see `docs/roadmap.md` for why) and system-user

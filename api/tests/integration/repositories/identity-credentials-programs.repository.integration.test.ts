@@ -26,7 +26,9 @@ describe('IdentityRepository', () => {
     expect((await repo.findEndUserBySuiAddress('0xabc'))?.id).toBe(endUser.id);
     expect((await repo.findEndUserById(endUser.id))?.suiAddress).toBe('0xabc');
     expect(await repo.findEndUserBySuiAddress('0xnope')).toBeUndefined();
-    await expect(repo.createEndUser({ suiAddress: '0xabc' })).rejects.toThrow();
+    expect(await repo.createEndUser({ suiAddress: '0xabc' })).toBeUndefined();
+    expect(await repo.organizationExists(orgId)).toBe(true);
+    expect(await repo.organizationExists('00000000-0000-0000-0000-000000000000')).toBe(false);
 
     const enrollment = await repo.enroll({ organizationId: orgId, endUserId: endUser.id, externalMemberId: 'ext-1' });
     expect(enrollment).toMatchObject({
@@ -36,7 +38,7 @@ describe('IdentityRepository', () => {
       tier: 'BRONZE',
     });
     expect((await repo.findEnrollment(orgId, endUser.id))?.id).toBe(enrollment.id);
-    await expect(repo.enroll({ organizationId: orgId, endUserId: endUser.id })).rejects.toThrow();
+    expect(await repo.enroll({ organizationId: orgId, endUserId: endUser.id })).toBeUndefined();
 
     const other = await seedOrganization(db);
     expect(await repo.findEnrollment(other.id, endUser.id)).toBeUndefined();

@@ -154,15 +154,15 @@ export class OctaBrowserClient {
   }
 
   /**
-   * Enrolls an already-logged-in end user into one organization's loyalty program.
+   * Enrolls the customer the id_token proves into one organization's loyalty program.
    */
-  async enroll(endUserId: string, organizationId?: string, externalMemberId?: string): Promise<EnrollMemberResponse> {
+  async enroll(idToken: string, organizationId?: string, externalMemberId?: string): Promise<EnrollMemberResponse> {
     const orgId = organizationId ?? this.defaultOrganizationId;
     if (!orgId) {
       throw new Error('organizationId is required (pass it or set BrowserClientOptions.organizationId)');
     }
     return this.request<EnrollMemberResponse>(`/v1/identity/organizations/${orgId}/enroll`, 'POST', {
-      endUserId,
+      idToken,
       externalMemberId,
     });
   }

@@ -97,20 +97,20 @@ describe('OctaBrowserClient', () => {
     await client.loginWithGoogle('google-jwt');
     expect(last()).toMatchObject({ url: 'https://a/v1/identity/google-login', body: { idToken: 'google-jwt' } });
 
-    await client.enroll('eu-1');
+    await client.enroll('google-jwt');
     expect(last()).toMatchObject({
       url: 'https://a/v1/identity/organizations/org-1/enroll',
-      body: { endUserId: 'eu-1' },
+      body: { idToken: 'google-jwt' },
     });
-    await client.enroll('eu-1', 'org-9', 'ext-1');
+    await client.enroll('google-jwt', 'org-9', 'ext-1');
     expect(last()).toMatchObject({
       url: 'https://a/v1/identity/organizations/org-9/enroll',
-      body: { endUserId: 'eu-1', externalMemberId: 'ext-1' },
+      body: { idToken: 'google-jwt', externalMemberId: 'ext-1' },
     });
   });
 
   it('enroll needs an organization from somewhere', async () => {
-    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).enroll('eu-1')).rejects.toThrow(
+    await expect(new OctaBrowserClient({ apiBaseUrl: 'https://a' }).enroll('google-jwt')).rejects.toThrow(
       /organizationId is required/,
     );
   });

@@ -15,6 +15,7 @@ import { ApiCredentialsService } from './api-credentials.service.js';
 @Module({
   imports: [PostgresModule, CacheModule],
   providers: [{ provide: APP_GUARD, useClass: ApiKeyGuard }, ApiCredentialsService],
-  exports: [ApiCredentialsService],
+  // CacheModule: `@UseGuards(PublicRateLimitGuard)` resolves REDIS_CLIENT from the controller's module.
+  exports: [ApiCredentialsService, CacheModule],
 })
 export class AuthModule {}

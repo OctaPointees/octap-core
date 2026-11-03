@@ -144,7 +144,7 @@ export class ChainSubmitProcessor {
   /**
    * Opens the member's `CreditAccount` in `program` and records its id. Real zkLogin address, not
    * a placeholder (OCT-55): `organization_end_users` can only exist via
-   * `IdentityService.enrollInOrganization`, which requires a prior Google login, so this is always
+   * `IdentityService.enrollInOrganization`, which requires a valid Google id_token, so this is always
    * populated by the time a member can earn at all. Opening the account under anything else would
    * permanently block redeem later (credit_account.move's `beneficiary` field is set once at
    * `open_account` and has no entry point to change it).
