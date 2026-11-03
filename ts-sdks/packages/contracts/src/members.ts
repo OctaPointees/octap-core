@@ -4,7 +4,6 @@ export interface MemberDirectoryQuery {
   cursor?: string;
   q?: string;
   status?: 'ACTIVE' | 'BLOCKED';
-  tier?: string;
   externalMemberId?: string;
 }
 export interface MemberProfile {
@@ -13,14 +12,12 @@ export interface MemberProfile {
   displayName: string | null;
   email: string | null;
   phoneNumber: string | null;
-  tier: string;
   status: string;
   externalMemberId: string | null;
   metadata: unknown;
   joinedAt: string;
 }
 export interface MemberProfilePatch {
-  tier?: string;
   status?: 'ACTIVE' | 'BLOCKED';
   externalMemberId?: string | null;
   metadata?: Record<string, unknown>;

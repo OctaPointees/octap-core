@@ -10,7 +10,6 @@ const fields = {
   displayName: endUsers.displayName,
   email: endUsers.email,
   phoneNumber: endUsers.phoneNumber,
-  tier: organizationEndUsers.tier,
   status: organizationEndUsers.status,
   externalMemberId: organizationEndUsers.externalMemberId,
   metadata: organizationEndUsers.metadata,
@@ -31,7 +30,6 @@ export class MembersRepository {
             eq(organizationEndUsers.organizationId, organizationId),
             query.cursor ? gt(organizationEndUsers.id, query.cursor) : undefined,
             query.status ? eq(organizationEndUsers.status, query.status) : undefined,
-            query.tier ? eq(organizationEndUsers.tier, query.tier) : undefined,
             query.externalMemberId ? eq(organizationEndUsers.externalMemberId, query.externalMemberId) : undefined,
             pattern
               ? or(

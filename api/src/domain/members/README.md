@@ -6,17 +6,18 @@ membership in an ACTIVE organization is required; only Owners can PATCH a custom
 SYSTEM_ADMIN alone grants no tenant access. All database operations recheck permissions
 inside a transaction and constrain every enrollment query by organization ID.
 
-GET list supports `limit` 1–100 (default 25), UUID `cursor`, text `q`, exact `tier`,
+GET list supports `limit` 1–100 (default 25), UUID `cursor`, text `q`,
 `status=ACTIVE|BLOCKED` and exact `externalMemberId`. Results use ascending enrollment UUID
 and return `{items,nextCursor}`. `q` searches display name/email/phone/external ID with
 literal wildcard escaping. GET `/:memberId` adds the current CreditsService balance,
 including pending amounts, expiry handling, observation/checkpoint and stale indicators.
 
-PATCH `/:memberId` accepts tier, status, externalMemberId (null clears), and tenant
+PATCH `/:memberId` accepts status, externalMemberId (null clears), and tenant
 metadata. It cannot change global customer identity, staff roles, organization, or balance.
 External IDs are bound after enrollment; the existing per-organization unique constraint
-returns 409 on collisions. Tier labels use the existing enrollment field; configurable
-tier rules/evaluation remain the membership-tier tickets, not this directory.
+returns 409 on collisions. Tier membership is outside this delivery (OCT-255 and subissues). The pre-existing
+enrollment tier column and stored values are preserved, but directory responses,
+filters and mutation contracts do not expose or change them.
 
 New earn and POS reserve acceptance lock organization/enrollment/global-customer eligibility
 before holding points or recording operations. Blocked customers cannot create new work;

@@ -63,11 +63,13 @@ describe('tenant customer member directory', () => {
     expect(second.body.items).toHaveLength(1);
     expect(second.body.items[0].id).not.toBe(first.body.items[0].id);
     expect(second.body.nextCursor).toBeNull();
-    for (const query of ['q=alice', 'externalMemberId=POS-1', 'tier=BRONZE&status=ACTIVE']) {
+    for (const query of ['q=alice', 'externalMemberId=POS-1', 'status=ACTIVE']) {
       const result = await ctx.http().get(`${path()}?${query}`).set('Authorization', bearer()).expect(200);
       expect(result.body.items.some((item: { id: string }) => item.id === memberId)).toBe(true);
     }
     const detail = await ctx.http().get(`${path()}/${memberId}`).set('Authorization', bearer()).expect(200);
+    expect(detail.body).not.toHaveProperty('tier');
+    expect(first.body.items[0]).not.toHaveProperty('tier');
     expect(detail.body.balance).toMatchObject({ confirmedBalance: 123, pendingEarn: 5, stale: true });
     await ctx.http().get(path()).set('Authorization', bearer('outsider')).expect(403);
     await ctx.http().get(`/v1/console/organizations/${otherId}/members`).set('Authorization', bearer()).expect(403);
@@ -76,19 +78,16 @@ describe('tenant customer member directory', () => {
       .http()
       .patch(`${path()}/00000000-0000-4000-8000-000000000000`)
       .set('Authorization', bearer())
-      .send({ tier: 'GOLD' })
+      .send({ status: 'BLOCKED' })
       .expect(404);
   });
   it('permits only Owners to edit scoped membership and enforces external ID uniqueness', async () => {
     const patch = (body: object, actor = 'owner', id = memberId) =>
       ctx.http().patch(`${path()}/${id}`).set('Authorization', bearer(actor)).send(body);
-    await patch({ tier: 'GOLD' }, 'developer').expect(403);
-    await patch({ tier: 'GOLD', status: 'BLOCKED', externalMemberId: 'POS-2', metadata: { source: 'POS' } }).expect(
-      200,
-    );
+    await patch({ status: 'BLOCKED' }, 'developer').expect(403);
+    await patch({ status: 'BLOCKED', externalMemberId: 'POS-2', metadata: { source: 'POS' } }).expect(200);
     const row = await ctx.http().get(`${path()}/${memberId}`).set('Authorization', bearer()).expect(200);
     expect(row.body).toMatchObject({
-      tier: 'GOLD',
       status: 'BLOCKED',
       externalMemberId: 'POS-2',
       metadata: { source: 'POS' },
@@ -98,15 +97,19 @@ describe('tenant customer member directory', () => {
     for (const body of [
       {},
       { role: 'OWNER' },
-      { tier: 'bad tier' },
+      { tier: 'GOLD' },
       { status: 'DELETED' },
       { metadata: [] },
       { externalMemberId: '' },
     ])
       await patch(body).expect(400);
-    for (const query of ['limit=0', 'cursor=bad', 'status=DELETED', `q=${'a'.repeat(161)}`])
+    for (const query of ['tier=BRONZE', 'limit=0', 'cursor=bad', 'status=DELETED', `q=${'a'.repeat(161)}`])
       await ctx.http().get(`${path()}?${query}`).set('Authorization', bearer()).expect(400);
     await patch({ externalMemberId: null, status: 'ACTIVE' }).expect(200);
+    expect(
+      (await ctx.db.query.organizationEndUsers.findFirst({ where: eq(schema.organizationEndUsers.id, memberId) }))
+        ?.tier,
+    ).toBe('BRONZE');
   });
   it('blocks new earn/redemption acceptance for blocked members before creating operations', async () => {
     await ctx

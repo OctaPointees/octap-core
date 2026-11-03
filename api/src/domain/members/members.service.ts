@@ -30,11 +30,13 @@ export class MembersService {
     }
   }
   list(userId: string, orgId: string, query: Record<string, unknown>) {
+    if (Object.keys(query).some((key) => !['limit', 'cursor', 'q', 'status', 'externalMemberId'].includes(key)))
+      throw new BadRequestException('Unsupported member search fields');
     const limit = query.limit === undefined ? 25 : Number(query.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
     if (query.cursor !== undefined && (typeof query.cursor !== 'string' || !uuid.test(query.cursor)))
       throw new BadRequestException('Invalid cursor');
-    for (const key of ['q', 'tier', 'externalMemberId']) {
+    for (const key of ['q', 'externalMemberId']) {
       if (query[key] !== undefined && (typeof query[key] !== 'string' || query[key].length > 160))
         throw new BadRequestException(`Invalid ${key}`);
     }
@@ -52,13 +54,11 @@ export class MembersService {
     if (
       !input ||
       !Object.keys(input).length ||
-      Object.keys(input).some((k) => !['tier', 'status', 'externalMemberId', 'metadata'].includes(k))
+      Object.keys(input).some((k) => !['status', 'externalMemberId', 'metadata'].includes(k))
     )
-      throw new BadRequestException('Only loyalty tier, status, externalMemberId and metadata may be changed');
+      throw new BadRequestException('Only status, externalMemberId and metadata may be changed');
     if (input.status !== undefined && !['ACTIVE', 'BLOCKED'].includes(String(input.status)))
       throw new BadRequestException('Invalid status');
-    if (input.tier !== undefined && (typeof input.tier !== 'string' || !/^[A-Z][A-Z0-9_-]{0,47}$/.test(input.tier)))
-      throw new BadRequestException('Invalid tier');
     if (
       input.externalMemberId !== undefined &&
       input.externalMemberId !== null &&
