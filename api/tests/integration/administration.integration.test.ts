@@ -127,6 +127,10 @@ describe('platform organization governance', () => {
       .set('Authorization', auth())
       .expect(200);
     expect(approved.body.items).toHaveLength(1);
+    expect(approved.body.items[0]).toMatchObject({
+      requesterEmail: 'admin@example.com',
+      reviewerEmail: 'admin@example.com',
+    });
   });
   it('validates proposals/decisions and rejects unauthorized actors and ineligible ownership targets', async () => {
     await propose('SUSPEND', {}, false, 'developer').expect(403);
@@ -135,6 +139,7 @@ describe('platform organization governance', () => {
     await propose('TRANSFER_OWNERSHIP', { targetUserId: ids.outsider }).expect(409);
     await propose('TRANSFER_OWNERSHIP', { targetUserId: 'bad' }).expect(400);
     await propose('UPDATE_PROFILE', { name: 'x' }).expect(400);
+    await propose('UPDATE_PROFILE', { name: 'Valid Name' }).expect(400);
     await propose('SUSPEND', { status: 'ACTIVE' }).expect(400);
     await propose('UNKNOWN').expect(400);
     await ctx.http().get('/v1/platform/change-requests').set('Authorization', auth('owner')).expect(403);

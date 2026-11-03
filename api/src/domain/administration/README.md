@@ -16,8 +16,8 @@ Other proposal bodies are `{requestType,reason,payload}`:
   in that organization. Exactly one active Owner is required. Approval demotes the
   previous Owner to active Developer and promotes the target to Owner in one transaction.
   Changed ownership/target eligibility rejects stale approval; roles cannot be chosen in payloads.
-- UPDATE_PROFILE: `{name}` proposes a validated display-name change. Legal identity/CCCD
-  updates stay in the existing Owner-only settings flow.
+- UPDATE_PROFILE: `{name}` is available only to System Admins. Owners rename directly
+  through the existing profile endpoint; legal identity/CCCD updates stay in Owner settings.
 - SUSPEND: `{}` changes ACTIVE to SUSPENDED.
 - REINSTATE: `{}` is proposed by System Admin and changes SUSPENDED to ACTIVE.
 - DEACTIVATE: `{}` permanently changes ACTIVE to ARCHIVED; reinstatement is not recovery

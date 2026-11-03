@@ -75,8 +75,12 @@ export class AdministrationService {
     for (const key of ['cursor', 'organizationId'])
       if (query[key] !== undefined && (typeof query[key] !== 'string' || !uuid.test(query[key])))
         throw new BadRequestException(`Invalid ${key}`);
-    try { return await this.governance.list(actor, { ...query, limit }); }
-    catch (error) { if (error instanceof ConsoleAccessError) throw new ForbiddenException('System Admin role required'); throw error; }
+    try {
+      return await this.governance.list(actor, { ...query, limit });
+    } catch (error) {
+      if (error instanceof ConsoleAccessError) throw new ForbiddenException('System Admin role required');
+      throw error;
+    }
   }
   async decide(actor: string, id: string, approve: boolean, reason: unknown) {
     const reviewReason = this.reason(reason);

@@ -5,7 +5,12 @@ import type { GovernanceProposal } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { organizationChangeRequests, organizationMemberships, systemUsers } from '../schema/auth.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
-import { ConsoleOrganizationsRepository, ConsoleAccessError, ConsoleConflictError, ConsoleNotFoundError } from './console-organizations.repository.js';
+import {
+  ConsoleOrganizationsRepository,
+  ConsoleAccessError,
+  ConsoleConflictError,
+  ConsoleNotFoundError,
+} from './console-organizations.repository.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const reviewer = alias(systemUsers, 'reviewer');
 

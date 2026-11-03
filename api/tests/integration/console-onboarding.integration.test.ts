@@ -53,7 +53,8 @@ describe('console onboarding and protected portal operations', () => {
     const request = await apply().expect(201);
     const approval = await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -190,13 +191,15 @@ describe('console onboarding and protected portal operations', () => {
     ).toEqual([]);
     await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('owner'))
       .send({})
       .expect(403);
     await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -212,7 +215,8 @@ describe('console onboarding and protected portal operations', () => {
     expect(record.reviewedAt).not.toBeNull();
     await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(409);
@@ -411,7 +415,8 @@ describe('console onboarding and protected portal operations', () => {
       Array.from({ length: 2 }, () =>
         ctx
           .http()
-          .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+          .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+          .send({ reason: 'Reviewed application' })
           .set('Authorization', bearer('admin'))
           .send({}),
       ),
@@ -523,7 +528,8 @@ describe('console onboarding and protected portal operations', () => {
     });
     const approval = await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -579,7 +585,8 @@ describe('console onboarding and protected portal operations', () => {
     ).toMatchObject({ organizationType: 'COMPANY', legalName: 'Registered Company', taxId: '0123456789' });
     const approval = await ctx
       .http()
-      .post(`/v1/platform/organization-requests/${request.body.id}/approve`).send({ reason: 'Reviewed application' })
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
