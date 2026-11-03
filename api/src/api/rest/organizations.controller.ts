@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrganizationsService } from '#domain/organizations/organizations.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
@@ -45,6 +57,7 @@ export class OrganizationResolutionController {
   @Get('resolve/:slug')
   @Header('Cache-Control', 'no-store')
   resolve(@Param('slug') slug: string) {
+    if (process.env.ORG_SLUG_ENTRY_ENABLED !== 'true') throw new NotFoundException();
     return this.organizations.resolve(slug);
   }
 }

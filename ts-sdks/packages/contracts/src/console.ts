@@ -24,6 +24,8 @@ export interface OrganizationApplication {
   reason: string | null;
   createdAt: string;
   applicantEmail: string;
+  initialOwnerName?: string | null;
+  initialOwnerEmail?: string | null;
   organizationType: OrganizationType | null;
   legalName: string | null;
   taxId: string | null;

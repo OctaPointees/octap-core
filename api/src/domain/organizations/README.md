@@ -59,3 +59,5 @@ ID/name/slug. Pending/suspended/archived tenants return 404. Business Web uses
 then requires an explicit current membership before entering the dashboard. Resolving
 a slug does not grant any role, and protected Core routes still verify tenant access.
 No Host/X-Forwarded-Host tenant trust or wildcard DNS provisioning is introduced.
+
+Slug entry is implemented but not operational by default. ORG_SLUG_ENTRY_ENABLED must explicitly equal true to expose the public resolver; otherwise it returns 404. Coordinate with Web's VITE_ENABLE_ORG_SLUG_ENTRY. No DNS configuration is performed.

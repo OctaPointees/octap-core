@@ -35,14 +35,19 @@ describe('organization management and durable provisioning', () => {
     await ctx?.close();
   });
   beforeEach(async () => {
+    vi.stubEnv('ORG_SLUG_ENTRY_ENABLED', 'true');
     await resetDb(ctx.db);
     ids = {};
-    for (const actor of ['owner', 'admin'])
+    for (const actor of ['owner', 'admin', 'admin2'])
       ids[actor] = (await ctx.http().post('/v1/console/auth/google').send({ idToken: actor })).body.user.id;
     await ctx.db
       .update(schema.systemUsers)
       .set({ systemRole: 'SYSTEM_ADMIN' })
       .where(eq(schema.systemUsers.id, ids.admin));
+    await ctx.db
+      .update(schema.systemUsers)
+      .set({ systemRole: 'SYSTEM_ADMIN' })
+      .where(eq(schema.systemUsers.id, ids.admin2));
     orgId = (await seedOrganization(ctx.db, { name: 'Existing Tenant', slug: 'existing-tenant' })).id;
   });
   const enqueue = (body: object = input, actor = 'admin') =>
@@ -108,6 +113,14 @@ describe('organization management and durable provisioning', () => {
       where: eq(schema.organizationChangeRequests.id, request.body.id),
     });
     expect(record?.requestedById).toBe(ids.admin);
+    for (const path of ['/v1/platform/organization-requests', '/v1/platform/change-requests']) {
+      const response = await ctx.http().get(path).set('Authorization', auth()).expect(200);
+      const items = Array.isArray(response.body) ? response.body : response.body.items;
+      expect(items.find((row: { id: string }) => row.id === request.body.id)).toMatchObject({
+        initialOwnerName: 'owner',
+        initialOwnerEmail: 'owner@example.com',
+      });
+    }
     const resolution = await ctx.http().get('/v1/organizations/resolve/second-tenant').expect(200);
     expect(Object.keys(resolution.body).sort()).toEqual(['name', 'organizationId', 'slug']);
     await create().expect(409);
@@ -204,6 +217,8 @@ describe('organization management and durable provisioning', () => {
   });
   it('accepts one durable command, replays the same key, and rejects conflicting or parallel provisioning', async () => {
     const results = await Promise.all([enqueue(), enqueue()]);
+    const replay = await enqueue(input, 'admin2').expect(201);
+    expect(replay.body.operationId).toBe(results[0].body.operationId);
     expect(results.map((r) => r.status)).toEqual([201, 201]);
     expect(results[0].body.operationId).toBe(results[1].body.operationId);
     await enqueue({ ...input, totalBudget: 20000 }).expect(409);
@@ -213,6 +228,14 @@ describe('organization management and durable provisioning', () => {
     await ctx.db.update(schema.organizations).set({ status: 'SUSPENDED' }).where(eq(schema.organizations.id, orgId));
     await enqueue().expect(409);
     await ctx.http().get('/v1/organizations/resolve/existing-tenant').expect(404);
+  });
+  it('hides slug entry by default and only resolves when explicitly enabled', async () => {
+    vi.stubEnv('ORG_SLUG_ENTRY_ENABLED', undefined);
+    await ctx.http().get('/v1/organizations/resolve/existing-tenant').expect(404);
+    vi.stubEnv('ORG_SLUG_ENTRY_ENABLED', 'false');
+    await ctx.http().get('/v1/organizations/resolve/existing-tenant').expect(404);
+    vi.stubEnv('ORG_SLUG_ENTRY_ENABLED', 'true');
+    await ctx.http().get('/v1/organizations/resolve/existing-tenant').expect(200);
   });
   it('provisions through the worker with real persistence and one fake chain boundary', async () => {
     await enqueue().expect(201);

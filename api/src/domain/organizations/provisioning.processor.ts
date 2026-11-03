@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { OrganizationsRepository } from '#infra/db/repositories/organizations.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
@@ -9,6 +9,7 @@ type Operation = Awaited<ReturnType<OperationsRepository['claimNextPending']>>[n
 /** Worker-only: three chain stages can partially succeed. Unknown outcomes must never auto-retry. */
 @Injectable()
 export class OrganizationProvisioningProcessor {
+  private readonly logger = new Logger(OrganizationProvisioningProcessor.name);
   constructor(
     private readonly organizations: OrganizationsRepository,
     private readonly operations: OperationsRepository,
@@ -40,7 +41,11 @@ export class OrganizationProvisioningProcessor {
         issuerRecipient,
       });
       await this.organizations.finish(operation.id, 'SUBMITTED');
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        `Organization provisioning ${operation.id} failed (chain attempted: ${attempted})`,
+        error instanceof Error ? error.stack : String(error),
+      );
       if (attempted)
         await this.operations.markUnknown(
           operation.id,

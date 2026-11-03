@@ -12,11 +12,22 @@ import {
 import { organizations, apiCredentials, organizationIdentityDetails } from '../schema/organizations.schema.js';
 import { OrganizationIdentityCipher } from '../organization-identity.cipher.js';
 
-export class ConsoleAccessError extends Error {}
-export class ConsoleConflictError extends Error {}
-export class ConsoleGoneError extends Error {}
-export class ConsoleNotFoundError extends Error {}
-export class ConsoleValidationError extends Error {}
+import {
+  ConsoleAccessError,
+  ConsoleConflictError,
+  ConsoleGoneError,
+  ConsoleNotFoundError,
+  ConsoleValidationError,
+  requireSystemAdmin,
+  withInitialOwners,
+} from './console-access.js';
+export {
+  ConsoleAccessError,
+  ConsoleConflictError,
+  ConsoleGoneError,
+  ConsoleNotFoundError,
+  ConsoleValidationError,
+} from './console-access.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const hashToken = (token: string) => `sha256:${createHash('sha256').update(token).digest('hex')}`;
 function requestedSlug(payload: unknown, fallback: string) {
@@ -25,6 +36,7 @@ function requestedSlug(payload: unknown, fallback: string) {
   return typeof saved === 'string' && /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/.test(saved) ? saved : fallback;
 }
 const applicationFields = {
+  requestedById: organizationChangeRequests.requestedById,
   id: organizationChangeRequests.id,
   organizationId: organizations.id,
   name: organizations.name,
@@ -67,14 +79,7 @@ export class ConsoleOrganizationsRepository {
     if (org?.status !== 'ACTIVE' || !membership) throw new ConsoleAccessError();
     return { org, membership };
   }
-  private async admin(tx: Tx, userId: string) {
-    const [user] = await tx
-      .select({ role: systemUsers.systemRole })
-      .from(systemUsers)
-      .where(eq(systemUsers.id, userId))
-      .for('share');
-    if (user?.role !== 'SYSTEM_ADMIN') throw new ConsoleAccessError();
-  }
+  private admin = requireSystemAdmin;
   async apply(userId: string, input: OrganizationApplicationInput, adminActorId?: string) {
     return this.db.transaction(async (tx) => {
       if (adminActorId) {
@@ -125,7 +130,11 @@ export class ConsoleOrganizationsRepository {
         )
         .orderBy(desc(organizationChangeRequests.createdAt))
         .limit(100);
-      return rows.map(({ payload, ...row }) => ({ ...row, slug: requestedSlug(payload, row.slug) }));
+      const withOwners = await withInitialOwners(tx, rows);
+      return withOwners.map(({ payload, ...row }) => ({
+        ...row,
+        slug: requestedSlug(payload, row.slug),
+      }));
     });
   }
   async decide(userId: string, requestId: string, approve: boolean, reason?: string) {

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, or } from 'drizzle-orm';
 import type { ProvisionOrganizationInput } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
@@ -7,6 +7,7 @@ import { programs } from '../schema/programs.schema.js';
 import { systemUsers } from '../schema/auth.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { acceptCommand } from './operations.repository.js';
+import { ConsoleConflictError, ConsoleNotFoundError, requireSystemAdmin } from './console-access.js';
 export const ORGANIZATION_PROVISION_COMMAND = 'ORGANIZATION_PROGRAM_PROVISION';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const fields = {
@@ -25,14 +26,7 @@ const fields = {
 @Injectable()
 export class OrganizationsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
-  private async admin(tx: Tx, actor: string) {
-    const [user] = await tx
-      .select({ role: systemUsers.systemRole })
-      .from(systemUsers)
-      .where(eq(systemUsers.id, actor))
-      .for('share');
-    if (user?.role !== 'SYSTEM_ADMIN') throw new ForbiddenException('System Admin role required');
-  }
+  private admin = requireSystemAdmin;
   private async progress(tx: Tx, ids: string[]) {
     if (!ids.length) return [];
     return tx
@@ -84,7 +78,7 @@ export class OrganizationsRepository {
         .from(organizations)
         .leftJoin(programs, eq(programs.organizationId, organizations.id))
         .where(eq(organizations.id, orgId));
-      if (!org) throw new NotFoundException('Organization not found');
+      if (!org) throw new ConsoleNotFoundError('Organization not found');
       return { ...org, provisioning: (await this.progress(tx, [orgId]))[0] ?? null };
     });
   }
@@ -110,24 +104,24 @@ export class OrganizationsRepository {
       .select({ organizationId: organizations.id, name: organizations.name, slug: organizations.slug })
       .from(organizations)
       .where(and(eq(organizations.slug, slug), eq(organizations.status, 'ACTIVE')));
-    if (!org) throw new NotFoundException('Active organization not found');
+    if (!org) throw new ConsoleNotFoundError('Active organization not found');
     return org;
   }
   enqueue(actor: string, orgId: string, input: ProvisionOrganizationInput) {
     return this.db.transaction(async (tx) => {
       await this.admin(tx, actor);
       const [org] = await tx.select().from(organizations).where(eq(organizations.id, orgId)).for('update');
-      if (!org) throw new NotFoundException('Organization not found');
+      if (!org) throw new ConsoleNotFoundError('Organization not found');
       if (org.status !== 'ACTIVE')
-        throw new ConflictException('Approve or reinstate this organization before provisioning');
+        throw new ConsoleConflictError('Approve or reinstate this organization before provisioning');
       const existing = await tx.query.operations.findFirst({
         where: and(eq(operations.tenantId, orgId), eq(operations.idempotencyKey, input.idempotencyKey)),
       });
       if (existing && existing.commandType !== ORGANIZATION_PROVISION_COMMAND)
-        throw new ConflictException('Idempotency key belongs to another command');
+        throw new ConsoleConflictError('Idempotency key belongs to another command');
       if (!existing) {
         const program = await tx.query.programs.findFirst({ where: eq(programs.organizationId, orgId) });
-        if (program) throw new ConflictException('Organization already has a program or an unresolved reservation');
+        if (program) throw new ConsoleConflictError('Organization already has a program or an unresolved reservation');
         const pending = await tx.query.operations.findFirst({
           where: and(
             eq(operations.tenantId, orgId),
@@ -136,7 +130,7 @@ export class OrganizationsRepository {
           ),
         });
         if (pending)
-          throw new ConflictException(
+          throw new ConsoleConflictError(
             'Provisioning is pending or requires reconciliation; do not submit another command',
           );
       }
@@ -145,8 +139,13 @@ export class OrganizationsRepository {
         tenantId: orgId,
         idempotencyKey,
         commandType: ORGANIZATION_PROVISION_COMMAND,
-        payload: { ...config, requestedById: actor },
+        payload: config,
       });
+      if (result.isNew)
+        await tx
+          .update(operations)
+          .set({ payload: { ...config, requestedById: actor } })
+          .where(eq(operations.id, result.operation.id));
       return { operationId: result.operation.id, status: result.operation.status };
     });
   }

@@ -258,3 +258,5 @@ Add each remaining module with its tests under `contracts/sui/tests`.
 | Offline earn-intent buffering | browser |
 | Webhook signature verification | node |
 | Deadlines and retries | node |
+
+Organization slug entry is implemented behind ORG_SLUG_ENTRY_ENABLED (default false) and is not operational yet; it does not configure wildcard DNS.

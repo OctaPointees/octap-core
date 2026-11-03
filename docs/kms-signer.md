@@ -123,7 +123,10 @@ production shape wherever the host allows:
 - **On a non-AWS host**: create a dedicated IAM user `octap-testnet-worker` with only the issuer
   role's policy (never the admin key), and store its access key in the host's secret store as
   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Don't reuse the team's signer key there.
-  Provisioning and top-ups run from a developer machine, never from the hosted worker.
+  Provisioning can also run from the dedicated organization worker when
+  `ORG_PROVISION_WORKER_ENABLED=true`. That worker needs signing access to both the
+  program-admin key and the issuer key; isolate its IAM permissions from an issuer-only
+  earn worker. The HTTP API holds neither signing permission. Top-ups remain an operator action.
 
 ## Latency and cost
 
