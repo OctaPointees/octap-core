@@ -257,6 +257,70 @@ export class ConsoleOrganizationsRepository {
       }));
     });
   }
+  async staffAccess(userId: string, organizationId: string, targetId: string, status: 'ACTIVE' | 'SUSPENDED') {
+    return this.db.transaction(async (tx) => {
+      await this.member(tx, userId, organizationId, true);
+      const [target] = await tx
+        .select()
+        .from(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.organizationId, organizationId),
+            eq(organizationMemberships.systemUserId, targetId),
+          ),
+        )
+        .for('update');
+      if (!target) throw new ConsoleNotFoundError();
+      if (target.role !== 'BUSINESS_DEVELOPER') throw new ConsoleAccessError();
+      await tx
+        .update(organizationMemberships)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(organizationMemberships.id, target.id));
+      // A pending invitation must not restore access after an Owner suspends it.
+      if (status === 'SUSPENDED') {
+        const [user] = await tx
+          .select({ email: systemUsers.email })
+          .from(systemUsers)
+          .where(eq(systemUsers.id, targetId));
+        await tx
+          .update(invitations)
+          .set({ status: 'REVOKED', updatedAt: new Date() })
+          .where(
+            and(
+              eq(invitations.organizationId, organizationId),
+              eq(invitations.email, user.email.toLowerCase()),
+              eq(invitations.status, 'PENDING'),
+            ),
+          );
+      }
+    });
+  }
+  async bootstrapOwner(userId: string, organizationId: string, targetId: string) {
+    return this.db.transaction(async (tx) => {
+      await this.admin(tx, userId);
+      const [org] = await tx.select().from(organizations).where(eq(organizations.id, organizationId)).for('update');
+      if (!org) throw new ConsoleNotFoundError();
+      if (org.status !== 'ACTIVE')
+        throw new ConsoleConflictError('Only an active organization can receive its first Owner');
+      const existing = await tx.query.organizationMemberships.findFirst({
+        where: and(
+          eq(organizationMemberships.organizationId, organizationId),
+          eq(organizationMemberships.role, 'OWNER'),
+        ),
+      });
+      if (existing)
+        throw new ConsoleConflictError('This organization already has an Owner; use the ownership workflow');
+      const target = await tx.query.systemUsers.findFirst({ where: eq(systemUsers.id, targetId) });
+      if (!target?.googleSubject) throw new ConsoleValidationError('The initial Owner must first sign in with Google');
+      await tx
+        .insert(organizationMemberships)
+        .values({ organizationId, systemUserId: targetId, role: 'OWNER' })
+        .onConflictDoUpdate({
+          target: [organizationMemberships.organizationId, organizationMemberships.systemUserId],
+          set: { role: 'OWNER', status: 'ACTIVE', updatedAt: new Date() },
+        });
+    });
+  }
   async credentials(userId: string, organizationId: string) {
     return this.db.transaction(async (tx) => {
       await this.member(tx, userId, organizationId, false, false);
@@ -353,6 +417,10 @@ export class ConsoleOrganizationsRepository {
           eq(organizationMemberships.systemUserId, identity.user.id),
         ),
       });
+      // Google may report a newer verified email than the stored account email.
+      // Suspension invalidates older invitations even when email-based revocation missed one.
+      if (existing?.status === 'SUSPENDED' && row.createdAt.getTime() <= existing.updatedAt.getTime())
+        throw new ConsoleGoneError();
       if (existing && (existing.status === 'ACTIVE' || existing.role === 'OWNER'))
         throw new ConsoleConflictError('This account already has organization access');
       await tx

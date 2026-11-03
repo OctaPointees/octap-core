@@ -10,6 +10,7 @@ import { ConsoleIdentityController } from './console-identity.controller.js';
 import {
   ConsoleOrganizationsController,
   PlatformOrganizationRequestsController,
+  PlatformOrganizationOwnersController,
 } from './console-organizations.controller.js';
 import { ConsoleAccessGuard } from './console-access.guard.js';
 @Module({
@@ -24,6 +25,7 @@ import { ConsoleAccessGuard } from './console-access.guard.js';
     ConsoleIdentityController,
     ConsoleOrganizationsController,
     PlatformOrganizationRequestsController,
+    PlatformOrganizationOwnersController,
   ],
 })
 export class RestModule {}
