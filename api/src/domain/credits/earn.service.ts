@@ -4,6 +4,7 @@ import { ProgramsRepository } from '#infra/db/repositories/programs.repository.j
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
+import { mapMemberEligibilityError } from './member-eligibility-error.js';
 
 @Injectable()
 export class EarnService {
@@ -42,14 +43,18 @@ export class EarnService {
     // asynchronously, after the client was already told it was accepted.
     await requireProgramConfig(this.programsRepo, organizationId);
 
-    const { transaction, newBalance } = await this.creditsRepo.recordEarnTransaction({
-      organizationId,
-      organizationEndUserId: request.organizationEndUserId,
-      pointsAmount: request.pointsAmount,
-      idempotencyKey: request.idempotencyKey,
-      receiptReference: request.receiptReference,
-      metadata: request.metadata,
-    });
+    const { transaction, newBalance } = await this.creditsRepo
+      .recordEarnTransaction({
+        organizationId,
+        organizationEndUserId: request.organizationEndUserId,
+        pointsAmount: request.pointsAmount,
+        idempotencyKey: request.idempotencyKey,
+        receiptReference: request.receiptReference,
+        metadata: request.metadata,
+      })
+      .catch((error: unknown) => {
+        throw mapMemberEligibilityError(error);
+      });
 
     await this.webhooks.emit(organizationId, 'credits.earned', {
       transactionId: transaction.id,

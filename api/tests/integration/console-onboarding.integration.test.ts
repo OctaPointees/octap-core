@@ -153,6 +153,19 @@ describe('console onboarding and protected portal operations', () => {
       .values({ organizationId: org.id, systemUserId: ids.owner, role: 'BUSINESS_DEVELOPER' });
     const results = await Promise.all([bootstrap('admin'), bootstrap('admin')]);
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const audits = await ctx.db
+      .select()
+      .from(schema.organizationChangeRequests)
+      .where(eq(schema.organizationChangeRequests.organizationId, org.id));
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      requestedById: ids.admin,
+      reviewedById: ids.admin,
+      requestType: 'TRANSFER_OWNERSHIP',
+      status: 'APPROVED',
+      payload: { bootstrap: true, previousOwnerId: null, targetUserId: ids.owner },
+    });
+    expect(audits[0].reviewedAt).toBeInstanceOf(Date);
     await ctx.db
       .update(schema.organizationMemberships)
       .set({ status: 'SUSPENDED' })

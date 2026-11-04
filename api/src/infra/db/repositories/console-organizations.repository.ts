@@ -97,6 +97,12 @@ export class ConsoleOrganizationsRepository {
       return request.id;
     });
   }
+  async withAccess<T>(userId: string, organizationId: string, mutating: boolean, action: (tx: Tx) => Promise<T>) {
+    return this.db.transaction(async (tx) => {
+      await this.member(tx, userId, organizationId, mutating, mutating);
+      return action(tx);
+    });
+  }
   async applications(userId: string, platform = false) {
     return this.db.transaction(async (tx) => {
       if (platform) await this.admin(tx, userId);
@@ -319,6 +325,16 @@ export class ConsoleOrganizationsRepository {
           target: [organizationMemberships.organizationId, organizationMemberships.systemUserId],
           set: { role: 'OWNER', status: 'ACTIVE', updatedAt: new Date() },
         });
+      await tx.insert(organizationChangeRequests).values({
+        organizationId,
+        requestedById: userId,
+        reviewedById: userId,
+        requestType: 'TRANSFER_OWNERSHIP',
+        status: 'APPROVED',
+        payload: { bootstrap: true, previousOwnerId: null, targetUserId: targetId },
+        reason: 'System Admin assigned the first Owner of an active ownerless organization',
+        reviewedAt: new Date(),
+      });
     });
   }
   async credentials(userId: string, organizationId: string) {

@@ -14,6 +14,7 @@ import { acceptCommand } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
+import { withActiveMember } from './member-eligibility.js';
 
 /**
  * Row-locks a loyalty transaction and returns it if it is still PENDING (null otherwise). Every
@@ -403,9 +404,15 @@ export class CreditsRepository {
         lifetimeEarned: 0,
         lifetimeRedeemed: 0,
       })
+      .onConflictDoNothing({ target: creditOwnerships.organizationEndUserId })
       .returning();
 
-    return created;
+    return (
+      created ??
+      (await this.db.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
+      }))!
+    );
   }
 
   async findTransactionByIdempotency(organizationId: string, idempotencyKey: string) {
@@ -443,7 +450,7 @@ export class CreditsRepository {
     receiptReference?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+    return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
       let ownership = await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
       });
@@ -459,8 +466,13 @@ export class CreditsRepository {
             lifetimeEarned: 0,
             lifetimeRedeemed: 0,
           })
+          .onConflictDoNothing({ target: creditOwnerships.organizationEndUserId })
           .returning();
-        ownership = newOwnership;
+        ownership =
+          newOwnership ??
+          (await tx.query.creditOwnerships.findFirst({
+            where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+          }));
       }
 
       const [transaction] = await tx
@@ -477,10 +489,9 @@ export class CreditsRepository {
         })
         .returning();
 
-      const newPendingEarn = Number(ownership.pendingEarn) + params.pointsAmount;
       await tx
         .update(creditOwnerships)
-        .set({ pendingEarn: newPendingEarn, updatedAt: new Date() })
+        .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.pointsAmount}`, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
 
       await acceptCommand(tx, {
@@ -822,7 +833,7 @@ export class CreditsRepository {
       }),
     );
 
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
+    return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
       const { operation, isNew } = await acceptCommand(tx, {
         tenantId: params.organizationId,
         idempotencyKey: params.idempotencyKey,

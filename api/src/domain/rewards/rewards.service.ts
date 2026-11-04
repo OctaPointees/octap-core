@@ -7,6 +7,7 @@ import { PosRedemptionService } from '../credits/pos-redemption.service.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { validateVoucher } from './voucher-validation.js';
+import { mapMemberEligibilityError } from '../credits/member-eligibility-error.js';
 import type {
   CreateVoucherRequest,
   UpdateVoucherRequest,
@@ -32,7 +33,7 @@ function toHttpError(error: unknown): unknown {
     return new BadRequestException(error.message);
   }
   if (error instanceof OperationPayloadConflictError) return new ConflictException(error.message);
-  return error;
+  return mapMemberEligibilityError(error);
 }
 
 async function mapErrors<T>(work: Promise<T>): Promise<T> {

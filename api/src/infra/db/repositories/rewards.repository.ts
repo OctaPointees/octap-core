@@ -18,6 +18,7 @@ import {
   voucherClaimReference,
 } from './credits.repository.js';
 import { acceptCommand, OperationPayloadConflictError } from './operations.repository.js';
+import { MemberEligibilityError } from './member-eligibility.js';
 
 type Voucher = typeof vouchers.$inferSelect;
 type VoucherPatch = Partial<
@@ -126,7 +127,7 @@ export class RewardsRepository {
       .from(organizations)
       .where(eq(organizations.id, organizationId))
       .for('share');
-    if (!org || org.status !== 'ACTIVE') throw invalid('Organization is not active');
+    if (!org || org.status !== 'ACTIVE') throw new MemberEligibilityError('FORBIDDEN', 'Organization is not active');
     const [member] = await tx
       .select({ status: organizationEndUsers.status, userStatus: endUsers.status })
       .from(organizationEndUsers)
@@ -134,7 +135,8 @@ export class RewardsRepository {
       .where(and(eq(organizationEndUsers.id, memberId), eq(organizationEndUsers.organizationId, organizationId)))
       .for('share');
     if (!member) throw notFound('Member was not found for this organization');
-    if (member.status !== 'ACTIVE' || member.userStatus !== 'ACTIVE') throw invalid('Member is not active');
+    if (member.status !== 'ACTIVE' || member.userStatus !== 'ACTIVE')
+      throw new MemberEligibilityError('FORBIDDEN', 'Member is not active');
   }
 
   /**
