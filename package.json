@@ -16,7 +16,7 @@
   "scripts": {
     "demo:sdk": "node scripts/sdk-voucher-demo.mjs",
     "demo:sdk:local": "npm run build && node scripts/sdk-demo-local.mjs",
-    "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs",
+    "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs scripts/tests/browser-auth-example.test.mjs",
     "build": "node scripts/build.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json",
     "lint": "eslint api/src api/tests ts-sdks/packages scripts vitest.config.ts",
@@ -42,6 +42,7 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^5.0.3",
+    "esbuild": "^0.28.2",
     "eslint": "^9.0.0",
     "prettier": "^3.9.9",
     "supertest": "^7.3.1",

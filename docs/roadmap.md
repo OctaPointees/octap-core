@@ -16,7 +16,7 @@ then move the row to **Implemented** in the same pull request.
 | Voucher create/list/get/claim/redeem, member vouchers | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts |
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for points and vouchers | ts-sdks/packages/node |
-| Browser client for balance and voucher claim | ts-sdks/packages/browser |
+| Browser auth SDK for merchant websites: Firebase-style Google sign-in, enrollment, session restore, zkLogin transaction signing and finalize, over Core's proxy routes. Live Testnet signing is verified by hand (`ts-sdks/examples/README.md`) | ts-sdks/packages/browser; ts-sdks/examples/browser-auth |
 | Test layer: Vitest unit specs per domain/infra/SDK + integration specs against real Postgres/Redis (testcontainers), coverage-gated in CI | api/tests; ts-sdks/packages/*/tests; vitest.config.ts |
 | Sui Move: capabilities, program_control, policy_version, credit_account (earn/redeem, expiry-bucket FIFO) | contracts/sui/sources; tests under contracts/sui/tests |
 | Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
@@ -255,8 +255,6 @@ Add each remaining module with its tests under `contracts/sui/tests`.
 
 | Feature | Package |
 | --- | --- |
-| Customer login (zkLogin) helper | browser — `loginWithGoogle()`/`enroll()` call the new identity endpoints, but obtaining the Google id_token itself (sign-in popup/button) is OctaP_Web's job, not this SDK's |
-| Customer transaction signing | browser |
 | Offline earn-intent buffering | browser |
 | Webhook signature verification | node |
 | Deadlines and retries | node |

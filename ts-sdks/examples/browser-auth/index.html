@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OctaP browser auth example</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 2rem auto;
+        max-width: 40rem;
+        padding: 0 1rem;
+      }
+      pre {
+        background: #f4f4f4;
+        overflow-x: auto;
+        padding: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OctaP browser auth example</h1>
+    <p>A local test page for <code>@octap/browser-sdk</code>. It is not deployed.</p>
+    <div id="sign-in"></div>
+    <p>
+      <button id="claim" disabled>Claim voucher</button>
+      <button id="sign-out" disabled>Sign out</button>
+    </p>
+    <pre id="output" aria-live="polite">Loading…</pre>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
