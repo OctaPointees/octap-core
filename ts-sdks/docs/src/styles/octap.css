@@ -1,0 +1,231 @@
+/*
+ * THESIS: reference documentation a merchant developer trusts at a glance, in the OctaP product brand.
+ * OWN-WORLD: neutral reading surface, OctaP magenta for links and active state, navy for headings on light.
+ * STORY: a reader finds which SDK runs where, follows one flow, then looks up an exact method.
+ * FIRST VIEWPORT: the overview states what the SDKs do and shows the trust boundary as a diagram.
+ * FORM: the standard three-column documentation layout, pinned by the brief (Stripe and Firebase docs).
+ */
+
+:root {
+  --sl-font: 'Google Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sl-font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  --sl-content-width: 46rem;
+  --sl-text-h1: 2.25rem;
+  --sl-text-h2: 1.5rem;
+  --sl-text-h3: 1.125rem;
+  --octap-magenta: #9f0261;
+  --octap-navy: #002b49;
+}
+
+/* Dark: tinted away from pure black, with a magenta light enough for body-size links. */
+:root {
+  --sl-color-accent-low: #3d0a29;
+  --sl-color-accent: #e04a9f;
+  --sl-color-accent-high: #ffc2e3;
+  --sl-color-white: #f4f6f8;
+  --sl-color-gray-1: #dde2e7;
+  --sl-color-gray-2: #b6bec6;
+  --sl-color-gray-3: #8d969f;
+  --sl-color-gray-4: #5a636c;
+  --sl-color-gray-5: #39414a;
+  --sl-color-gray-6: #1e2329;
+  --sl-color-black: #14181c;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fbe3f0;
+  --sl-color-accent: #9f0261;
+  --sl-color-accent-high: #6e0143;
+  --sl-color-white: #0f1a24;
+  --sl-color-gray-1: #27323c;
+  --sl-color-gray-2: #414c57;
+  --sl-color-gray-3: #626d78;
+  --sl-color-gray-4: #8e98a2;
+  --sl-color-gray-5: #d6dbe0;
+  --sl-color-gray-6: #eef0f3;
+  --sl-color-gray-7: #f7f8f9;
+  --sl-color-black: #ffffff;
+}
+
+/* --- Reading --- */
+
+.sl-markdown-content {
+  line-height: 1.7;
+}
+
+.sl-markdown-content h2 {
+  margin-top: 2.75rem;
+  letter-spacing: -0.01em;
+}
+
+.sl-markdown-content h3 {
+  margin-top: 2rem;
+}
+
+h1#_top {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+:root[data-theme='light'] h1#_top,
+:root[data-theme='light'] .sl-markdown-content :is(h2, h3) {
+  color: var(--octap-navy);
+}
+
+.sl-markdown-content :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.3rem;
+  background: var(--sl-color-gray-6);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+/* --- Tables carry most of the reference, so they scroll inside the page on a phone. --- */
+
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  font-size: var(--sl-text-sm);
+  line-height: 1.5;
+}
+
+.sl-markdown-content th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sl-markdown-content :is(th, td) {
+  vertical-align: top;
+}
+
+/* Names and types stay whole; the table scrolls instead. */
+.sl-markdown-content td:nth-child(-n + 2) code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+/* --- Callouts: a quiet full outline, in the aside's own color. --- */
+
+.starlight-aside {
+  border: 1px solid var(--sl-color-asides-border);
+  border-radius: 0.5rem;
+}
+
+/* --- Navigation --- */
+
+.site-title img {
+  height: 1.75rem;
+  width: auto;
+}
+
+/* Room for the full "Tiếng Việt" and "Tự động" labels. */
+.header starlight-theme-select select {
+  width: 7.5rem;
+}
+
+.header starlight-lang-select select {
+  width: 9rem;
+}
+
+.sidebar-content .large {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+/* --- Reference: a method's route and required scope, under its heading. --- */
+
+.method-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.25rem;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-2);
+}
+
+/* --- Overview: who runs what, and what crosses each line. --- */
+
+.boundary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 1.75rem 0 0.75rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.sl-markdown-content .boundary section {
+  margin: 0;
+  padding: 1.125rem 1.25rem;
+  min-width: 0;
+}
+
+.boundary section + section {
+  border-inline-start: 1px solid var(--sl-color-gray-5);
+}
+
+.boundary section.octap {
+  background: var(--sl-color-accent-low);
+}
+
+.boundary .where {
+  margin: 0;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-2);
+}
+
+.boundary .what {
+  margin: 0.125rem 0 0.625rem;
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+.boundary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--sl-text-sm);
+  line-height: 1.5;
+}
+
+.boundary li + li {
+  margin-top: 0.375rem;
+}
+
+.boundary .holds {
+  margin: 0.875rem 0 0;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--sl-color-gray-5);
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-2);
+}
+
+.paths {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2rem;
+  margin-top: 1rem;
+}
+
+.sl-markdown-content .paths > div {
+  margin: 0;
+}
+
+.sl-markdown-content .paths > div > :first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 50rem) {
+  .boundary,
+  .paths {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .boundary section + section {
+    border-inline-start: 0;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+}

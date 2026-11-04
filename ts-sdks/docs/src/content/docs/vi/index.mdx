@@ -1,0 +1,89 @@
+---
+title: OctaP SDK
+description: Thêm điểm thưởng và voucher OctaP vào backend và website của merchant.
+tableOfContents: false
+---
+
+Thêm điểm thưởng và voucher vào cửa hàng của bạn. Server của bạn phát điểm và bán voucher bằng Node SDK. Website của bạn đăng nhập khách hàng bằng Browser SDK, và khách hàng tự xác nhận việc tiêu điểm trên thiết bị của họ.
+
+<div class="boundary" role="group" aria-label="Thành phần nào chạy ở đâu">
+  <section>
+    <p class="where">Website của bạn</p>
+    <p class="what">@octap/browser-sdk</p>
+    <ul>
+      <li>Đăng nhập bằng Google</li>
+      <li>Phiên của khách hàng</li>
+      <li>Ký giao dịch tiêu điểm trên thiết bị</li>
+    </ul>
+    <p class="holds">Không giữ thông tin xác thực của merchant</p>
+  </section>
+  <section>
+    <p class="where">Server của bạn</p>
+    <p class="what">@octap/sdk</p>
+    <ul>
+      <li>Earn, số dư và lịch sử</li>
+      <li>Voucher và redeem</li>
+      <li>Webhook, xác minh khách hàng</li>
+    </ul>
+    <p class="holds">Giữ API key của bạn</p>
+  </section>
+  <section class="octap">
+    <p class="where">Do OctaP vận hành</p>
+    <p class="what">Core API và Sui</p>
+    <ul>
+      <li>Ghi nhận mọi lệnh</li>
+      <li>Sui giữ số điểm đã xác nhận</li>
+      <li>Gửi webhook có chữ ký</li>
+    </ul>
+    <p class="holds">Dữ liệu của bạn nằm trong tổ chức của bạn</p>
+  </section>
+</div>
+
+:::caution[Bản phát hành trước]
+Các package này chưa có trên npm. Xem [Cài đặt](/vi/get-started/installation/) để biết cách dùng hiện nay.
+:::
+
+## Bắt đầu từ đây
+
+<div class="paths">
+<div>
+
+### Trên server của bạn
+
+Phát điểm khi khách hàng thanh toán, chỉ với vài dòng code.
+
+[Quickstart cho backend →](/vi/get-started/backend-quickstart/)
+
+</div>
+<div>
+
+### Trên website của bạn
+
+Thêm đăng nhập Google giống như cách bạn thêm Firebase Auth.
+
+[Quickstart cho frontend →](/vi/get-started/frontend-quickstart/)
+
+</div>
+</div>
+
+```ts title="server.ts"
+import { createOctaPointClient } from '@octap/sdk';
+
+const client = createOctaPointClient({
+  baseUrl: process.env.OCTAP_API_URL,
+  credentials: { apiKey: process.env.OCTAP_API_KEY },
+});
+
+const earn = await client.earnPoints({
+  organizationEndUserId: memberId,
+  purchaseAmount: 100000,
+  idempotencyKey: 'order-42',
+});
+// earn.status === 'PENDING', earn.estimatedPoints === 1000 với tỷ lệ earn 1%
+```
+
+## Ba quy tắc cần nhớ
+
+1. **Giữ API key trên server.** Browser SDK không bao giờ cần đến nó.
+2. **Pending chưa phải kết quả cuối.** Điểm chỉ tiêu được, và voucher trả phí chỉ thuộc về khách hàng, sau khi chain xác nhận. Xem [Vòng đời điểm](/vi/concepts/points-lifecycle/).
+3. **Thử lại với cùng key.** Khi gặp lỗi không rõ nguyên nhân, hãy đọc trạng thái hiện tại, rồi gửi lại request với cùng idempotency key. Xem [Idempotency và phục hồi](/vi/concepts/idempotency-and-recovery/).

@@ -1,0 +1,89 @@
+---
+title: OctaP SDK
+description: Add OctaP loyalty points and vouchers to a merchant backend and website.
+tableOfContents: false
+---
+
+Add loyalty points and vouchers to your store. Your server issues points and sells vouchers with the Node SDK. Your website signs customers in with the Browser SDK, and customers approve their own spending on their device.
+
+<div class="boundary" role="group" aria-label="What runs where">
+  <section>
+    <p class="where">Your website</p>
+    <p class="what">@octap/browser-sdk</p>
+    <ul>
+      <li>Google sign-in</li>
+      <li>Customer session</li>
+      <li>Signs spending on the device</li>
+    </ul>
+    <p class="holds">Holds no merchant credential</p>
+  </section>
+  <section>
+    <p class="where">Your server</p>
+    <p class="what">@octap/sdk</p>
+    <ul>
+      <li>Earn, balance and history</li>
+      <li>Vouchers and redemption</li>
+      <li>Webhooks, customer verification</li>
+    </ul>
+    <p class="holds">Holds your API key</p>
+  </section>
+  <section class="octap">
+    <p class="where">Run by OctaP</p>
+    <p class="what">Core API and Sui</p>
+    <ul>
+      <li>Records every command</li>
+      <li>Sui holds confirmed points</li>
+      <li>Sends signed webhooks</li>
+    </ul>
+    <p class="holds">Your data stays in your organization</p>
+  </section>
+</div>
+
+:::caution[Pre-release]
+These packages are not on npm yet. See [Installation](/get-started/installation/) for how to use them today.
+:::
+
+## Start here
+
+<div class="paths">
+<div>
+
+### On your server
+
+Issue points when a customer pays, in a few lines.
+
+[Backend quickstart →](/get-started/backend-quickstart/)
+
+</div>
+<div>
+
+### On your website
+
+Add Google sign-in the way you would add Firebase Auth.
+
+[Frontend quickstart →](/get-started/frontend-quickstart/)
+
+</div>
+</div>
+
+```ts title="server.ts"
+import { createOctaPointClient } from '@octap/sdk';
+
+const client = createOctaPointClient({
+  baseUrl: process.env.OCTAP_API_URL,
+  credentials: { apiKey: process.env.OCTAP_API_KEY },
+});
+
+const earn = await client.earnPoints({
+  organizationEndUserId: memberId,
+  purchaseAmount: 100000,
+  idempotencyKey: 'order-42',
+});
+// earn.status === 'PENDING', earn.estimatedPoints === 1000 at a 1% earn rate
+```
+
+## Know these three rules
+
+1. **Keep your API key on your server.** The Browser SDK never needs it.
+2. **Pending is not final.** Points are spendable, and a paid voucher is owned, only after the chain confirms. See [Points lifecycle](/concepts/points-lifecycle/).
+3. **Retry with the same key.** After a failure you can't explain, read the current state, then repeat the request with the same idempotency key. See [Idempotency and recovery](/concepts/idempotency-and-recovery/).
