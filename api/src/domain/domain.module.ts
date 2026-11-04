@@ -4,6 +4,14 @@ import { RewardsModule } from './rewards/rewards.module.js';
 import { WebhooksModule } from './webhooks/webhooks.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { MembersModule } from './members/members.module.js';
-const featureModules = [MembersModule, CreditsModule, RewardsModule, WebhooksModule, IdentityModule];
+import { AdministrationModule } from './administration/administration.module.js';
+const featureModules = [
+  AdministrationModule,
+  MembersModule,
+  CreditsModule,
+  RewardsModule,
+  WebhooksModule,
+  IdentityModule,
+];
 @Module({ imports: featureModules, exports: featureModules })
 export class DomainModule {}

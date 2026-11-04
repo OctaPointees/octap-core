@@ -1,16 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, getTableColumns } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { apiCredentials } from '../schema/organizations.schema.js';
+import { apiCredentials, organizations } from '../schema/organizations.schema.js';
 
 @Injectable()
 export class ApiCredentialsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
   async findByKeyHash(keyHash: string) {
-    return this.db.query.apiCredentials.findFirst({
-      where: eq(apiCredentials.keyHash, keyHash),
-    });
+    const [row] = await this.db
+      .select({ ...getTableColumns(apiCredentials), organizationStatus: organizations.status })
+      .from(apiCredentials)
+      .innerJoin(organizations, eq(organizations.id, apiCredentials.organizationId))
+      .where(eq(apiCredentials.keyHash, keyHash));
+    return row;
   }
 
   async findById(id: string) {

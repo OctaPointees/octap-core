@@ -54,6 +54,7 @@ describe('console onboarding and protected portal operations', () => {
     const approval = await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -191,12 +192,14 @@ describe('console onboarding and protected portal operations', () => {
     await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('owner'))
       .send({})
       .expect(403);
     await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -213,6 +216,7 @@ describe('console onboarding and protected portal operations', () => {
     await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(409);
@@ -412,6 +416,7 @@ describe('console onboarding and protected portal operations', () => {
         ctx
           .http()
           .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+          .send({ reason: 'Reviewed application' })
           .set('Authorization', bearer('admin'))
           .send({}),
       ),
@@ -524,6 +529,7 @@ describe('console onboarding and protected portal operations', () => {
     const approval = await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);
@@ -580,6 +586,7 @@ describe('console onboarding and protected portal operations', () => {
     const approval = await ctx
       .http()
       .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .send({ reason: 'Reviewed application' })
       .set('Authorization', bearer('admin'))
       .send({})
       .expect(201);

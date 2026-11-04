@@ -25,6 +25,8 @@ export const changeRequestTypeEnum = pgEnum('change_request_type', [
   'UPDATE_PROFILE',
   'TRANSFER_OWNERSHIP',
   'DEACTIVATE',
+  'SUSPEND',
+  'REINSTATE',
 ]);
 
 /**

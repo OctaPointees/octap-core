@@ -29,6 +29,7 @@ then move the row to **Implemented** in the same pull request.
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
+| Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
 | Members: tenant customer search/detail, exact POS ID lookup, Owner-only profile/status edits and blocked-member command eligibility | api/src/domain/members; api/src/api/rest/members.controller.ts |
 | Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding, Developer invitations and suspension/restoration, and System Admin first-Owner bootstrap for active ownerless organizations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
@@ -210,7 +211,7 @@ and vendor clients.
 | Analytics: derived analytics export | domain/analytics; infra/clients/clickhouse; api/db/clickhouse | Analytics-only store |
 | Audit: export, Walrus/Seal evidence, verifier | domain/audit; infra/clients/walrus, seal | Outside checkout path |
 | Notifications | domain/notifications | |
-| Administration: remaining platform governance | domain/administration | CREATE_ORGANIZATION approval implemented in console identity; transfer/deactivation/reinstatement remain OCT-208 |
+
 
 ### Workers
 
