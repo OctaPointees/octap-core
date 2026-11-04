@@ -1,4 +1,4 @@
-import { CoreApi, type RequestOptions } from './core-api.js';
+import { CoreApi, normalizeBaseUrl, type RequestOptions } from './core-api.js';
 import { OctapAuthError } from './errors.js';
 import { createGoogleProvider, type IdTokenProvider } from './google-provider.js';
 import {
@@ -65,6 +65,10 @@ export class OctapAuth {
   private provider?: IdTokenProvider;
   private button?: { element: HTMLElement; options: RenderOptions };
   private signingIn = false;
+  /** Changes when the session ends, so a sign-in still running cannot bring it back. */
+  private signInGeneration = 0;
+  /** Changes on each new button, so only the latest nonce can be rendered or used. */
+  private armGeneration = 0;
   private expiryTimer?: number;
 
   constructor(options: OctapAuthOptions) {
@@ -72,7 +76,11 @@ export class OctapAuth {
     this.api = new CoreApi(options.apiBaseUrl, fetchFn, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     this.organizationId = options.organizationId;
     this.googleClientId = options.googleClientId;
-    this.store = createSessionStore(options.persistence ?? 'session', options.organizationId);
+    this.store = createSessionStore(options.persistence ?? 'session', {
+      apiBaseUrl: normalizeBaseUrl(options.apiBaseUrl),
+      googleClientId: options.googleClientId,
+      organizationId: options.organizationId,
+    });
     this.session = this.store.load();
     if (this.session && Date.now() >= this.session.signer.expiresAt) {
       this.store.clear();
@@ -184,6 +192,8 @@ export class OctapAuth {
 
   private endSession(): void {
     const hadSession = this.session !== null;
+    this.signInGeneration++;
+    this.signingIn = false;
     this.store.clear();
     this.session = null;
     this.scheduleExpiry();
@@ -236,25 +246,37 @@ export class OctapAuth {
     await this.arm().catch((err: unknown) => this.reportError(err));
   }
 
-  /** Prepares a key and nonce and renders the button with them. */
+  /** Prepares a key and nonce and renders the button with them. A newer call replaces an older one. */
   private async arm(): Promise<void> {
+    const generation = ++this.armGeneration;
     const pending = await PendingSignIn.start(this.api);
+    if (generation !== this.armGeneration) return;
     await this.provider!.render(this.button!.element, pending.nonce, {
-      onIdToken: (idToken) => void this.completeSignIn(pending, idToken),
-      onCanceled: () => this.reportError(new OctapAuthError('sign-in-canceled', 'Google sign-in was canceled.')),
+      onIdToken: (idToken) => {
+        if (generation === this.armGeneration) void this.completeSignIn(pending, idToken);
+      },
+      onCanceled: () => {
+        if (generation === this.armGeneration) {
+          this.reportError(new OctapAuthError('sign-in-canceled', 'Google sign-in was canceled.'));
+        }
+      },
     });
   }
 
   private async completeSignIn(pending: PendingSignIn, idToken: string): Promise<void> {
     if (this.signingIn) return;
     this.signingIn = true;
+    const generation = this.signInGeneration;
+    const superseded = () => generation !== this.signInGeneration;
     try {
       pending.assertIssuedForThisAttempt(idToken);
       const { suiAddress } = await this.api.post<{ suiAddress: string }>('/v1/identity/google-login', { idToken });
+      if (superseded()) return;
       const { endUserId, organizationEndUserId } = await this.api.post<{
         endUserId: string;
         organizationEndUserId: string;
       }>(`/v1/identity/organizations/${encodeURIComponent(this.organizationId)}/enroll`, { idToken });
+      if (superseded()) return;
       if (
         typeof suiAddress !== 'string' ||
         typeof endUserId !== 'string' ||
@@ -263,18 +285,22 @@ export class OctapAuth {
         throw new OctapAuthError('invalid-response', 'OctaP returned an incomplete customer.');
       }
       const signer = await pending.prove(this.api, idToken);
+      if (superseded()) return;
 
       this.session = { user: { endUserId, memberId: organizationEndUserId, suiAddress }, idToken, signer };
       this.store.save(this.session);
       this.scheduleExpiry();
+      // A button armed for another attempt must not outlive this session's sign-in.
+      this.armGeneration++;
       this.button?.element.replaceChildren();
       this.notify();
     } catch (err: unknown) {
+      if (superseded()) return;
       this.reportError(err);
       // A nonce is good for one attempt, so a failure must leave a usable button behind.
       await this.rearm();
     } finally {
-      this.signingIn = false;
+      if (!superseded()) this.signingIn = false;
     }
   }
 }

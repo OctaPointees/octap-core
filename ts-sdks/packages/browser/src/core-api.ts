@@ -5,6 +5,8 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
+export const normalizeBaseUrl = (baseUrl: string) => baseUrl.replace(/\/+$/, '');
+
 /** Reads a body once, whatever its type: an error page must not surface as a `TypeError`. */
 async function readBody(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -31,7 +33,7 @@ export class CoreApi {
     private readonly fetchFn: typeof fetch,
     private readonly defaultTimeoutMs: number,
   ) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = normalizeBaseUrl(baseUrl);
   }
 
   async post<T>(path: string, payload: unknown, options: RequestOptions = {}): Promise<T> {

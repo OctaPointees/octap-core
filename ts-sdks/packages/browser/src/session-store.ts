@@ -85,7 +85,14 @@ function browserStore(storage: Storage, key: string): SessionStore {
   };
 }
 
-export function createSessionStore(persistence: Persistence, organizationId: string): SessionStore {
+/** A session belongs to one configuration: another API or Google client must not restore it. */
+export interface SessionScope {
+  apiBaseUrl: string;
+  googleClientId: string;
+  organizationId: string;
+}
+
+export function createSessionStore(persistence: Persistence, scope: SessionScope): SessionStore {
   if (persistence === 'memory') return memoryStore();
   let storage: Storage | undefined;
   try {
@@ -93,5 +100,6 @@ export function createSessionStore(persistence: Persistence, organizationId: str
   } catch {
     storage = undefined;
   }
-  return storage ? browserStore(storage, `octap.auth.${organizationId}`) : memoryStore();
+  const key = `octap.auth.${JSON.stringify([scope.apiBaseUrl, scope.googleClientId, scope.organizationId])}`;
+  return storage ? browserStore(storage, key) : memoryStore();
 }

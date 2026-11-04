@@ -16,6 +16,7 @@ void _finalizeFits;
 
 const ORG = 'org-1';
 const NONCE = 'nonce-1';
+const STORAGE_KEY = `octap.auth.${JSON.stringify(['https://core.test', 'google-client', ORG])}`;
 const PROOF = {
   proofPoints: { a: ['1', '2', '3'], b: [['1', '2'], ['3', '4'], ['5', '6']], c: ['1', '2', '3'] }, // prettier-ignore
   issBase64Details: { value: 'wiaXNzIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tIiw', indexMod4: 1 },
@@ -339,6 +340,152 @@ describe('sign-in', () => {
   });
 });
 
+describe('signing out during a sign-in', () => {
+  let google: ReturnType<typeof installGoogle>['google'];
+  let storage: ReturnType<typeof installSessionStorage>;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    storage = installSessionStorage();
+  });
+
+  /** Signs in until Core's proof is requested, and holds that response. */
+  async function heldAtProof(proofs: Array<() => Promise<Response>> = []) {
+    let settleProof: { resolve: (response: Response) => void; reject: (err: Error) => void } | undefined;
+    const held = () =>
+      new Promise<Response>((resolve, reject) => {
+        settleProof = { resolve, reject };
+      });
+    const queue = [held, ...proofs];
+    const core = fakeCore({ '/v1/identity/zklogin/proof': () => queue.shift()!() });
+    const auth = authWith(core);
+    const errors: OctapAuthError[] = [];
+    const seen: unknown[] = [];
+    auth.onAuthStateChanged((user) => seen.push(user?.memberId ?? null));
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(core.calls.some((call) => call.path.endsWith('proof'))).toBe(true));
+    return { auth, core, errors, seen, proof: () => settleProof! };
+  }
+
+  it('keeps the customer signed out when the proof arrives afterwards', async () => {
+    const { auth, seen, proof } = await heldAtProof();
+
+    await auth.signOut();
+    proof().resolve(Response.json(PROOF));
+    await settle();
+
+    expect(auth.currentUser).toBeNull();
+    expect(storage.data.size).toBe(0);
+    expect(seen).not.toContain('member-1');
+  });
+
+  it('stops a sign-in that is still at an earlier step', async () => {
+    let finishLogin: (response: Response) => void = () => {};
+    const core = fakeCore({
+      '/v1/identity/google-login': () => new Promise<Response>((resolve) => (finishLogin = resolve)),
+    });
+    const auth = authWith(core);
+    await auth.renderGoogleButton(element);
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(core.calls.some((call) => call.path.endsWith('google-login'))).toBe(true));
+
+    await auth.signOut();
+    finishLogin(Response.json({ endUserId: 'eu-1', suiAddress: CUSTOMER_ADDRESS }));
+    await settle();
+
+    expect(core.calls.some((call) => call.path.endsWith('enroll'))).toBe(false);
+    expect(auth.currentUser).toBeNull();
+  });
+
+  it('stops after enrollment too', async () => {
+    let finishEnroll: (response: Response) => void = () => {};
+    const core = fakeCore({
+      [`/v1/identity/organizations/${ORG}/enroll`]: () => new Promise<Response>((resolve) => (finishEnroll = resolve)),
+    });
+    const auth = authWith(core);
+    await auth.renderGoogleButton(element);
+    google.callback!({ credential: validToken() });
+    await vi.waitFor(() => expect(core.calls.some((call) => call.path.endsWith('enroll'))).toBe(true));
+
+    await auth.signOut();
+    finishEnroll(Response.json({ organizationEndUserId: 'member-1', endUserId: 'eu-1' }));
+    await settle();
+
+    expect(core.calls.some((call) => call.path.endsWith('proof'))).toBe(false);
+  });
+
+  it('reports nothing and re-arms nothing when the abandoned sign-in fails', async () => {
+    const { auth, errors, proof } = await heldAtProof();
+    await auth.signOut();
+    const nonces = google.nonces.length;
+
+    proof().reject(new TypeError('fetch failed'));
+    await settle();
+
+    expect(errors).toEqual([]);
+    expect(google.nonces).toHaveLength(nonces);
+  });
+
+  it('lets a new sign-in run, and the abandoned one cannot replace it', async () => {
+    const { auth, core, proof } = await heldAtProof([async () => Response.json(PROOF)]);
+    const abandoned = proof();
+    await auth.signOut();
+
+    google.callback!({ credential: validToken({ sub: 'second' }) });
+    await vi.waitFor(() => expect(auth.currentUser).not.toBeNull());
+    const session = storage.data.get(STORAGE_KEY);
+    expect(core.calls.filter((call) => call.path.endsWith('google-login'))).toHaveLength(2);
+
+    abandoned.resolve(Response.json(PROOF));
+    await settle();
+
+    expect(storage.data.get(STORAGE_KEY)).toBe(session);
+    expect(auth.currentUser?.memberId).toBe('member-1');
+  });
+
+  it('renders only the latest nonce when buttons are armed in quick succession', async () => {
+    const responses: Array<(response: Response) => void> = [];
+    let calls = 0;
+    const core = fakeCore({
+      '/v1/identity/zklogin/nonce': () =>
+        ++calls === 1
+          ? Response.json({ nonce: NONCE, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() + 86_400_000 })
+          : new Promise<Response>((resolve) => responses.push(resolve)),
+    });
+    const auth = authWith(core);
+    await auth.renderGoogleButton(element);
+    const first = auth.signOut();
+    const second = auth.signOut();
+    await vi.waitFor(() => expect(responses).toHaveLength(2));
+    const nonce = (value: string) =>
+      Response.json({ nonce: value, randomness: 'r', maxEpoch: 5, estimatedExpiration: Date.now() + 86_400_000 });
+
+    responses[1](nonce('newest'));
+    await second;
+    responses[0](nonce('older'));
+    await first;
+
+    expect(google.nonces.at(-1)).toBe('newest');
+    expect(google.nonces).not.toContain('older');
+  });
+
+  it('ignores a credential from a button that was replaced', async () => {
+    const auth = authWith(fakeCore());
+    const errors: OctapAuthError[] = [];
+    await auth.renderGoogleButton(element, { onError: (err) => errors.push(err) });
+    const replaced = google.callback!;
+
+    await auth.signOut();
+    replaced({ credential: validToken() });
+    await settle();
+
+    expect(auth.currentUser).toBeNull();
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('canceled sign-in', () => {
   /** Clicks the button with fake timers running, returning controls for the popup's focus. */
   async function clickedButton() {
@@ -472,6 +619,37 @@ describe('session', () => {
     expect(reloaded.currentUser?.memberId).toBe('member-1');
     expect(await reloaded.getIdToken()).toMatch(/\./);
     expect(core.calls).toEqual([]);
+  });
+
+  it.each([
+    ['API URL', { apiBaseUrl: 'https://another.test' }],
+    ['Google client ID', { googleClientId: 'another-client' }],
+    ['organization', { organizationId: 'org-2' }],
+  ])('does not restore a session under another %s', async (_name, change) => {
+    await signIn(authWith(fakeCore()), google);
+
+    const other = createOctapAuth({
+      apiBaseUrl: 'https://core.test',
+      organizationId: ORG,
+      googleClientId: 'google-client',
+      fetch: fakeCore().fetch,
+      ...change,
+    });
+
+    expect(other.currentUser).toBeNull();
+  });
+
+  it('restores the same configuration, however its URL ends', async () => {
+    await signIn(authWith(fakeCore()), google);
+
+    const same = createOctapAuth({
+      apiBaseUrl: 'https://core.test//',
+      organizationId: ORG,
+      googleClientId: 'google-client',
+      fetch: fakeCore().fetch,
+    });
+
+    expect(same.currentUser?.memberId).toBe('member-1');
   });
 
   it('keeps an isolated session per organization', async () => {
@@ -684,7 +862,7 @@ describe('session', () => {
 
   it('ignores a stored session whose proof is not usable', () => {
     storage.data.set(
-      `octap.auth.${ORG}`,
+      STORAGE_KEY,
       JSON.stringify({
         user: { endUserId: 'e', memberId: 'm', suiAddress: 'a' },
         idToken: 't',
@@ -696,7 +874,7 @@ describe('session', () => {
 
   it('gives a typed error, not a raw one, for a corrupted stored key', async () => {
     await signIn(authWith(fakeCore()), google);
-    const key = `octap.auth.${ORG}`;
+    const key = STORAGE_KEY;
     const stored = JSON.parse(storage.data.get(key)!) as { signer: { secretKey: string } };
     stored.signer.secretKey = 'corrupted';
     storage.data.set(key, JSON.stringify(stored));
@@ -721,7 +899,7 @@ describe('session', () => {
     ['unparseable', 'not json'],
     ['the wrong shape', JSON.stringify({ user: { endUserId: 'x' } })],
   ])('ignores and removes a stored value that is %s', (_name, value) => {
-    storage.data.set(`octap.auth.${ORG}`, value);
+    storage.data.set(STORAGE_KEY, value);
     const auth = authWith(fakeCore());
     expect(auth.currentUser).toBeNull();
   });
