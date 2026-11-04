@@ -20,6 +20,7 @@ import type {
   SetVoucherRefundPolicyRequest,
   ListVoucherRefundPolicyHistoryRequest,
   VoucherRefundPolicyDto,
+  VerifyCustomerResponse,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError } from './errors/index.js';
@@ -132,6 +133,19 @@ export class OctaPointClient {
     }
 
     return responseData as T;
+  }
+
+  // ==========================================
+  // IDENTITY API
+  // ==========================================
+
+  /**
+   * Checks the id_token your frontend got from the browser SDK's `getIdToken()`, like Firebase Admin
+   * `verifyIdToken`. Writes nothing. `memberId` is null until the customer enrolls in your
+   * organization, and `endUserId` is null if they have never signed in to OctaP.
+   */
+  async verifyCustomer(idToken: string, options?: RequestOptions): Promise<VerifyCustomerResponse> {
+    return this.request<VerifyCustomerResponse>('/v1/identity/verify', 'POST', { idToken }, options);
   }
 
   // ==========================================

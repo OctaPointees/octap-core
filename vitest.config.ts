@@ -40,6 +40,8 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['api/tests/integration/**/*.integration.test.ts'],
+          // Every request comes from one IP and Redis is not reset between tests.
+          env: { PUBLIC_RATE_LIMIT_MAX_REQUESTS: '100000' },
           globalSetup: [fromRoot('./api/tests/integration/support/global-setup.ts')],
           // Every file shares one Postgres/Redis and truncates between tests, so files run one at a time.
           fileParallelism: false,

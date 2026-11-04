@@ -372,9 +372,9 @@ export class CreditsRepository {
   /**
    * The member's real zkLogin Sui address, via organization_end_users -> end_users. Always
    * populated by the time a member can earn or redeem at all: `organization_end_users` can only
-   * be created by `IdentityService.enrollInOrganization`, which requires the end user to already
-   * exist, which only happens via `loginWithGoogle` — there is no "enrolled but never logged in"
-   * path in this codebase. A null here is a data integrity problem, not a normal pending state.
+   * be created by `IdentityService.enrollInOrganization`, which resolves the end user's address
+   * from their id_token first — there is no "enrolled without an address" path in this codebase.
+   * A null here is a data integrity problem, not a normal pending state.
    */
   async findBeneficiaryAddress(organizationEndUserId: string): Promise<string | null> {
     const rows = await this.db

@@ -1,6 +1,13 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { Redis } from 'ioredis';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PUBLIC_RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/public-rate-limit.guard.js';
+import { EnokiTokenRejectedError } from '#infra/clients/enoki/enoki.client.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { endUsers, organizationEndUsers } from '#infra/db/schema/members.schema.js';
+import { organizations } from '#infra/db/schema/organizations.schema.js';
 import { createTestApp } from '../support/app.js';
-import { resetDb, seedOrganization } from '../support/db.js';
+import { resetDb, seedCredential, seedOrganization } from '../support/db.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
@@ -31,18 +38,139 @@ describe('identity over HTTP (no merchant API key)', () => {
     const enrolled = await ctx
       .http()
       .post(`/v1/identity/organizations/${orgId}/enroll`)
-      .send({ endUserId: first.body.endUserId, externalMemberId: 'loyalty-card-7' })
+      .send({ idToken: 'google-jwt' })
       .expect(201);
     expect(enrolled.body.isNewEnrollment).toBe(true);
     const reenrolled = await ctx
       .http()
       .post(`/v1/identity/organizations/${orgId}/enroll`)
-      .send({ endUserId: first.body.endUserId })
+      .send({ idToken: 'google-jwt' })
       .expect(201);
     expect(reenrolled.body).toEqual({
       organizationEndUserId: enrolled.body.organizationEndUserId,
+      endUserId: first.body.endUserId,
       isNewEnrollment: false,
     });
+  });
+
+  it('enrolls a customer whose first request is enroll, once under concurrent requests', async () => {
+    const results = await Promise.all(
+      [1, 2, 3].map(() =>
+        ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'google-jwt' }).expect(201),
+      ),
+    );
+    const members = new Set(results.map((res) => res.body.organizationEndUserId));
+    expect(members.size).toBe(1);
+    expect(results.filter((res) => res.body.isNewEnrollment)).toHaveLength(1);
+  });
+
+  it('a bare endUserId no longer enrolls anyone', async () => {
+    const { body: user } = await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' });
+    ctx.adapters.enoki.resolveZkLoginAddress.mockClear();
+
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ endUserId: user.endUserId }).expect(400);
+
+    expect(ctx.adapters.enoki.resolveZkLoginAddress).not.toHaveBeenCalled();
+  });
+
+  it('answers 401, not 5xx, for a token Enoki rejects, and 500 for anything else', async () => {
+    ctx.adapters.enoki.resolveZkLoginAddress.mockRejectedValueOnce(new EnokiTokenRejectedError('jwt_error'));
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'expired' }).expect(401);
+
+    ctx.adapters.enoki.resolveZkLoginAddress.mockRejectedValueOnce(new EnokiTokenRejectedError('jwt_error'));
+    await ctx.http().post('/v1/identity/google-login').send({ idToken: 'expired' }).expect(401);
+
+    ctx.adapters.enoki.resolveZkLoginAddress.mockRejectedValueOnce(new Error('Enoki is down'));
+    await ctx.http().post('/v1/identity/google-login').send({ idToken: 'valid' }).expect(500);
+  });
+
+  it('ignores a caller-chosen externalMemberId, which proves nothing', async () => {
+    await ctx
+      .http()
+      .post(`/v1/identity/organizations/${orgId}/enroll`)
+      .send({ idToken: 'google-jwt', externalMemberId: 'loyalty-card-7' })
+      .expect(201);
+
+    const [member] = await ctx.db.select().from(organizationEndUsers);
+    expect(member.externalMemberId).toBeNull();
+  });
+
+  it('refuses a suspended organization and a blocked customer', async () => {
+    const suspended = await seedOrganization(ctx.db, { status: 'SUSPENDED' });
+    await ctx
+      .http()
+      .post(`/v1/identity/organizations/${suspended.id}/enroll`)
+      .send({ idToken: 'google-jwt' })
+      .expect(409);
+
+    await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' }).expect(201);
+    await ctx.db.update(endUsers).set({ status: 'BLOCKED' });
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'google-jwt' }).expect(403);
+  });
+
+  describe('when the organization is suspended during token resolution', () => {
+    type Resolved = { address: string; publicKey: string; salt: string };
+    const resolved: Resolved = { address: '0xrace', publicKey: 'pk', salt: 'salt' };
+
+    /** Starts an enrollment and returns once it is paused inside Enoki. */
+    async function enrollPausedInEnoki() {
+      let release: (value: Resolved) => void = () => {};
+      const resolve = ctx.adapters.enoki.resolveZkLoginAddress;
+      resolve.mockClear();
+      resolve.mockImplementationOnce(() => new Promise<Resolved>((done) => (release = done)));
+      const response = ctx
+        .http()
+        .post(`/v1/identity/organizations/${orgId}/enroll`)
+        .send({ idToken: 'google-jwt' })
+        .then((res) => res);
+      await vi.waitFor(() => expect(resolve).toHaveBeenCalled());
+      return { response, release: () => release(resolved) };
+    }
+
+    const memberships = () =>
+      ctx.db.select().from(organizationEndUsers).where(eq(organizationEndUsers.organizationId, orgId));
+    const suspend = (db: DrizzleDb) =>
+      db.update(organizations).set({ status: 'SUSPENDED' }).where(eq(organizations.id, orgId));
+
+    it('creates no membership after a committed suspension', async () => {
+      const { response, release } = await enrollPausedInEnoki();
+
+      await suspend(ctx.db);
+      release();
+
+      expect((await response).status).toBe(409);
+      expect(await memberships()).toEqual([]);
+    });
+
+    it('waits for a suspension still in progress, then refuses', async () => {
+      const { response, release } = await enrollPausedInEnoki();
+      let settled = false;
+      void response.then(() => (settled = true));
+
+      await ctx.db.transaction(async (tx) => {
+        await suspend(tx as unknown as DrizzleDb);
+        release();
+        await new Promise((done) => setTimeout(done, 300));
+        expect(settled).toBe(false);
+      });
+
+      expect((await response).status).toBe(409);
+      expect(await memberships()).toEqual([]);
+    });
+  });
+
+  it('answers 400, not 500, for a request with no JSON body', async () => {
+    await ctx.http().post('/v1/identity/google-login').expect(400);
+    await ctx.http().post('/v1/identity/google-login').set('content-type', 'text/plain').send('jwt').expect(400);
+  });
+
+  it('answers 404 for a missing organization and 400 for a malformed id', async () => {
+    await ctx
+      .http()
+      .post('/v1/identity/organizations/00000000-0000-0000-0000-000000000000/enroll')
+      .send({ idToken: 'google-jwt' })
+      .expect(404);
+    await ctx.http().post('/v1/identity/organizations/not-a-uuid/enroll').send({ idToken: 'google-jwt' }).expect(400);
   });
 
   it('proxies zkLogin nonce and proof to Enoki', async () => {
@@ -62,12 +190,158 @@ describe('identity over HTTP (no merchant API key)', () => {
   it('validates bodies', async () => {
     await ctx.http().post('/v1/identity/google-login').send({}).expect(400);
     await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({}).expect(400);
-    await ctx
-      .http()
-      .post(`/v1/identity/organizations/${orgId}/enroll`)
-      .send({ endUserId: '00000000-0000-0000-0000-000000000000' })
-      .expect(400);
     await ctx.http().post('/v1/identity/zklogin/nonce').send({}).expect(400);
     await ctx.http().post('/v1/identity/zklogin/proof').send({ idToken: 'jwt' }).expect(400);
+  });
+});
+
+describe('POST /v1/identity/verify (merchant API key)', () => {
+  const verify = (rawKey: string, idToken: unknown = 'google-jwt') =>
+    ctx.http().post('/v1/identity/verify').set('authorization', `Bearer ${rawKey}`).send({ idToken });
+
+  it('returns the same member as the browser flow, null before enrollment, and writes nothing', async () => {
+    const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['read'] });
+
+    const unknown = await verify(rawKey).expect(200);
+    expect(unknown.body).toEqual({ endUserId: null, suiAddress: '0xzklogin', memberId: null, active: false });
+    const login = await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' }).expect(201);
+    expect(login.body.isNewUser).toBe(true);
+
+    const notEnrolled = await verify(rawKey).expect(200);
+    expect(notEnrolled.body).toEqual({
+      endUserId: login.body.endUserId,
+      suiAddress: '0xzklogin',
+      memberId: null,
+      active: false,
+    });
+    const first = await ctx
+      .http()
+      .post(`/v1/identity/organizations/${orgId}/enroll`)
+      .send({ idToken: 'google-jwt' })
+      .expect(201);
+    expect(first.body.isNewEnrollment).toBe(true);
+
+    const enrolled = await verify(rawKey).expect(200);
+    expect(enrolled.body.memberId).toBe(first.body.organizationEndUserId);
+    expect(enrolled.body.active).toBe(true);
+    expect(enrolled.headers['cache-control']).toBe('no-store');
+  });
+
+  it('never reports membership in another organization', async () => {
+    const other = await seedOrganization(ctx.db);
+    const { rawKey } = await seedCredential(ctx.db, other.id, { scopes: ['read'] });
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'google-jwt' }).expect(201);
+
+    expect((await verify(rawKey).expect(200)).body.memberId).toBeNull();
+  });
+
+  it('requires a credential with the read scope, and a valid token', async () => {
+    await ctx.http().post('/v1/identity/verify').send({ idToken: 'google-jwt' }).expect(401);
+    const { rawKey: writeOnly } = await seedCredential(ctx.db, orgId, { scopes: ['write'] });
+    await verify(writeOnly).expect(403);
+
+    const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['read'] });
+    await verify(rawKey, 42).expect(400);
+    ctx.adapters.enoki.resolveZkLoginAddress.mockRejectedValueOnce(new EnokiTokenRejectedError('jwt_error'));
+    await verify(rawKey, 'expired').expect(401);
+  });
+});
+
+describe('public route rate limit', () => {
+  const windowBucket = () => Math.floor(Date.now() / 1000 / 60);
+  let redis: Redis;
+
+  beforeAll(() => {
+    redis = new Redis(process.env.REDIS_URL!);
+  });
+
+  // Exhausted windows would otherwise reject every later public request in this run.
+  afterEach(async () => {
+    const keys = await redis.keys('ratelimit:public-ip:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  });
+
+  afterAll(() => {
+    redis.disconnect();
+  });
+
+  /** Pre-fills every address the local test client can appear as, instead of firing real requests. */
+  const exhaust = async (...addresses: string[]) => {
+    for (const address of addresses) {
+      await redis.set(
+        `ratelimit:public-ip:${address}:${windowBucket()}`,
+        String(PUBLIC_RATE_LIMIT_MAX_REQUESTS),
+        'EX',
+        60,
+      );
+    }
+  };
+  const localAddresses = ['127.0.0.1', '0:0:0:0::/64'];
+
+  it.each([
+    ['google-login', '/v1/identity/google-login', { idToken: 'jwt' }],
+    ['nonce', '/v1/identity/zklogin/nonce', { ephemeralPublicKey: 'epk' }],
+    [
+      'proof',
+      '/v1/identity/zklogin/proof',
+      { idToken: 'jwt', ephemeralPublicKey: 'epk', randomness: 'r', maxEpoch: 3 },
+    ],
+    ['finalize', '/v1/credits/redeem/finalize', { digest: 'd', signature: 's' }],
+  ])('%s answers 429 past the limit without calling Enoki', async (_name, path, body) => {
+    await exhaust(...localAddresses);
+    const enoki = Object.values(ctx.adapters.enoki);
+    enoki.forEach((fn) => fn.mockClear());
+
+    const res = await ctx.http().post(path).send(body).expect(429);
+
+    expect(res.body.message).toMatch(/Too many requests/);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+    enoki.forEach((fn) => expect(fn).not.toHaveBeenCalled());
+  });
+
+  it('enroll answers 429 past the limit without calling Enoki', async () => {
+    await exhaust(...localAddresses);
+    ctx.adapters.enoki.resolveZkLoginAddress.mockClear();
+
+    await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'jwt' }).expect(429);
+
+    expect(ctx.adapters.enoki.resolveZkLoginAddress).not.toHaveBeenCalled();
+  });
+
+  it('ignores X-Forwarded-For by default, so a client cannot forge a new address', async () => {
+    await exhaust(...localAddresses);
+    await ctx
+      .http()
+      .post('/v1/identity/google-login')
+      .set('x-forwarded-for', '203.0.113.9')
+      .send({ idToken: 'jwt' })
+      .expect(429);
+  });
+
+  it('counts the forwarded client behind a trusted proxy', async () => {
+    const express = ctx.app.getHttpAdapter().getInstance();
+    express.set('trust proxy', 1);
+    try {
+      await exhaust('203.0.113.9');
+      const send = (ip: string) =>
+        ctx.http().post('/v1/identity/google-login').set('x-forwarded-for', ip).send({ idToken: 'jwt' });
+      await send('203.0.113.9').expect(429);
+      await send('203.0.113.10').expect(201);
+    } finally {
+      express.set('trust proxy', false);
+    }
+  });
+
+  it('does not touch credentialed routes', async () => {
+    await exhaust(...localAddresses);
+    const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['read'] });
+    await ctx
+      .http()
+      .post('/v1/identity/verify')
+      .set('authorization', `Bearer ${rawKey}`)
+      .send({ idToken: 'jwt' })
+      .expect(200);
   });
 });

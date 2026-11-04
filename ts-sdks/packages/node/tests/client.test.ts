@@ -20,6 +20,21 @@ function recordingFetch(respond: (url: string, init: RequestInit) => unknown = (
 }
 
 describe('OctaPointClient', () => {
+  it('verifyCustomer posts the token with the API key and returns the verified customer', async () => {
+    const customer = { endUserId: 'eu-1', suiAddress: '0xabc', memberId: null, active: false };
+    const { fetchFn, last } = recordingFetch(() => customer);
+    const client = createOctaPointClient({ credentials: { apiKey: 'test-key' }, fetchFn });
+
+    await expect(client.verifyCustomer('google-jwt')).resolves.toEqual(customer);
+
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:3000/v1/identity/verify',
+      body: { idToken: 'google-jwt' },
+      headers: { authorization: 'Bearer test-key' },
+    });
+  });
+
   it('updates voucher lifecycle fields through the authenticated public PATCH method', async () => {
     const { fetchFn, last } = recordingFetch(() => ({ id: 'voucher-1', status: 'PAUSED' }));
     const client = createOctaPointClient({ credentials: { apiKey: 'test-key' }, organizationId: 'org-1', fetchFn });

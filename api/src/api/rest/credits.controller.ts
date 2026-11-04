@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Body, Param, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, BadRequestException, UseGuards } from '@nestjs/common';
 import { CreditsService } from '#domain/credits/credits.service.js';
 import { EarnService } from '#domain/credits/earn.service.js';
 import { RedemptionService } from '#domain/credits/redemption.service.js';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
+import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
@@ -76,6 +77,7 @@ export class CreditsController {
    * the proof of authorization — Enoki and the chain verify it, not an API key.
    */
   @Public()
+  @UseGuards(PublicRateLimitGuard)
   @Post('redeem/finalize')
   async finalizePosRedemption(@Body() body: FinalizePosRedemptionBodyDto): Promise<FinalizePosRedemptionResponse> {
     if (!body.digest || !body.signature) {

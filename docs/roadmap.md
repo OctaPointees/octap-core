@@ -27,13 +27,13 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
-| Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
+| Authorization hardening: per-credential and per-IP public-route rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
 | Members: tenant customer search/detail, exact POS ID lookup, Owner-only profile/status edits and blocked-member command eligibility | api/src/domain/members; api/src/api/rest/members.controller.ts |
 | Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding, Developer invitations and suspension/restoration, and System Admin first-Owner bootstrap for active ownerless organizations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
-| Identity: Google zkLogin via Enoki (address resolution, end-user binding, org enrollment), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
+| Identity: Google zkLogin via Enoki (address resolution, end-user binding, token-proven org enrollment, merchant `verifyCustomer` in the Node SDK), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
 | Operations: durable-command acceptance with payload-hash conflict detection, reusable across features; UNKNOWN-state recovery for operations a crashed worker left stuck in PROCESSING | api/src/infra/db/repositories/operations.repository.ts (`acceptCommand`, `recoverStaleProcessing`) |
 | Credits: real on-chain customer-signed POS redemption (reserve/finalize, sponsored, confirmed by reading the chain's own verdict) | api/src/domain/credits/pos-redemption.service.ts; api/src/api/rest/credits.controller.ts (`POST /v1/credits/redeem/reserve`, `POST /v1/credits/redeem/finalize`) |
 | Credits: chain-time expiry buckets mirrored into Postgres (FIFO consumption, lazy expiry sweep, `CreditExpired` projection) | api/src/infra/db/repositories/credits.repository.ts (`expireDueBuckets`); api/src/domain/indexer |
@@ -71,8 +71,10 @@ then move the row to **Implemented** in the same pull request.
   `confirmPosRedemptionOnChain` commits, not in the same transaction (harmless: the entry expires
   on its own). Its webhook is no longer emitted there: `credits.redemption.confirmed` is queued
   inside the confirm itself (OCT-209), and POS redemptions no longer send `credits.redeemed`.
-- Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`): the
-  Google id_token is the proof of identity, and Enoki validates it, not this process. No customer
+- Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`), limited per client IP
+  (`PublicRateLimitGuard`; set `TRUSTED_PROXY_HOPS` behind a proxy, and a merchant server proxying these routes counts as one IP): the
+  Google id_token is the proof of identity on login and enroll, and Enoki validates it, not this process. All merchants share one
+  Google client ID, so a token captured by one merchant is valid at another's `POST /v1/identity/verify` and can enroll that customer there for its roughly one-hour lifetime; spending still needs the customer's signature (accepted until per-merchant clients, see OCT-196). Enroll no longer takes `externalMemberId`, because a value the caller chooses proves nothing; a merchant-side way to set it is not built. No customer
   session/bearer token is issued — balance and voucher reads still require the merchant API-key
   guard until a real customer-session mechanism is separately scoped. The ephemeral keypair for
   signing is entirely client-side (this process only ever sees its public half); nonce/proof
@@ -202,7 +204,7 @@ and vendor clients.
 | Feature | Suggested location | Notes |
 | --- | --- | --- |
 | Identity: system-user (dashboard login) sessions | domain/identity | Separate from the Google zkLogin flow implemented above; merchant/admin dashboard login, not the end-user customer identity |
-| Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
+| Authorization hardening: mTLS | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
 | Wildcard subdomain hosting | domain/organizations / Web hosting | Path-based /orgs/:slug fallback and safe Core slug resolution implemented; DNS/host routing remains deployment work |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
