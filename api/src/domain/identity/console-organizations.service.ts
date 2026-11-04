@@ -53,7 +53,7 @@ export class ConsoleOrganizationsService {
       nationalId: nationalId as string | undefined,
     };
   }
-  apply(userId: string, input: Record<string, unknown>) {
+  apply(userId: string, input: Record<string, unknown>, adminActorId?: string) {
     const profile = this.profileInput(input);
     const organizationType = input?.organizationType;
     if (organizationType !== 'INDIVIDUAL_HOUSEHOLD' && organizationType !== 'COMPANY')
@@ -81,11 +81,15 @@ export class ConsoleOrganizationsService {
     )
       throw new BadRequestException('Use a unique slug of 3–48 lowercase letters, numbers or hyphens');
     return this.run(async () => ({
-      id: await this.organizations.apply(userId, {
-        ...profile,
-        slug,
-        organizationType,
-      } satisfies OrganizationApplicationInput),
+      id: await this.organizations.apply(
+        userId,
+        {
+          ...profile,
+          slug,
+          organizationType,
+        } satisfies OrganizationApplicationInput,
+        adminActorId,
+      ),
     }));
   }
   applications(userId: string, platform = false) {

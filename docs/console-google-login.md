@@ -46,8 +46,8 @@ administrator receives no implicit tenant membership.
   or key hashes. Lists are bounded to 100 rows.
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
-Chain provisioning, wildcard DNS, other change request types, full staff role changes,
-credential issuance and customer member-directory operations remain separate work.
+Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.
+Status/ownership governance is implemented in OCT-208. Wildcard DNS and credential issuance UI remain separate work.
 Do not treat organization approval as a provisioned on-chain program.
 
 ## Invitations

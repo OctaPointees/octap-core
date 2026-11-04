@@ -7,3 +7,4 @@ export * from './system-users.js';
 export * from './console.js';
 export * from './members.js';
 export * from './governance.js';
+export * from './organizations.js';

@@ -15,10 +15,13 @@ import {
 import { ConsoleAccessGuard } from './console-access.guard.js';
 import { MembersController } from './members.controller.js';
 import { ConsoleChangeRequestsController, PlatformChangeRequestsController } from './administration.controller.js';
+import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 @Module({
   imports: [DomainModule, AuthModule],
   providers: [ConsoleAccessGuard],
   controllers: [
+    PlatformOrganizationsController,
+    OrganizationResolutionController,
     ConsoleChangeRequestsController,
     PlatformChangeRequestsController,
     MembersController,

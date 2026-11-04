@@ -11,6 +11,7 @@ import {
   ConsoleConflictError,
   ConsoleNotFoundError,
 } from './console-organizations.repository.js';
+import { withInitialOwners, requireSystemAdmin } from './console-access.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const reviewer = alias(systemUsers, 'reviewer');
 
@@ -20,14 +21,7 @@ export class GovernanceRepository {
     @Inject(DRIZZLE_DB) private readonly db: DrizzleDb,
     private readonly access: ConsoleOrganizationsRepository,
   ) {}
-  private async admin(tx: Tx, actor: string) {
-    const [user] = await tx
-      .select({ role: systemUsers.systemRole })
-      .from(systemUsers)
-      .where(eq(systemUsers.id, actor))
-      .for('share');
-    if (user?.role !== 'SYSTEM_ADMIN') throw new ConsoleAccessError('System Admin role required');
-  }
+  private admin = requireSystemAdmin;
   async propose(actor: string, orgId: string, input: GovernanceProposal, platform: boolean) {
     const action = async (tx: Tx) => {
       const [org] = await tx.select().from(organizations).where(eq(organizations.id, orgId)).for('update');
@@ -118,7 +112,7 @@ export class GovernanceRepository {
         .limit(query.limit + 1);
       const more = rows.length > query.limit;
       if (more) rows.pop();
-      return { items: rows, nextCursor: more ? rows.at(-1)!.id : null };
+      return { items: await withInitialOwners(tx, rows), nextCursor: more ? rows.at(-1)!.id : null };
     });
   }
   async decide(actor: string, requestId: string, approve: boolean, reason: string) {

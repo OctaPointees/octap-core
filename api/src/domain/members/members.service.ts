@@ -10,7 +10,7 @@ import { MembersRepository } from '#infra/db/repositories/members.repository.js'
 import { ConsoleAccessError, ConsoleNotFoundError } from '#infra/db/repositories/console-organizations.repository.js';
 import { CreditsService } from '../credits/credits.service.js';
 
-const uuid = /^[\da-f]{8}-[\da-f]{4}-[1-8][\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
+import { UUID_PATTERN as uuid } from '#infra/db/repositories/console-access.js';
 @Injectable()
 export class MembersService {
   constructor(

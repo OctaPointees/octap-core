@@ -29,6 +29,7 @@ then move the row to **Implemented** in the same pull request.
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
 | Authorization hardening: per-credential rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
+| Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
 | Members: tenant customer search/detail, exact POS ID lookup, Owner-only profile/status edits and blocked-member command eligibility | api/src/domain/members; api/src/api/rest/members.controller.ts |
 | Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding, Developer invitations and suspension/restoration, and System Admin first-Owner bootstrap for active ownerless organizations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
@@ -202,7 +203,7 @@ and vendor clients.
 | --- | --- | --- |
 | Identity: system-user (dashboard login) sessions | domain/identity | Separate from the Google zkLogin flow implemented above; merchant/admin dashboard login, not the end-user customer identity |
 | Authorization hardening: mTLS, rate limits, nonce/replay windows | api/src/infra/auth | Basic API-key/scope/tenant guard is implemented; see Known gaps above |
-| Organizations and subdomains | domain/organizations | Console creation/approval and profile setup implemented; wildcard DNS and full lifecycle remain |
+| Wildcard subdomain hosting | domain/organizations / Web hosting | Path-based /orgs/:slug fallback and safe Core slug resolution implemented; DNS/host routing remains deployment work |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
@@ -257,3 +258,5 @@ Add each remaining module with its tests under `contracts/sui/tests`.
 | Offline earn-intent buffering | browser |
 | Webhook signature verification | node |
 | Deadlines and retries | node |
+
+Organization slug entry is implemented behind ORG_SLUG_ENTRY_ENABLED (default false) and is not operational yet; it does not configure wildcard DNS.

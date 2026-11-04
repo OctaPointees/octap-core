@@ -9,6 +9,10 @@ export interface GovernanceRequest {
   organizationId: string | null;
   requestedById: string;
   reviewedById: string | null;
+  requesterEmail?: string;
+  reviewerEmail?: string | null;
+  initialOwnerName?: string | null;
+  initialOwnerEmail?: string | null;
   requestType: GovernanceRequestType | 'CREATE_ORGANIZATION';
   status: string;
   payload: unknown;
