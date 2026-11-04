@@ -1,6 +1,6 @@
 export { OctaPointClient, createOctaPointClient, type OctaPointClientOptions, type RequestOptions } from './client.js';
 
-export { OctaSdkError, OctaApiError } from './errors/index.js';
+export { OctaSdkError, OctaApiError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
 
 export { verifyWebhookSignature, constructWebhookEvent } from './webhooks.js';
 
@@ -16,8 +16,12 @@ export type {
   LoyaltyTxStatus,
   EarnPointsRequest,
   EarnPointsResponse,
-  RedeemPointsRequest,
-  RedeemPointsResponse,
+  ReservePosRedemptionRequest,
+  ReservePosRedemptionResponse,
+  FinalizePosRedemptionRequest,
+  FinalizePosRedemptionResponse,
+  ReverseTransactionRequest,
+  ReverseTransactionResponse,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   VoucherRefundPolicy,
@@ -45,6 +49,5 @@ export type {
   WebhookEventType,
   WebhookEvent,
   CreditsEarnedEventData,
-  CreditsRedeemedEventData,
   CreditsChainConfirmedEventData,
 } from '@octap/contracts';

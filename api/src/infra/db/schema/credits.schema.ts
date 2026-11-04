@@ -85,7 +85,9 @@ export const loyaltyTransactions = pgTable(
       onDelete: 'set null',
     }),
     transactionType: loyaltyTxTypeEnum('transaction_type').notNull(),
+    /** Estimated points while PENDING, actual points after chain confirmation. */
     pointsAmount: bigint('points_amount', { mode: 'number' }).notNull(),
+    purchaseAmount: bigint('purchase_amount', { mode: 'number' }),
     idempotencyKey: text('idempotency_key').notNull(),
     receiptReference: text('receipt_reference'),
     status: loyaltyTxStatusEnum('status').default('PENDING').notNull(),

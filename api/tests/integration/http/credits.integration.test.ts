@@ -91,56 +91,58 @@ function chainSubmitWorker(
   };
 }
 
-const earn = (pointsAmount: number, idempotencyKey: string) =>
-  ctx.http().post('/v1/credits/earn').set(auth).send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
+const earn = (purchaseAmount: number, idempotencyKey: string) =>
+  ctx
+    .http()
+    .post('/v1/credits/earn')
+    .set(auth)
+    .send({ organizationEndUserId: memberId, purchaseAmount, idempotencyKey });
 const balance = async () =>
   (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body;
 
 describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
-  it('runs the whole credits lifecycle through HTTP and the real database', async () => {
-    const accepted = await earn(10_000, 'receipt-001').expect(201);
-    expect(accepted.body).toMatchObject({ status: 'PENDING', pointsEarned: 10_000, newBalance: 0 });
-    expect(await balance()).toMatchObject({ confirmedBalance: 0, pendingEarn: 10_000, stale: true });
-
-    // Same key again: replayed, not double-counted.
-    expect((await earn(10_000, 'receipt-001').expect(201)).body.transactionId).toBe(accepted.body.transactionId);
-
+  it('keeps purchase units separate through acceptance, history, confirmation and reversal', async () => {
+    const accepted = await earn(100_000, 'receipt-001').expect(201);
+    expect(accepted.body).toMatchObject({
+      status: 'PENDING',
+      purchaseAmount: 100_000,
+      estimatedPoints: 1000,
+      pointsEarned: null,
+      newBalance: 0,
+    });
+    expect(await balance()).toMatchObject({ confirmedBalance: 0, pendingEarn: 1000, stale: true });
+    const pending = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(auth).expect(200))
+      .body[0];
+    expect(pending).toMatchObject({ purchaseAmount: 100_000, estimatedPoints: 1000, pointsAmount: null });
+    expect((await earn(100_000, 'receipt-001').expect(201)).body.transactionId).toBe(accepted.body.transactionId);
+    await earn(100_001, 'receipt-001').expect(409);
     await chainSubmitWorker().drain();
-    expect(await balance()).toMatchObject({ confirmedBalance: 100, pendingEarn: 0, lifetimeEarned: 100, stale: false });
-
-    const redeemed = await ctx
+    expect(await balance()).toMatchObject({
+      confirmedBalance: 1000,
+      pendingEarn: 0,
+      lifetimeEarned: 1000,
+      stale: false,
+    });
+    expect((await earn(100_000, 'receipt-001').expect(201)).body).toMatchObject({
+      pointsEarned: 1000,
+      estimatedPoints: null,
+    });
+    const history = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(auth).expect(200)).body;
+    expect(history[0]).toMatchObject({ pointsAmount: 1000, purchaseAmount: 100_000, status: 'CONFIRMED' });
+    await ctx
       .http()
       .post('/v1/credits/redeem')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 40, idempotencyKey: 'redeem-1' })
-      .expect(201);
-    expect(redeemed.body).toMatchObject({ pointsRedeemed: 40, newBalance: 60, status: 'CONFIRMED' });
-
-    const history = (
-      await ctx.http().get(`/v1/credits/members/${memberId}/transactions?limit=10`).set(auth).expect(200)
-    ).body;
-    expect(history.map((t: { transactionType: string }) => t.transactionType)).toEqual(['REDEEM', 'EARN']);
-    expect(history[1]).toMatchObject({
-      pointsAmount: 100,
-      status: 'CONFIRMED',
-      blockchainDigest: expect.stringMatching(/^EARN-/),
-    });
-
+      .send({ organizationEndUserId: memberId, pointsAmount: 40, idempotencyKey: 'unsigned' })
+      .expect(404);
+    expect(await balance()).toMatchObject({ confirmedBalance: 1000 });
     const reversed = await ctx
       .http()
       .post(`/v1/credits/transactions/${accepted.body.transactionId}/reverse`)
       .set(auth)
       .send({ idempotencyKey: 'reverse-1', reason: 'chargeback' })
       .expect(201);
-    expect(reversed.body).toMatchObject({ pointsAmount: 100, newBalance: -40, balanceWentNegative: true });
-
-    // Clawback debt blocks further redemption.
-    await ctx
-      .http()
-      .post('/v1/credits/redeem')
-      .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'redeem-2' })
-      .expect(400);
+    expect(reversed.body).toMatchObject({ pointsAmount: 1000, newBalance: 0, balanceWentNegative: false });
   });
 
   it('a definitive on-chain failure releases the hold', async () => {
@@ -160,7 +162,7 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
       throw new Error('DEADLINE_EXCEEDED');
     }).drain();
     const ownership = await getOwnership(ctx.db, memberId);
-    expect(ownership).toMatchObject({ pendingEarn: 10_000, confirmedBalance: 0, suiCreditAccountId: '0xacc' });
+    expect(ownership).toMatchObject({ pendingEarn: 100, confirmedBalance: 0, suiCreditAccountId: '0xacc' });
 
     const indexerRepo = ctx.app.get(IndexerRepository);
     await indexerRepo.initCursor(CREDIT_ACCOUNT_STREAM, 'C0', '1');
@@ -215,7 +217,7 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
       .http()
       .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: foreign, pointsAmount: 1, idempotencyKey: 'x' })
+      .send({ organizationEndUserId: foreign, purchaseAmount: 1, idempotencyKey: 'x' })
       .expect(404);
     await ctx
       .http()
@@ -236,7 +238,7 @@ describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
       .http()
       .post('/v1/credits/earn')
       .set(bareAuth)
-      .send({ organizationEndUserId: bareMember, pointsAmount: 100, idempotencyKey: 'bare-earn' })
+      .send({ organizationEndUserId: bareMember, purchaseAmount: 100, idempotencyKey: 'bare-earn' })
       .expect(422);
     expect(earnRes.body.message).toMatch(/has no on-chain program provisioned \(no programs row\)/);
     await ctx

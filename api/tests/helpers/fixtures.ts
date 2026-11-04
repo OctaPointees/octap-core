@@ -65,6 +65,7 @@ export function buildLoyaltyTransaction(
     blockchainTransactionId: null,
     transactionType: 'EARN',
     pointsAmount: 50,
+    purchaseAmount: null,
     idempotencyKey: 'earn-1',
     receiptReference: null,
     status: 'CONFIRMED',

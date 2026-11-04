@@ -6,7 +6,6 @@ import { WebhooksController } from '#api/rest/webhooks.controller.js';
 import { ApiCredentialsController } from '#api/rest/api-credentials.controller.js';
 import type { CreditsService } from '#domain/credits/credits.service.js';
 import type { EarnService } from '#domain/credits/earn.service.js';
-import type { RedemptionService } from '#domain/credits/redemption.service.js';
 import type { ReversalService } from '#domain/credits/reversal.service.js';
 import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import type { RewardsService } from '#domain/rewards/rewards.service.js';
@@ -31,38 +30,34 @@ describe('CreditsController', () => {
   function controller(overrides: {
     credits?: Partial<Record<keyof CreditsService, unknown>>;
     earn?: Partial<Record<keyof EarnService, unknown>>;
-    redemption?: Partial<Record<keyof RedemptionService, unknown>>;
     reversal?: Partial<Record<keyof ReversalService, unknown>>;
     pos?: Partial<Record<keyof PosRedemptionService, unknown>>;
   }) {
     return new CreditsController(
       stub<CreditsService>(overrides.credits),
       stub<EarnService>(overrides.earn),
-      stub<RedemptionService>(overrides.redemption),
       stub<ReversalService>(overrides.reversal),
       stub<PosRedemptionService>(overrides.pos),
     );
   }
   const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k' };
 
-  it('earn/redeem/reserve validate required fields and delegate with the tenant org', async () => {
+  it('earn and reserve validate their separate amount contracts', async () => {
     const executeEarn = ok({ transactionId: 'e' });
-    const executeRedeem = ok({ transactionId: 'r' });
     const reserve = ok({ transactionId: 'p' });
-    const c = controller({ earn: { executeEarn }, redemption: { executeRedeem }, pos: { reserve } });
-
-    expect(await c.earn(tenant, body)).toEqual({ transactionId: 'e' });
-    expect(await c.redeem(tenant, body)).toEqual({ transactionId: 'r' });
+    const c = controller({ earn: { executeEarn }, pos: { reserve } });
+    const earnBody = { organizationEndUserId: 'user-1', purchaseAmount: 100000, idempotencyKey: 'k' };
+    expect(await c.earn(tenant, earnBody)).toEqual({ transactionId: 'e' });
+    expect(executeEarn).toHaveBeenCalledWith('org-1', earnBody);
     expect(await c.reservePosRedemption(tenant, body)).toEqual({ transactionId: 'p' });
-    expect(executeEarn).toHaveBeenCalledWith('org-1', body);
-    expect(executeRedeem).toHaveBeenCalledWith('org-1', body);
-    expect(reserve).toHaveBeenCalledWith('org-1', body);
-
+    for (const missing of ['organizationEndUserId', 'purchaseAmount', 'idempotencyKey'] as const) {
+      await bad(c.earn(tenant, { ...earnBody, [missing]: undefined } as unknown as typeof earnBody), /are required/);
+    }
     for (const missing of ['organizationEndUserId', 'pointsAmount', 'idempotencyKey'] as const) {
-      const partial = { ...body, [missing]: undefined } as unknown as typeof body;
-      await bad(c.earn(tenant, partial), /are required/);
-      await bad(c.redeem(tenant, partial), /are required/);
-      await bad(c.reservePosRedemption(tenant, partial), /are required/);
+      await bad(
+        c.reservePosRedemption(tenant, { ...body, [missing]: undefined } as unknown as typeof body),
+        /are required/,
+      );
     }
   });
 
@@ -111,7 +106,7 @@ describe('CreditsController', () => {
     await c.getBalance(tenant, 'user-1');
     await c.getTransactions(tenant, 'user-1', '10');
     await c.getTransactions(tenant, 'user-1');
-    expect(getBalance).toHaveBeenCalledWith('org-1', 'user-1');
+    expect(getBalance).toHaveBeenCalledWith('org-1', 'user-1', undefined);
     expect(listTransactions.mock.calls).toEqual([
       ['org-1', 'user-1', 10],
       ['org-1', 'user-1', 50],

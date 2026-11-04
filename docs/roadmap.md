@@ -12,10 +12,10 @@ then move the row to **Implemented** in the same pull request.
 | Feature | Where |
 | --- | --- |
 | PostgreSQL (Supabase) connection, Drizzle schema, first migration, RLS helper | api/src/infra/db; api/db/postgres/migrations |
-| Earn and redeem points, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
+| Earn from purchase amounts, customer-signed POS redeem, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
 | Voucher create/list/get/claim/redeem, member vouchers | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts |
 | Points and voucher wire types | ts-sdks/packages/contracts |
-| Merchant Node client (REST) for points and vouchers | ts-sdks/packages/node |
+| Merchant Node client (REST) for credits, vouchers, webhook management, structured errors and cancellation | ts-sdks/packages/node |
 | Browser auth SDK for merchant websites: Firebase-style Google sign-in, enrollment, session restore, zkLogin transaction signing and finalize, over Core's proxy routes. Live Testnet signing is verified by hand (`ts-sdks/examples/README.md`) | ts-sdks/packages/browser; ts-sdks/examples/browser-auth |
 | Test layer: Vitest unit specs per domain/infra/SDK + integration specs against real Postgres/Redis (testcontainers), coverage-gated in CI | api/tests; ts-sdks/packages/*/tests; vitest.config.ts |
 | Sui Move: capabilities, program_control, policy_version, credit_account (earn/redeem, expiry-bucket FIFO) | contracts/sui/sources; tests under contracts/sui/tests |
@@ -147,11 +147,11 @@ then move the row to **Implemented** in the same pull request.
   reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; unsigned voucher claims also have a worker sweep; submitted digests are never released by age alone.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- `emit()` (the accept-time `credits.earned` and the legacy PostgreSQL-only `credits.redeemed`) is not in
+- `emit()` (the accept-time `credits.earned`) is not in
   the same DB transaction as the write that triggers it (a crash in between, or a failed enqueue
   that `emit()` only logs, silently drops the event). The chain-confirmation events and, since
   OCT-244, `credits.reversed` and `voucher.redeemed` already use the outbox form,
-  `enqueueWebhookEvent(tx, ...)`; these two could move to it too. The endpoint
+  `enqueueWebhookEvent(tx, ...)`; the accept-time event could move to it too. The endpoint
   `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
   not oversights; the first needs the OCT-43 outbox generalized to cover this too.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
@@ -181,7 +181,7 @@ then move the row to **Implemented** in the same pull request.
   API-key model entirely.
 - RLS is enforced (`withRls()`, real `authenticated`/`service_role` roles and grants — see
   `docker/postgres-init`) only on `CreditsRepository`'s three REST-triggered write transactions
-  (`recordEarnTransaction`/`recordRedeemTransaction`/`recordReversalTransaction`). The worker-only
+  (`recordEarnTransaction`/`reservePosRedemption`/`recordReversalTransaction`). The worker-only
   `confirmEarnOnChain`/`failEarnOnChain` callbacks (chain-submit path) still run on the plain
   pooled connection too — same gap, just not in scope here since this pass targeted the API's
   write path specifically. Every read path and all of

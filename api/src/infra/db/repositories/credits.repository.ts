@@ -25,7 +25,11 @@ import { withActiveMember } from './member-eligibility.js';
  */
 async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: string) {
   const [row] = await tx
-    .select({ status: loyaltyTransactions.status, organizationId: loyaltyTransactions.organizationId })
+    .select({
+      status: loyaltyTransactions.status,
+      organizationId: loyaltyTransactions.organizationId,
+      pointsAmount: loyaltyTransactions.pointsAmount,
+    })
     .from(loyaltyTransactions)
     .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
     .for('update');
@@ -436,7 +440,7 @@ export class CreditsRepository {
 
   /**
    * Durably accepts an earn command: inserts the loyalty transaction as PENDING, moves
-   * `pointsAmount` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
+   * `estimatedPoints` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
    * confirmed points, see docs/architecture.md), and enqueues a `CREDIT_EARN_CHAIN_SUBMIT`
    * operation in the same transaction so command acceptance and chain dispatch commit atomically.
    * `ChainSubmitProcessor` (domain/credits/chain-submit.processor.ts) resolves it later via
@@ -445,7 +449,8 @@ export class CreditsRepository {
   async recordEarnTransaction(params: {
     organizationId: string;
     organizationEndUserId: string;
-    pointsAmount: number;
+    purchaseAmount: number;
+    estimatedPoints: number;
     idempotencyKey: string;
     receiptReference?: string;
     metadata?: Record<string, unknown>;
@@ -481,7 +486,8 @@ export class CreditsRepository {
           organizationId: params.organizationId,
           organizationEndUserId: params.organizationEndUserId,
           transactionType: 'EARN',
-          pointsAmount: params.pointsAmount,
+          pointsAmount: params.estimatedPoints,
+          purchaseAmount: params.purchaseAmount,
           idempotencyKey: params.idempotencyKey,
           receiptReference: params.receiptReference,
           status: 'PENDING',
@@ -491,7 +497,7 @@ export class CreditsRepository {
 
       await tx
         .update(creditOwnerships)
-        .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.pointsAmount}`, updatedAt: new Date() })
+        .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.estimatedPoints}`, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
 
       await acceptCommand(tx, {
@@ -501,7 +507,8 @@ export class CreditsRepository {
         payload: {
           loyaltyTransactionId: transaction.id,
           organizationEndUserId: params.organizationEndUserId,
-          pointsAmount: params.pointsAmount,
+          purchaseAmount: params.purchaseAmount,
+          reservedPointsAmount: params.estimatedPoints,
         },
       });
 
@@ -596,12 +603,10 @@ export class CreditsRepository {
   /**
    * Records the on-chain receipt and resolves the pending reservation.
    *
-   * `reservedPointsAmount` (what `recordEarnTransaction` moved into `pendingEarn`) and
-   * `confirmedPointsAmount` (the `CreditEarned` event's actual `amount`) can differ: the chain
-   * treats the requested `pointsAmount` as a purchase amount and credits the organization's policy
-   * `earn_bps` share of it (e.g. 1% at 100 bps), not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
-   * the loyalty transaction is corrected to the confirmed figure here — Sui is authoritative for
-   * confirmed points (docs/architecture.md), the PG row at insert time was only a request.
+   * The locked PENDING row holds the exact point estimate added at acceptance. Release that
+   * amount, even for pre-upgrade operations whose payload used a purchase amount. Replace it
+   * with the actual CreditEarned amount; Sui is authoritative for confirmed points.
+   * `reservedPointsAmount` is retained for compatibility with queued worker/indexer callers.
    *
    * Returns null (and writes nothing) if the row is no longer PENDING — the other of
    * chain-submit worker / `domain/indexer` already resolved it. Pass `db` to run inside a
@@ -648,7 +653,7 @@ export class CreditsRepository {
           .update(creditOwnerships)
           .set({
             confirmedBalance: newBalance,
-            pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount,
+            pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount),
             lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
             updatedAt: new Date(),
           })
@@ -687,7 +692,8 @@ export class CreditsRepository {
     reservedPointsAmount: number;
   }) {
     return this.db.transaction(async (tx) => {
-      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+      if (!pending) {
         return;
       }
 
@@ -700,63 +706,9 @@ export class CreditsRepository {
       if (ownership) {
         await tx
           .update(creditOwnerships)
-          .set({ pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount, updatedAt: new Date() })
+          .set({ pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount), updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
       }
-    });
-  }
-
-  async recordRedeemTransaction(params: {
-    organizationId: string;
-    organizationEndUserId: string;
-    pointsAmount: number;
-    idempotencyKey: string;
-    receiptReference?: string;
-    metadata?: Record<string, unknown>;
-  }) {
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
-      await expireDueBuckets(tx, params);
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
-
-      if (!ownership || Number(ownership.confirmedBalance) < params.pointsAmount) {
-        throw new Error(
-          `Insufficient points: required ${params.pointsAmount}, available ${ownership?.confirmedBalance ?? 0}`,
-        );
-      }
-
-      const [transaction] = await tx
-        .insert(loyaltyTransactions)
-        .values({
-          organizationId: params.organizationId,
-          organizationEndUserId: params.organizationEndUserId,
-          transactionType: 'REDEEM',
-          pointsAmount: params.pointsAmount,
-          idempotencyKey: params.idempotencyKey,
-          receiptReference: params.receiptReference,
-          status: 'CONFIRMED',
-          metadata: params.metadata ?? {},
-        })
-        .returning();
-
-      const newConfirmedBalance = Number(ownership.confirmedBalance) - params.pointsAmount;
-      const newLifetimeRedeemed = Number(ownership.lifetimeRedeemed) + params.pointsAmount;
-
-      await tx
-        .update(creditOwnerships)
-        .set({
-          confirmedBalance: newConfirmedBalance,
-          lifetimeRedeemed: newLifetimeRedeemed,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditOwnerships.id, ownership.id));
-      await consumeBuckets(tx, ownership.id, params.pointsAmount);
-
-      return {
-        transaction,
-        newBalance: newConfirmedBalance,
-      };
     });
   }
 
@@ -1049,7 +1001,7 @@ export class CreditsRepository {
    * linked to it via `reversesTransactionId`, and applies the opposite balance effect. A
    * reversed EARN that was already (partly) spent is allowed to drive `confirmedBalance`
    * negative — that negative balance *is* the clawback debt, and it already blocks further
-   * redemptions via the balance check in `recordRedeemTransaction`.
+   * redemptions via the balance check in `reservePosRedemption`.
    *
    * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
    * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop

@@ -41,7 +41,8 @@ async function confirmedEarn(amount: number, { expiresInMs = 30 * DAY_MS, key = 
   const { transaction } = await repo.recordEarnTransaction({
     organizationId: orgId,
     organizationEndUserId: memberId,
-    pointsAmount: amount,
+    purchaseAmount: amount,
+    estimatedPoints: amount,
     idempotencyKey: key,
   });
   await repo.confirmEarnOnChain({
@@ -54,6 +55,29 @@ async function confirmedEarn(amount: number, { expiresInMs = 30 * DAY_MS, key = 
     sender: '0xissuer',
   });
   return transaction;
+}
+
+/** Simulate the chain-confirmed half of a customer-signed POS redemption. */
+async function confirmedPosRedeem(params: {
+  organizationId: string;
+  organizationEndUserId: string;
+  pointsAmount: number;
+  idempotencyKey: string;
+}) {
+  const ownership = await repo.getOrCreateCreditOwnership(params.organizationEndUserId);
+  await repo.setSuiCreditAccountId(ownership.id, '0xacc');
+  const hold = await repo.reservePosRedemption(params);
+  await repo.confirmPosRedemptionOnChain({
+    loyaltyTransactionId: hold.transaction.id,
+    organizationEndUserId: params.organizationEndUserId,
+    pointsAmount: params.pointsAmount,
+    digest: nextDigest(),
+    sender: '0xbeneficiary',
+  });
+  return {
+    transaction: await getLoyaltyTransaction(db, hold.transaction.id),
+    newBalance: (await getOwnership(db, params.organizationEndUserId)).confirmedBalance,
+  };
 }
 
 async function bucketsOf(member = memberId) {
@@ -91,7 +115,8 @@ describe('earn', () => {
     const { transaction, newBalance } = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 10_000,
+      purchaseAmount: 10_000,
+      estimatedPoints: 10_000,
       idempotencyKey: 'earn-1',
       receiptReference: 'receipt-1',
       metadata: { store: 'A' },
@@ -111,7 +136,12 @@ describe('earn', () => {
       tenantId: orgId,
       commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
       status: 'PENDING',
-      payload: { loyaltyTransactionId: transaction.id, organizationEndUserId: memberId, pointsAmount: 10_000 },
+      payload: {
+        loyaltyTransactionId: transaction.id,
+        organizationEndUserId: memberId,
+        purchaseAmount: 10_000,
+        reservedPointsAmount: 10_000,
+      },
     });
     expect(operation.payloadHash).toMatch(/^[0-9a-f]{64}$/);
     expect((await repo.findTransactionByIdempotency(orgId, 'earn-1'))?.id).toBe(transaction.id);
@@ -122,14 +152,16 @@ describe('earn', () => {
     await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 10,
+      purchaseAmount: 10,
+      estimatedPoints: 10,
       idempotencyKey: 'dup',
     });
     await expect(
       repo.recordEarnTransaction({
         organizationId: orgId,
         organizationEndUserId: memberId,
-        pointsAmount: 10,
+        purchaseAmount: 10,
+        estimatedPoints: 10,
         idempotencyKey: 'dup',
       }),
     ).rejects.toThrow();
@@ -140,7 +172,8 @@ describe('earn', () => {
     const { transaction } = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 10_000,
+      purchaseAmount: 10_000,
+      estimatedPoints: 10_000,
       idempotencyKey: 'e',
     });
     const expiresAtMs = Date.now() + DAY_MS;
@@ -178,7 +211,8 @@ describe('earn', () => {
     const { transaction } = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 50,
+      purchaseAmount: 50,
+      estimatedPoints: 50,
       idempotencyKey: 'e',
     });
     const confirm = (digest: string) =>
@@ -208,13 +242,15 @@ describe('earn', () => {
     const a = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 30,
+      purchaseAmount: 30,
+      estimatedPoints: 30,
       idempotencyKey: 'a',
     });
     const b = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 70,
+      purchaseAmount: 70,
+      estimatedPoints: 70,
       idempotencyKey: 'b',
     });
     const confirm = (tx: typeof a.transaction, amount: number, digest: string) =>
@@ -241,7 +277,8 @@ describe('earn', () => {
     const { transaction } = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 40,
+      purchaseAmount: 40,
+      estimatedPoints: 40,
       idempotencyKey: 'e',
     });
     const fail = () =>
@@ -262,7 +299,8 @@ describe('earn', () => {
     const { transaction } = await repo.recordEarnTransaction({
       organizationId: orgId,
       organizationEndUserId: memberId,
-      pointsAmount: 40,
+      purchaseAmount: 40,
+      estimatedPoints: 40,
       idempotencyKey: 'e',
     });
     await repo.failEarnOnChain({
@@ -288,59 +326,6 @@ describe('earn', () => {
     const ownership = await repo.getOrCreateCreditOwnership(memberId);
     await repo.setSuiCreditAccountId(ownership.id, '0xacc');
     expect((await repo.findCreditOwnershipBySuiAccountId('0xacc'))?.organizationEndUserId).toBe(memberId);
-  });
-});
-
-describe('Postgres-only redeem', () => {
-  it('debits the confirmed balance and consumes buckets nearest-expiry first', async () => {
-    await confirmedEarn(100, { expiresInMs: 10 * DAY_MS });
-    await confirmedEarn(50, { expiresInMs: 2 * DAY_MS });
-
-    const { transaction, newBalance } = await repo.recordRedeemTransaction({
-      organizationId: orgId,
-      organizationEndUserId: memberId,
-      pointsAmount: 70,
-      idempotencyKey: 'r-1',
-    });
-
-    expect(newBalance).toBe(80);
-    expect(transaction).toMatchObject({ transactionType: 'REDEEM', status: 'CONFIRMED', pointsAmount: 70 });
-    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 80, lifetimeRedeemed: 70 });
-    expect((await bucketsOf()).map((b) => b.remaining)).toEqual([0, 80]);
-  });
-
-  it('rejects an amount above the balance, including for a member with no ownership row yet', async () => {
-    await expect(
-      repo.recordRedeemTransaction({
-        organizationId: orgId,
-        organizationEndUserId: memberId,
-        pointsAmount: 1,
-        idempotencyKey: 'r',
-      }),
-    ).rejects.toThrow(/Insufficient points: required 1, available 0/);
-
-    await confirmedEarn(10);
-    await expect(
-      repo.recordRedeemTransaction({
-        organizationId: orgId,
-        organizationEndUserId: memberId,
-        pointsAmount: 11,
-        idempotencyKey: 'r',
-      }),
-    ).rejects.toThrow(/available 10/);
-  });
-
-  it('expires due buckets before checking the balance', async () => {
-    await confirmedEarn(100, { expiresInMs: -1000 });
-
-    await expect(
-      repo.recordRedeemTransaction({
-        organizationId: orgId,
-        organizationEndUserId: memberId,
-        pointsAmount: 50,
-        idempotencyKey: 'r',
-      }),
-    ).rejects.toThrow(/available 0/);
   });
 });
 
@@ -713,7 +698,7 @@ describe('bucket expiry', () => {
 describe('reversal', () => {
   it('reversing a spent earn drives the balance negative and zeroes its bucket', async () => {
     const earn = await confirmedEarn(100);
-    await repo.recordRedeemTransaction({
+    await confirmedPosRedeem({
       organizationId: orgId,
       organizationEndUserId: memberId,
       pointsAmount: 80,
@@ -744,7 +729,7 @@ describe('reversal', () => {
 
   it('reversing a redeem adds the points back', async () => {
     await confirmedEarn(100);
-    const { transaction } = await repo.recordRedeemTransaction({
+    const { transaction } = await confirmedPosRedeem({
       organizationId: orgId,
       organizationEndUserId: memberId,
       pointsAmount: 40,
@@ -811,22 +796,22 @@ describe('reversal', () => {
     });
   });
 
-  it('reversing a Postgres-only (voucher) redeem queues nothing on-chain', async () => {
+  it('keeps reversal support for historical ledger-only redemptions', async () => {
     await confirmedEarn(100);
-    const { transaction } = await repo.recordRedeemTransaction({
+    const transaction = await insertLoyaltyTransaction(db, {
       organizationId: orgId,
       organizationEndUserId: memberId,
+      transactionType: 'REDEEM',
       pointsAmount: 40,
-      idempotencyKey: 'voucher-redeem',
+      status: 'CONFIRMED',
+      idempotencyKey: 'legacy-redeem',
     });
-
     await repo.recordReversalTransaction({
       evaluateRefund: evaluateVoucherRefund,
       organizationId: orgId,
       original: transaction,
       idempotencyKey: 'rev',
     });
-
     expect(
       await db
         .select()
@@ -959,7 +944,8 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
       await repo.recordEarnTransaction({
         organizationId: orgId,
         organizationEndUserId: memberId,
-        pointsAmount: 10_000,
+        purchaseAmount: 10_000,
+        estimatedPoints: 10_000,
         idempotencyKey: key,
       })
     ).transaction;
@@ -1072,4 +1058,38 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
       },
     ]);
   });
+});
+
+it('releases the exact persisted earn estimate on confirmation and failure, regardless of stale payload amounts', async () => {
+  const a = await repo.recordEarnTransaction({
+    organizationId: orgId,
+    organizationEndUserId: memberId,
+    purchaseAmount: 100000,
+    estimatedPoints: 1000,
+    idempotencyKey: 'estimate-a',
+  });
+  const b = await repo.recordEarnTransaction({
+    organizationId: orgId,
+    organizationEndUserId: memberId,
+    purchaseAmount: 100000,
+    estimatedPoints: 1000,
+    idempotencyKey: 'estimate-b',
+  });
+  expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 2000 });
+  await repo.confirmEarnOnChain({
+    loyaltyTransactionId: a.transaction.id,
+    organizationEndUserId: memberId,
+    reservedPointsAmount: 100000,
+    confirmedPointsAmount: 900,
+    digest: nextDigest(),
+    sender: '0xissuer',
+    bucketExpiresAtMs: null,
+  });
+  expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 1000, confirmedBalance: 900 });
+  await repo.failEarnOnChain({
+    loyaltyTransactionId: b.transaction.id,
+    organizationEndUserId: memberId,
+    reservedPointsAmount: 100000,
+  });
+  expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 0, confirmedBalance: 900 });
 });

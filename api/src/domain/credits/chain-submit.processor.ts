@@ -13,7 +13,10 @@ import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconc
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
-  pointsAmount: number;
+  purchaseAmount?: number;
+  reservedPointsAmount?: number;
+  /** Legacy commands queued before OCT-239. */
+  pointsAmount?: number;
 }
 
 export interface ReversalChainSubmitPayload {
@@ -186,7 +189,7 @@ export class ChainSubmitProcessor {
     // Signed but not sent yet: a failure up to here is definitive, nothing reached the chain.
     const signed = await this.suiClient.signEarn(program, {
       accountId,
-      purchaseAmount: payload.pointsAmount,
+      purchaseAmount: payload.purchaseAmount ?? payload.pointsAmount!,
       operationKey: operation.idempotencyKey,
     });
     // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
@@ -305,7 +308,7 @@ export class ChainSubmitProcessor {
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.pointsAmount,
+        reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
       });
       await this.operationsRepo.markFailed(operation.id, message);
     }
@@ -328,7 +331,7 @@ export class ChainSubmitProcessor {
       const confirmed = await this.creditsRepo.confirmEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.pointsAmount,
+        reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
         confirmedPointsAmount,
         bucketExpiresAtMs,
         digest,

@@ -39,7 +39,6 @@ export interface WebhookDeliveryDto {
 /** Every event OctaP delivers; sent as `x-octap-event-type` and as the body's `type`. */
 export type WebhookEventType =
   | 'credits.earned'
-  | 'credits.redeemed'
   | 'credits.earn.confirmed'
   | 'credits.redemption.confirmed'
   | 'credits.reversed'
@@ -53,16 +52,8 @@ export type WebhookEventType =
 export interface CreditsEarnedEventData {
   transactionId: string;
   organizationEndUserId: string;
-  /** The requested amount (a purchase amount; the chain applies the program's earn rate). */
-  pointsAmount: number;
-  newBalance: number;
-}
-
-/** `credits.redeemed`: a legacy `POST /v1/credits/redeem` debit, settled in the ledger immediately (no chain step). */
-export interface CreditsRedeemedEventData {
-  transactionId: string;
-  organizationEndUserId: string;
-  pointsAmount: number;
+  purchaseAmount: number;
+  estimatedPoints: number;
   newBalance: number;
 }
 
@@ -114,7 +105,6 @@ interface WebhookEventOf<T extends WebhookEventType, D> {
 /** A delivered webhook body, discriminated on `type`. */
 export type WebhookEvent =
   | WebhookEventOf<'credits.earned', CreditsEarnedEventData>
-  | WebhookEventOf<'credits.redeemed', CreditsRedeemedEventData>
   | WebhookEventOf<'credits.earn.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.reversed', ReversalEventData>

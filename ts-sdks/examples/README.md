@@ -70,6 +70,33 @@ This is how to check a paid claim with a real Google account on Testnet, which m
 
 5. Open `http://localhost:4001` and sign in with Google. The page shows your `memberId` and `suiAddress`. Reload to check that the session restores.
 6. Give that member enough confirmed points through a merchant earn, and wait for the earn to confirm.
-7. Press **Claim voucher**. The page shows the RESERVED claim, then the finalized result, then the claim as AVAILABLE. Press **Sign out** to finish.
+7. Press **Claim voucher**. The backend reads the verified member balance and returns the RESERVED claim with signing bytes. The page signs locally and sends the signature to the backend, which finalizes through the Node SDK, then the claim as AVAILABLE. Press **Redeem voucher** to consume its serial and read the resulting balance, then **Sign out**.
 
 Set `OCTAP_EXAMPLE_RUN_ID` to start a new claim instead of resuming the last one.
+
+## Backend flow in the runnable browser example (OCT-239)
+
+Start `browser-auth/server.mjs` with the configuration above. It binds only to localhost. All Core
+business calls use public `@octap/sdk` methods; the browser gets no merchant or Enoki secret.
+The example has these authenticated POST routes, using the customer's id_token as Bearer authorization:
+
+1. `/api/balance` calls `verifyCustomer` and `getBalance` for the verified member.
+2. `/api/claim` reserves with a stable member/voucher/run key, returning `transactionBytes` and `digest`.
+3. The customer's existing browser SDK session signs the returned bytes locally.
+4. `/api/claim/finalize` accepts `{ ownershipId, signature }`, checks ownership, uses the original SDK signing handoff retained by this example server,
+   and calls `finalizeVoucherClaim`. AVAILABLE claims are read back without a second finalize.
+5. `/api/claim/state` reads the verified member's claim. UNKNOWN/RESERVED outcomes must settle before use.
+6. `/api/claim/redeem` accepts `{ ownershipId }`, checks membership and availability, then calls
+   `redeemVoucher` with the persisted serial. `/api/balance` reads the resulting points.
+
+A caller-supplied member, digest or serial cannot override the verified/persisted values. This is
+an interactive local integration example, not a production checkout authorization system. Use the
+merchant's actual cashier/order authorization when adopting redemption in production. Customer
+signing itself remains the browser SDK's responsibility (OCT-196).
+
+The local page displays a persistent checklist and three balance cards. A recovered claim marks
+new reservation/signing/claim-cost checks as "Not tested". Pending point evidence shows "Waiting";
+unexpected point changes show "Failed". "Refresh status" only reads Core; it never retries a mutation.
+The optional technical details panel is collapsed by default. Use a fresh paid voucher to exercise
+all steps. The server retains each original signing handoff for up to ten minutes in memory, bound
+to its verified member; a restart loses that handoff. An already AVAILABLE claim remains recoverable.
