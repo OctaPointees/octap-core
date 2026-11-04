@@ -13,10 +13,7 @@ import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconc
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
-  purchaseAmount?: number;
-  reservedPointsAmount?: number;
-  /** Legacy commands queued before OCT-239. */
-  pointsAmount?: number;
+  purchaseAmount: number;
 }
 
 export interface ReversalChainSubmitPayload {
@@ -174,9 +171,9 @@ export class ChainSubmitProcessor {
   }
 
   /**
-   * Signs, records and sends one `earn`, returning only a successful one. The chain treats
-   * `pointsAmount` as a purchase amount and credits the program policy's `earn_bps` share of it
-   * (see credits.repository.ts's confirmEarnOnChain), not the raw number. A failure verdict throws
+   * Signs, records and sends one `earn`, returning only a successful one. The chain credits the
+   * program policy's `earn_bps` share of the purchase amount (see credits.repository.ts's
+   * confirmEarnOnChain), not the raw number. A failure verdict throws
    * `EarnFailedError`; a send whose outcome is unknown throws `EarnOutcomeUnknownError`; anything
    * thrown while signing (including a simulated abort) means nothing was sent.
    */
@@ -189,7 +186,7 @@ export class ChainSubmitProcessor {
     // Signed but not sent yet: a failure up to here is definitive, nothing reached the chain.
     const signed = await this.suiClient.signEarn(program, {
       accountId,
-      purchaseAmount: payload.purchaseAmount ?? payload.pointsAmount!,
+      purchaseAmount: payload.purchaseAmount,
       operationKey: operation.idempotencyKey,
     });
     // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
@@ -308,7 +305,6 @@ export class ChainSubmitProcessor {
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
       });
       await this.operationsRepo.markFailed(operation.id, message);
     }
@@ -331,7 +327,6 @@ export class ChainSubmitProcessor {
       const confirmed = await this.creditsRepo.confirmEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
         confirmedPointsAmount,
         bucketExpiresAtMs,
         digest,

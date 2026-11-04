@@ -9,8 +9,6 @@ export type { Transport, RestTransport } from './transports/transport.js';
 // Re-export contract types so consumers of @octap/sdk have immediate access to wire schemas
 export type {
   Points,
-  ActorContext,
-  OperationReference,
   BalanceSnapshot,
   LoyaltyTxType,
   LoyaltyTxStatus,

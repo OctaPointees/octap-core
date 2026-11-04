@@ -74,7 +74,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
       .http()
       .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, purchaseAmount: 10, idempotencyKey: 'r-1' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-1' })
       .expect(201);
     await deliverDue();
 
@@ -84,7 +84,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     expect(headers['x-octap-event-type']).toBe('credits.earned');
     expect(JSON.parse(body)).toMatchObject({
       type: 'credits.earned',
-      data: { purchaseAmount: 10, estimatedPoints: 0, newBalance: 100, organizationEndUserId: memberId },
+      data: { purchaseAmount: 100, estimatedPoints: 1, newBalance: 100, organizationEndUserId: memberId },
     });
 
     const [delivery] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
@@ -103,7 +103,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
       .http()
       .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, purchaseAmount: 1, idempotencyKey: 'r' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r' })
       .expect(201);
     await deliverDue();
 
@@ -129,7 +129,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
       .http()
       .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, purchaseAmount: 1, idempotencyKey: 'r-1' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-1' })
       .expect(201);
     await deliverDue();
     expect(receiver.received).toEqual([]);
@@ -143,7 +143,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
       .http()
       .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, purchaseAmount: 1, idempotencyKey: 'r-2' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-2' })
       .expect(201);
     await deliverDue();
     const [{ headers, body }] = receiver.received;

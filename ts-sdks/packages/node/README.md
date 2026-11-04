@@ -49,7 +49,7 @@ and `signal`, including both balance overloads.
 finalization; no merchant credential is needed there. Webhook mutations and refund policy publication/
 history require an admin-scoped key. Store register/rotate secrets securely; list responses omit them.
 
-## Breaking earn correction
+## Earn
 
 ```ts
 const accepted = await client.earnPoints({
@@ -61,20 +61,17 @@ const accepted = await client.earnPoints({
 // Read listTransactions or consume credits.earn.confirmed for the actual point result.
 ```
 
-The old earn `pointsAmount` input is removed. Pending/failed earns have no actual `pointsEarned`;
-history exposes `pointsAmount: null` until confirmed and labels the estimate separately.
-`redeemPoints` is removed with the unsigned debit route. Use `reservePosRedemption`, return the
-bytes to the customer to sign, then call `finalizePosRedemption`. `waitForOperation` is removed:
-Core has no operation-status route. Observe transactions/balance, `getVoucherClaim`, or webhooks.
-`getBalance(programId, memberId, options)` now validates that program through Core; the member-only
-overload returns the camelCase credit snapshot.
+A purchase too small to earn a point is rejected with 400. History shows `pointsAmount: null` and a
+separate `estimatedPoints` until the chain confirms. Core has no operation-status route: observe
+transactions, balance, `getVoucherClaim` or webhooks. To debit points, use `reservePosRedemption`,
+return the bytes to the customer to sign, then call `finalizePosRedemption`.
+`getBalance(programId, memberId, options)` returns 404 for a program outside your organization.
 
 ## Errors, cancellation and retries
 
-`OctaApiError` exposes `statusCode`, `statusText`, `responseBody`, optional server `code`,
-`requestId`, `retryAfter`, and `retryable` (408, 429, 5xx). `OctaNetworkError` preserves the
-original `cause`. `OctaRequestAbortedError` distinguishes cancellation from server rejection.
-Do not log raw bodies, tokens, signatures or API keys.
+`OctaApiError` exposes `statusCode`, `statusText`, `responseBody`, and `retryAfter` when Core sent
+that header. `OctaNetworkError` preserves the original `cause`. `OctaRequestAbortedError` distinguishes
+cancellation from server rejection. Do not log raw bodies, tokens, signatures or API keys.
 
 ```ts
 const controller = new AbortController();
@@ -82,14 +79,10 @@ await client.getBalance(memberId, { signal: controller.signal });
 // controller.abort() cancels local waiting; it does not roll back Core or the chain.
 ```
 
-The SDK performs no automatic retries. Retry reads with bounded backoff; honor `retryAfter` for
-429/503 responses. For earn, reserve, reversal and claim retries, retain the same idempotency key
-and the exact original intent. Reusing an earn key with a different member, purchase, receipt or
-metadata returns 409. Following a timeout/cancellation/network failure, first read persisted state;
-a request may already have committed. Never switch to a new key to recover an unknown outcome.
-Finalize must reuse the original signature/digest or read the existing claim. Voucher redemption
-has no request idempotency key: read its ownership status before retrying. Webhook registration
-and secret rotation are not idempotent, so do not blindly retry them.
-
-The complete runnable backend example is in [examples](../../examples/README.md): verified balance
-? claim ? signing bytes ? customer signature ? finalize ? serial redemption, using public SDK methods.
+The SDK performs no automatic retries. Retry reads with bounded backoff, and wait `retryAfter` on a 429.
+For earn, reserve, reversal and claim retries, keep the same idempotency key and the same request: a
+retry returns the original transaction, and a changed request under a used key returns 409. After a timeout, cancellation,
+network failure or 5xx, read persisted state first, because the request may have committed. Never switch
+to a new key to recover an unknown outcome. Finalize must reuse the original signature and digest, or
+read the existing claim. Voucher redemption has no idempotency key: read its ownership status before
+retrying. Webhook registration and secret rotation are not idempotent, so do not blindly retry them.

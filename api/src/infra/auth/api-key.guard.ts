@@ -14,7 +14,7 @@ import { ApiCredentialsRepository } from '../db/repositories/api-credentials.rep
 import { hashApiKey } from './api-key-hash.util.js';
 import { claimNonce } from './nonce-store.util.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
-import { checkRateLimit } from './rate-limit.util.js';
+import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 import { buildCanonicalRequest, isTimestampFresh, verifyCanonicalSignature } from './request-signing.util.js';
 import { REQUIRE_SIGNED_REQUEST_KEY } from './signed-request.decorator.js';
 import { SCOPES_KEY } from './scopes.decorator.js';
@@ -89,7 +89,7 @@ export class ApiKeyGuard implements CanActivate {
 
     const rateLimitResult = await checkRateLimit(this.redis, credential.id);
     if (rateLimitResult === 'exceeded') {
-      throw new ForbiddenException('Rate limit exceeded for this API credential');
+      throw rateLimitExceeded(context, 'Rate limit exceeded for this API credential');
     }
     if (rateLimitResult === 'unavailable') {
       throw new ServiceUnavailableException('Rate limiting is temporarily unavailable; refusing to fail open');

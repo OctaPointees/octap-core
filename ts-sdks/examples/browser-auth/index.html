@@ -3,245 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OctaP voucher test</title>
+    <title>OctaP browser auth example</title>
     <style>
-      * {
-        box-sizing: border-box;
-      }
       body {
         font:
-          16px/1.6 system-ui,
+          16px/1.5 system-ui,
           sans-serif;
-        color: #172b28;
-        background: #f3f7f5;
-        margin: 0;
-      }
-      main {
-        max-width: 840px;
-        margin: 40px auto;
-        padding: 0 20px 40px;
-      }
-      h1 {
-        font-size: 32px;
-        line-height: 1.2;
-        margin: 8px 0 16px;
-      }
-      h2 {
-        font-size: 20px;
-        margin: 0 0 12px;
-      }
-      .eyebrow {
-        color: #356f60;
-        font-weight: 700;
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      .muted {
-        color: #536760;
-      }
-      .panel {
-        background: white;
-        border: 1px solid #d9e5df;
-        border-radius: 16px;
-        padding: 24px;
-        margin-top: 20px;
-      }
-      .balances {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-        margin: 20px 0;
-      }
-      .balance {
-        border: 1px solid #d9e5df;
-        border-radius: 12px;
-        padding: 14px;
-      }
-      .balance span {
-        display: block;
-        font-size: 13px;
-        color: #536760;
-      }
-      .balance strong {
-        display: block;
-        font-size: 28px;
-      }
-      button {
-        font: inherit;
-        border-radius: 9px;
-        border: 1px solid #b8ccc1;
-        padding: 10px 16px;
-        background: white;
-        color: #173c31;
-        cursor: pointer;
-        margin: 0 6px 8px 0;
-      }
-      #claim {
-        background: #176b50;
-        border-color: #176b50;
-        color: white;
-      }
-      button:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      button:focus-visible,
-      summary:focus-visible {
-        outline: 3px solid #72bda4;
-        outline-offset: 3px;
-      }
-      ol {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      li {
-        border-top: 1px solid #e6ede8;
-        padding: 14px 0;
-      }
-      li:first-child {
-        border: 0;
-      }
-      .step-head {
-        display: flex;
-        gap: 12px;
-        justify-content: space-between;
-        align-items: baseline;
-      }
-      .badge {
-        border-radius: 20px;
-        padding: 2px 10px;
-        font-size: 12px;
-        font-weight: 700;
-        white-space: nowrap;
-        background: #edf1ef;
-        color: #52645d;
-      }
-      li[data-state='passed'] .badge {
-        background: #dcf3e6;
-        color: #165c39;
-      }
-      li[data-state='failed'] .badge {
-        background: #fde4e4;
-        color: #9f2828;
-      }
-      li[data-state='waiting'] .badge {
-        background: #fff0ce;
-        color: #785300;
-      }
-      li p {
-        color: #536760;
-        font-size: 14px;
-        margin: 5px 0 0;
-      }
-      #notice {
-        padding: 14px 16px;
-        background: #eaf2ef;
-        border-radius: 10px;
-        overflow-wrap: anywhere;
-      }
-      #notice[data-state='failed'] {
-        background: #fde4e4;
-        color: #9f2828;
+        margin: 2rem auto;
+        max-width: 40rem;
+        padding: 0 1rem;
       }
       pre {
-        font-size: 12px;
-        background: #f3f7f5;
-        padding: 16px;
-        overflow: auto;
-        max-height: 380px;
-      }
-      summary {
-        cursor: pointer;
-      }
-      #voucher-name {
-        font-weight: 600;
-      }
-      @media (max-width: 540px) {
-        main {
-          margin-top: 24px;
-        }
-        .panel {
-          padding: 18px;
-        }
-        .balances {
-          grid-template-columns: 1fr;
-        }
-        .balance strong {
-          font-size: 24px;
-        }
+        background: #f4f4f4;
+        overflow-x: auto;
+        padding: 1rem;
       }
     </style>
   </head>
   <body>
-    <main>
-      <div class="eyebrow">Local Testnet check</div>
-      <h1>Test your voucher, step by step</h1>
-      <p class="muted">
-        Claim exchanges points for a voucher. Redeem uses that voucher without charging points again. Results appear
-        below. No developer tools needed.
-      </p>
-      <section class="panel" aria-labelledby="start-title">
-        <h2 id="start-title">1. Sign in, then try the voucher</h2>
-        <div id="sign-in"></div>
-        <p id="session" class="muted">Sign in with Google to start.</p>
-        <p id="voucher-name">Loading test voucher...</p>
-        <div class="balances" aria-label="Point balances">
-          <div class="balance"><span>Before claiming</span><strong id="balance-before">--</strong></div>
-          <div class="balance"><span>After claiming</span><strong id="balance-claimed">--</strong></div>
-          <div class="balance"><span>After redeeming</span><strong id="balance-redeemed">--</strong></div>
-        </div>
-        <button id="claim" disabled>Claim voucher</button>
-        <button id="redeem" disabled>Redeem voucher</button>
-        <button id="refresh" disabled>Refresh status</button>
-        <button id="sign-out" disabled>Sign out</button>
-        <p id="notice" role="status" aria-live="polite">
-          Sign in to begin. No points move until you click Claim voucher.
-        </p>
-      </section>
-      <section class="panel" aria-labelledby="checks-title">
-        <h2 id="checks-title">2. Watch the checks</h2>
-        <ol id="checks" aria-live="polite">
-          <li id="check-signin">
-            <div class="step-head"><strong>Signed in</strong><span class="badge">Not tested</span></div>
-            <p>Waiting for your Google sign-in.</p>
-          </li>
-          <li id="check-reserved">
-            <div class="step-head"><strong>Voucher reserved</strong><span class="badge">Not tested</span></div>
-            <p>A new paid claim should return transaction bytes for you to sign.</p>
-          </li>
-          <li id="check-signed">
-            <div class="step-head"><strong>Customer signed</strong><span class="badge">Not tested</span></div>
-            <p>Your browser signs the claim using your customer session.</p>
-          </li>
-          <li id="check-finalized">
-            <div class="step-head"><strong>Claim confirmed</strong><span class="badge">Not tested</span></div>
-            <p>The voucher should become AVAILABLE.</p>
-          </li>
-          <li id="check-claim-balance">
-            <div class="step-head">
-              <strong>Points charged once for claiming</strong><span class="badge">Not tested</span>
-            </div>
-            <p>We compare your balance before and after the claim.</p>
-          </li>
-          <li id="check-redeemed">
-            <div class="step-head"><strong>Voucher used</strong><span class="badge">Not tested</span></div>
-            <p>Click Redeem voucher once the claim is confirmed.</p>
-          </li>
-          <li id="check-redeem-balance">
-            <div class="step-head">
-              <strong>No extra charge for redeeming</strong><span class="badge">Not tested</span>
-            </div>
-            <p>Your points should stay unchanged when the voucher is used.</p>
-          </li>
-        </ol>
-      </section>
-      <details class="panel">
-        <summary>Technical details (optional)</summary>
-        <pre id="output">No result yet.</pre>
-      </details>
-    </main>
+    <h1>OctaP browser auth example</h1>
+    <p>A local test page for <code>@octap/browser-sdk</code>. It is not deployed.</p>
+    <div id="sign-in"></div>
+    <p>
+      <button id="claim" disabled>Claim voucher</button>
+      <button id="sign-out" disabled>Sign out</button>
+    </p>
+    <pre id="output" aria-live="polite">Loading…</pre>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

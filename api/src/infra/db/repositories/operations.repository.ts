@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
 
@@ -30,6 +30,11 @@ export function hashPayload(payload: Record<string, unknown>): string {
   return createHash('sha256').update(canonicalJson(payload)).digest('hex');
 }
 
+/** Runs simultaneous retries of one idempotency key one at a time, until the transaction ends. */
+export async function lockIdempotencyKey(tx: DrizzleDb, tenantId: string, idempotencyKey: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenantId + ':' + idempotencyKey}, 0))`);
+}
+
 /**
  * Durable-command acceptance, usable by any feature's repository inside its own transaction —
  * not a repository method, because it must run on the caller's `tx` (same transaction as the
@@ -40,12 +45,20 @@ export function hashPayload(payload: Record<string, unknown>): string {
  * Same idempotency key + same payload -> returns the existing operation (`isNew: false`).
  * Same idempotency key + a *different* payload -> throws `OperationPayloadConflictError`.
  * Unseen idempotency key -> inserts a new PENDING operation (`isNew: true`).
+ *
+ * `intent` is what gets compared, for a `payload` that also holds generated values such as row ids.
  */
 export async function acceptCommand(
   tx: DrizzleDb,
-  params: { tenantId: string; idempotencyKey: string; commandType: string; payload: Record<string, unknown> },
+  params: {
+    tenantId: string;
+    idempotencyKey: string;
+    commandType: string;
+    payload: Record<string, unknown>;
+    intent?: Record<string, unknown>;
+  },
 ): Promise<{ operation: typeof operations.$inferSelect; isNew: boolean }> {
-  const payloadHash = hashPayload(params.payload);
+  const payloadHash = hashPayload(params.intent ?? params.payload);
   const existing = await tx.query.operations.findFirst({
     where: and(eq(operations.tenantId, params.tenantId), eq(operations.idempotencyKey, params.idempotencyKey)),
   });

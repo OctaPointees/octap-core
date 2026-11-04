@@ -30,6 +30,12 @@ import type {
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
 
+function toTransportError(err: unknown, signal?: AbortSignal): OctaSdkError {
+  return signal?.aborted || (err instanceof Error && err.name === 'AbortError')
+    ? new OctaRequestAbortedError(err)
+    : new OctaNetworkError(err);
+}
+
 export interface RequestOptions {
   organizationId?: string;
   signal?: AbortSignal;
@@ -109,7 +115,6 @@ export class OctaPointClient {
       headers['x-organization-id'] = orgId;
     }
 
-    if (options?.signal?.aborted) throw new OctaRequestAbortedError(options.signal.reason);
     let response: Response;
     try {
       response = await this.fetchFn(url, {
@@ -119,38 +124,25 @@ export class OctaPointClient {
         signal: options?.signal,
       });
     } catch (err: unknown) {
-      if (options?.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
-        throw new OctaRequestAbortedError(err);
-      }
-      throw new OctaNetworkError(err);
+      throw toTransportError(err, options?.signal);
     }
 
     let responseData: unknown = null;
     const contentType = response.headers.get('content-type') ?? '';
-    if (contentType.includes('application/json')) {
-      try {
-        responseData = await response.json();
-      } catch (error) {
-        if (options?.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))
-          throw new OctaRequestAbortedError(error);
-        if (!(error instanceof SyntaxError)) throw new OctaNetworkError(error);
-        responseData = null;
-      }
-    } else {
-      try {
-        responseData = await response.text();
-      } catch (error) {
-        if (options?.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))
-          throw new OctaRequestAbortedError(error);
-        throw new OctaNetworkError(error);
-      }
+    try {
+      responseData = contentType.includes('application/json') ? await response.json() : await response.text();
+    } catch (err: unknown) {
+      if (!(err instanceof SyntaxError)) throw toTransportError(err, options?.signal);
     }
 
     if (!response.ok) {
-      throw new OctaApiError(response.status, response.statusText, responseData, undefined, {
-        requestId: response.headers.get('x-request-id') ?? undefined,
-        retryAfter: response.headers.get('retry-after') ?? undefined,
-      });
+      throw new OctaApiError(
+        response.status,
+        response.statusText,
+        responseData,
+        undefined,
+        response.headers.get('retry-after') ?? undefined,
+      );
     }
 
     return responseData as T;

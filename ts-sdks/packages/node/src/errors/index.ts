@@ -10,19 +10,10 @@ export class OctaApiError extends OctaSdkError {
   public readonly statusCode: number;
   public readonly statusText: string;
   public readonly responseBody: unknown;
-
-  public readonly code?: string;
-  public readonly requestId?: string;
+  /** The `Retry-After` header, when Core sent one. */
   public readonly retryAfter?: string;
-  public readonly retryable: boolean;
 
-  constructor(
-    statusCode: number,
-    statusText: string,
-    responseBody: unknown,
-    message?: string,
-    metadata: { requestId?: string; retryAfter?: string } = {},
-  ) {
+  constructor(statusCode: number, statusText: string, responseBody: unknown, message?: string, retryAfter?: string) {
     let msg = message;
     if (!msg) {
       if (typeof responseBody === 'object' && responseBody !== null && 'message' in responseBody) {
@@ -37,16 +28,7 @@ export class OctaApiError extends OctaSdkError {
     this.statusCode = statusCode;
     this.statusText = statusText;
     this.responseBody = responseBody;
-    this.code =
-      typeof responseBody === 'object' &&
-      responseBody !== null &&
-      'code' in responseBody &&
-      typeof responseBody.code === 'string'
-        ? responseBody.code
-        : undefined;
-    this.requestId = metadata.requestId;
-    this.retryAfter = metadata.retryAfter;
-    this.retryable = statusCode === 408 || statusCode === 429 || statusCode >= 500;
+    this.retryAfter = retryAfter;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }

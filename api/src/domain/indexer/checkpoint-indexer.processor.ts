@@ -184,7 +184,6 @@ export class CheckpointIndexerProcessor {
       {
         loyaltyTransactionId: loyaltyTx.id,
         organizationEndUserId,
-        reservedPointsAmount: Number(loyaltyTx.pointsAmount),
         confirmedPointsAmount: amount,
         bucketExpiresAtMs,
         digest: event.transactionDigest,

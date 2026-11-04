@@ -33,9 +33,8 @@ PENDING guard reaches them, so a transaction gets exactly one whether the chain-
 POS finalize, `ChainOutcomeReconciler` or the indexer confirmed it. `credits.reversed` and
 `voucher.redeemed` use the same outbox form (OCT-244): queued in the reversal's transaction, and
 with the conditional `AVAILABLE -> REDEEMED` update, so a losing concurrent redeem queues nothing.
-The `emit()` event (`credits.earned`) is best-effort relative to their write
+The `emit()` event (`credits.earned`) is best-effort relative to its write
 (see the roadmap).
 
 `credits.earned.data` carries `purchaseAmount` and `estimatedPoints`, not `pointsAmount`.
-The confirmed event continues to carry actual `pointsAmount`. `credits.redeemed` is retired with
-the unsigned debit route; signed POS and paid voucher debits use `credits.redemption.confirmed`.
+The confirmed event carries the actual `pointsAmount`.

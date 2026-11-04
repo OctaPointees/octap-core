@@ -168,7 +168,6 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       {
         loyaltyTransactionId: 'ltx-earn-1',
         organizationEndUserId: 'user-1',
-        reservedPointsAmount: 10000,
         confirmedPointsAmount: 100,
         bucketExpiresAtMs: null,
         digest: 'DIGEST-EARN',

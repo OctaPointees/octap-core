@@ -369,12 +369,6 @@ describe('merchant route coverage and cancellation', () => {
     expect(last().headers['x-organization-id']).toBe('org');
   });
   it('distinguishes aborts and preserves network causes without retrying', async () => {
-    const aborted = new AbortController();
-    aborted.abort();
-    const fetchFn = vi.fn();
-    const client = new OctaPointClient({ fetchFn: fetchFn as typeof fetch });
-    await expect(client.getBalance('m', { signal: aborted.signal })).rejects.toBeInstanceOf(OctaRequestAbortedError);
-    expect(fetchFn).not.toHaveBeenCalled();
     const cause = new Error('offline');
     const failing = vi.fn(async () => {
       throw cause;
@@ -394,20 +388,17 @@ describe('merchant route coverage and cancellation', () => {
     ).rejects.toBeInstanceOf(OctaRequestAbortedError);
     expect(new OctaNetworkError(cause)).toBeInstanceOf(OctaSdkError);
   });
-  it('exposes structured API errors, retry-after and request ID', async () => {
+  it('exposes the status, body and retry-after of an API error', async () => {
     const fetchFn = vi.fn(
       async () =>
-        new Response(JSON.stringify({ code: 'RATE_LIMITED', message: 'Slow down' }), {
+        new Response(JSON.stringify({ message: 'Slow down' }), {
           status: 429,
-          headers: { 'content-type': 'application/json', 'retry-after': '5', 'x-request-id': 'req-1' },
+          headers: { 'content-type': 'application/json', 'retry-after': '5' },
         }),
     );
     await expect(new OctaPointClient({ fetchFn }).listVouchers()).rejects.toMatchObject({
       statusCode: 429,
-      code: 'RATE_LIMITED',
-      retryable: true,
       retryAfter: '5',
-      requestId: 'req-1',
     });
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });

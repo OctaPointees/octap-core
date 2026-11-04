@@ -3,7 +3,7 @@
 Loyalty points for an organization's end users.
 
 - `credits.service.ts`: balance snapshot and transaction history.
-- `earn.service.ts`: earn points, idempotent on `idempotencyKey`.
+- `earn.service.ts`: earn points, idempotent on `idempotencyKey`; a changed request under a used key is a 409.
 - `pos-redemption.service.ts`: shared customer-signed on-chain redemption lifecycle for POS and paid voucher claims. Reserve points first, sponsor bytes, obtain the customer's signature and finalize. Rewards reserves its stock/ownership and points atomically before calling the shared sponsorship method. Only a chain verdict activates a paid voucher and debits the confirmed projection.
 Unsigned POS/voucher holds are released after 30 minutes on the next balance read or POS reserve; voucher claims also have worker recovery. Cleanup cancels reserved coupons and returns stock in the same transaction. Holds with a submitted digest are left to chain reconciliation.
 
@@ -38,27 +38,21 @@ chain emits `CreditExpired`.
 wrong address at open time can never be corrected later (`credit_account.move`'s `beneficiary` is
 set once, no entry point changes it).
 
-## Earn purchase contract (OCT-239)
+## Earn purchase contract
 
 `POST /v1/credits/earn` takes `purchaseAmount` (a positive safe integer in the program currency's
 minor unit), not a point count. At acceptance the active program's `earnBps` determines
-`floor(purchaseAmount * earnBps / 10000)` using integer arithmetic. The PENDING transaction and
-`pendingEarn` contain that point estimate. The response returns `purchaseAmount`, `estimatedPoints`
-and `pointsEarned: null`. Pending history returns `pointsAmount: null` and `estimatedPoints`.
+`floor(purchaseAmount * earnBps / 10000)` using integer arithmetic; a purchase that rounds to zero
+is rejected with 400, because the chain would abort it. The PENDING transaction and `pendingEarn`
+contain that point estimate. The response returns `purchaseAmount`, `estimatedPoints` and
+`pointsEarned: null`. Pending history returns `pointsAmount: null` and `estimatedPoints`.
 Only the chain-confirmed amount becomes `pointsEarned`/history `pointsAmount` and spendable balance.
 Failure releases the estimate without crediting it; confirmation releases the estimate and credits
-the actual event amount. Settlement uses the locked pending row, not a potentially stale payload.
+the actual event amount, using the locked pending row.
 
 For example, purchase 100000 at 100 bps reserves 1000 estimated points and confirms 1000 points.
 `credits.earned` contains purchase/estimate fields; `credits.earn.confirmed.pointsAmount` is actual points.
-POS reserve and reversal still use real `pointsAmount` values. The unsigned `POST /v1/credits/redeem`
-route and `credits.redeemed` event are removed; use reserve + customer signature + finalize.
-
-Migration `0019_earn_purchase_amount` adds the purchase column, backfills it from durable earn
-commands and converts existing pending purchase holds into point estimates with matching ownership
-deltas. Pause API/workers/indexer while applying this breaking upgrade, then deploy Core, SDK and
-the partner demo together. Already queued legacy payloads remain readable. Historical earns without
-a durable command retain a null purchase amount; confirmed point amounts are preserved.
+POS reserve and reversal still use real `pointsAmount` values.
 
 `GET .../balance?programId=...` accepts the tenant's program row ID or its on-chain program-control ID;
 a different program returns 404 rather than silently reading another balance.

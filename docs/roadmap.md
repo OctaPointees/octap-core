@@ -57,8 +57,7 @@ then move the row to **Implemented** in the same pull request.
   (see `api/src/domain/indexer/README.md`).
 
 - **Earn** is chain-dispatched (worker, IssuerCap-signed) and **POS redemption** is now also
-  chain-dispatched (customer-signed, Enoki-sponsored, see the row above) — but the *other* redeem
-  path, `RedemptionService`/`POST /v1/credits/redeem`, remains a legacy Postgres-only API. Paid voucher claims now reserve stock and points atomically, require a customer signature through the same sponsored redeem/finalize pipeline, and activate only after chain confirmation (OCT-231). Coupon catalog and serial records remain in PostgreSQL.
+  chain-dispatched (customer-signed, Enoki-sponsored, see the row above). Paid voucher claims now reserve stock and points atomically, require a customer signature through the same sponsored redeem/finalize pipeline, and activate only after chain confirmation (OCT-231). Coupon catalog and serial records remain in PostgreSQL.
 
 - POS redemption's reserve/finalize split has no equivalent of Harbor's `/resume` endpoint for a
   package-version cutover mid-reserve (not applicable yet — this repo has no published-package
@@ -70,7 +69,7 @@ then move the row to **Implemented** in the same pull request.
 - `PosRedemptionService.finalize()`'s Redis cache deletion happens after
   `confirmPosRedemptionOnChain` commits, not in the same transaction (harmless: the entry expires
   on its own). Its webhook is no longer emitted there: `credits.redemption.confirmed` is queued
-  inside the confirm itself (OCT-209), and POS redemptions no longer send `credits.redeemed`.
+  inside the confirm itself (OCT-209).
 - Identity's login/enroll endpoints (and POS `redeem/finalize`) are intentionally public (`@Public()`, no `@Tenant()`/`@Scopes()`), limited per client IP
   (`PublicRateLimitGuard`; set `TRUSTED_PROXY_HOPS` behind a proxy, and a merchant server proxying these routes counts as one IP): the
   Google id_token is the proof of identity on login and enroll, and Enoki validates it, not this process. All merchants share one

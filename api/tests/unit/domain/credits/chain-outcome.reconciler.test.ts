@@ -143,7 +143,6 @@ describe('ChainOutcomeReconciler', () => {
     expect(credits.confirmEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
-      reservedPointsAmount: 10000,
       confirmedPointsAmount: 100,
       bucketExpiresAtMs: 1700000000000,
       digest: 'DIGEST-E',
@@ -189,7 +188,6 @@ describe('ChainOutcomeReconciler', () => {
     expect(credits.failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
-      reservedPointsAmount: 10000,
     });
     expect(ops.settleFromChain).toHaveBeenCalledWith('op-1', 'FAILED', 'MoveAbort EBudgetExhausted');
   });

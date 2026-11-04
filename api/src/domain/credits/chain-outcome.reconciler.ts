@@ -21,10 +21,6 @@ const BATCH_SIZE = Number(process.env.CHAIN_OUTCOME_RECONCILE_BATCH_SIZE ?? 20);
 interface EarnPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
-  purchaseAmount?: number;
-  reservedPointsAmount?: number;
-  /** Legacy commands queued before OCT-239. */
-  pointsAmount?: number;
 }
 
 interface PosRedeemPayload {
@@ -152,7 +148,6 @@ export class ChainOutcomeReconciler {
     await this.creditsRepo.confirmEarnOnChain({
       loyaltyTransactionId: payload.loyaltyTransactionId,
       organizationEndUserId: payload.organizationEndUserId,
-      reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
       confirmedPointsAmount: Number(amount),
       bucketExpiresAtMs: bucketExpiresAtMs === undefined ? null : Number(bucketExpiresAtMs),
       digest: outcome.digest,
@@ -203,7 +198,6 @@ export class ChainOutcomeReconciler {
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
-        reservedPointsAmount: payload.reservedPointsAmount ?? payload.pointsAmount!,
       });
     } else if (CUSTOMER_REDEEM_COMMAND_TYPES.includes(operation.commandType)) {
       const payload = operation.payload as unknown as PosRedeemPayload;

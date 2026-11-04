@@ -17,7 +17,7 @@ import {
   expireDueBuckets,
   voucherClaimReference,
 } from './credits.repository.js';
-import { acceptCommand, OperationPayloadConflictError } from './operations.repository.js';
+import { acceptCommand, lockIdempotencyKey, OperationPayloadConflictError } from './operations.repository.js';
 import { MemberEligibilityError } from './member-eligibility.js';
 
 type Voucher = typeof vouchers.$inferSelect;
@@ -156,9 +156,7 @@ export class RewardsRepository {
       }),
     );
     return this.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${organizationId + ':' + idempotencyKey}, 0))`,
-      );
+      await lockIdempotencyKey(tx, organizationId, idempotencyKey);
       const previous = await tx.query.operations.findFirst({
         where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
       });

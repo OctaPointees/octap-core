@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { SYSTEM_ROLES } from '@octap/contracts';
 import { eq } from 'drizzle-orm';
 import { withRls } from '#infra/db/rls.js';
-import { schema, seedOrganization, seedMember, seedProgram } from './support/db.js';
+import { schema } from './support/db.js';
 
 const migrations = fileURLToPath(new URL('../../db/postgres/migrations', import.meta.url));
 const compat = fileURLToPath(new URL('../../../docker/postgres-init/01-supabase-compat.sql', import.meta.url));
@@ -181,39 +181,34 @@ describe('0014_system_user_roles', () => {
 });
 
 describe('0019_earn_purchase_amount', () => {
-  it('backfills purchase history and converts old pending holds without changing settled points', async () => {
+  it('moves earn commands to the purchase payload and leaves other commands alone', async () => {
     await withDatabaseAt(18, async (client) => {
       const db = drizzle(client, { schema });
-      const org = await seedOrganization(db);
-      const { memberId } = await seedMember(db, org.id);
-      await seedProgram(db, org.id, { earnBps: 100 });
-      await client`insert into credit_ownerships (organization_end_user_id, confirmed_balance, pending_earn) values (${memberId}, 500, 100000)
-        on conflict (organization_end_user_id) do update set confirmed_balance=500,pending_earn=100000`;
-      await client`insert into loyalty_transactions (organization_id,organization_end_user_id,transaction_type,points_amount,idempotency_key,status) values
-        (${org.id},${memberId},'EARN',100000,'pending','PENDING'),
-        (${org.id},${memberId},'EARN',500,'settled','CONFIRMED')`;
-      for (const key of ['pending', 'settled']) {
-        await db.insert(schema.operations).values({
+      const [org] =
+        await client`insert into organizations (slug, name) values (${randomUUID()}, 'Queued org') returning id`;
+      const insert = (commandType: string, key: string, payload: Record<string, unknown>) =>
+        db.insert(schema.operations).values({
           tenantId: org.id,
-          commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+          commandType,
           idempotencyKey: key,
-          payload: { pointsAmount: 100000 },
-          status: key === 'pending' ? 'PENDING' : 'SUBMITTED',
+          payload,
+          payloadHash: 'old-hash',
+          status: 'PENDING',
         });
-      }
+      await insert('CREDIT_EARN_CHAIN_SUBMIT', 'earn', { loyaltyTransactionId: 'tx', pointsAmount: 100000 });
+      await insert('POS_REDEEM_RESERVE', 'pos', { organizationEndUserId: 'member', pointsAmount: 40 });
+
       await migrate(db, { migrationsFolder: migrations });
-      const rows = await db.select().from(schema.loyaltyTransactions);
-      expect(rows.find((t) => t.idempotencyKey === 'pending')).toMatchObject({
-        purchaseAmount: 100000,
-        pointsAmount: 1000,
+
+      const rows = await db.select().from(schema.operations);
+      expect(rows.find((row) => row.idempotencyKey === 'earn')).toMatchObject({
+        payload: { loyaltyTransactionId: 'tx', purchaseAmount: 100000 },
+        payloadHash: null,
       });
-      expect(rows.find((t) => t.idempotencyKey === 'settled')).toMatchObject({
-        purchaseAmount: 100000,
-        pointsAmount: 500,
+      expect(rows.find((row) => row.idempotencyKey === 'pos')).toMatchObject({
+        payload: { organizationEndUserId: 'member', pointsAmount: 40 },
+        payloadHash: 'old-hash',
       });
-      expect(await db.select().from(schema.creditOwnerships)).toMatchObject([
-        { confirmedBalance: 500, pendingEarn: 1000 },
-      ]);
     });
   });
 });

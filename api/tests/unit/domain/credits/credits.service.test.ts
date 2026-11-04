@@ -173,8 +173,20 @@ describe('CreditsService.listTransactions', () => {
   });
 });
 
-it('rejects a program from another tenant instead of silently ignoring programId', async () => {
-  const repo = stub<CreditsRepository>({ findMemberOrganizationId: async () => 'org-1' });
+describe('CreditsService.getBalance programId', () => {
+  const repo = stub<CreditsRepository>({
+    findMemberOrganizationId: async () => 'org-1',
+    expireDueBucketsForMember: async () => 0,
+    releaseAbandonedPosHoldsForMember: async () => 0,
+    getOrCreateCreditOwnership: async () => settled,
+  });
   const service = new CreditsService(repo, noCursor, PROGRAMS_REPO);
-  await expect(service.getBalance('org-1', 'user-1', 'another-program')).rejects.toMatchObject({ status: 404 });
+
+  it.each(['program-org-1', '0xprogram-org-1'])('accepts the organization program %s', async (programId) => {
+    expect((await service.getBalance('org-1', 'user-1', programId)).confirmedBalance).toBe(100);
+  });
+
+  it('rejects another program instead of ignoring programId', async () => {
+    await expect(service.getBalance('org-1', 'user-1', 'another-program')).rejects.toMatchObject({ status: 404 });
+  });
 });

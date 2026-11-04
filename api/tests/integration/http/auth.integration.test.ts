@@ -66,8 +66,9 @@ describe('ApiKeyGuard over HTTP (real Postgres + Redis)', () => {
       // Pre-fill the current window instead of firing RATE_LIMIT_MAX_REQUESTS real requests.
       const key = `ratelimit:${credential.id}:${Math.floor(Date.now() / 1000 / 60)}`;
       await redis.set(key, String(RATE_LIMIT_MAX_REQUESTS), 'EX', 60);
-      const res = await ctx.http().get('/v1/rewards/vouchers').set('authorization', `Bearer ${rawKey}`).expect(403);
+      const res = await ctx.http().get('/v1/rewards/vouchers').set('authorization', `Bearer ${rawKey}`).expect(429);
       expect(res.body.message).toMatch(/Rate limit exceeded/);
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
     } finally {
       redis.disconnect();
     }

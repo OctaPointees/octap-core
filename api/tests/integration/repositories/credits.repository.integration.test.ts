@@ -48,7 +48,6 @@ async function confirmedEarn(amount: number, { expiresInMs = 30 * DAY_MS, key = 
   await repo.confirmEarnOnChain({
     loyaltyTransactionId: transaction.id,
     organizationEndUserId: memberId,
-    reservedPointsAmount: amount,
     confirmedPointsAmount: amount,
     bucketExpiresAtMs: expiresInMs === null ? null : Date.now() + expiresInMs,
     digest: nextDigest(),
@@ -140,7 +139,6 @@ describe('earn', () => {
         loyaltyTransactionId: transaction.id,
         organizationEndUserId: memberId,
         purchaseAmount: 10_000,
-        reservedPointsAmount: 10_000,
       },
     });
     expect(operation.payloadHash).toMatch(/^[0-9a-f]{64}$/);
@@ -148,24 +146,88 @@ describe('earn', () => {
     expect((await repo.findTransactionByMemberAndIdempotency(memberId, 'earn-1'))?.id).toBe(transaction.id);
   });
 
-  it('a duplicate idempotency key is rejected by the unique index and leaves nothing half-written', async () => {
-    await repo.recordEarnTransaction({
+  it('serializes simultaneous retries of one key and rejects a changed request', async () => {
+    const earn = (overrides: Partial<Parameters<typeof repo.recordEarnTransaction>[0]> = {}) =>
+      repo.recordEarnTransaction({
+        organizationId: orgId,
+        organizationEndUserId: memberId,
+        purchaseAmount: 1000,
+        estimatedPoints: 10,
+        idempotencyKey: 'dup',
+        metadata: { a: 1, b: 2 },
+        ...overrides,
+      });
+    const results = await Promise.all(Array.from({ length: 5 }, () => earn()));
+    expect(results.filter((result) => result.isNew)).toHaveLength(1);
+    expect(new Set(results.map((result) => result.transaction.id)).size).toBe(1);
+    expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 10 });
+    expect(await db.select().from(schema.operations)).toMatchObject([
+      { idempotencyKey: 'dup', payload: { loyaltyTransactionId: results[0].transaction.id } },
+    ]);
+
+    await expect(earn({ metadata: { b: 2, a: 1 } })).resolves.toMatchObject({ isNew: false });
+    await expect(earn({ purchaseAmount: 1001 })).rejects.toThrow(/different payload/);
+    await expect(earn({ receiptReference: 'other' })).rejects.toThrow(/different payload/);
+    await expect(earn({ metadata: {} })).rejects.toThrow(/different payload/);
+    const other = (await seedMember(db, orgId)).memberId;
+    await expect(earn({ organizationEndUserId: other })).rejects.toThrow(/different payload/);
+    expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 10 });
+  });
+
+  it('never reports another operation as an earn, or starts a second transaction for an accepted command', async () => {
+    const earn = (idempotencyKey: string) =>
+      repo.recordEarnTransaction({
+        organizationId: orgId,
+        organizationEndUserId: memberId,
+        purchaseAmount: 1000,
+        estimatedPoints: 10,
+        idempotencyKey,
+      });
+    const unhashedCommand = (idempotencyKey: string) =>
+      db.insert(schema.operations).values({
+        tenantId: orgId,
+        commandType: 'POS_REDEEM_RESERVE',
+        idempotencyKey,
+        payload: {},
+        payloadHash: null,
+        status: 'PENDING',
+      });
+
+    await unhashedCommand('old-redeem');
+    await insertLoyaltyTransaction(db, {
       organizationId: orgId,
       organizationEndUserId: memberId,
-      purchaseAmount: 10,
-      estimatedPoints: 10,
-      idempotencyKey: 'dup',
+      transactionType: 'REDEEM',
+      pointsAmount: 40,
+      status: 'CONFIRMED',
+      idempotencyKey: 'old-redeem',
+    });
+    await expect(earn('old-redeem')).rejects.toThrow(/different payload/);
+
+    await unhashedCommand('orphan');
+    await expect(earn('orphan')).rejects.toThrow(/its transaction is missing/);
+    expect(await getOwnership(db, memberId)).toBeUndefined();
+  });
+
+  it('rejects a key an operation without a durable command already used', async () => {
+    await insertLoyaltyTransaction(db, {
+      organizationId: orgId,
+      organizationEndUserId: memberId,
+      transactionType: 'REVERSAL',
+      pointsAmount: 40,
+      status: 'CONFIRMED',
+      idempotencyKey: 'reversal-key',
     });
     await expect(
       repo.recordEarnTransaction({
         organizationId: orgId,
         organizationEndUserId: memberId,
-        purchaseAmount: 10,
+        purchaseAmount: 1000,
         estimatedPoints: 10,
-        idempotencyKey: 'dup',
+        idempotencyKey: 'reversal-key',
       }),
-    ).rejects.toThrow();
-    expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 10 });
+    ).rejects.toThrow(/different payload/);
+    expect(await db.select().from(schema.operations)).toEqual([]);
   });
 
   it('confirmEarnOnChain moves the hold into the confirmed balance at the chain’s amount and records a bucket', async () => {
@@ -181,7 +243,6 @@ describe('earn', () => {
     const receipt = await repo.confirmEarnOnChain({
       loyaltyTransactionId: transaction.id,
       organizationEndUserId: memberId,
-      reservedPointsAmount: 10_000,
       confirmedPointsAmount: 100,
       bucketExpiresAtMs: expiresAtMs,
       digest: 'D-EARN',
@@ -219,7 +280,6 @@ describe('earn', () => {
       repo.confirmEarnOnChain({
         loyaltyTransactionId: transaction.id,
         organizationEndUserId: memberId,
-        reservedPointsAmount: 50,
         confirmedPointsAmount: 50,
         bucketExpiresAtMs: null,
         digest,
@@ -257,7 +317,6 @@ describe('earn', () => {
       repo.confirmEarnOnChain({
         loyaltyTransactionId: tx.id,
         organizationEndUserId: memberId,
-        reservedPointsAmount: amount,
         confirmedPointsAmount: amount,
         bucketExpiresAtMs: null,
         digest,
@@ -285,7 +344,6 @@ describe('earn', () => {
       repo.failEarnOnChain({
         loyaltyTransactionId: transaction.id,
         organizationEndUserId: memberId,
-        reservedPointsAmount: 40,
       });
 
     await fail();
@@ -306,14 +364,12 @@ describe('earn', () => {
     await repo.failEarnOnChain({
       loyaltyTransactionId: transaction.id,
       organizationEndUserId: memberId,
-      reservedPointsAmount: 40,
     });
 
     expect(
       await repo.confirmEarnOnChain({
         loyaltyTransactionId: transaction.id,
         organizationEndUserId: memberId,
-        reservedPointsAmount: 40,
         confirmedPointsAmount: 40,
         bucketExpiresAtMs: null,
         digest: 'D',
@@ -954,7 +1010,6 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
       {
         loyaltyTransactionId: transactionId,
         organizationEndUserId: memberId,
-        reservedPointsAmount: 10_000,
         confirmedPointsAmount: 100,
         bucketExpiresAtMs: null,
         digest,
@@ -1017,7 +1072,6 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
     await repo.failEarnOnChain({
       loyaltyTransactionId: tx.id,
       organizationEndUserId: memberId,
-      reservedPointsAmount: 10_000,
     });
     expect(await deliveries()).toEqual([]);
   });
@@ -1060,7 +1114,7 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
   });
 });
 
-it('releases the exact persisted earn estimate on confirmation and failure, regardless of stale payload amounts', async () => {
+it('releases the exact persisted earn estimate on confirmation and failure', async () => {
   const a = await repo.recordEarnTransaction({
     organizationId: orgId,
     organizationEndUserId: memberId,
@@ -1079,7 +1133,6 @@ it('releases the exact persisted earn estimate on confirmation and failure, rega
   await repo.confirmEarnOnChain({
     loyaltyTransactionId: a.transaction.id,
     organizationEndUserId: memberId,
-    reservedPointsAmount: 100000,
     confirmedPointsAmount: 900,
     digest: nextDigest(),
     sender: '0xissuer',
@@ -1089,7 +1142,6 @@ it('releases the exact persisted earn estimate on confirmation and failure, rega
   await repo.failEarnOnChain({
     loyaltyTransactionId: b.transaction.id,
     organizationEndUserId: memberId,
-    reservedPointsAmount: 100000,
   });
   expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 0, confirmedBalance: 900 });
 });

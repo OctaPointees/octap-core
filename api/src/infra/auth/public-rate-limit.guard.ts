@@ -1,16 +1,8 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  HttpException,
-  HttpStatus,
-  Inject,
-  Injectable,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { isIPv6 } from 'node:net';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../cache/redis.provider.js';
-import { RATE_LIMIT_WINDOW_SECONDS, checkRateLimit } from './rate-limit.util.js';
+import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 
 export const PUBLIC_RATE_LIMIT_MAX_REQUESTS = Number(process.env.PUBLIC_RATE_LIMIT_MAX_REQUESTS ?? 60);
 
@@ -52,13 +44,7 @@ export class PublicRateLimitGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{ ip?: string }>();
     const result = await checkRateLimit(this.redis, rateLimitSubjectForIp(request.ip), PUBLIC_RATE_LIMIT_MAX_REQUESTS);
     if (result === 'exceeded') {
-      // Without a hint, clients retry at once and keep an already exhausted window full.
-      const secondsLeft = RATE_LIMIT_WINDOW_SECONDS - Math.floor((Date.now() / 1000) % RATE_LIMIT_WINDOW_SECONDS);
-      context
-        .switchToHttp()
-        .getResponse<{ setHeader(name: string, value: string): void }>()
-        .setHeader('Retry-After', String(secondsLeft));
-      throw new HttpException('Too many requests from this address; try again shortly', HttpStatus.TOO_MANY_REQUESTS);
+      throw rateLimitExceeded(context, 'Too many requests from this address; try again shortly');
     }
     if (result === 'unavailable') {
       throw new ServiceUnavailableException('Rate limiting is temporarily unavailable; refusing to fail open');

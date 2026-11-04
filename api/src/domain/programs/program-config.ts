@@ -14,6 +14,8 @@ export class ProgramNotProvisionedError extends Error {
   }
 }
 
+export type ResolvedProgramConfig = OctapProgramConfig & { earnBps: number };
+
 /**
  * The single per-organization lookup every chain dispatch path (earn, open_account, redeem) goes
  * through. Reads the row `ProgramsService.provisionForOrganization` wrote; throws
@@ -22,7 +24,7 @@ export class ProgramNotProvisionedError extends Error {
 export async function resolveProgramConfig(
   repo: Pick<ProgramsRepository, 'findByOrganization'>,
   organizationId: string,
-): Promise<OctapProgramConfig> {
+): Promise<ResolvedProgramConfig> {
   const program = await repo.findByOrganization(organizationId);
   if (!program) {
     throw new ProgramNotProvisionedError(organizationId, 'no programs row');
@@ -30,7 +32,7 @@ export async function resolveProgramConfig(
   if (program.status !== 'ACTIVE') {
     throw new ProgramNotProvisionedError(organizationId, `program is ${program.status}`);
   }
-  const { programControlId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds } = program;
+  const { programControlId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds, earnBps } = program;
   if (!programControlId || !policyVersionId || !issuerCapId) {
     throw new ProgramNotProvisionedError(organizationId, 'program row is missing on-chain ids');
   }
@@ -39,7 +41,7 @@ export async function resolveProgramConfig(
   if (!operationShardIds?.length || operationShardIds.length !== budgetShardIds?.length) {
     throw new ProgramNotProvisionedError(organizationId, 'program has no operation/budget shards');
   }
-  return { programControlId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds };
+  return { programControlId, policyVersionId, issuerCapId, operationShardIds, budgetShardIds, earnBps };
 }
 
 /**
@@ -50,7 +52,7 @@ export async function resolveProgramConfig(
 export async function requireProgramConfig(
   repo: Pick<ProgramsRepository, 'findByOrganization'>,
   organizationId: string,
-): Promise<OctapProgramConfig> {
+): Promise<ResolvedProgramConfig> {
   try {
     return await resolveProgramConfig(repo, organizationId);
   } catch (err: unknown) {

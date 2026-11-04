@@ -100,7 +100,7 @@ const earn = (purchaseAmount: number, idempotencyKey: string) =>
 const balance = async () =>
   (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body;
 
-describe('earn -> chain confirmation -> balance -> redeem -> reverse', () => {
+describe('earn -> chain confirmation -> balance -> reverse', () => {
   it('keeps purchase units separate through acceptance, history, confirmation and reversal', async () => {
     const accepted = await earn(100_000, 'receipt-001').expect(201);
     expect(accepted.body).toMatchObject({
