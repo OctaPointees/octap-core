@@ -1,13 +1,5 @@
 /** Draft boundary types from the knowledge base; wire schemas remain to be designed. */
 export type Points = string; // Decimal u64 string; validation is not implemented.
-export interface ActorContext {
-  tenantId: string;
-  actorId: string;
-  scopes: readonly string[];
-}
-export interface OperationReference {
-  operation_id: string;
-}
 export interface BalanceSnapshot {
   confirmed_balance: Points;
   pending_earn: Points;
@@ -22,7 +14,8 @@ export type LoyaltyTxStatus = 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED';
 
 export interface EarnPointsRequest {
   organizationEndUserId: string;
-  pointsAmount: number;
+  /** Purchase amount in the program currency minor unit; the chain applies earn_bps. */
+  purchaseAmount: number;
   idempotencyKey: string;
   receiptReference?: string;
   metadata?: Record<string, unknown>;
@@ -31,24 +24,11 @@ export interface EarnPointsRequest {
 export interface EarnPointsResponse {
   transactionId: string;
   organizationEndUserId: string;
-  pointsEarned: number;
-  newBalance: number;
-  status: LoyaltyTxStatus;
-  idempotencyKey: string;
-}
-
-export interface RedeemPointsRequest {
-  organizationEndUserId: string;
-  pointsAmount: number;
-  idempotencyKey: string;
-  receiptReference?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RedeemPointsResponse {
-  transactionId: string;
-  organizationEndUserId: string;
-  pointsRedeemed: number;
+  purchaseAmount: number | null;
+  /** Estimate at acceptance, never spendable before chain confirmation. */
+  estimatedPoints: number | null;
+  /** Actual chain-confirmed points, null while pending or failed. */
+  pointsEarned: number | null;
   newBalance: number;
   status: LoyaltyTxStatus;
   idempotencyKey: string;
@@ -125,7 +105,10 @@ export interface LoyaltyTransactionDto {
   /** The Sui transaction digest, once `blockchainTransactionId` resolves on-chain. */
   blockchainDigest?: string | null;
   transactionType: LoyaltyTxType;
-  pointsAmount: number;
+  /** Actual points; null for an unconfirmed earn. */
+  pointsAmount: number | null;
+  purchaseAmount?: number | null;
+  estimatedPoints?: number | null;
   idempotencyKey: string;
   receiptReference?: string | null;
   status: LoyaltyTxStatus;

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contracts';
@@ -8,6 +9,7 @@ export class CreditsService {
   constructor(
     private readonly creditsRepo: CreditsRepository,
     private readonly indexerRepo: IndexerRepository,
+    private readonly programsRepo: ProgramsRepository,
   ) {}
 
   /**
@@ -15,8 +17,18 @@ export class CreditsService {
    * per-member. `stale` is the simple, literal rule: any pending amount means part of this balance
    * can still change. Comparing the indexer against the chain's current tip is future work.
    */
-  async getBalance(organizationId: string, organizationEndUserId: string): Promise<CreditBalanceSnapshot> {
+  async getBalance(
+    organizationId: string,
+    organizationEndUserId: string,
+    programId?: string,
+  ): Promise<CreditBalanceSnapshot> {
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
+    if (programId !== undefined) {
+      const program = await this.programsRepo.findByOrganization(organizationId);
+      if (!program || (program.id !== programId && program.programControlId !== programId)) {
+        throw new NotFoundException('Program was not found for this organization');
+      }
+    }
     // Lazy expiry: a bucket past its `expires_at_ms` must not count, even before the chain says so.
     await this.creditsRepo.expireDueBucketsForMember({ organizationId, organizationEndUserId });
     // Same lazy rule for an abandoned POS reserve (OCT-244): its hold must not linger in `pendingRedemption`.
@@ -57,7 +69,12 @@ export class CreditsService {
       blockchainTransactionId: tx.blockchainTransactionId,
       blockchainDigest: tx.blockchainTransaction?.digest ?? null,
       transactionType: tx.transactionType,
-      pointsAmount: Number(tx.pointsAmount),
+      pointsAmount:
+        tx.transactionType === 'EARN' && (tx.status === 'PENDING' || tx.status === 'FAILED')
+          ? null
+          : Number(tx.pointsAmount),
+      purchaseAmount: tx.purchaseAmount,
+      estimatedPoints: tx.transactionType === 'EARN' && tx.status === 'PENDING' ? Number(tx.pointsAmount) : null,
       idempotencyKey: tx.idempotencyKey,
       receiptReference: tx.receiptReference,
       status: tx.status,

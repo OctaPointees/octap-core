@@ -90,7 +90,6 @@ describe('ChainSubmitProcessor', () => {
     expect(confirmEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
-      reservedPointsAmount: 10000,
       confirmedPointsAmount: 100,
       bucketExpiresAtMs: null,
       digest: 'DIGEST1',
@@ -154,7 +153,6 @@ describe('ChainSubmitProcessor', () => {
     expect(failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
-      reservedPointsAmount: 10000,
     });
     expect(markFailed).toHaveBeenCalledWith('op-1', 'EInsufficientBalance');
   });
@@ -380,7 +378,7 @@ describe('ChainSubmitProcessor per-organization programs (OCT-73)', () => {
       programsRepoFor({}),
     ).process(buildOperation({ tenantId: 'org-unprovisioned' }));
 
-    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
+    expect(failEarnOnChain).toHaveBeenCalledOnce();
     expect(markFailed).toHaveBeenCalledWith(
       'op-1',
       expect.stringMatching(/org-unprovisioned has no on-chain program provisioned/),
@@ -439,7 +437,7 @@ describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
       },
     ).process(buildOperation());
 
-    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ reservedPointsAmount: 10000 }));
+    expect(failEarnOnChain).toHaveBeenCalledOnce();
     expect(markFailed).toHaveBeenCalledWith('op-1', 'InsufficientGas while resolving');
   });
 });
@@ -806,7 +804,6 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
     expect(failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
-      reservedPointsAmount: 10000,
     });
     expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/abort code: 0/));
   });

@@ -3,8 +3,7 @@
 Loyalty points for an organization's end users.
 
 - `credits.service.ts`: balance snapshot and transaction history.
-- `earn.service.ts`: earn points, idempotent on `idempotencyKey`.
-- `redemption.service.ts`: legacy PostgreSQL-only redemption endpoint. Paid voucher claims no longer call it.
+- `earn.service.ts`: earn points, idempotent on `idempotencyKey`; a changed request under a used key is a 409.
 - `pos-redemption.service.ts`: shared customer-signed on-chain redemption lifecycle for POS and paid voucher claims. Reserve points first, sponsor bytes, obtain the customer's signature and finalize. Rewards reserves its stock/ownership and points atomically before calling the shared sponsorship method. Only a chain verdict activates a paid voucher and debits the confirmed projection.
 Unsigned POS/voucher holds are released after 30 minutes on the next balance read or POS reserve; voucher claims also have worker recovery. Cleanup cancels reserved coupons and returns stock in the same transaction. Holds with a submitted digest are left to chain reconciliation.
 
@@ -23,7 +22,7 @@ Unsigned POS/voucher holds are released after 30 minutes on the next balance rea
 - `credits.module.ts`: Nest provider composition.
 
 Persistence is `infra/db/repositories/credits.repository.ts`; HTTP is `api/rest/credits.controller.ts`.
-The three write transactions (`recordEarnTransaction`/`recordRedeemTransaction`/
+The write transactions (`recordEarnTransaction`/`reservePosRedemption`/
 `recordReversalTransaction`) run through `infra/db/rls.ts`'s `withRls()`, so Postgres RLS is a
 real second line of defense on `loyalty_transactions` here, not just the app-code tenant checks
 in `credits.service.ts`/`earn.service.ts`/etc. Read paths don't go through `withRls()` yet (see
@@ -38,3 +37,22 @@ chain emits `CreditExpired`.
 (`CreditsRepository.findBeneficiaryAddress`, via `domain/identity`) — not a placeholder, since a
 wrong address at open time can never be corrected later (`credit_account.move`'s `beneficiary` is
 set once, no entry point changes it).
+
+## Earn purchase contract
+
+`POST /v1/credits/earn` takes `purchaseAmount` (a positive safe integer in the program currency's
+minor unit), not a point count. At acceptance the active program's `earnBps` determines
+`floor(purchaseAmount * earnBps / 10000)` using integer arithmetic; a purchase that rounds to zero
+is rejected with 400, because the chain would abort it. The PENDING transaction and `pendingEarn`
+contain that point estimate. The response returns `purchaseAmount`, `estimatedPoints` and
+`pointsEarned: null`. Pending history returns `pointsAmount: null` and `estimatedPoints`.
+Only the chain-confirmed amount becomes `pointsEarned`/history `pointsAmount` and spendable balance.
+Failure releases the estimate without crediting it; confirmation releases the estimate and credits
+the actual event amount, using the locked pending row.
+
+For example, purchase 100000 at 100 bps reserves 1000 estimated points and confirms 1000 points.
+`credits.earned` contains purchase/estimate fields; `credits.earn.confirmed.pointsAmount` is actual points.
+POS reserve and reversal still use real `pointsAmount` values.
+
+`GET .../balance?programId=...` accepts the tenant's program row ID or its on-chain program-control ID;
+a different program returns 404 rather than silently reading another balance.

@@ -126,6 +126,8 @@ describe('tenant customer member directory', () => {
       organizationId: orgId,
       organizationEndUserId: memberId,
       pointsAmount: 10,
+      purchaseAmount: 1000,
+      estimatedPoints: 10,
       idempotencyKey: 'blocked',
     };
     await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
@@ -141,7 +143,12 @@ describe('tenant customer member directory', () => {
         discountValue: '10',
       })
       .returning();
-    const request = { organizationEndUserId: memberId, pointsAmount: 10, idempotencyKey: 'blocked-service' };
+    const request = {
+      organizationEndUserId: memberId,
+      pointsAmount: 10,
+      purchaseAmount: 1000,
+      idempotencyKey: 'blocked-service',
+    };
     await expect(ctx.app.get(EarnService).executeEarn(orgId, request)).rejects.toMatchObject({ status: 403 });
     await expect(ctx.app.get(PosRedemptionService).reserve(orgId, request)).rejects.toMatchObject({ status: 403 });
     await expect(ctx.app.get(RewardsService).claimVoucher(orgId, voucher.id, request)).rejects.toMatchObject({
@@ -170,7 +177,8 @@ describe('tenant customer member directory', () => {
         credits.recordEarnTransaction({
           organizationId: orgId,
           organizationEndUserId: member.id,
-          pointsAmount: 10,
+          purchaseAmount: 10,
+          estimatedPoints: 10,
           idempotencyKey: `first-${i}`,
         }),
       ),

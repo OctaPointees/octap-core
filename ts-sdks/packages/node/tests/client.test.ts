@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { OctaApiError, OctaPointClient, OctaSdkError, createOctaPointClient } from '../src/index.js';
+import {
+  OctaApiError,
+  OctaPointClient,
+  OctaSdkError,
+  OctaRequestAbortedError,
+  OctaNetworkError,
+  createOctaPointClient,
+} from '../src/index.js';
 
 const jsonHeaders = { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) };
 const textHeaders = { get: () => 'text/plain' };
@@ -47,10 +54,10 @@ describe('OctaPointClient', () => {
       headers: { authorization: 'Bearer test-key', 'x-organization-id': 'org-1' },
     });
   });
-  it('earnPoints and redeemPoints send authenticated JSON requests, with a per-call org override', async () => {
+  it('earnPoints and reservePosRedemption send authenticated JSON requests, with a per-call org override', async () => {
     const { fetchFn, last } = recordingFetch((_url, init) => {
       const body = JSON.parse(String(init.body));
-      return { transactionId: 'tx-sdk-1', pointsEarned: body.pointsAmount, newBalance: 200 };
+      return { transactionId: 'tx-sdk-1', purchaseAmount: body.purchaseAmount, newBalance: 200 };
     });
     const client = createOctaPointClient({
       baseUrl: 'https://api.octap.network/',
@@ -61,7 +68,7 @@ describe('OctaPointClient', () => {
 
     const earn = await client.earnPoints({
       organizationEndUserId: 'user-456',
-      pointsAmount: 100,
+      purchaseAmount: 100,
       idempotencyKey: 'idem-key-1',
     });
 
@@ -74,15 +81,15 @@ describe('OctaPointClient', () => {
         authorization: 'Bearer secret-key-xyz',
         'x-organization-id': 'org-123',
       },
-      body: { organizationEndUserId: 'user-456', pointsAmount: 100, idempotencyKey: 'idem-key-1' },
+      body: { organizationEndUserId: 'user-456', purchaseAmount: 100, idempotencyKey: 'idem-key-1' },
     });
     expect(earn).toMatchObject({ transactionId: 'tx-sdk-1', newBalance: 200 });
 
-    await client.redeemPoints(
+    await client.reservePosRedemption(
       { organizationEndUserId: 'user-456', pointsAmount: 50, idempotencyKey: 'idem-key-2' },
       { organizationId: 'org-override' },
     );
-    expect(last().url).toBe('https://api.octap.network/v1/credits/redeem');
+    expect(last().url).toBe('https://api.octap.network/v1/credits/redeem/reserve');
     expect(last().headers['x-organization-id']).toBe('org-override');
   });
 
@@ -123,7 +130,7 @@ describe('OctaPointClient', () => {
       observed_at: 'now',
       stale: true,
     });
-    expect(last().url).toBe('http://localhost:3000/v1/credits/members/user-1/balance');
+    expect(last().url).toBe('http://localhost:3000/v1/credits/members/user-1/balance?programId=program-1');
 
     const withCheckpoint = new OctaPointClient({
       fetchFn: recordingFetch(() => ({ ...snapshot, asOfCheckpoint: '42' })).fetchFn,
@@ -168,7 +175,7 @@ describe('OctaPointClient', () => {
     })) as unknown as typeof fetch;
 
     const err = await createOctaPointClient({ fetchFn })
-      .redeemPoints({ organizationEndUserId: 'user-1', pointsAmount: 9999, idempotencyKey: 'idem' })
+      .reservePosRedemption({ organizationEndUserId: 'user-1', pointsAmount: 9999, idempotencyKey: 'idem' })
       .catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(OctaApiError);
@@ -218,14 +225,14 @@ describe('OctaPointClient', () => {
     const fetchFn = vi.fn(async () => {
       throw new Error('ECONNRESET');
     }) as unknown as typeof fetch;
-    await expect(new OctaPointClient({ fetchFn }).listVouchers()).rejects.toThrow(
-      'Network request failed for GET http://localhost:3000/v1/rewards/vouchers: ECONNRESET',
-    );
+    await expect(new OctaPointClient({ fetchFn }).listVouchers()).rejects.toThrow('Network request failed');
 
     const stringFailure = vi.fn(async () => {
       throw 'offline';
     }) as unknown as typeof fetch;
-    await expect(new OctaPointClient({ fetchFn: stringFailure }).listVouchers()).rejects.toThrow(/: offline$/);
+    await expect(new OctaPointClient({ fetchFn: stringFailure }).listVouchers()).rejects.toThrow(
+      /Network request failed/,
+    );
   });
 
   it('resolves base URL and fetch from a REST transport, and falls back to global fetch', async () => {
@@ -242,12 +249,6 @@ describe('OctaPointClient', () => {
   it('refuses to construct without any fetch implementation', () => {
     vi.stubGlobal('fetch', undefined);
     expect(() => new OctaPointClient()).toThrow(/Global fetch is not available/);
-  });
-
-  it('waitForOperation echoes the operation reference', async () => {
-    expect(await new OctaPointClient({ fetchFn: recordingFetch().fetchFn }).waitForOperation('op-1')).toEqual({
-      operation_id: 'op-1',
-    });
   });
 });
 
@@ -313,5 +314,92 @@ describe('voucher refund policy SDK', () => {
       url: 'http://localhost:3000/v1/rewards/refund-policy/history?limit=2&beforeVersion=7',
       headers: { 'x-organization-id': 'another-org' },
     });
+  });
+});
+
+describe('merchant route coverage and cancellation', () => {
+  it('wraps all webhook lifecycle and delivery routes with per-request options', async () => {
+    const { fetchFn, last } = recordingFetch();
+    const client = new OctaPointClient({ credentials: { apiKey: 'server-key' }, fetchFn });
+    const options = { organizationId: 'tenant' };
+    await client.registerWebhookEndpoint({ url: 'https://merchant.test/hooks', description: 'orders' }, options);
+    expect(last()).toMatchObject({
+      method: 'POST',
+      body: { url: 'https://merchant.test/hooks', description: 'orders' },
+    });
+    const calls = [
+      [() => client.listWebhookEndpoints(options), '/endpoints', 'GET'],
+      [() => client.disableWebhookEndpoint('a/b', options), '/endpoints/a%2Fb/disable', 'POST'],
+      [() => client.enableWebhookEndpoint('a/b', options), '/endpoints/a%2Fb/enable', 'POST'],
+      [() => client.rotateWebhookSecret('a/b', options), '/endpoints/a%2Fb/rotate-secret', 'POST'],
+      [() => client.listWebhookDeliveries(options), '/deliveries', 'GET'],
+      [() => client.replayWebhookDelivery('d/e', options), '/deliveries/d%2Fe/replay', 'POST'],
+    ] as const;
+    for (const [call, path, method] of calls) {
+      await call();
+      expect(last()).toMatchObject({
+        url: `http://localhost:3000/v1/webhooks${path}`,
+        method,
+        headers: { authorization: 'Bearer server-key', 'x-organization-id': 'tenant' },
+      });
+    }
+  });
+  it('reverses the path transaction with only the command body and supports POS finalize', async () => {
+    const { fetchFn, last } = recordingFetch();
+    const client = new OctaPointClient({ fetchFn });
+    await client.reverseTransaction({ transactionId: 'tx/path', idempotencyKey: 'same-key', reason: 'refund' });
+    expect(last()).toMatchObject({
+      url: 'http://localhost:3000/v1/credits/transactions/tx%2Fpath/reverse',
+      body: { idempotencyKey: 'same-key', reason: 'refund' },
+    });
+    await client.finalizePosRedemption({ digest: 'digest', signature: 'customer-signature' });
+    expect(last()).toMatchObject({
+      url: 'http://localhost:3000/v1/credits/redeem/finalize',
+      body: { digest: 'digest', signature: 'customer-signature' },
+    });
+  });
+  it('passes program ID, tenant and cancellation to both balance overloads', async () => {
+    const signal = new AbortController().signal;
+    const { fetchFn, last } = recordingFetch(() => ({}));
+    const client = new OctaPointClient({ fetchFn });
+    await client.getBalance('program/1', 'member/1', { organizationId: 'org', signal });
+    expect(last().url).toBe('http://localhost:3000/v1/credits/members/member%2F1/balance?programId=program%2F1');
+    expect((fetchFn as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1].signal).toBe(signal);
+    await client.getBalance('member', { organizationId: 'org', signal });
+    expect(last().headers['x-organization-id']).toBe('org');
+  });
+  it('distinguishes aborts and preserves network causes without retrying', async () => {
+    const cause = new Error('offline');
+    const failing = vi.fn(async () => {
+      throw cause;
+    });
+    await expect(new OctaPointClient({ fetchFn: failing }).listVouchers()).rejects.toMatchObject({
+      name: 'OctaNetworkError',
+      cause,
+    });
+    expect(failing).toHaveBeenCalledTimes(1);
+    const controller = new AbortController();
+    const pendingFetch = vi.fn(async () => {
+      controller.abort();
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    await expect(
+      new OctaPointClient({ fetchFn: pendingFetch }).listVouchers({ signal: controller.signal }),
+    ).rejects.toBeInstanceOf(OctaRequestAbortedError);
+    expect(new OctaNetworkError(cause)).toBeInstanceOf(OctaSdkError);
+  });
+  it('exposes the status, body and retry-after of an API error', async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: 'Slow down' }), {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '5' },
+        }),
+    );
+    await expect(new OctaPointClient({ fetchFn }).listVouchers()).rejects.toMatchObject({
+      statusCode: 429,
+      retryAfter: '5',
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });

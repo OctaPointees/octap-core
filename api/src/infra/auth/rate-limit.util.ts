@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus, type ExecutionContext } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 
 export const RATE_LIMIT_WINDOW_SECONDS = 60;
@@ -27,4 +28,14 @@ export async function checkRateLimit(
   } catch {
     return 'unavailable';
   }
+}
+
+/** The 429 for an exhausted window. Without a hint, clients retry at once and keep the window full. */
+export function rateLimitExceeded(context: ExecutionContext, message: string): HttpException {
+  const secondsLeft = RATE_LIMIT_WINDOW_SECONDS - Math.floor((Date.now() / 1000) % RATE_LIMIT_WINDOW_SECONDS);
+  context
+    .switchToHttp()
+    .getResponse<{ setHeader(name: string, value: string): void }>()
+    .setHeader('Retry-After', String(secondsLeft));
+  return new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
 }

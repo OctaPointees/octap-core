@@ -3,7 +3,7 @@ import { CreditsService } from '#domain/credits/credits.service.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import { stub } from '../../../helpers/stub.js';
-import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
+import { PROGRAMS_REPO, buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
 const settled = {
   confirmedBalance: 100,
@@ -22,7 +22,7 @@ describe('CreditsService.getBalance', () => {
       releaseAbandonedPosHoldsForMember: async () => 0,
       getOrCreateCreditOwnership: async () => settled,
     });
-    const service = new CreditsService(repo, noCursor);
+    const service = new CreditsService(repo, noCursor, PROGRAMS_REPO);
 
     expect((await service.getBalance('org-1', 'user-org1')).confirmedBalance).toBe(100);
     await expect(service.getBalance('org-1', 'user-org2')).rejects.toThrow(/was not found for this organization/);
@@ -40,7 +40,7 @@ describe('CreditsService.getBalance', () => {
       getCursor: async (stream: string) =>
         stream === 'octap::credit_account' ? { lastCheckpoint: '394761967' } : undefined,
     });
-    const service = new CreditsService(repo, indexerRepo);
+    const service = new CreditsService(repo, indexerRepo, PROGRAMS_REPO);
 
     const balance = await service.getBalance('org-1', 'user-1');
     expect(balance).toMatchObject({
@@ -68,7 +68,9 @@ describe('CreditsService.getBalance', () => {
       getOrCreateCreditOwnership: async () => settled,
     });
 
-    expect((await new CreditsService(repo, noCursor).getBalance('org-1', 'user-1')).asOfCheckpoint).toBeNull();
+    expect(
+      (await new CreditsService(repo, noCursor, PROGRAMS_REPO).getBalance('org-1', 'user-1')).asOfCheckpoint,
+    ).toBeNull();
   });
 
   it('sweeps due buckets before reading the balance (lazy expiry)', async () => {
@@ -86,7 +88,7 @@ describe('CreditsService.getBalance', () => {
       },
     });
 
-    const balance = await new CreditsService(repo, noCursor).getBalance('org-1', 'user-1');
+    const balance = await new CreditsService(repo, noCursor, PROGRAMS_REPO).getBalance('org-1', 'user-1');
 
     expect(order).toEqual([['expire', { organizationId: 'org-1', organizationEndUserId: 'user-1' }], ['read']]);
     expect(balance.confirmedBalance).toBe(0);
@@ -109,7 +111,7 @@ describe('CreditsService.getBalance abandoned POS holds (OCT-244)', () => {
       },
     });
 
-    await new CreditsService(repo, noCursor).getBalance('org-1', 'user-1');
+    await new CreditsService(repo, noCursor, PROGRAMS_REPO).getBalance('org-1', 'user-1');
 
     expect(order).toEqual([['release', { organizationId: 'org-1', organizationEndUserId: 'user-1' }], ['read']]);
   });
@@ -126,7 +128,7 @@ describe('CreditsService.listTransactions', () => {
     ]);
     const repo = stub<CreditsRepository>({ findMemberOrganizationId: async () => 'org-1', listTransactionsByMember });
 
-    const result = await new CreditsService(repo, noCursor).listTransactions('org-1', 'user-1', 10);
+    const result = await new CreditsService(repo, noCursor, PROGRAMS_REPO).listTransactions('org-1', 'user-1', 10);
 
     expect(listTransactionsByMember).toHaveBeenCalledWith('org-1', 'user-1', 10);
     expect(result[0]).toEqual({
@@ -138,6 +140,8 @@ describe('CreditsService.listTransactions', () => {
       blockchainDigest: 'DIGEST-1',
       transactionType: 'EARN',
       pointsAmount: 50,
+      purchaseAmount: null,
+      estimatedPoints: null,
       idempotencyKey: 'earn-1',
       receiptReference: null,
       status: 'CONFIRMED',
@@ -152,7 +156,7 @@ describe('CreditsService.listTransactions', () => {
     const listTransactionsByMember = vi.fn(async () => []);
     const repo = stub<CreditsRepository>({ findMemberOrganizationId: async () => 'org-1', listTransactionsByMember });
 
-    await new CreditsService(repo, noCursor).listTransactions('org-1', 'user-1');
+    await new CreditsService(repo, noCursor, PROGRAMS_REPO).listTransactions('org-1', 'user-1');
 
     expect(listTransactionsByMember).toHaveBeenCalledWith('org-1', 'user-1', 50);
   });
@@ -163,6 +167,26 @@ describe('CreditsService.listTransactions', () => {
       listTransactionsByMember: () => expect.fail('membership check must happen first'),
     });
 
-    await expect(new CreditsService(repo, noCursor).listTransactions('org-1', 'user-1')).rejects.toThrow(/not found/);
+    await expect(new CreditsService(repo, noCursor, PROGRAMS_REPO).listTransactions('org-1', 'user-1')).rejects.toThrow(
+      /not found/,
+    );
+  });
+});
+
+describe('CreditsService.getBalance programId', () => {
+  const repo = stub<CreditsRepository>({
+    findMemberOrganizationId: async () => 'org-1',
+    expireDueBucketsForMember: async () => 0,
+    releaseAbandonedPosHoldsForMember: async () => 0,
+    getOrCreateCreditOwnership: async () => settled,
+  });
+  const service = new CreditsService(repo, noCursor, PROGRAMS_REPO);
+
+  it.each(['program-org-1', '0xprogram-org-1'])('accepts the organization program %s', async (programId) => {
+    expect((await service.getBalance('org-1', 'user-1', programId)).confirmedBalance).toBe(100);
+  });
+
+  it('rejects another program instead of ignoring programId', async () => {
+    await expect(service.getBalance('org-1', 'user-1', 'another-program')).rejects.toMatchObject({ status: 404 });
   });
 });

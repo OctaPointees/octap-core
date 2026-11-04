@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
 import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
@@ -10,7 +11,7 @@ import {
 } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
-import { acceptCommand } from './operations.repository.js';
+import { acceptCommand, lockIdempotencyKey, OperationPayloadConflictError } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
@@ -25,7 +26,11 @@ import { withActiveMember } from './member-eligibility.js';
  */
 async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: string) {
   const [row] = await tx
-    .select({ status: loyaltyTransactions.status, organizationId: loyaltyTransactions.organizationId })
+    .select({
+      status: loyaltyTransactions.status,
+      organizationId: loyaltyTransactions.organizationId,
+      pointsAmount: loyaltyTransactions.pointsAmount,
+    })
     .from(loyaltyTransactions)
     .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
     .for('update');
@@ -436,80 +441,117 @@ export class CreditsRepository {
 
   /**
    * Durably accepts an earn command: inserts the loyalty transaction as PENDING, moves
-   * `pointsAmount` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
+   * `estimatedPoints` into `pendingEarn` (not `confirmedBalance` — Sui is authoritative for
    * confirmed points, see docs/architecture.md), and enqueues a `CREDIT_EARN_CHAIN_SUBMIT`
    * operation in the same transaction so command acceptance and chain dispatch commit atomically.
    * `ChainSubmitProcessor` (domain/credits/chain-submit.processor.ts) resolves it later via
    * `confirmEarnOnChain`/`failEarnOnChain`.
+   *
+   * Same key and request returns the original transaction with `isNew: false`, even when another
+   * request is accepting it right now. A changed request throws `OperationPayloadConflictError`.
+   * Only new work checks eligibility: a retry reports what was already accepted.
    */
   async recordEarnTransaction(params: {
     organizationId: string;
     organizationEndUserId: string;
-    pointsAmount: number;
+    purchaseAmount: number;
+    estimatedPoints: number;
     idempotencyKey: string;
     receiptReference?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
-      let ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
-
-      if (!ownership) {
-        const [newOwnership] = await tx
-          .insert(creditOwnerships)
-          .values({
-            organizationEndUserId: params.organizationEndUserId,
-            confirmedBalance: 0,
-            pendingEarn: 0,
-            pendingRedemption: 0,
-            lifetimeEarned: 0,
-            lifetimeRedeemed: 0,
-          })
-          .onConflictDoNothing({ target: creditOwnerships.organizationEndUserId })
-          .returning();
-        ownership =
-          newOwnership ??
-          (await tx.query.creditOwnerships.findFirst({
-            where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-          }));
-      }
-
-      const [transaction] = await tx
-        .insert(loyaltyTransactions)
-        .values({
-          organizationId: params.organizationId,
-          organizationEndUserId: params.organizationEndUserId,
-          transactionType: 'EARN',
-          pointsAmount: params.pointsAmount,
-          idempotencyKey: params.idempotencyKey,
-          receiptReference: params.receiptReference,
-          status: 'PENDING',
-          metadata: params.metadata ?? {},
-        })
-        .returning();
-
-      await tx
-        .update(creditOwnerships)
-        .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.pointsAmount}`, updatedAt: new Date() })
-        .where(eq(creditOwnerships.id, ownership.id));
-
-      await acceptCommand(tx, {
+    return this.db.transaction(async (outer) => {
+      await lockIdempotencyKey(outer, params.organizationId, params.idempotencyKey);
+      const loyaltyTransactionId = randomUUID();
+      const { isNew } = await acceptCommand(outer, {
         tenantId: params.organizationId,
         idempotencyKey: params.idempotencyKey,
         commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
         payload: {
-          loyaltyTransactionId: transaction.id,
+          loyaltyTransactionId,
           organizationEndUserId: params.organizationEndUserId,
-          pointsAmount: params.pointsAmount,
+          purchaseAmount: params.purchaseAmount,
+        },
+        intent: {
+          organizationEndUserId: params.organizationEndUserId,
+          purchaseAmount: params.purchaseAmount,
+          receiptReference: params.receiptReference ?? null,
+          metadata: params.metadata ?? {},
         },
       });
+      const existing = await outer.query.loyaltyTransactions.findFirst({
+        where: and(
+          eq(loyaltyTransactions.organizationId, params.organizationId),
+          eq(loyaltyTransactions.idempotencyKey, params.idempotencyKey),
+        ),
+      });
+      // A key another operation used, such as a reversal, which has no durable command.
+      if (existing && (isNew || existing.transactionType !== 'EARN')) {
+        throw new OperationPayloadConflictError(params.idempotencyKey);
+      }
+      if (!isNew && !existing) {
+        throw new Error(`Earn command ${params.idempotencyKey} was already accepted but its transaction is missing`);
+      }
+      if (existing) {
+        const ownership = await outer.query.creditOwnerships.findFirst({
+          where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+        });
+        return { transaction: existing, newBalance: Number(ownership?.confirmedBalance ?? 0), isNew: false };
+      }
 
-      return {
-        transaction,
-        // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
-        newBalance: Number(ownership.confirmedBalance),
-      };
+      return withActiveMember(outer, params.organizationId, params.organizationEndUserId, async (tx) => {
+        let ownership = await tx.query.creditOwnerships.findFirst({
+          where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+        });
+
+        if (!ownership) {
+          const [newOwnership] = await tx
+            .insert(creditOwnerships)
+            .values({
+              organizationEndUserId: params.organizationEndUserId,
+              confirmedBalance: 0,
+              pendingEarn: 0,
+              pendingRedemption: 0,
+              lifetimeEarned: 0,
+              lifetimeRedeemed: 0,
+            })
+            .onConflictDoNothing({ target: creditOwnerships.organizationEndUserId })
+            .returning();
+          ownership =
+            newOwnership ??
+            (await tx.query.creditOwnerships.findFirst({
+              where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
+            }));
+        }
+
+        const [transaction] = await tx
+          .insert(loyaltyTransactions)
+          .values({
+            id: loyaltyTransactionId,
+            organizationId: params.organizationId,
+            organizationEndUserId: params.organizationEndUserId,
+            transactionType: 'EARN',
+            pointsAmount: params.estimatedPoints,
+            purchaseAmount: params.purchaseAmount,
+            idempotencyKey: params.idempotencyKey,
+            receiptReference: params.receiptReference,
+            status: 'PENDING',
+            metadata: params.metadata ?? {},
+          })
+          .returning();
+
+        await tx
+          .update(creditOwnerships)
+          .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.estimatedPoints}`, updatedAt: new Date() })
+          .where(eq(creditOwnerships.id, ownership.id));
+
+        return {
+          transaction,
+          // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
+          newBalance: Number(ownership.confirmedBalance),
+          isNew: true,
+        };
+      });
     });
   }
 
@@ -596,12 +638,9 @@ export class CreditsRepository {
   /**
    * Records the on-chain receipt and resolves the pending reservation.
    *
-   * `reservedPointsAmount` (what `recordEarnTransaction` moved into `pendingEarn`) and
-   * `confirmedPointsAmount` (the `CreditEarned` event's actual `amount`) can differ: the chain
-   * treats the requested `pointsAmount` as a purchase amount and credits the organization's policy
-   * `earn_bps` share of it (e.g. 1% at 100 bps), not the number itself (see `chain-submit.processor.ts`). `pointsAmount` on
-   * the loyalty transaction is corrected to the confirmed figure here — Sui is authoritative for
-   * confirmed points (docs/architecture.md), the PG row at insert time was only a request.
+   * The locked PENDING row holds the exact point estimate added at acceptance. Release that
+   * amount and replace it with the actual CreditEarned amount; Sui is authoritative for
+   * confirmed points.
    *
    * Returns null (and writes nothing) if the row is no longer PENDING — the other of
    * chain-submit worker / `domain/indexer` already resolved it. Pass `db` to run inside a
@@ -611,7 +650,6 @@ export class CreditsRepository {
     params: {
       loyaltyTransactionId: string;
       organizationEndUserId: string;
-      reservedPointsAmount: number;
       confirmedPointsAmount: number;
       digest: string;
       sender: string;
@@ -648,7 +686,7 @@ export class CreditsRepository {
           .update(creditOwnerships)
           .set({
             confirmedBalance: newBalance,
-            pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount,
+            pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount),
             lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
             updatedAt: new Date(),
           })
@@ -681,13 +719,10 @@ export class CreditsRepository {
   }
 
   /** Reverts the optimistic `pendingEarn` bump and marks the command FAILED. */
-  async failEarnOnChain(params: {
-    loyaltyTransactionId: string;
-    organizationEndUserId: string;
-    reservedPointsAmount: number;
-  }) {
+  async failEarnOnChain(params: { loyaltyTransactionId: string; organizationEndUserId: string }) {
     return this.db.transaction(async (tx) => {
-      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+      if (!pending) {
         return;
       }
 
@@ -700,63 +735,9 @@ export class CreditsRepository {
       if (ownership) {
         await tx
           .update(creditOwnerships)
-          .set({ pendingEarn: Number(ownership.pendingEarn) - params.reservedPointsAmount, updatedAt: new Date() })
+          .set({ pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount), updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
       }
-    });
-  }
-
-  async recordRedeemTransaction(params: {
-    organizationId: string;
-    organizationEndUserId: string;
-    pointsAmount: number;
-    idempotencyKey: string;
-    receiptReference?: string;
-    metadata?: Record<string, unknown>;
-  }) {
-    return withRls(this.db, { tenantId: params.organizationId, role: 'authenticated' }, async (tx) => {
-      await expireDueBuckets(tx, params);
-      const ownership = await tx.query.creditOwnerships.findFirst({
-        where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
-      });
-
-      if (!ownership || Number(ownership.confirmedBalance) < params.pointsAmount) {
-        throw new Error(
-          `Insufficient points: required ${params.pointsAmount}, available ${ownership?.confirmedBalance ?? 0}`,
-        );
-      }
-
-      const [transaction] = await tx
-        .insert(loyaltyTransactions)
-        .values({
-          organizationId: params.organizationId,
-          organizationEndUserId: params.organizationEndUserId,
-          transactionType: 'REDEEM',
-          pointsAmount: params.pointsAmount,
-          idempotencyKey: params.idempotencyKey,
-          receiptReference: params.receiptReference,
-          status: 'CONFIRMED',
-          metadata: params.metadata ?? {},
-        })
-        .returning();
-
-      const newConfirmedBalance = Number(ownership.confirmedBalance) - params.pointsAmount;
-      const newLifetimeRedeemed = Number(ownership.lifetimeRedeemed) + params.pointsAmount;
-
-      await tx
-        .update(creditOwnerships)
-        .set({
-          confirmedBalance: newConfirmedBalance,
-          lifetimeRedeemed: newLifetimeRedeemed,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditOwnerships.id, ownership.id));
-      await consumeBuckets(tx, ownership.id, params.pointsAmount);
-
-      return {
-        transaction,
-        newBalance: newConfirmedBalance,
-      };
     });
   }
 
@@ -1049,7 +1030,7 @@ export class CreditsRepository {
    * linked to it via `reversesTransactionId`, and applies the opposite balance effect. A
    * reversed EARN that was already (partly) spent is allowed to drive `confirmedBalance`
    * negative — that negative balance *is* the clawback debt, and it already blocks further
-   * redemptions via the balance check in `recordRedeemTransaction`.
+   * redemptions via the balance check in `reservePosRedemption`.
    *
    * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
    * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop

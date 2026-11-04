@@ -179,3 +179,36 @@ describe('0014_system_user_roles', () => {
     });
   });
 });
+
+describe('0019_earn_purchase_amount', () => {
+  it('moves earn commands to the purchase payload and leaves other commands alone', async () => {
+    await withDatabaseAt(18, async (client) => {
+      const db = drizzle(client, { schema });
+      const [org] =
+        await client`insert into organizations (slug, name) values (${randomUUID()}, 'Queued org') returning id`;
+      const insert = (commandType: string, key: string, payload: Record<string, unknown>) =>
+        db.insert(schema.operations).values({
+          tenantId: org.id,
+          commandType,
+          idempotencyKey: key,
+          payload,
+          payloadHash: 'old-hash',
+          status: 'PENDING',
+        });
+      await insert('CREDIT_EARN_CHAIN_SUBMIT', 'earn', { loyaltyTransactionId: 'tx', pointsAmount: 100000 });
+      await insert('POS_REDEEM_RESERVE', 'pos', { organizationEndUserId: 'member', pointsAmount: 40 });
+
+      await migrate(db, { migrationsFolder: migrations });
+
+      const rows = await db.select().from(schema.operations);
+      expect(rows.find((row) => row.idempotencyKey === 'earn')).toMatchObject({
+        payload: { loyaltyTransactionId: 'tx', purchaseAmount: 100000 },
+        payloadHash: null,
+      });
+      expect(rows.find((row) => row.idempotencyKey === 'pos')).toMatchObject({
+        payload: { organizationEndUserId: 'member', pointsAmount: 40 },
+        payloadHash: 'old-hash',
+      });
+    });
+  });
+});

@@ -43,7 +43,7 @@ export function buildOperation(
     commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
     idempotencyKey: 'idem-chain-1',
     status: 'PROCESSING',
-    payload: { loyaltyTransactionId: 'tx-1', organizationEndUserId: 'user-1', pointsAmount: 10000 },
+    payload: { loyaltyTransactionId: 'tx-1', organizationEndUserId: 'user-1', purchaseAmount: 10000 },
     payloadHash: null,
     suiTxDigest: null,
     suiTxExpirationEpoch: null,
@@ -65,6 +65,7 @@ export function buildLoyaltyTransaction(
     blockchainTransactionId: null,
     transactionType: 'EARN',
     pointsAmount: 50,
+    purchaseAmount: null,
     idempotencyKey: 'earn-1',
     receiptReference: null,
     status: 'CONFIRMED',
@@ -137,7 +138,7 @@ export function executionContext({
 } = {}): ExecutionContext & { request: FakeHttpRequest } {
   const request: FakeHttpRequest = { headers, method, url, rawBody };
   return {
-    switchToHttp: () => ({ getRequest: () => request }),
+    switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({ setHeader: () => {} }) }),
     getHandler: () => handler,
     getClass: () => klass,
     request,
@@ -178,6 +179,7 @@ export function programConfigFor(organizationId: string) {
     issuerCapId: `0xissuercap-${organizationId}`,
     operationShardIds: [`0xop0-${organizationId}`],
     budgetShardIds: [`0xbudget0-${organizationId}`],
+    earnBps: 100,
   };
 }
 

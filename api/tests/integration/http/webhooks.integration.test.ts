@@ -5,7 +5,7 @@ import { verifyWebhookSignature } from '@octap/sdk';
 import { WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { createTestApp } from '../support/app.js';
-import { resetDb, seedCredential, seedMember, seedOrganization, setOwnership } from '../support/db.js';
+import { resetDb, seedCredential, seedMember, seedOrganization, setOwnership, seedProgram } from '../support/db.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
@@ -40,6 +40,7 @@ beforeEach(async () => {
   receiver.received = [];
   receiver.status = 200;
   orgId = (await seedOrganization(ctx.db)).id;
+  await seedProgram(ctx.db, orgId);
   memberId = (await seedMember(ctx.db, orgId)).memberId;
   auth = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId)).rawKey}` };
   await setOwnership(ctx.db, memberId, { confirmedBalance: 100 });
@@ -71,19 +72,19 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
 
     await ctx
       .http()
-      .post('/v1/credits/redeem')
+      .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 10, idempotencyKey: 'r-1' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-1' })
       .expect(201);
     await deliverDue();
 
     expect(receiver.received).toHaveLength(1);
     const [{ headers, body }] = receiver.received;
     expect(verifyWebhookSignature(body, headers['x-octap-signature'] as string, endpoint.body.secret)).toBe(true);
-    expect(headers['x-octap-event-type']).toBe('credits.redeemed');
+    expect(headers['x-octap-event-type']).toBe('credits.earned');
     expect(JSON.parse(body)).toMatchObject({
-      type: 'credits.redeemed',
-      data: { pointsAmount: 10, newBalance: 90, organizationEndUserId: memberId },
+      type: 'credits.earned',
+      data: { purchaseAmount: 100, estimatedPoints: 1, newBalance: 100, organizationEndUserId: memberId },
     });
 
     const [delivery] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
@@ -100,9 +101,9 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     receiver.status = 503;
     await ctx
       .http()
-      .post('/v1/credits/redeem')
+      .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r' })
       .expect(201);
     await deliverDue();
 
@@ -126,9 +127,9 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/disable`).set(auth).expect(201);
     await ctx
       .http()
-      .post('/v1/credits/redeem')
+      .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-1' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-1' })
       .expect(201);
     await deliverDue();
     expect(receiver.received).toEqual([]);
@@ -140,9 +141,9 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
 
     await ctx
       .http()
-      .post('/v1/credits/redeem')
+      .post('/v1/credits/earn')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount: 1, idempotencyKey: 'r-2' })
+      .send({ organizationEndUserId: memberId, purchaseAmount: 100, idempotencyKey: 'r-2' })
       .expect(201);
     await deliverDue();
     const [{ headers, body }] = receiver.received;

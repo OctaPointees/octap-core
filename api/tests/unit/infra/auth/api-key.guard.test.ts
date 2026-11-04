@@ -169,7 +169,6 @@ describe('ApiKeyGuard: @Public()', () => {
     expect(isPublic(CreditsController.prototype.finalizePosRedemption)).toBe(true);
     for (const merchantRoute of [
       'earn',
-      'redeem',
       'reservePosRedemption',
       'reverseTransaction',
       'getBalance',

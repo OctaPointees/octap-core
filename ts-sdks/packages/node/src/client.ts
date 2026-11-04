@@ -1,10 +1,7 @@
 import type {
   BalanceSnapshot,
-  OperationReference,
   EarnPointsRequest,
   EarnPointsResponse,
-  RedeemPointsRequest,
-  RedeemPointsResponse,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   CreateVoucherRequest,
@@ -21,9 +18,23 @@ import type {
   ListVoucherRefundPolicyHistoryRequest,
   VoucherRefundPolicyDto,
   VerifyCustomerResponse,
+  ReservePosRedemptionRequest,
+  ReservePosRedemptionResponse,
+  ReverseTransactionRequest,
+  ReverseTransactionResponse,
+  WebhookEndpointDto,
+  WebhookEndpointWithSecretDto,
+  RegisterWebhookEndpointRequest,
+  WebhookDeliveryDto,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
-import { OctaApiError, OctaSdkError } from './errors/index.js';
+import { OctaApiError, OctaSdkError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
+
+function toTransportError(err: unknown, signal?: AbortSignal): OctaSdkError {
+  return signal?.aborted || (err instanceof Error && err.name === 'AbortError')
+    ? new OctaRequestAbortedError(err)
+    : new OctaNetworkError(err);
+}
 
 export interface RequestOptions {
   organizationId?: string;
@@ -113,23 +124,25 @@ export class OctaPointClient {
         signal: options?.signal,
       });
     } catch (err: unknown) {
-      throw new OctaSdkError(`Network request failed for ${method} ${url}: ${(err as Error)?.message ?? String(err)}`);
+      throw toTransportError(err, options?.signal);
     }
 
     let responseData: unknown = null;
     const contentType = response.headers.get('content-type') ?? '';
-    if (contentType.includes('application/json')) {
-      try {
-        responseData = await response.json();
-      } catch {
-        responseData = null;
-      }
-    } else {
-      responseData = await response.text();
+    try {
+      responseData = contentType.includes('application/json') ? await response.json() : await response.text();
+    } catch (err: unknown) {
+      if (!(err instanceof SyntaxError)) throw toTransportError(err, options?.signal);
     }
 
     if (!response.ok) {
-      throw new OctaApiError(response.status, response.statusText, responseData);
+      throw new OctaApiError(
+        response.status,
+        response.statusText,
+        responseData,
+        undefined,
+        response.headers.get('retry-after') ?? undefined,
+      );
     }
 
     return responseData as T;
@@ -160,33 +173,57 @@ export class OctaPointClient {
   }
 
   /**
-   * Redeem loyalty points for an organization member.
-   */
-  async redeemPoints(request: RedeemPointsRequest, options?: RequestOptions): Promise<RedeemPointsResponse> {
-    return this.request<RedeemPointsResponse>('/v1/credits/redeem', 'POST', request, options);
-  }
-
-  /**
    * Get the credit balance snapshot for a member.
    */
-  async getBalance(memberId: string): Promise<CreditBalanceSnapshot>;
-  async getBalance(programId: string, memberId: string): Promise<BalanceSnapshot>;
-  async getBalance(arg1: string, arg2?: string): Promise<CreditBalanceSnapshot | BalanceSnapshot> {
-    if (arg2 !== undefined) {
-      const memberId = arg2;
-      const snapshot = await this.request<CreditBalanceSnapshot>(`/v1/credits/members/${memberId}/balance`, 'GET');
-      return {
-        confirmed_balance: String(snapshot.confirmedBalance),
-        pending_earn: String(snapshot.pendingEarn),
-        pending_redemption: String(snapshot.pendingRedemption),
-        as_of_checkpoint: snapshot.asOfCheckpoint ?? '0',
-        observed_at: snapshot.observedAt,
-        stale: snapshot.stale,
-      };
-    }
+  async getBalance(memberId: string, options?: RequestOptions): Promise<CreditBalanceSnapshot>;
+  async getBalance(programId: string, memberId: string, options?: RequestOptions): Promise<BalanceSnapshot>;
+  async getBalance(
+    arg1: string,
+    arg2?: string | RequestOptions,
+    options?: RequestOptions,
+  ): Promise<CreditBalanceSnapshot | BalanceSnapshot> {
+    const programId = typeof arg2 === 'string' ? arg1 : undefined;
+    const memberId = typeof arg2 === 'string' ? arg2 : arg1;
+    const snapshot = await this.request<CreditBalanceSnapshot>(
+      `/v1/credits/members/${encodeURIComponent(memberId)}/balance`,
+      'GET',
+      undefined,
+      typeof arg2 === 'string' ? options : arg2,
+      { programId },
+    );
+    if (programId === undefined) return snapshot;
+    return {
+      confirmed_balance: String(snapshot.confirmedBalance),
+      pending_earn: String(snapshot.pendingEarn),
+      pending_redemption: String(snapshot.pendingRedemption),
+      as_of_checkpoint: snapshot.asOfCheckpoint ?? '0',
+      observed_at: snapshot.observedAt,
+      stale: snapshot.stale,
+    };
+  }
 
-    const memberId = arg1;
-    return this.request<CreditBalanceSnapshot>(`/v1/credits/members/${memberId}/balance`, 'GET');
+  /** Reserve POS points; return the bytes to the customer's signing session. */
+  async reservePosRedemption(
+    request: ReservePosRedemptionRequest,
+    options?: RequestOptions,
+  ): Promise<ReservePosRedemptionResponse> {
+    return this.request('/v1/credits/redeem/reserve', 'POST', request, options);
+  }
+
+  /** Submit the customer's signature. Cancellation does not undo a submitted transaction. */
+  async finalizePosRedemption(
+    request: FinalizePosRedemptionRequest,
+    options?: RequestOptions,
+  ): Promise<FinalizePosRedemptionResponse> {
+    return this.request('/v1/credits/redeem/finalize', 'POST', request, options);
+  }
+
+  async reverseTransaction(
+    request: ReverseTransactionRequest,
+    options?: RequestOptions,
+  ): Promise<ReverseTransactionResponse> {
+    const { transactionId, ...body } = request;
+    return this.request(`/v1/credits/transactions/${encodeURIComponent(transactionId)}/reverse`, 'POST', body, options);
   }
 
   /**
@@ -197,7 +234,7 @@ export class OctaPointClient {
     options?: RequestOptions & { limit?: number },
   ): Promise<LoyaltyTransactionDto[]> {
     return this.request<LoyaltyTransactionDto[]>(
-      `/v1/credits/members/${memberId}/transactions`,
+      `/v1/credits/members/${encodeURIComponent(memberId)}/transactions`,
       'GET',
       undefined,
       options,
@@ -240,7 +277,7 @@ export class OctaPointClient {
 
   /** Edit a reward or set its status to DRAFT, ACTIVE or PAUSED. */
   async updateVoucher(voucherId: string, request: UpdateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
-    return this.request<VoucherDto>(`/v1/rewards/vouchers/${voucherId}`, 'PATCH', request, options);
+    return this.request<VoucherDto>(`/v1/rewards/vouchers/${encodeURIComponent(voucherId)}`, 'PATCH', request, options);
   }
 
   /**
@@ -254,7 +291,7 @@ export class OctaPointClient {
    * Get a specific voucher by its ID.
    */
   async getVoucher(voucherId: string, options?: RequestOptions): Promise<VoucherDto> {
-    return this.request<VoucherDto>(`/v1/rewards/vouchers/${voucherId}`, 'GET', undefined, options);
+    return this.request<VoucherDto>(`/v1/rewards/vouchers/${encodeURIComponent(voucherId)}`, 'GET', undefined, options);
   }
 
   /**
@@ -265,12 +302,22 @@ export class OctaPointClient {
     request: ClaimVoucherRequest,
     options?: RequestOptions,
   ): Promise<ClaimVoucherResponse> {
-    return this.request<ClaimVoucherResponse>(`/v1/rewards/vouchers/${voucherId}/claim`, 'POST', request, options);
+    return this.request<ClaimVoucherResponse>(
+      `/v1/rewards/vouchers/${encodeURIComponent(voucherId)}/claim`,
+      'POST',
+      request,
+      options,
+    );
   }
 
   /** Read persisted claim state after finalize or asynchronous chain recovery. */
   async getVoucherClaim(ownershipId: string, options?: RequestOptions): Promise<ClaimVoucherResponse> {
-    return this.request<ClaimVoucherResponse>(`/v1/rewards/claims/${ownershipId}`, 'GET', undefined, options);
+    return this.request<ClaimVoucherResponse>(
+      `/v1/rewards/claims/${encodeURIComponent(ownershipId)}`,
+      'GET',
+      undefined,
+      options,
+    );
   }
 
   /** The customer signs returned transactionBytes with their zkLogin session; no merchant key is needed by finalize. */
@@ -292,14 +339,43 @@ export class OctaPointClient {
    * List all vouchers claimed/owned by a member.
    */
   async listMemberVouchers(memberId: string, options?: RequestOptions): Promise<VoucherOwnershipDto[]> {
-    return this.request<VoucherOwnershipDto[]>(`/v1/rewards/members/${memberId}/vouchers`, 'GET', undefined, options);
+    return this.request<VoucherOwnershipDto[]>(
+      `/v1/rewards/members/${encodeURIComponent(memberId)}/vouchers`,
+      'GET',
+      undefined,
+      options,
+    );
   }
 
-  /**
-   * Wait for an asynchronous operation reference to settle.
-   */
-  async waitForOperation(operationId: string): Promise<OperationReference> {
-    return { operation_id: operationId };
+  async registerWebhookEndpoint(
+    request: RegisterWebhookEndpointRequest,
+    options?: RequestOptions,
+  ): Promise<WebhookEndpointWithSecretDto> {
+    return this.request('/v1/webhooks/endpoints', 'POST', request, options);
+  }
+
+  async listWebhookEndpoints(options?: RequestOptions): Promise<WebhookEndpointDto[]> {
+    return this.request('/v1/webhooks/endpoints', 'GET', undefined, options);
+  }
+
+  async disableWebhookEndpoint(id: string, options?: RequestOptions): Promise<WebhookEndpointDto> {
+    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/disable`, 'POST', undefined, options);
+  }
+
+  async enableWebhookEndpoint(id: string, options?: RequestOptions): Promise<WebhookEndpointDto> {
+    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/enable`, 'POST', undefined, options);
+  }
+
+  async rotateWebhookSecret(id: string, options?: RequestOptions): Promise<WebhookEndpointWithSecretDto> {
+    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/rotate-secret`, 'POST', undefined, options);
+  }
+
+  async listWebhookDeliveries(options?: RequestOptions): Promise<WebhookDeliveryDto[]> {
+    return this.request('/v1/webhooks/deliveries', 'GET', undefined, options);
+  }
+
+  async replayWebhookDelivery(id: string, options?: RequestOptions): Promise<WebhookDeliveryDto> {
+    return this.request(`/v1/webhooks/deliveries/${encodeURIComponent(id)}/replay`, 'POST', undefined, options);
   }
 }
 

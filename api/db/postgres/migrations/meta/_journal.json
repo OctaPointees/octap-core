@@ -134,6 +134,13 @@
       "when": 1793704936358,
       "tag": "0018_organization_suspend_reinstate",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793812672140,
+      "tag": "0019_earn_purchase_amount",
+      "breakpoints": true
     }
   ]
 }

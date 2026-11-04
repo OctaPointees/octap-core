@@ -1,10 +1,27 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 import { mapMemberEligibilityError } from './member-eligibility-error.js';
+
+type LoyaltyTransaction = Awaited<ReturnType<CreditsRepository['recordEarnTransaction']>>['transaction'];
+
+function toEarnResponse(transaction: LoyaltyTransaction, newBalance: number): EarnPointsResponse {
+  return {
+    transactionId: transaction.id,
+    organizationEndUserId: transaction.organizationEndUserId,
+    purchaseAmount: transaction.purchaseAmount,
+    estimatedPoints: transaction.status === 'PENDING' ? transaction.pointsAmount : null,
+    pointsEarned:
+      transaction.status === 'CONFIRMED' || transaction.status === 'REVERSED' ? transaction.pointsAmount : null,
+    newBalance,
+    status: transaction.status,
+    idempotencyKey: transaction.idempotencyKey,
+  };
+}
 
 @Injectable()
 export class EarnService {
@@ -15,8 +32,8 @@ export class EarnService {
   ) {}
 
   async executeEarn(organizationId: string, request: EarnPointsRequest): Promise<EarnPointsResponse> {
-    if (request.pointsAmount <= 0) {
-      throw new BadRequestException('Points amount must be greater than zero');
+    if (!Number.isSafeInteger(request.purchaseAmount) || request.purchaseAmount <= 0) {
+      throw new BadRequestException('Purchase amount must be a safe integer greater than zero');
     }
 
     const memberOrgId = await this.creditsRepo.findMemberOrganizationId(request.organizationEndUserId);
@@ -24,52 +41,51 @@ export class EarnService {
       throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
 
-    // Check idempotency
-    const existingTx = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
+    // A retry under an accepted key skips the gates: it only reports the existing earn.
+    const accepted = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
+    const estimatedPoints = accepted
+      ? accepted.pointsAmount
+      : await this.estimatePoints(organizationId, request.purchaseAmount);
 
-    if (existingTx) {
-      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(request.organizationEndUserId);
-      return {
-        transactionId: existingTx.id,
-        organizationEndUserId: existingTx.organizationEndUserId,
-        pointsEarned: existingTx.pointsAmount,
-        newBalance: Number(ownership.confirmedBalance),
-        status: existingTx.status,
-        idempotencyKey: existingTx.idempotencyKey,
-      };
-    }
-
-    // Reject before reserving anything: the chain-submit worker would otherwise fail the earn
-    // asynchronously, after the client was already told it was accepted.
-    await requireProgramConfig(this.programsRepo, organizationId);
-
-    const { transaction, newBalance } = await this.creditsRepo
+    const { transaction, newBalance, isNew } = await this.creditsRepo
       .recordEarnTransaction({
         organizationId,
         organizationEndUserId: request.organizationEndUserId,
-        pointsAmount: request.pointsAmount,
+        purchaseAmount: request.purchaseAmount,
+        estimatedPoints,
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
       })
       .catch((error: unknown) => {
+        if (error instanceof OperationPayloadConflictError) throw new ConflictException(error.message);
         throw mapMemberEligibilityError(error);
       });
 
-    await this.webhooks.emit(organizationId, 'credits.earned', {
-      transactionId: transaction.id,
-      organizationEndUserId: transaction.organizationEndUserId,
-      pointsAmount: transaction.pointsAmount,
-      newBalance,
-    });
+    if (isNew) {
+      await this.webhooks.emit(organizationId, 'credits.earned', {
+        transactionId: transaction.id,
+        organizationEndUserId: transaction.organizationEndUserId,
+        purchaseAmount: request.purchaseAmount,
+        estimatedPoints,
+        newBalance,
+      });
+    }
 
-    return {
-      transactionId: transaction.id,
-      organizationEndUserId: transaction.organizationEndUserId,
-      pointsEarned: transaction.pointsAmount,
-      newBalance,
-      status: transaction.status,
-      idempotencyKey: transaction.idempotencyKey,
-    };
+    return toEarnResponse(transaction, newBalance);
+  }
+
+  /** Rejects before reserving anything: the chain-submit worker would otherwise fail the earn after it was accepted. */
+  private async estimatePoints(organizationId: string, purchaseAmount: number): Promise<number> {
+    const { earnBps } = await requireProgramConfig(this.programsRepo, organizationId);
+    // Integer arithmetic matches Move's floor(purchase * earn_bps / 10_000), which aborts on zero.
+    const estimate = (BigInt(purchaseAmount) * BigInt(earnBps)) / 10_000n;
+    if (estimate === 0n) {
+      throw new BadRequestException('Purchase amount is too small to earn any points');
+    }
+    if (estimate > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new BadRequestException('Estimated points exceed safe integer range');
+    }
+    return Number(estimate);
   }
 }
