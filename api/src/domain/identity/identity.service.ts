@@ -7,13 +7,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { VerifyCustomerResponse } from '@octap/contracts';
-import { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import { EnrollmentRefusedError, IdentityRepository } from '#infra/db/repositories/identity.repository.js';
 import {
   EnokiClient,
   EnokiTokenRejectedError,
   type EnokiNetwork,
   type ZkLoginProofResult,
 } from '#infra/clients/enoki/enoki.client.js';
+
+const organizationNotActive = () => new ConflictException('This organization is not accepting members');
+const customerNotActive = () => new ForbiddenException('This customer account is not active');
 
 @Injectable()
 export class IdentityService {
@@ -43,18 +46,19 @@ export class IdentityService {
     idToken: string;
     organizationId: string;
   }): Promise<{ organizationEndUserId: string; endUserId: string; isNewEnrollment: boolean }> {
-    // Checked first so a request for an unusable organization spends no Enoki call.
+    // Checked first so a request for an unusable organization spends no Enoki call. `repo.enroll`
+    // checks again under locks, because this can change while Enoki resolves the token.
     const status = await this.repo.findOrganizationStatus(params.organizationId);
     if (!status) {
       throw new NotFoundException(`Organization ${params.organizationId} was not found`);
     }
     if (status !== 'ACTIVE') {
-      throw new ConflictException('This organization is not accepting members');
+      throw organizationNotActive();
     }
 
     const { endUser } = await this.findOrCreateEndUser(params.idToken);
     if (endUser.status !== 'ACTIVE') {
-      throw new ForbiddenException('This customer account is not active');
+      throw customerNotActive();
     }
 
     const existing = await this.repo.findEnrollment(params.organizationId, endUser.id);
@@ -62,7 +66,15 @@ export class IdentityService {
       return { organizationEndUserId: existing.id, endUserId: endUser.id, isNewEnrollment: false };
     }
 
-    const created = await this.repo.enroll({ organizationId: params.organizationId, endUserId: endUser.id });
+    let created: Awaited<ReturnType<IdentityRepository['enroll']>>;
+    try {
+      created = await this.repo.enroll({ organizationId: params.organizationId, endUserId: endUser.id });
+    } catch (err: unknown) {
+      if (err instanceof EnrollmentRefusedError) {
+        throw err.reason === 'ORGANIZATION_NOT_ACTIVE' ? organizationNotActive() : customerNotActive();
+      }
+      throw err;
+    }
     if (created) {
       return { organizationEndUserId: created.id, endUserId: endUser.id, isNewEnrollment: true };
     }

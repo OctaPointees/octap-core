@@ -40,6 +40,16 @@ describe('IdentityRepository', () => {
 
     const other = await seedOrganization(db);
     expect(await repo.findEnrollment(other.id, endUser.id)).toBeUndefined();
+
+    const suspended = await seedOrganization(db, { status: 'SUSPENDED' });
+    await expect(repo.enroll({ organizationId: suspended.id, endUserId: endUser.id })).rejects.toMatchObject({
+      reason: 'ORGANIZATION_NOT_ACTIVE',
+    });
+    await db.update(schema.endUsers).set({ status: 'BLOCKED' }).where(eq(schema.endUsers.id, endUser.id));
+    await expect(repo.enroll({ organizationId: other.id, endUserId: endUser.id })).rejects.toMatchObject({
+      reason: 'CUSTOMER_NOT_ACTIVE',
+    });
+    expect(await repo.findEnrollment(other.id, endUser.id)).toBeUndefined();
   });
 });
 

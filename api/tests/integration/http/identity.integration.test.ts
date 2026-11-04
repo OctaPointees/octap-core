@@ -1,8 +1,11 @@
 import { Redis } from 'ioredis';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PUBLIC_RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/public-rate-limit.guard.js';
 import { EnokiTokenRejectedError } from '#infra/clients/enoki/enoki.client.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { endUsers, organizationEndUsers } from '#infra/db/schema/members.schema.js';
+import { organizations } from '#infra/db/schema/organizations.schema.js';
 import { createTestApp } from '../support/app.js';
 import { resetDb, seedCredential, seedOrganization } from '../support/db.js';
 
@@ -103,6 +106,57 @@ describe('identity over HTTP (no merchant API key)', () => {
     await ctx.http().post('/v1/identity/google-login').send({ idToken: 'google-jwt' }).expect(201);
     await ctx.db.update(endUsers).set({ status: 'BLOCKED' });
     await ctx.http().post(`/v1/identity/organizations/${orgId}/enroll`).send({ idToken: 'google-jwt' }).expect(403);
+  });
+
+  describe('when the organization is suspended during token resolution', () => {
+    type Resolved = { address: string; publicKey: string; salt: string };
+    const resolved: Resolved = { address: '0xrace', publicKey: 'pk', salt: 'salt' };
+
+    /** Starts an enrollment and returns once it is paused inside Enoki. */
+    async function enrollPausedInEnoki() {
+      let release: (value: Resolved) => void = () => {};
+      const resolve = ctx.adapters.enoki.resolveZkLoginAddress;
+      resolve.mockClear();
+      resolve.mockImplementationOnce(() => new Promise<Resolved>((done) => (release = done)));
+      const response = ctx
+        .http()
+        .post(`/v1/identity/organizations/${orgId}/enroll`)
+        .send({ idToken: 'google-jwt' })
+        .then((res) => res);
+      await vi.waitFor(() => expect(resolve).toHaveBeenCalled());
+      return { response, release: () => release(resolved) };
+    }
+
+    const memberships = () =>
+      ctx.db.select().from(organizationEndUsers).where(eq(organizationEndUsers.organizationId, orgId));
+    const suspend = (db: DrizzleDb) =>
+      db.update(organizations).set({ status: 'SUSPENDED' }).where(eq(organizations.id, orgId));
+
+    it('creates no membership after a committed suspension', async () => {
+      const { response, release } = await enrollPausedInEnoki();
+
+      await suspend(ctx.db);
+      release();
+
+      expect((await response).status).toBe(409);
+      expect(await memberships()).toEqual([]);
+    });
+
+    it('waits for a suspension still in progress, then refuses', async () => {
+      const { response, release } = await enrollPausedInEnoki();
+      let settled = false;
+      void response.then(() => (settled = true));
+
+      await ctx.db.transaction(async (tx) => {
+        await suspend(tx as unknown as DrizzleDb);
+        release();
+        await new Promise((done) => setTimeout(done, 300));
+        expect(settled).toBe(false);
+      });
+
+      expect((await response).status).toBe(409);
+      expect(await memberships()).toEqual([]);
+    });
   });
 
   it('answers 400, not 500, for a request with no JSON body', async () => {

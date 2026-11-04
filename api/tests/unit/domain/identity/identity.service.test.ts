@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { IdentityService } from '#domain/identity/identity.service.js';
-import type { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
+import { EnrollmentRefusedError, type IdentityRepository } from '#infra/db/repositories/identity.repository.js';
 import { EnokiTokenRejectedError, type EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 import { stub } from '../../../helpers/stub.js';
 
@@ -166,6 +166,42 @@ describe('IdentityService.enrollInOrganization', () => {
     );
 
     await expect(service.enrollInOrganization(params)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it.each([
+    ['ORGANIZATION_NOT_ACTIVE', ConflictException],
+    ['CUSTOMER_NOT_ACTIVE', ForbiddenException],
+  ] as const)('maps a %s refusal from the locked recheck', async (reason, expected) => {
+    const service = new IdentityService(
+      stub<IdentityRepository>({
+        ...orgExists,
+        ...knownUser,
+        findEnrollment: async () => undefined,
+        enroll: async () => {
+          throw new EnrollmentRefusedError(reason);
+        },
+      }),
+      enokiResolving(),
+    );
+
+    await expect(service.enrollInOrganization(params)).rejects.toBeInstanceOf(expected);
+  });
+
+  it('does not hide an unexpected failure from the enrollment', async () => {
+    const failure = new Error('database down');
+    const service = new IdentityService(
+      stub<IdentityRepository>({
+        ...orgExists,
+        ...knownUser,
+        findEnrollment: async () => undefined,
+        enroll: async () => {
+          throw failure;
+        },
+      }),
+      enokiResolving(),
+    );
+
+    await expect(service.enrollInOrganization(params)).rejects.toBe(failure);
   });
 
   it('writes nothing for a token Enoki rejects', async () => {

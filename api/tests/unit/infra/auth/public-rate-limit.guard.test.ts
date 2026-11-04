@@ -18,6 +18,8 @@ const contextFrom = (ip?: string) =>
 
 describe('PublicRateLimitGuard', () => {
   it('allows the limit per address, then answers 429', async () => {
+    // A fixed clock: crossing a window mid-loop would reset the count.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-04T00:00:00Z') });
     const guard = new PublicRateLimitGuard(fakeRedis());
     for (let i = 0; i < PUBLIC_RATE_LIMIT_MAX_REQUESTS; i++) {
       await expect(guard.canActivate(contextFrom('203.0.113.1'))).resolves.toBe(true);
@@ -29,6 +31,7 @@ describe('PublicRateLimitGuard', () => {
     expect((rejected as HttpException).getStatus()).toBe(429);
     expect(response.setHeader).toHaveBeenCalledWith('Retry-After', expect.stringMatching(/^\d+$/));
     await expect(guard.canActivate(contextFrom('203.0.113.2'))).resolves.toBe(true);
+    vi.useRealTimers();
   });
 
   it('fails closed when Redis is unreachable', async () => {
