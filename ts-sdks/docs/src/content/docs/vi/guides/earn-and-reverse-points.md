@@ -40,7 +40,13 @@ Lần earn đầu tiên của thành viên cũng mở tài khoản on-chain củ
 | 403 | Tổ chức hoặc thành viên không hoạt động, hoặc key thiếu `write` |
 | 404 | Thành viên không thuộc tổ chức của bạn |
 | 409 | Key đã được dùng cho một request khác |
-| 422 | Chương trình của tổ chức bạn chưa được provision |
+| 422 | Chương trình của tổ chức bạn chưa được provision, hoặc [ngân sách phát hành](/vi/concepts/issuance-budget/) không đủ cho lệnh earn này |
+
+### Khi lệnh earn thất bại
+
+Lệnh earn đã được nhận vẫn có thể thất bại trên chain. Khoản giữ được giải phóng, không có gì được cộng, và bạn nhận webhook [`credits.earn.failed`](/vi/reference/webhook-events/#creditsearnfailed).
+
+Key vẫn được tính là đã dùng, nên gửi lại request sẽ trả về đúng kết quả `FAILED` đó. Lệnh earn `FAILED` chắc chắn không cộng gì, nên có thể an toàn thử lại với key **mới**. Chỉ làm vậy với `FAILED`: sau timeout hoặc trạng thái `PENDING`, hãy giữ nguyên key.
 
 ## Đảo giao dịch
 

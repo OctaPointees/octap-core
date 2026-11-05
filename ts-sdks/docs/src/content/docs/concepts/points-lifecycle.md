@@ -13,7 +13,7 @@ Sui is the authority on confirmed points, and a chain transaction takes time. So
 
 For example, 100,000 at 100 basis points (1%) reserves 1,000 estimated points and confirms 1,000 points. The estimate can differ from the result, so only trust confirmed amounts.
 
-A purchase that rounds down to zero points is refused with a 400, because the chain would abort it.
+A purchase that rounds down to zero points is refused with a 400, because the chain would abort it. Each earn also has to fit your [issuance budget](/concepts/issuance-budget/).
 
 ## What each field means
 

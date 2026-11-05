@@ -9,6 +9,7 @@ import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.c
 import { moveAbortOf, sameSuiAddress, type ChainMoveAbort, type OctapProgramConfig } from '@octap/chain';
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
+import { earnFailureCode } from './earn-failure.js';
 
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
@@ -305,6 +306,7 @@ export class ChainSubmitProcessor {
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
+        failureCode: earnFailureCode(err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err)),
       });
       await this.operationsRepo.markFailed(operation.id, message);
     }

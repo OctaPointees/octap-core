@@ -35,7 +35,7 @@ import { OctaApiError, OctaNetworkError, OctaRequestAbortedError } from '@octap/
 | 403 | The key lacks a scope, or the organization or member isn't active | Check the [scopes](/concepts/api-keys-and-scopes/#scopes) and the member's status |
 | 404 | Not found in your organization | Check the ID |
 | 409 | The key was used for another request, or the state doesn't allow this | Read the state. Don't switch keys to get past it. |
-| 422 | Your organization's program isn't provisioned | Finish provisioning |
+| 422 | Your organization's program isn't provisioned, or the issuance budget can't cover an earn | Finish provisioning, or [request a top-up](/concepts/issuance-budget/#request-a-top-up) |
 | 429 | Rate limited | Wait `retryAfter` seconds |
 | 5xx | Server error, and the outcome is unknown | [Read the state first](/concepts/idempotency-and-recovery/#recover-from-an-unknown-outcome) |
 | 503 | OctaP can't check the rate limit, so it refused the request | Retry later |

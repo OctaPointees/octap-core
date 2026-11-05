@@ -1,8 +1,9 @@
-export type GovernanceRequestType = 'UPDATE_PROFILE' | 'TRANSFER_OWNERSHIP' | 'DEACTIVATE' | 'SUSPEND' | 'REINSTATE';
+export type GovernanceRequestType =
+  'UPDATE_PROFILE' | 'TRANSFER_OWNERSHIP' | 'DEACTIVATE' | 'BUDGET_TOP_UP' | 'SUSPEND' | 'REINSTATE';
 export interface GovernanceProposal {
   requestType: GovernanceRequestType;
   reason: string;
-  payload: { name?: string; targetUserId?: string };
+  payload: { name?: string; targetUserId?: string; amount?: number };
 }
 export interface GovernanceRequest {
   id: string;

@@ -1,0 +1,1 @@
+ALTER TABLE "programs" ADD COLUMN "budget_warning_threshold" integer DEFAULT 0 NOT NULL;

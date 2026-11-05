@@ -12,6 +12,9 @@ import {
   ConsoleNotFoundError,
 } from './console-organizations.repository.js';
 import { withInitialOwners, requireSystemAdmin } from './console-access.js';
+import { acceptCommand } from './operations.repository.js';
+import { ORGANIZATION_BUDGET_TOP_UP_COMMAND } from './organizations.repository.js';
+import { programs } from '../schema/programs.schema.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const reviewer = alias(systemUsers, 'reviewer');
 
@@ -141,6 +144,7 @@ export class GovernanceRepository {
         previousOwnerId?: string;
         expectedStatus?: string;
         expectedName?: string;
+        amount?: number;
       };
       if (approve) {
         if (org.status !== payload.expectedStatus)
@@ -202,6 +206,19 @@ export class GovernanceRepository {
               .set({ name: payload.name.trim(), updatedAt: new Date() })
               .where(eq(organizations.id, org.id));
             break;
+          case 'BUDGET_TOP_UP': {
+            const program = await tx.query.programs.findFirst({ where: eq(programs.organizationId, org.id) });
+            if (program?.status !== 'ACTIVE')
+              throw new ConsoleConflictError('This organization has no active program to top up');
+            // The worker holding the program admin key executes it; this process never signs.
+            await acceptCommand(tx, {
+              tenantId: org.id,
+              idempotencyKey: `budget-top-up-${request.id}`,
+              commandType: ORGANIZATION_BUDGET_TOP_UP_COMMAND,
+              payload: { amount: payload.amount, changeRequestId: request.id },
+            });
+            break;
+          }
           default:
             throw new ConsoleConflictError('Unsupported request type');
         }

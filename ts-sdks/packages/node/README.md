@@ -37,6 +37,7 @@ and `signal`, including both balance overloads.
 | `POST /v1/credits/redeem/reserve`, `/finalize` | `reservePosRedemption`, `finalizePosRedemption` |
 | `POST /v1/credits/transactions/:id/reverse` | `reverseTransaction` |
 | `GET /v1/credits/members/:id/balance`, `/transactions` | `getBalance`, `listTransactions` |
+| `GET /v1/credits/budget` | `getIssuanceBudget` |
 | `GET/PUT /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | `POST/GET /v1/rewards/vouchers`, `GET/PATCH .../:id` | `createVoucher`, `listVouchers`, `getVoucher`, `updateVoucher` |
 | `POST .../vouchers/:id/claim`, `GET .../claims/:id` | `claimVoucher`, `getVoucherClaim` |
@@ -61,7 +62,7 @@ const accepted = await client.earnPoints({
 // Read listTransactions or consume credits.earn.confirmed for the actual point result.
 ```
 
-A purchase too small to earn a point is rejected with 400. History shows `pointsAmount: null` and a
+A purchase too small to earn a point is rejected with 400, and an earn the issuance budget cannot cover with 422. An accepted earn that fails sends `credits.earn.failed`; its key stays used, so a retry needs a new key. History shows `pointsAmount: null` and a
 separate `estimatedPoints` until the chain confirms. Core has no operation-status route: observe
 transactions, balance, `getVoucherClaim` or webhooks. To debit points, use `reservePosRedemption`,
 return the bytes to the customer to sign, then call `finalizePosRedemption`.

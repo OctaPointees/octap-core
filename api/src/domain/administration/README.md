@@ -18,6 +18,10 @@ Other proposal bodies are `{requestType,reason,payload}`:
   Changed ownership/target eligibility rejects stale approval; roles cannot be chosen in payloads.
 - UPDATE_PROFILE: `{name}` is available only to System Admins. Owners rename directly
   through the existing profile endpoint; legal identity/CCCD updates stay in Owner settings.
+- BUDGET_TOP_UP: `{amount}` is a positive whole number of points. Owners and System Admins can propose it.
+  Approval needs an active program and queues one durable command in the same transaction, which the
+  worker with `ORG_PROVISION_WORKER_ENABLED=true` executes. An unknown chain outcome becomes UNKNOWN and is
+  never retried. A top-up raises how many points may be issued; no money moves.
 - SUSPEND: `{}` changes ACTIVE to SUSPENDED.
 - REINSTATE: `{}` is proposed by System Admin and changes SUSPENDED to ACTIVE.
 - DEACTIVATE: `{}` permanently changes ACTIVE to ARCHIVED; reinstatement is not recovery

@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Param, Query, BadRequestException, UseGuards } from '@nestjs/common';
 import { CreditsService } from '#domain/credits/credits.service.js';
 import { EarnService } from '#domain/credits/earn.service.js';
+import { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
@@ -16,6 +17,7 @@ import type {
 } from '../dto/credits.dto.js';
 import type {
   EarnPointsResponse,
+  IssuanceBudgetDto,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   ReverseTransactionResponse,
@@ -30,6 +32,7 @@ export class CreditsController {
     private readonly earnService: EarnService,
     private readonly reversalService: ReversalService,
     private readonly posRedemptionService: PosRedemptionService,
+    private readonly issuanceBudget: IssuanceBudgetService,
   ) {}
 
   @Post('earn')
@@ -84,6 +87,12 @@ export class CreditsController {
       throw new BadRequestException('idempotencyKey and reason are required');
     }
     return this.reversalService.reverseTransaction(tenant.organizationId, { ...body, transactionId }, tenant);
+  }
+
+  @Get('budget')
+  @Scopes('read')
+  async getBudget(@Tenant() tenant: TenantContext): Promise<IssuanceBudgetDto> {
+    return this.issuanceBudget.read(tenant.organizationId);
   }
 
   @Get('members/:memberId/balance')

@@ -44,7 +44,7 @@ campaign machinery they require.
   operation shard's index for the same key instead of load-balancing independently: that keeps
   the caller to one hash, at the cost of a hot key range draining its budget shard first. A
   drained shard is refilled with `top_up` (`AdminCap` only, never the `IssuerCap` signer); the
-  API side is `ProgramsService.topUpBudget` / `scripts/top-up-budget.mjs`. `reverse_earn` refunds
+  API side is an approved `BUDGET_TOP_UP` change request, executed by `ProgramsService.topUpBudget`. `reverse_earn` refunds
   the reversed amount to the shard that owns the earn's key.
 
 Shard mutations other than `create_shards`/`top_up` (`budget_shard::debit`/`refund`,

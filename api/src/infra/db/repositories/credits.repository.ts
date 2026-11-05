@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
+import type { EarnFailureCode, VoucherRefundPolicySnapshot } from '@octap/contracts';
 import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
@@ -30,6 +30,7 @@ async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: strin
       status: loyaltyTransactions.status,
       organizationId: loyaltyTransactions.organizationId,
       pointsAmount: loyaltyTransactions.pointsAmount,
+      purchaseAmount: loyaltyTransactions.purchaseAmount,
     })
     .from(loyaltyTransactions)
     .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
@@ -718,8 +719,12 @@ export class CreditsRepository {
     });
   }
 
-  /** Reverts the optimistic `pendingEarn` bump and marks the command FAILED. */
-  async failEarnOnChain(params: { loyaltyTransactionId: string; organizationEndUserId: string }) {
+  /** Reverts the optimistic `pendingEarn` bump, marks the command FAILED and queues `credits.earn.failed`. */
+  async failEarnOnChain(params: {
+    loyaltyTransactionId: string;
+    organizationEndUserId: string;
+    failureCode: EarnFailureCode;
+  }) {
     return this.db.transaction(async (tx) => {
       const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
       if (!pending) {
@@ -738,6 +743,18 @@ export class CreditsRepository {
           .set({ pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount), updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
       }
+
+      await enqueueWebhookEvent(tx, {
+        organizationId: pending.organizationId,
+        eventType: 'credits.earn.failed',
+        payload: {
+          transactionId: params.loyaltyTransactionId,
+          organizationEndUserId: params.organizationEndUserId,
+          purchaseAmount: pending.purchaseAmount,
+          estimatedPoints: Number(pending.pointsAmount),
+          failureCode: params.failureCode,
+        },
+      });
     });
   }
 

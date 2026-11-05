@@ -153,6 +153,7 @@ describe('ChainSubmitProcessor', () => {
     expect(failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
+      failureCode: 'REJECTED',
     });
     expect(markFailed).toHaveBeenCalledWith('op-1', 'EInsufficientBalance');
   });
@@ -437,8 +438,28 @@ describe('ChainSubmitProcessor digest-first submit (OCT-52)', () => {
       },
     ).process(buildOperation());
 
-    expect(failEarnOnChain).toHaveBeenCalledOnce();
+    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ failureCode: 'REJECTED' }));
     expect(markFailed).toHaveBeenCalledWith('op-1', 'InsufficientGas while resolving');
+  });
+
+  it('reports an exhausted budget when the executed earn aborts on its budget shard', async () => {
+    const failEarnOnChain = vi.fn(async () => {});
+    await processor(
+      { recordSubmitDigest: async () => {}, markFailed: async () => {} },
+      {
+        getCreditOwnershipByEndUserId: async () => ({ id: 'ownership-1', suiCreditAccountId: '0xacc1' }),
+        failEarnOnChain,
+      },
+      {
+        signEarn: async () => ({ digest: 'DIGEST', bytes: 'b', signature: 's', expirationEpoch: null }),
+        execute: async () => ({
+          ...fakeChainResult({ status: 'failure', errorMessage: 'MoveAbort' }),
+          moveAbort: { module: 'budget_shard', functionName: 'debit', abortCode: '2' },
+        }),
+      },
+    ).process(buildOperation());
+
+    expect(failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ failureCode: 'BUDGET_EXHAUSTED' }));
   });
 });
 
@@ -804,6 +825,7 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
     expect(failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
+      failureCode: 'REJECTED',
     });
     expect(markFailed).toHaveBeenCalledWith('op-1', expect.stringMatching(/abort code: 0/));
   });

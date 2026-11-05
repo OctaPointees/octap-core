@@ -76,6 +76,7 @@ export default defineConfig({
               slug: 'concepts/api-keys-and-scopes',
             },
             { label: 'Points lifecycle', translations: { vi: 'Vòng đời điểm' }, slug: 'concepts/points-lifecycle' },
+            { label: 'Issuance budget', translations: { vi: 'Ngân sách phát hành' }, slug: 'concepts/issuance-budget' },
             {
               label: 'Idempotency and recovery',
               translations: { vi: 'Idempotency và phục hồi' },

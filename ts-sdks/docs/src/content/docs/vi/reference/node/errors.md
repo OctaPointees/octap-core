@@ -35,7 +35,7 @@ import { OctaApiError, OctaNetworkError, OctaRequestAbortedError } from '@octap/
 | 403 | Key thiếu scope, hoặc tổ chức hay thành viên không hoạt động | Kiểm tra [scope](/vi/concepts/api-keys-and-scopes/) và trạng thái thành viên |
 | 404 | Không tìm thấy trong tổ chức của bạn | Kiểm tra ID |
 | 409 | Key đã dùng cho request khác, hoặc trạng thái không cho phép | Đọc trạng thái. Đừng đổi key để né lỗi. |
-| 422 | Chương trình của tổ chức bạn chưa được provision | Hoàn tất provision |
+| 422 | Chương trình của tổ chức bạn chưa được provision, hoặc ngân sách phát hành không đủ cho lệnh earn | Hoàn tất provision, hoặc [yêu cầu top-up](/vi/concepts/issuance-budget/) |
 | 429 | Bị giới hạn tần suất | Chờ `retryAfter` giây |
 | 5xx | Lỗi server, chưa rõ kết quả | [Đọc trạng thái trước](/vi/concepts/idempotency-and-recovery/) |
 | 503 | OctaP không kiểm tra được giới hạn nên đã từ chối request | Thử lại sau |

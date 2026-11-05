@@ -27,6 +27,10 @@ A timeout, cancellation, network failure or 5xx doesn't tell you what happened. 
 
 The SDK never retries by itself, so this decision stays with you.
 
+## Failed earns
+
+A `FAILED` earn keeps its key, and repeating the request returns `FAILED` again. Because it definitely credited nothing, retry it with a new key. See [When an earn fails](/guides/earn-and-reverse-points/#when-an-earn-fails).
+
 ## Paid vouchers
 
 A paid claim follows the same rules, with the customer's signature in the middle.

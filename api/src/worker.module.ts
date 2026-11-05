@@ -3,6 +3,7 @@ import { DomainModule } from './domain/domain.module.js';
 import { InfrastructureModule } from './infra/infrastructure.module.js';
 import { SuiModule } from './infra/clients/sui/sui.module.js';
 import { ProgramAdminModule } from './infra/clients/sui/program-admin.module.js';
+import { BudgetWarningWorker } from './domain/credits/budget-warning.worker.js';
 import { ChainSubmitWorker } from './domain/credits/chain-submit.worker.js';
 import { ChainSubmitProcessor } from './domain/credits/chain-submit.processor.js';
 import { ChainOutcomeReconciler } from './domain/credits/chain-outcome.reconciler.js';
@@ -13,6 +14,7 @@ import { CheckpointIndexerProcessor } from './domain/indexer/checkpoint-indexer.
 import { ProgramsService } from './domain/programs/programs.service.js';
 import { OrganizationProvisioningWorker } from './domain/organizations/provisioning.worker.js';
 import { OrganizationProvisioningProcessor } from './domain/organizations/provisioning.processor.js';
+import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.processor.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
 // the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
@@ -24,6 +26,8 @@ import { OrganizationProvisioningProcessor } from './domain/organizations/provis
   providers: [
     OrganizationProvisioningWorker,
     OrganizationProvisioningProcessor,
+    BudgetTopUpProcessor,
+    BudgetWarningWorker,
     ChainSubmitWorker,
     ChainSubmitProcessor,
     ChainOutcomeReconciler,

@@ -2,6 +2,7 @@ import type {
   BalanceSnapshot,
   EarnPointsRequest,
   EarnPointsResponse,
+  IssuanceBudgetDto,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
   CreateVoucherRequest,
@@ -200,6 +201,11 @@ export class OctaPointClient {
       observed_at: snapshot.observedAt,
       stale: snapshot.stale,
     };
+  }
+
+  /** How many more points your program may issue, read live from the chain. */
+  async getIssuanceBudget(options?: RequestOptions): Promise<IssuanceBudgetDto> {
+    return this.request('/v1/credits/budget', 'GET', undefined, options);
   }
 
   /** Reserve POS points; return the bytes to the customer's signing session. */

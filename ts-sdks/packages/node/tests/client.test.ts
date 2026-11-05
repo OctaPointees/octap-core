@@ -344,6 +344,17 @@ describe('merchant route coverage and cancellation', () => {
       });
     }
   });
+  it('reads the issuance budget', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ remaining: 10 }));
+    await expect(new OctaPointClient({ fetchFn }).getIssuanceBudget({ organizationId: 'org' })).resolves.toEqual({
+      remaining: 10,
+    });
+    expect(last()).toMatchObject({
+      url: 'http://localhost:3000/v1/credits/budget',
+      method: 'GET',
+      headers: { 'x-organization-id': 'org' },
+    });
+  });
   it('reverses the path transaction with only the command body and supports POS finalize', async () => {
     const { fetchFn, last } = recordingFetch();
     const client = new OctaPointClient({ fetchFn });

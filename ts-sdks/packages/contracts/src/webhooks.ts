@@ -1,3 +1,4 @@
+import type { BudgetWarningThreshold } from './loyalty.js';
 import type { RedeemVoucherResponse } from './rewards.js';
 
 export type WebhookEndpointStatus = 'ACTIVE' | 'DISABLED';
@@ -40,9 +41,11 @@ export interface WebhookDeliveryDto {
 export type WebhookEventType =
   | 'credits.earned'
   | 'credits.earn.confirmed'
+  | 'credits.earn.failed'
   | 'credits.redemption.confirmed'
   | 'credits.reversed'
-  | 'voucher.redeemed';
+  | 'voucher.redeemed'
+  | 'budget.low';
 
 /**
  * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).
@@ -70,6 +73,30 @@ export interface CreditsChainConfirmedEventData {
   /** The confirmed balance right after this transaction. */
   newBalance: number;
   blockchainDigest: string;
+}
+
+export type EarnFailureCode = 'BUDGET_EXHAUSTED' | 'REJECTED';
+
+/**
+ * `credits.earn.failed`: an accepted earn definitely failed. Its hold was released and nothing was
+ * credited. Its key stays used, so a new attempt needs a new key.
+ */
+export interface CreditsEarnFailedEventData {
+  transactionId: string;
+  organizationEndUserId: string;
+  purchaseAmount: number | null;
+  estimatedPoints: number;
+  failureCode: EarnFailureCode;
+}
+
+/**
+ * `budget.low`: the fullest budget shard crossed a threshold. Sent once per crossing; a top-up that
+ * brings usage back below it lets it fire again. Checked periodically, not on each earn.
+ */
+export interface BudgetLowEventData {
+  threshold: BudgetWarningThreshold;
+  remaining: number;
+  capacity: number;
 }
 
 /**
@@ -106,6 +133,8 @@ interface WebhookEventOf<T extends WebhookEventType, D> {
 export type WebhookEvent =
   | WebhookEventOf<'credits.earned', CreditsEarnedEventData>
   | WebhookEventOf<'credits.earn.confirmed', CreditsChainConfirmedEventData>
+  | WebhookEventOf<'credits.earn.failed', CreditsEarnFailedEventData>
   | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.reversed', ReversalEventData>
-  | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>;
+  | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>
+  | WebhookEventOf<'budget.low', BudgetLowEventData>;

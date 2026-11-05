@@ -6,6 +6,7 @@ import { WebhooksController } from '#api/rest/webhooks.controller.js';
 import { ApiCredentialsController } from '#api/rest/api-credentials.controller.js';
 import type { CreditsService } from '#domain/credits/credits.service.js';
 import type { EarnService } from '#domain/credits/earn.service.js';
+import type { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
 import type { ReversalService } from '#domain/credits/reversal.service.js';
 import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import type { RewardsService } from '#domain/rewards/rewards.service.js';
@@ -38,6 +39,7 @@ describe('CreditsController', () => {
       stub<EarnService>(overrides.earn),
       stub<ReversalService>(overrides.reversal),
       stub<PosRedemptionService>(overrides.pos),
+      stub<IssuanceBudgetService>(),
     );
   }
   const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k' };

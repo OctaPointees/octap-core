@@ -76,6 +76,29 @@ getBalance(programId: string, memberId: string, options?): Promise<BalanceSnapsh
 
 With a `programId`, the program can be your program's row ID or on-chain ID, and any other value gets a 404. This form returns `BalanceSnapshot`: `confirmed_balance`, `pending_earn` and `pending_redemption` as strings, plus `as_of_checkpoint`, `observed_at` and `stale`.
 
+## getIssuanceBudget
+
+Reads how many more points your program may issue, live from the chain. [Concept](/concepts/issuance-budget/)
+
+`GET /v1/credits/budget` · Scope: `read`
+
+```ts
+getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
+```
+
+| Returned field | Type | Description |
+| --- | --- | --- |
+| `organizationId` | `string` | |
+| `remaining` | `number` | Points left across all shards. Earns in flight aren't subtracted yet. |
+| `initialBudget` | `number` | The figure set at provisioning, before any top-up |
+| `capacity` | `number` | `initialBudget` plus every applied top-up |
+| `warningThreshold` | `80 \| 95 \| null` | The percentage used that the fullest shard has crossed |
+| `shards` | `{ shardId, remaining }[]` | A shard never borrows from another |
+| `recentTopUps` | `{ operationId, amount, status, createdAt }[]` | Latest first, at most 20 |
+| `observedAt` | `string` | When this was read, in ISO 8601 |
+
+Throws `OctaApiError` with status 404 if you have no active program, and 503 if the chain can't be read.
+
 ## listTransactions
 
 Lists a member's transactions.

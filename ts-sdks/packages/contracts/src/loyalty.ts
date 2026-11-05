@@ -116,3 +116,36 @@ export interface LoyaltyTransactionDto {
   createdAt: string;
   updatedAt: string;
 }
+
+export type BudgetWarningThreshold = 80 | 95;
+
+export interface IssuanceBudgetShard {
+  shardId: string;
+  remaining: number;
+}
+
+export interface IssuanceBudgetTopUp {
+  operationId: string;
+  amount: number;
+  /** PENDING or PROCESSING until the chain answers; UNKNOWN needs an operator and is never retried. */
+  status: string;
+  createdAt: string;
+}
+
+/** How many more points a program may issue. Points, not money: no payment is involved. */
+export interface IssuanceBudgetDto {
+  organizationId: string;
+  /** Live from the chain. Earns still in flight are not subtracted yet. */
+  remaining: number;
+  /** The figure set at provisioning, before any top-up. */
+  initialBudget: number;
+  /** `initialBudget` plus every applied top-up. */
+  capacity: number;
+  /** 80 or 95 once the fullest shard has used that percentage of its share, otherwise null. */
+  warningThreshold: BudgetWarningThreshold | null;
+  /** A shard never borrows from another, so an earn can fail while the total is above zero. */
+  shards: IssuanceBudgetShard[];
+  /** Latest first, at most 20. */
+  recentTopUps: IssuanceBudgetTopUp[];
+  observedAt: string;
+}

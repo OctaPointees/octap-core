@@ -19,7 +19,7 @@ only ever runs against the program provisioned for it.
 - `topUpBudget()` refills an organization's issuance budget (`budget_shard::top_up`, signed by the
   same `AdminCap` key) when its budget shards drain, split across shards like the initial budget.
   `programs.total_budget` keeps the provisioning-time figure; the chain holds the live remaining.
-  Run it with `scripts/top-up-budget.mjs <organizationId> <amount>`.
+  An approved `BUDGET_TOP_UP` change request is the only way to run it (`domain/administration`).
 - No HTTP endpoint yet: provisioning a program is a one-time per-organization setup action, not
   a per-request call, so it's invoked via `scripts/provision-program.mjs` (same pattern as
   `scripts/seed-dev-credential.mjs` for API credentials), not wired into `api/rest`.

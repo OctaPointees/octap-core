@@ -26,7 +26,7 @@ export class AdministrationService {
     if (!platform && body?.requestType === 'UPDATE_PROFILE')
       throw new BadRequestException('Use the organization profile endpoint to change the display name directly');
     if (
-      !['UPDATE_PROFILE', 'TRANSFER_OWNERSHIP', 'DEACTIVATE', 'SUSPEND', 'REINSTATE'].includes(
+      !['UPDATE_PROFILE', 'TRANSFER_OWNERSHIP', 'DEACTIVATE', 'SUSPEND', 'REINSTATE', 'BUDGET_TOP_UP'].includes(
         String(body?.requestType),
       )
     )
@@ -40,7 +40,9 @@ export class AdministrationService {
         ? ['targetUserId']
         : body.requestType === 'UPDATE_PROFILE'
           ? ['name']
-          : [];
+          : body.requestType === 'BUDGET_TOP_UP'
+            ? ['amount']
+            : [];
     if (Object.keys(input).some((key) => !allowed.includes(key)))
       throw new BadRequestException('Unexpected request fields');
     if (
@@ -53,6 +55,8 @@ export class AdministrationService {
       (typeof input.name !== 'string' || input.name.trim().length < 2 || input.name.length > 160)
     )
       throw new BadRequestException('A display name of 2–160 characters is required');
+    if (body.requestType === 'BUDGET_TOP_UP' && (!Number.isSafeInteger(input.amount) || (input.amount as number) < 1))
+      throw new BadRequestException('A top-up amount must be a positive whole number of points');
     try {
       return await this.governance.propose(
         actor,

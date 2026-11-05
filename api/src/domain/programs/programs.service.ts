@@ -98,7 +98,8 @@ export class ProgramsService {
   /**
    * Refills an organization's on-chain issuance budget by `amount` credits, split across its
    * budget shards like the initial budget. The `programs` row's `totalBudget` stays the
-   * provisioning-time figure; the chain's `BudgetShard.remaining` is the live one.
+   * provisioning-time figure; the chain's `BudgetShard.remaining` is the live one. Runs only for an
+   * approved `BUDGET_TOP_UP` change request (`BudgetTopUpProcessor`).
    */
   async topUpBudget(params: { organizationId: string; amount: number }): Promise<BudgetShardTopUp[]> {
     const program = await this.repo.findByOrganization(params.organizationId);
