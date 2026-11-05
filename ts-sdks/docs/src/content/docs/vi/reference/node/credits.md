@@ -91,6 +91,8 @@ getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
 | `organizationId` | `string` | |
 | `remaining` | `number` | Số điểm còn lại trên mọi shard. Các lệnh earn đang xử lý chưa bị trừ. |
 | `initialBudget` | `number` | Số đặt khi provision, trước mọi lần top-up |
+| `capacity` | `number` | `initialBudget` cộng mọi lần top-up đã áp dụng |
+| `warningThreshold` | `80 \| 95 \| null` | Mức phần trăm đã dùng mà shard đầy nhất đã vượt |
 | `shards` | `{ shardId, remaining }[]` | Shard không mượn nhau |
 | `recentTopUps` | `{ operationId, amount, status, createdAt }[]` | Mới nhất trước, tối đa 20 |
 | `observedAt` | `string` | Thời điểm đọc, theo ISO 8601 |

@@ -118,6 +118,21 @@ export class OperationsRepository {
     });
   }
 
+  /** The total `amount` of a tenant's commands of this type that were applied. */
+  async sumAppliedAmounts(tenantId: string, commandType: string): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<string>`coalesce(sum((${operations.payload} ->> 'amount')::bigint), 0)` })
+      .from(operations)
+      .where(
+        and(
+          eq(operations.tenantId, tenantId),
+          eq(operations.commandType, commandType),
+          eq(operations.status, 'SUBMITTED'),
+        ),
+      );
+    return Number(row.total);
+  }
+
   async claimNextPending(commandTypes: string[], limit = 5) {
     const candidates = await this.db.query.operations.findMany({
       where: and(eq(operations.status, 'PENDING'), inArray(operations.commandType, commandTypes)),

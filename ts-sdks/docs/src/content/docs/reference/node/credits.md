@@ -91,6 +91,8 @@ getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
 | `organizationId` | `string` | |
 | `remaining` | `number` | Points left across all shards. Earns in flight aren't subtracted yet. |
 | `initialBudget` | `number` | The figure set at provisioning, before any top-up |
+| `capacity` | `number` | `initialBudget` plus every applied top-up |
+| `warningThreshold` | `80 \| 95 \| null` | The percentage used that the fullest shard has crossed |
 | `shards` | `{ shardId, remaining }[]` | A shard never borrows from another |
 | `recentTopUps` | `{ operationId, amount, status, createdAt }[]` | Latest first, at most 20 |
 | `observedAt` | `string` | When this was read, in ISO 8601 |

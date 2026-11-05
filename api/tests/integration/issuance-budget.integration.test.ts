@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
 import { BudgetTopUpProcessor } from '#domain/organizations/budget-top-up.processor.js';
 import type { ProgramsService } from '#domain/programs/programs.service.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
@@ -180,6 +181,74 @@ describe('issuance budget', () => {
         throw new NotFoundException('gone');
       }).process(job);
       expect(await topUpOperations()).toMatchObject([{ status: 'FAILED' }]);
+    });
+  });
+
+  describe('warnings', () => {
+    const remaining = (points: bigint) => ctx.adapters.suiBuilder.budgetShardRemaining.mockResolvedValue(points);
+    const check = () => ctx.app.get(IssuanceBudgetService, { strict: false }).checkWarnings();
+    const warnings = async () =>
+      (await ctx.db.select().from(schema.webhookDeliveries))
+        .filter((delivery) => delivery.eventType === 'budget.low')
+        .map((delivery) => delivery.payload);
+
+    beforeEach(async () => {
+      await ctx
+        .http()
+        .post('/v1/webhooks/endpoints')
+        .set({ authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['admin'] })).rawKey}` })
+        .send({ url: 'https://merchant.test/hooks' })
+        .expect(201);
+    });
+    afterEach(() => {
+      remaining(1_000_000n);
+    });
+
+    it('warns once per crossing, and again after a top-up lowers usage', async () => {
+      await check();
+      expect(await warnings()).toEqual([]);
+
+      remaining(200_000n);
+      await check();
+      await check();
+      expect(await warnings()).toEqual([{ threshold: 80, remaining: 200_000, capacity: 1_000_000 }]);
+
+      remaining(50_000n);
+      await check();
+      expect((await warnings()).at(-1)).toEqual({ threshold: 95, remaining: 50_000, capacity: 1_000_000 });
+      expect(await warnings()).toHaveLength(2);
+
+      const request = await propose(1_000_000).expect(201);
+      await decide(request.body.id).expect(201);
+      const [job] = await new OperationsRepository(ctx.db).claimNextPending([ORGANIZATION_BUDGET_TOP_UP_COMMAND]);
+      await processor(vi.fn(async () => [])).process(job);
+      remaining(1_050_000n);
+      await check();
+      expect(await warnings()).toHaveLength(2);
+
+      remaining(400_000n);
+      await check();
+      expect((await warnings()).at(-1)).toEqual({ threshold: 80, remaining: 400_000, capacity: 2_000_000 });
+      const budget = await ctx
+        .http()
+        .get(`/v1/platform/organizations/${orgId}/budget`)
+        .set('Authorization', session('admin'));
+      expect(budget.body).toMatchObject({ capacity: 2_000_000, warningThreshold: 80 });
+    });
+
+    it('judges the fullest shard, and one unreadable program does not stop the others', async () => {
+      await ctx.db
+        .update(schema.programs)
+        .set({ shardCount: 2, budgetShardIds: ['0xfull', '0xempty'] })
+        .where(eq(schema.programs.organizationId, orgId));
+      const other = await seedOrganization(ctx.db);
+      await seedProgram(ctx.db, other.id, { budgetShardIds: ['0xbroken'] });
+      ctx.adapters.suiBuilder.budgetShardRemaining.mockImplementation(async (shardId: string) => {
+        if (shardId === '0xbroken') throw new Error('UNAVAILABLE');
+        return shardId === '0xfull' ? 500_000n : 10_000n;
+      });
+      await check();
+      expect(await warnings()).toEqual([{ threshold: 95, remaining: 510_000, capacity: 1_000_000 }]);
     });
   });
 

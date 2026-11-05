@@ -19,6 +19,7 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | Chain xác nhận lệnh tiêu, cho thanh toán hoặc voucher trả phí | Xếp hàng đúng một lần cho mỗi giao dịch |
 | [`credits.reversed`](#creditsreversed) | Lệnh earn hoặc redeem đã xác nhận bị đảo | Xếp hàng cùng lệnh đảo |
 | [`voucher.redeemed`](#voucherredeemed) | Một serial voucher được sử dụng | Xếp hàng cùng lệnh redeem |
+| [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
 
@@ -88,3 +89,13 @@ Không có điểm nào thay đổi ở đây. Claim trả phí đã gửi `cred
 | `voucherTitle` | `string` | |
 | `discountType` | `string` | |
 | `discountValue` | `string \| null` | |
+
+## budget.low
+
+[Ngân sách phát hành](/vi/concepts/issuance-budget/) của bạn sắp cạn. Hãy [yêu cầu top-up](/vi/concepts/issuance-budget/) trước khi lệnh earn bắt đầu bị từ chối.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `threshold` | `80 \| 95` | Mức phần trăm đã dùng vừa vượt |
+| `remaining` | `number` | Số điểm còn lại trên mọi shard |
+| `capacity` | `number` | Ngân sách ban đầu cộng mọi lần top-up đã áp dụng |

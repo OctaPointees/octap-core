@@ -53,6 +53,12 @@ Sau đó System Admin của OctaP duyệt hoặc từ chối tại `POST /v1/pla
 
 API này không nằm trong SDK, vì đề xuất và duyệt dùng phiên portal thay vì API key.
 
+## Nhận cảnh báo trước khi cạn
+
+OctaP kiểm tra vài phút một lần và gửi webhook [`budget.low`](/vi/reference/webhook-events/#budgetlow) khi ngân sách vượt mức đã dùng 80% và 95%. Mỗi lần vượt gửi một event. Top-up đưa mức dùng xuống dưới ngưỡng sẽ cho phép cảnh báo được gửi lại.
+
+Mức dùng được tính trên `capacity`, tức ngân sách ban đầu cộng mọi lần top-up đã áp dụng. Nếu có nhiều shard, nó theo shard đầy nhất, vì shard cạn sẽ từ chối earn dù các shard khác còn ngân sách. `warningThreshold` trong `getIssuanceBudget` cho biết mức hiện tại.
+
 ## Khi hết ngân sách
 
 - **Trước khi nhận lệnh:** lệnh earn mà ngân sách không đủ sẽ nhận 422, và không có gì được giữ.

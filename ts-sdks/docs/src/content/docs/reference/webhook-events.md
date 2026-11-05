@@ -19,6 +19,7 @@ Every event has this shape, and `data` depends on `type`:
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | The chain confirmed a spend, for checkout or a paid voucher | Exactly one per transaction is queued |
 | [`credits.reversed`](#creditsreversed) | A confirmed earn or redemption was reversed | Queued with the reversal |
 | [`voucher.redeemed`](#voucherredeemed) | A voucher serial was used | Queued with the redemption |
+| [`budget.low`](#budgetlow) | The issuance budget crossed 80% or 95% used | Checked every few minutes, one per crossing |
 
 Queued events can still be retried, so your receiver may see the same `id` more than once.
 
@@ -88,3 +89,13 @@ No points move here. A paid claim already sent `credits.redemption.confirmed` fo
 | `voucherTitle` | `string` | |
 | `discountType` | `string` | |
 | `discountValue` | `string \| null` | |
+
+## budget.low
+
+Your [issuance budget](/concepts/issuance-budget/) is running low. [Request a top-up](/concepts/issuance-budget/#request-a-top-up) before earns start being refused.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `threshold` | `80 \| 95` | The percentage used that was crossed |
+| `remaining` | `number` | Points left across all shards |
+| `capacity` | `number` | Initial budget plus every applied top-up |

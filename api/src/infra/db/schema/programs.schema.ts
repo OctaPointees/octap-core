@@ -31,6 +31,8 @@ export const programs = pgTable(
     shardCount: integer('shard_count').notNull(),
     /** Issuance budget in credits at provisioning time, split across `budgetShardIds`. */
     totalBudget: bigint('total_budget', { mode: 'number' }).notNull(),
+    /** The last `budget.low` threshold reported: 0, 80 or 95. Stops a crossing being sent twice. */
+    budgetWarningThreshold: integer('budget_warning_threshold').default(0).notNull(),
     /** `OperationShard` object ids in shard-index order; null until `ACTIVE`, like the ids above. */
     operationShardIds: text('operation_shard_ids').array(),
     /** `BudgetShard` object ids in shard-index order; null until `ACTIVE`. */

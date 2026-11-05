@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { programs } from '../schema/programs.schema.js';
+import { enqueueWebhookEvent } from './webhooks.repository.js';
 
 @Injectable()
 export class ProgramsRepository {
@@ -9,6 +10,37 @@ export class ProgramsRepository {
 
   async findByOrganization(organizationId: string) {
     return this.db.query.programs.findFirst({ where: eq(programs.organizationId, organizationId) });
+  }
+
+  listActive() {
+    return this.db.query.programs.findMany({ where: eq(programs.status, 'ACTIVE') });
+  }
+
+  /**
+   * Moves the reported threshold from `previous` to `next`, sending `budget.low` when it rises. The
+   * conditional update makes one crossing send one event, however many workers check it.
+   */
+  async recordBudgetWarning(params: {
+    programId: string;
+    organizationId: string;
+    previous: number;
+    next: number;
+    remaining: number;
+    capacity: number;
+  }) {
+    await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(programs)
+        .set({ budgetWarningThreshold: params.next })
+        .where(and(eq(programs.id, params.programId), eq(programs.budgetWarningThreshold, params.previous)))
+        .returning({ id: programs.id });
+      if (updated.length === 0 || params.next <= params.previous) return;
+      await enqueueWebhookEvent(tx, {
+        organizationId: params.organizationId,
+        eventType: 'budget.low',
+        payload: { threshold: params.next, remaining: params.remaining, capacity: params.capacity },
+      });
+    });
   }
 
   /**

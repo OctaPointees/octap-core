@@ -1,3 +1,4 @@
+import type { BudgetWarningThreshold } from './loyalty.js';
 import type { RedeemVoucherResponse } from './rewards.js';
 
 export type WebhookEndpointStatus = 'ACTIVE' | 'DISABLED';
@@ -43,7 +44,8 @@ export type WebhookEventType =
   | 'credits.earn.failed'
   | 'credits.redemption.confirmed'
   | 'credits.reversed'
-  | 'voucher.redeemed';
+  | 'voucher.redeemed'
+  | 'budget.low';
 
 /**
  * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).
@@ -88,6 +90,16 @@ export interface CreditsEarnFailedEventData {
 }
 
 /**
+ * `budget.low`: the fullest budget shard crossed a threshold. Sent once per crossing; a top-up that
+ * brings usage back below it lets it fire again. Checked periodically, not on each earn.
+ */
+export interface BudgetLowEventData {
+  threshold: BudgetWarningThreshold;
+  remaining: number;
+  capacity: number;
+}
+
+/**
  * `credits.reversed`: a CONFIRMED earn or redemption was reversed in the ledger. Settled
  * immediately; a chain-confirmed original is also mirrored on-chain afterwards, which sends no
  * separate event.
@@ -124,4 +136,5 @@ export type WebhookEvent =
   | WebhookEventOf<'credits.earn.failed', CreditsEarnFailedEventData>
   | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.reversed', ReversalEventData>
-  | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>;
+  | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>
+  | WebhookEventOf<'budget.low', BudgetLowEventData>;

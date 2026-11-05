@@ -3,6 +3,7 @@ import { DomainModule } from './domain/domain.module.js';
 import { InfrastructureModule } from './infra/infrastructure.module.js';
 import { SuiModule } from './infra/clients/sui/sui.module.js';
 import { ProgramAdminModule } from './infra/clients/sui/program-admin.module.js';
+import { BudgetWarningWorker } from './domain/credits/budget-warning.worker.js';
 import { ChainSubmitWorker } from './domain/credits/chain-submit.worker.js';
 import { ChainSubmitProcessor } from './domain/credits/chain-submit.processor.js';
 import { ChainOutcomeReconciler } from './domain/credits/chain-outcome.reconciler.js';
@@ -26,6 +27,7 @@ import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.proce
     OrganizationProvisioningWorker,
     OrganizationProvisioningProcessor,
     BudgetTopUpProcessor,
+    BudgetWarningWorker,
     ChainSubmitWorker,
     ChainSubmitProcessor,
     ChainOutcomeReconciler,

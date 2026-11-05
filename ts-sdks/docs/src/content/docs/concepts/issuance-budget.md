@@ -53,6 +53,12 @@ An OctaP System Admin then approves or rejects it at `POST /v1/platform/change-r
 
 This API isn't part of the SDK, because proposing and approving use portal sessions rather than API keys.
 
+## Get a warning before it runs out
+
+OctaP checks every few minutes and sends the [`budget.low`](/reference/webhook-events/#budgetlow) webhook when your budget crosses 80% and 95% used. Each crossing sends one event. A top-up that brings usage back below a threshold lets it fire again.
+
+Usage is measured against `capacity`, which is your initial budget plus every applied top-up. With several shards, it follows the fullest one, because a dry shard refuses earns even while others have budget left. `warningThreshold` in `getIssuanceBudget` shows the current level.
+
 ## When the budget runs out
 
 - **Before accepting:** an earn that the budget can't cover gets a 422, and nothing is reserved.

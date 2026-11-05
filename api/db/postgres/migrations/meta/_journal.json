@@ -148,6 +148,13 @@
       "when": 1793869159969,
       "tag": "0020_budget_top_up_request",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793873185174,
+      "tag": "0021_budget_warning_threshold",
+      "breakpoints": true
     }
   ]
 }
