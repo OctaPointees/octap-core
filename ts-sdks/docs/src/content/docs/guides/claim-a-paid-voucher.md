@@ -10,7 +10,7 @@ This flow uses both SDKs. Your server reserves the voucher, the customer signs o
 | 1. Reserve | Your server | Holds the points and one unit of stock. The voucher is `RESERVED`. |
 | 2. Sign and finalize | Customer's browser | The customer signs, and the transaction goes to the chain. |
 | 3. Confirm | Your server | Read the claim until it is `AVAILABLE`. |
-| 4. Redeem | Your server | Use the serial at checkout. No points move here. |
+| 4. Use | Server, then browser | You ask, and the customer signs. No points move here. |
 
 ## 1. Reserve on your server
 
@@ -28,7 +28,7 @@ const claim = await client.claimVoucher(voucherId, {
 return claim;
 ```
 
-A paid claim returns `status: 'RESERVED'`, `pointsDeducted: 0`, `digest` and `transactionBytes`. A free voucher returns `AVAILABLE` directly, so there is nothing to sign.
+A paid claim returns `status: 'RESERVED'`, `pointsDeducted: 0`, `digest` and `transactionBytes`. A free voucher also returns `RESERVED`, but with nothing to sign: OctaP records it on-chain, then `voucher.granted` tells you it is `AVAILABLE`.
 
 ## 2. Sign and finalize in the browser
 
@@ -62,20 +62,25 @@ switch (claim.status) {
 }
 ```
 
-Check that the claim's `organizationEndUserId` is the verified member before you return it. Your API key can read every member's claims, and a claim holds a redeemable serial code.
+Check that the claim's `organizationEndUserId` is the verified member before you return it. Your API key can read every member's claims, and a claim holds its serial code.
 
-## 4. Redeem at checkout
+## 4. Use the voucher
 
-Redeeming uses the voucher. The points were already debited, so no points move.
+Using a voucher takes the customer's signature. Your API key can only ask, so nobody can use a voucher without its holder.
 
-```ts
-const redeemed = await client.redeemVoucher({
+```ts title="Your server"
+const use = await client.prepareVoucherUse({
   serialCode: claim.serialCode,
-  receiptReference: order.id,
+  idempotencyKey: `use-${order.id}`,
 });
+return use;
 ```
 
-A serial can only be redeemed once. This call has no idempotency key, so after an unknown outcome, read the status before you retry.
+```ts title="Customer's browser"
+await auth.signAndFinalizeVoucherUse(use);
+```
+
+Deliver the benefit when the `voucher.redeemed` webhook arrives. A retry with the same key resumes the same use. A use the customer never signs ends after 30 minutes and leaves the voucher `AVAILABLE`. While a use is in progress, the voucher can't be refunded.
 
 ## Rules for your interface
 

@@ -13,7 +13,7 @@ Demo này chạy một lần claim trả phí đầy đủ với API thật và 
 npm run demo:sdk:local
 ```
 
-Demo đọc số dư, claim voucher, chuyển giao bước ký, finalize và redeem serial, rồi kiểm tra trạng thái đã lưu. Đọc `scripts/sdk-voucher-demo.mjs` để xem phần backend của luồng này.
+Demo đọc số dư, claim voucher, chuyển giao bước ký, finalize, để khách hàng ký dùng voucher, rồi kiểm tra trạng thái đã lưu. Đọc `scripts/sdk-voucher-demo.mjs` để xem phần backend của luồng này.
 
 Để chạy cùng luồng với API của riêng bạn, đặt các biến sau trong shell. Demo dừng ở bước khách hàng ký, vì chỉ khách hàng mới ký được.
 

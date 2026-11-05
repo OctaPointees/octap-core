@@ -1,6 +1,6 @@
 ---
 title: Quản lý voucher
-description: Tạo và sửa voucher, và đặt điều khoản hoàn tiền cho các claim sau này.
+description: Publish voucher theo hình thức của bạn, tặng voucher và đặt điều khoản hoàn tiền.
 ---
 
 ## Tạo voucher
@@ -18,6 +18,25 @@ const voucher = await client.createVoucher({
 
 `pointsCost` mặc định là 0, tức voucher miễn phí. `status` mặc định là `ACTIVE`, và cũng nhận `DRAFT` hoặc `PAUSED`. `code` phải là duy nhất trong tổ chức của bạn, nếu không bạn nhận 409.
 
+### Publish
+
+Yêu cầu `ACTIVE` sẽ publish điều khoản của voucher lên chain, nơi không ai đổi được nữa. Trước khi chain xác nhận, voucher ở `DRAFT` với `publishStatus: 'PUBLISHING'` và chưa claim được. Hãy đọc cho đến khi `publishStatus` là `PUBLISHED`. Nếu là `FAILED`, bạn có thể sửa và kích hoạt lại. Tổ chức của bạn cần có program đã provision, nếu không bạn nhận 422.
+
+### Hình thức voucher của riêng bạn
+
+Voucher của bạn không nhất thiết phải là một loại giảm giá của OctaP. Hãy mô tả nó trong `terms` theo cách phù hợp với doanh nghiệp, và bỏ `discountType`:
+
+```ts
+await client.createVoucher({
+  code: 'SPA-TET',
+  title: 'Tet spa package',
+  pointsCost: 500,
+  terms: { benefit: 'Two treatments for one', weekdaysOnly: true },
+});
+```
+
+Điều khoản, tiêu đề và mô tả phải vừa trong 8 KB. Chúng công khai trên chain, nên không được chứa dữ liệu cá nhân.
+
 Ngày giờ theo định dạng ISO có giây và múi giờ, ví dụ `2030-01-01T00:00:00Z`.
 
 ## Sửa voucher
@@ -26,7 +45,20 @@ Ngày giờ theo định dạng ISO có giây và múi giờ, ví dụ `2030-01-
 await client.updateVoucher(voucher.id, { status: 'PAUSED' });
 ```
 
-Sau lần claim đầu tiên, `code`, `pointsCost`, loại và giá trị giảm giá, cùng các mốc ngày không đổi được nữa. Bạn vẫn đổi được tiêu đề, mô tả, metadata, số lượng và trạng thái. Số lượng không được thấp hơn số đã claim.
+Từ khi bắt đầu publish, `code`, `title`, `description`, `pointsCost`, `terms`, loại và giá trị giảm giá, cùng các mốc ngày không đổi được nữa. Muốn ưu đãi khác, hãy tạo voucher mới. Bạn vẫn đổi được metadata, số lượng và trạng thái. Số lượng không thể thấp hơn số đã claim.
+
+## Tặng voucher
+
+Hãy tặng voucher khi khách hàng không cần tiêu điểm, ví dụ quà tặng hoặc phần thưởng chiến dịch. Cách phát là do bạn: QR, link hay sự kiện đều có thể dẫn đến lệnh này.
+
+```ts
+await client.grantVoucher(voucher.id, {
+  organizationEndUserId: memberId,
+  idempotencyKey: `gift-${campaignId}-${memberId}`,
+});
+```
+
+Voucher ở `RESERVED` cho đến khi chain ghi nhận, rồi `voucher.granted` được gửi đến. Khách hàng không cần ký để nhận, nhưng phải ký để dùng. Voucher đã tặng không thể bị thu hồi.
 
 ## Đọc voucher
 
@@ -37,7 +69,7 @@ const owned = await client.listMemberVouchers(memberId);
 
 ## Hoàn tiền
 
-Chính sách hoàn tiền đặt điều khoản cho các claim sau này. Mỗi claim giữ một bản sao điều khoản có hiệu lực lúc tạo, nên đổi chính sách không ảnh hưởng đến claim đã có.
+Voucher publish kèm chính sách hoàn tiền có hiệu lực lúc bắt đầu publish, nên nó là một phần của lời hứa. Đổi chính sách chỉ ảnh hưởng đến các voucher publish sau đó.
 
 ```ts
 await client.setVoucherRefundPolicy({
@@ -67,3 +99,4 @@ Publish chính sách và đọc lịch sử chính sách cần key `admin`. `get
 | `RESERVED` | Bị từ chối vì vẫn đang chờ. Thất bại hoặc bị bỏ dở sẽ giải phóng nó. |
 | `AVAILABLE`, chưa hết hạn | Bị hủy, trả lại tồn kho và hoàn điểm cùng lúc |
 | `REDEEMED` hoặc đã hết hạn | 409. Để đền bù cho thành viên, hãy phát một lệnh earn riêng. |
+| Đang có lượt dùng | 409, cho đến khi lượt dùng kết thúc |

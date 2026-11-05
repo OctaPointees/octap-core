@@ -79,6 +79,17 @@ auth.signAndFinalize(claim: SignableClaim, options?: RequestOptions): Promise<Fi
 
 Every failure except a rate limit becomes `outcome-unknown`, because a failed response doesn't prove the transaction didn't land. A rate limit is the one failure that proves nothing was attempted, so it comes through as `api-error` with status 429.
 
+
+## signAndFinalizeVoucherUse
+
+Signs the customer's use of a voucher and finalizes it. Show the customer what they are using first: this signature is the only thing that can mark their voucher used.
+
+```ts
+auth.signAndFinalizeVoucherUse(use: SignableVoucherUse, options?: RequestOptions): Promise<FinalizedVoucherUse>
+```
+
+`use` is what `prepareVoucherUse` returned on your server. Like `signAndFinalize`, it never retries, and it reports `outcome-unknown` when the result isn't known yet. It fails with `invalid-claim` when there is nothing to sign.
+
 ## signTransaction
 
 Returns the zkLogin signature over base64 transaction bytes, and sends nothing. Refuses bytes whose sender isn't the signed-in customer.

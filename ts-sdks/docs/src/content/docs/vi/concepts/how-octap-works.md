@@ -11,7 +11,7 @@ OctaP vận hành mọi thứ làm thay đổi điểm và voucher mà OctaP đa
 | --- | --- |
 | Thanh toán, đơn hàng và quy trình checkout | Core API và các worker |
 | Backend của bạn, với `@octap/sdk` | Điểm trên blockchain Sui |
-| Website của bạn, với `@octap/browser-sdk` | Dữ liệu voucher và mã serial |
+| Website của bạn, với `@octap/browser-sdk` | Dữ liệu voucher, trên chain và trong database của OctaP |
 | Giao diện trải nghiệm khách hàng thân thiết | Tài trợ phí giao dịch cho khách hàng |
 
 ## Ai xác nhận việc gì
@@ -21,7 +21,8 @@ Có hai SDK vì có hai bên giữ quyền khác nhau.
 | Hành động | Do ai xác nhận | Bằng cách nào |
 | --- | --- | --- |
 | Phát điểm | Bạn | API key của bạn, từ server |
-| Tạo hoặc redeem serial voucher | Bạn | API key của bạn, từ server |
+| Publish hoặc tặng voucher | Bạn | API key của bạn, từ server |
+| Tiêu điểm để đổi voucher, hoặc dùng voucher | Khách hàng | Chữ ký của họ, trên thiết bị của họ |
 | Tiêu điểm của khách hàng | Khách hàng | Chữ ký của họ, trên thiết bị của họ |
 
 API key của bạn không bao giờ tiêu được điểm của khách hàng. Nó có thể giữ chỗ một khoản tiêu và nhận về transaction bytes, nhưng chỉ chữ ký zkLogin của khách hàng mới hoàn tất được.
@@ -29,7 +30,8 @@ API key của bạn không bao giờ tiêu được điểm của khách hàng. 
 ## Dữ liệu chuẩn nằm ở đâu
 
 - **Điểm đã xác nhận nằm trên Sui.** Số dư của OctaP là bản phản chiếu những gì chain đã xác nhận.
-- **Lệnh và voucher nằm trong database của OctaP.** Đó là nơi lưu idempotency key, danh mục voucher và mã serial.
+- **Điều khoản voucher và voucher của từng khách nằm trên Sui.** Không ai đổi được điều khoản sau khi publish, và chỉ khách hàng mới đánh dấu được voucher của mình là đã dùng.
+- **Lệnh và danh mục nằm trong database của OctaP.** Đó là nơi lưu idempotency key, tồn kho, bản nháp và mã serial.
 
 Vì sự phân chia này mà SDK thường báo `PENDING` trước. Xem [Vòng đời điểm](/vi/concepts/points-lifecycle/).
 
@@ -42,7 +44,7 @@ Vì sự phân chia này mà SDK thường báo `PENDING` trước. Xem [Vòng �
 | End user | Một khách hàng trên toàn OctaP, với một `suiAddress`. |
 | Program | Chương trình điểm on-chain của tổ chức bạn, gồm cả tỷ lệ earn. |
 | Voucher | Phần thưởng do bạn định nghĩa. |
-| Ownership | Lần claim voucher của một khách hàng, kèm `serialCode` dùng một lần. |
+| Ownership | Voucher của một khách hàng, kèm `serialCode` để tra cứu. |
 
 ## Đăng nhập của khách hàng
 

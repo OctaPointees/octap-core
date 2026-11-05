@@ -18,7 +18,8 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`credits.earn.failed`](#creditsearnfailed) | Lệnh earn đã nhận chắc chắn thất bại | Xếp hàng cùng lúc ghi nhận thất bại |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | Chain xác nhận lệnh tiêu, cho thanh toán hoặc voucher trả phí | Xếp hàng đúng một lần cho mỗi giao dịch |
 | [`credits.reversed`](#creditsreversed) | Lệnh earn hoặc redeem đã xác nhận bị đảo | Xếp hàng cùng lệnh đảo |
-| [`voucher.redeemed`](#voucherredeemed) | Một serial voucher được sử dụng | Xếp hàng cùng lệnh redeem |
+| [`voucher.granted`](#vouchergranted) | Chain ghi nhận voucher được tặng hoặc claim miễn phí | Xếp hàng đúng một lần cho mỗi voucher |
+| [`voucher.redeemed`](#voucherredeemed) | Khách hàng đã ký và chain đánh dấu voucher đã dùng | Xếp hàng đúng một lần cho mỗi voucher |
 | [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
@@ -74,9 +75,22 @@ Có cùng các field với `credits.earn.confirmed`, trong đó `pointsAmount` l
 | `newBalance` | `number` | |
 | `balanceWentNegative` | `boolean` | True khi đảo một lệnh earn đã bị tiêu và để lại khoản nợ |
 
+## voucher.granted
+
+Khách hàng đã giữ voucher. Claim trả phí báo qua `credits.redemption.confirmed`.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `voucherOwnershipId` | `string` | |
+| `voucherId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `serialCode` | `string` | |
+| `status` | `string` | `AVAILABLE` |
+| `blockchainDigest` | `string` | |
+
 ## voucher.redeemed
 
-Không có điểm nào thay đổi ở đây. Claim trả phí đã gửi `credits.redemption.confirmed` cho chi phí của nó.
+Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào thay đổi ở đây. Claim trả phí đã gửi `credits.redemption.confirmed` cho chi phí của nó.
 
 | Field | Kiểu | Mô tả |
 | --- | --- | --- |
@@ -87,8 +101,9 @@ Không có điểm nào thay đổi ở đây. Claim trả phí đã gửi `cred
 | `status` | `string` | `REDEEMED` |
 | `redeemedAt` | `string` | |
 | `voucherTitle` | `string` | |
-| `discountType` | `string` | |
+| `discountType` | `string \| null` | |
 | `discountValue` | `string \| null` | |
+| `blockchainDigest` | `string` | Giao dịch do khách hàng ký |
 
 ## budget.low
 
