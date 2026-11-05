@@ -141,7 +141,7 @@ describe('RewardsController', () => {
     await c.createVoucher(tenant, voucher);
     await c.listVouchers(tenant);
     await c.getVoucher(tenant, 'v-1');
-    await c.claimVoucher(tenant, 'v-1', { organizationEndUserId: 'user-1' });
+    await c.claimVoucher(tenant, 'v-1', { organizationEndUserId: 'user-1', idempotencyKey: 'k' });
     await c.grantVoucher(tenant, 'v-1', { organizationEndUserId: 'user-1', idempotencyKey: 'k' });
     await c.prepareVoucherUse(tenant, { serialCode: 's', idempotencyKey: 'k' });
     await c.finalizeVoucherUse({ digest: 'd', signature: 'sig' });
@@ -150,7 +150,10 @@ describe('RewardsController', () => {
     expect(service.createVoucher).toHaveBeenCalledWith('org-1', voucher);
     expect(service.listVouchers).toHaveBeenCalledWith('org-1');
     expect(service.getVoucher).toHaveBeenCalledWith('org-1', 'v-1');
-    expect(service.claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', { organizationEndUserId: 'user-1' });
+    expect(service.claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', {
+      organizationEndUserId: 'user-1',
+      idempotencyKey: 'k',
+    });
     expect(service.grantVoucher).toHaveBeenCalledWith('org-1', 'v-1', {
       organizationEndUserId: 'user-1',
       idempotencyKey: 'k',
@@ -166,7 +169,10 @@ describe('RewardsController', () => {
       );
     }
     await c.createVoucher(tenant, { code: 'C', title: 'T', terms: { benefit: 'one free coffee' } });
-    await bad(c.claimVoucher(tenant, 'v-1', { organizationEndUserId: '' }), /organizationEndUserId is required/);
+    await bad(
+      c.claimVoucher(tenant, 'v-1', { organizationEndUserId: '', idempotencyKey: 'k' }),
+      /organizationEndUserId is required/,
+    );
     await bad(c.grantVoucher(tenant, 'v-1', { organizationEndUserId: '', idempotencyKey: 'k' }), /are required/);
     await bad(c.prepareVoucherUse(tenant, { serialCode: '', idempotencyKey: 'k' }), /are required/);
     await bad(c.prepareVoucherUse(tenant, { serialCode: 's', idempotencyKey: '' }), /are required/);

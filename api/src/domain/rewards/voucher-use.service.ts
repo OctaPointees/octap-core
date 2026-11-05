@@ -1,13 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  type HttpException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import { transactionExpirationEpoch } from '@octap/chain';
 import type {
   FinalizeVoucherUseRequest,
   PrepareVoucherUseRequest,
@@ -16,10 +8,10 @@ import type {
 } from '@octap/contracts';
 import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
 import { CreditsRepository, voucherClaimReference } from '#infra/db/repositories/credits.repository.js';
-import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
-import { RewardsRepository, RewardsRuleError } from '#infra/db/repositories/rewards.repository.js';
-import { RESERVE_TTL_SECONDS } from '../credits/pos-redemption.service.js';
-import { mapMemberEligibilityError } from '../credits/member-eligibility-error.js';
+import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
+import { RESERVE_TTL_SECONDS, expirationOf } from '../credits/pos-redemption.service.js';
+import { toHttpError } from './rewards.service.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
@@ -37,24 +29,6 @@ type Prepared = Awaited<ReturnType<RewardsRepository['reserveVoucherUse']>>;
 const useKey = (digest: string) => `voucher-use:reserve:${digest}`;
 const useIdemKey = (organizationId: string, idempotencyKey: string) =>
   `voucher-use:idem:${organizationId}:${idempotencyKey}`;
-
-function expirationOf(transactionBytes: string): bigint | null {
-  try {
-    return transactionExpirationEpoch(transactionBytes);
-  } catch {
-    return null;
-  }
-}
-
-function toHttpError(error: unknown): unknown {
-  if (error instanceof RewardsRuleError) {
-    if (error.kind === 'NOT_FOUND') return new NotFoundException(error.message);
-    if (error.kind === 'CONFLICT') return new ConflictException(error.message);
-    return new BadRequestException(error.message);
-  }
-  if (error instanceof OperationPayloadConflictError) return new ConflictException(error.message);
-  return mapMemberEligibilityError(error) as HttpException;
-}
 
 /**
  * Customer-signed voucher use. A merchant's API key can only ask: `prepare` returns bytes for the
@@ -107,6 +81,9 @@ export class VoucherUseService {
       discountValue: voucher.discountValue,
     });
 
+    if (operation.status === 'FAILED') {
+      throw new ConflictException('This voucher use ended without being used; prepare it again with a new key');
+    }
     if (!['PENDING', 'UNKNOWN'].includes(operation.status)) return respond(null, null);
 
     if (!isNew) {

@@ -45,7 +45,7 @@ Only the customer can mark a voucher used:
 
 Exactly one AVAILABLE -> REDEEMED transition queues the webhook, whichever of finalize, the reconciler or the indexer gets there first. The indexer also applies a use with no command behind it: the customer signed it and the chain recorded it.
 
-An unsigned use is ended after 30 minutes by the reconciler and leaves the voucher AVAILABLE. A voucher's serial is a lookup key: knowing it does not let anyone use the voucher.
+A new key replaces an unsigned use, so a customer who declined can be asked again. Otherwise the reconciler ends it after 30 minutes. Either way the voucher stays AVAILABLE. A failed Enoki execute keeps its digest, so that voucher waits for the reconciler until the transaction's expiration epoch passes. A voucher's serial is a lookup key: knowing it does not let anyone use the voucher.
 
 ## Paid claim details
 

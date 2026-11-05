@@ -67,7 +67,7 @@ claimVoucher(voucherId: string, request: ClaimVoucherRequest, options?): Promise
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `organizationEndUserId` | `string` | **Required.** A UUID. |
-| `idempotencyKey` | `string` | **Required for paid claims.** 1–100 letters, numbers, `:`, `_` or `-`. |
+| `idempotencyKey` | `string` | **Required.** 1–100 letters, numbers, `:`, `_` or `-`. |
 
 | Returned field | Type | Description |
 | --- | --- | --- |

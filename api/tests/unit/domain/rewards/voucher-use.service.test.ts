@@ -179,6 +179,17 @@ describe('VoucherUseService.prepare', () => {
     expect(preview).not.toHaveBeenCalled();
   });
 
+  it('a use that ended tells the merchant to start again', async () => {
+    const { service, preview } = fixture({
+      rewards: {
+        reserveVoucherUse: async () =>
+          prepared({ isNew: false, operation: { id: 'op-1', status: 'FAILED', suiTxDigest: null } }),
+      },
+    });
+    await expect(service.prepare('org-1', request)).rejects.toMatchObject({ status: 409 });
+    expect(preview).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['no address', { credits: { findBeneficiaryAddress: async () => null } }],
     ['no account', { credits: { getCreditOwnershipByEndUserId: async () => ({ suiCreditAccountId: null }) } }],

@@ -155,7 +155,9 @@ describe('OctaPointClient', () => {
     await client.getVoucher('v-10');
     expect(last().url).toBe('https://api.octap.network/v1/rewards/vouchers/v-10');
 
-    expect((await client.claimVoucher('v-10', { organizationEndUserId: 'user-1' })).serialCode).toBe('DISCOUNT-ABC123');
+    expect(
+      (await client.claimVoucher('v-10', { organizationEndUserId: 'user-1', idempotencyKey: 'claim-1' })).serialCode,
+    ).toBe('DISCOUNT-ABC123');
     expect(last().url).toBe('https://api.octap.network/v1/rewards/vouchers/v-10/claim');
 
     await client.grantVoucher('v-10', { organizationEndUserId: 'user-1', idempotencyKey: 'grant-1' });

@@ -354,7 +354,7 @@ describe('rewards over HTTP', () => {
       .http()
       .post(`/v1/rewards/vouchers/${created.body.id}/claim`)
       .set(auth)
-      .send({ organizationEndUserId: memberId })
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'too-big' })
       .expect(400);
 
     expect((await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200)).body).toEqual([]);
@@ -400,7 +400,7 @@ describe('rewards over HTTP', () => {
       .http()
       .post(`/v1/rewards/vouchers/${free.body.id}/claim`)
       .set(auth)
-      .send({ organizationEndUserId: memberId })
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'free-claim' })
       .expect(201);
     expect(claimed.body).toMatchObject({ status: 'RESERVED', pointsCost: 0, digest: null, transactionBytes: null });
 
@@ -457,12 +457,6 @@ describe('rewards over HTTP', () => {
     expect(ctx.adapters.suiBuilder.buildUseVoucherTransactionKind).toHaveBeenCalled();
     // A signed use could still land, so the refund waits.
     await ctx.http().post(refundPath).set(auth).send({ idempotencyKey: 'refund', reason: 'Too soon' }).expect(409);
-    await ctx
-      .http()
-      .post('/v1/rewards/vouchers/use')
-      .set(auth)
-      .send({ serialCode: claim.serialCode, idempotencyKey: 'use-2' })
-      .expect(409);
 
     ctx.adapters.suiBuilder.waitForTransaction.mockResolvedValueOnce({
       digest: prepared.body.digest,

@@ -128,8 +128,6 @@ describe('RewardsService claims and redemption', () => {
       }),
     ).toEqual(result);
     expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'claim-key', {});
-    await service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId });
-    expect(claimVoucher).toHaveBeenLastCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`, {});
   });
   describe('a paid claim', () => {
     const reserved = {
@@ -173,7 +171,7 @@ describe('RewardsService claims and redemption', () => {
       const run = (idempotencyKey: string | null = 'claim-key') =>
         rewards.claimVoucher('org-1', 'v-1', {
           organizationEndUserId: memberId,
-          idempotencyKey: idempotencyKey ?? undefined,
+          idempotencyKey: idempotencyKey as string,
         });
       return { run, claimVoucher, sponsorReservation, findVoucherClaimHold, getClaim };
     }
@@ -197,7 +195,7 @@ describe('RewardsService claims and redemption', () => {
 
     it('requires an explicit idempotency key', async () => {
       const { run, claimVoucher } = paidClaim();
-      await expect(run(null)).rejects.toThrow(/idempotencyKey is required/);
+      await expect(run(null)).rejects.toThrow(/idempotencyKey/);
       expect(claimVoucher).not.toHaveBeenCalled();
     });
 
@@ -218,8 +216,8 @@ describe('RewardsService claims and redemption', () => {
         previousOperation: { suiTxDigest: null },
         beneficiary: null,
       });
-      await expect(run(null)).resolves.toMatchObject({ digest: 'digest' });
-      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`, {});
+      await expect(run()).resolves.toMatchObject({ digest: 'digest' });
+      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'claim-key', {});
       expect(sponsorReservation).toHaveBeenCalledOnce();
     });
 
@@ -259,7 +257,7 @@ describe('RewardsService claims and redemption', () => {
       throw failure;
     });
     await expect(
-      service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId }),
+      service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: 'k' }),
     ).rejects.toMatchObject({ name });
   });
 
@@ -314,7 +312,9 @@ describe('RewardsService claims and redemption', () => {
   it('rejects malformed members and claim keys before reaching the database', async () => {
     const claimVoucher = vi.fn();
     const rewards = service({ claimVoucher });
-    await expect(rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'bad' })).rejects.toThrow(/UUID/);
+    await expect(
+      rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'bad', idempotencyKey: 'k' }),
+    ).rejects.toThrow(/UUID/);
     await expect(
       rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: '' }),
     ).rejects.toThrow(/idempotencyKey/);

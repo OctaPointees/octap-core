@@ -80,7 +80,7 @@ return use;
 await auth.signAndFinalizeVoucherUse(use);
 ```
 
-Deliver the benefit when the `voucher.redeemed` webhook arrives. A retry with the same key resumes the same use. A use the customer never signs ends after 30 minutes and leaves the voucher `AVAILABLE`. While a use is in progress, the voucher can't be refunded.
+Deliver the benefit when the `voucher.redeemed` webhook arrives. A retry with the same key resumes the same use. If the customer doesn't sign, prepare again with a new key, which replaces the unsigned use. A use nobody signs ends after 30 minutes and leaves the voucher `AVAILABLE`. While a use is in progress, the voucher can't be refunded.
 
 ## Rules for your interface
 

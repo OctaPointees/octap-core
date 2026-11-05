@@ -55,8 +55,8 @@ export interface VoucherDto {
 
 export interface ClaimVoucherRequest {
   organizationEndUserId: string;
-  /** Required for paid claims; persist the same key across retries. */
-  idempotencyKey?: string;
+  /** Persist the same key across retries. Use a new key only after a claim is CANCELLED. */
+  idempotencyKey: string;
 }
 
 export interface ClaimVoucherResponse {

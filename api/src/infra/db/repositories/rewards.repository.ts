@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { eq, desc, and, sql, ne } from 'drizzle-orm';
+import { eq, desc, and, sql, ne, isNull } from 'drizzle-orm';
 import { DEFAULT_VOUCHER_REFUND_POLICY, type ClaimVoucherResponse, type CreateVoucherRequest } from '@octap/contracts';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
@@ -204,6 +204,10 @@ export class RewardsRepository {
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
       if (requestedStatus === 'ACTIVE' && !onChain) return this.queuePublish(tx, current, fields);
+      // DRAFT means an activation in progress here, so it would go ACTIVE when the chain confirms.
+      if (requestedStatus === 'DRAFT' && onChain) {
+        throw conflict('A published voucher cannot return to DRAFT; pause it instead');
+      }
       // A repeat activation while publishing changes nothing: ACTIVE waits for the chain.
       const status =
         requestedStatus === 'ACTIVE' && current.publishStatus === 'PUBLISHING' ? current.status : requestedStatus;
@@ -595,7 +599,22 @@ export class RewardsRepository {
         throw invalid(`Voucher cannot be used; status is currently ${ownership.status}`);
       if (ownership.expiresAt && ownership.expiresAt.getTime() <= Date.now()) throw invalid('Voucher has expired');
       if (!voucher.suiTermsId) throw invalid('This voucher has no on-chain record to use');
-      if (ownership.pendingOperationId) throw conflict('Another use of this voucher is still in progress');
+      if (ownership.pendingOperationId) {
+        // A use nobody signed can't land once it is FAILED, so a new attempt replaces it. One already
+        // submitted has an outcome to wait for.
+        const [replaced] = await tx
+          .update(operations)
+          .set({ status: 'FAILED', errorMessage: 'Replaced by a new voucher use', updatedAt: new Date() })
+          .where(
+            and(
+              eq(operations.id, ownership.pendingOperationId),
+              eq(operations.status, 'PENDING'),
+              isNull(operations.suiTxDigest),
+            ),
+          )
+          .returning({ id: operations.id });
+        if (!replaced) throw conflict('Another use of this voucher is still in progress');
+      }
       await tx
         .update(voucherOwnerships)
         .set({ pendingOperationId: operation.id, updatedAt: new Date() })

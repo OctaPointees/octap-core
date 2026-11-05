@@ -27,7 +27,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /** Maps the repositories' rule errors to the HTTP status a merchant can act on; others pass through. */
-function toHttpError(error: unknown): unknown {
+export function toHttpError(error: unknown): unknown {
   if (error instanceof RewardsRuleError) {
     if (error.kind === 'NOT_FOUND') return new NotFoundException(error.message);
     if (error.kind === 'CONFLICT') return new ConflictException(error.message);
@@ -109,8 +109,8 @@ export class RewardsService {
     if (!req || typeof req.organizationEndUserId !== 'string' || !UUID_PATTERN.test(req.organizationEndUserId)) {
       throw new BadRequestException('organizationEndUserId must be a UUID');
     }
-    // Stable legacy fallback preserves existing callers; integrations should always supply a key.
-    const key = req.idempotencyKey ?? `claim-${voucherId}-${req.organizationEndUserId}`;
+    // Every claim now goes through the chain, and only a new key can retry one that was cancelled.
+    const key = req.idempotencyKey;
     if (typeof key !== 'string' || !/^[a-zA-Z0-9:_-]{1,100}$/.test(key)) {
       throw new BadRequestException(
         'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
@@ -120,9 +120,6 @@ export class RewardsService {
     // A retry under an accepted key skips these: it only reports or resumes the existing claim.
     const isNewClaim = !(await this.creditsRepo.findOperationForClaim(organizationId, key));
     if (isNewClaim) {
-      if (voucher.pointsCost > 0 && !req.idempotencyKey) {
-        throw new BadRequestException('idempotencyKey is required for paid voucher claims');
-      }
       await this.requireChainMember(organizationId, req.organizationEndUserId);
     }
     const claim = await this.reserveClaim(organizationId, voucherId, req.organizationEndUserId, key);
@@ -181,6 +178,7 @@ export class RewardsService {
         validateVoucher({
           code: merged.code,
           title: merged.title,
+          description: merged.description ?? undefined,
           pointsCost: merged.pointsCost,
           discountType: (merged.discountType ?? undefined) as CreateVoucherRequest['discountType'],
           discountValue: merged.discountValue ?? undefined,

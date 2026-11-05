@@ -151,7 +151,8 @@ export class SuiClientService {
       startsAtMs: params.startsAtMs,
       expiresAtMs: params.expiresAtMs,
     });
-    tx.setGasBudget(50_000_000);
+    // Up to 8 KB of terms is stored on-chain, which costs more than the other calls here.
+    tx.setGasBudget(100_000_000);
     this.logger.log(`publishing voucher terms for ${params.voucherId} in program ${program.programControlId}`);
     return this.client.sign(tx, await this.issuerSigner());
   }

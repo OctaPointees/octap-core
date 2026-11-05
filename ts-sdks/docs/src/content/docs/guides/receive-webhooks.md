@@ -41,6 +41,9 @@ app.post('/webhooks/octap', async (req, res) => {
     case 'credits.earn.confirmed':
       await creditCustomer(event.data.organizationEndUserId, event.data.pointsAmount);
       break;
+    case 'voucher.granted':
+      await showVoucher(event.data.organizationEndUserId, event.data.serialCode);
+      break;
     case 'voucher.redeemed':
       await markUsed(event.data.serialCode);
       break;

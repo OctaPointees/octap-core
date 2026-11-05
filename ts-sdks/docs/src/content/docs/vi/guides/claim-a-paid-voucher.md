@@ -80,7 +80,7 @@ return use;
 await auth.signAndFinalizeVoucherUse(use);
 ```
 
-Hãy giao quyền lợi khi nhận webhook `voucher.redeemed`. Thử lại với cùng key sẽ tiếp tục đúng lượt dùng đó. Lượt dùng mà khách hàng không ký sẽ kết thúc sau 30 phút và voucher vẫn là `AVAILABLE`. Trong khi đang có lượt dùng, voucher không thể được hoàn tiền.
+Hãy giao quyền lợi khi nhận webhook `voucher.redeemed`. Thử lại với cùng key sẽ tiếp tục đúng lượt dùng đó. Nếu khách hàng không ký, hãy chuẩn bị lại với key mới, key này sẽ thay thế lượt dùng chưa ký. Lượt dùng không ai ký sẽ kết thúc sau 30 phút và voucher vẫn là `AVAILABLE`. Trong khi đang có lượt dùng, voucher không thể được hoàn tiền.
 
 ## Quy tắc cho giao diện của bạn
 

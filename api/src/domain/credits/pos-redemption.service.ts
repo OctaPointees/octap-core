@@ -39,7 +39,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /** Unparseable bytes only cost the "expired, never landed" shortcut, never the finalize itself. */
-function expirationOf(transactionBytes: string): bigint | null {
+export function expirationOf(transactionBytes: string): bigint | null {
   try {
     return transactionExpirationEpoch(transactionBytes);
   } catch {

@@ -512,7 +512,7 @@ describe('single-use redemption and lifecycle locking', () => {
     const other = await seedOrganization(db);
     await expect(use(result.serialCode, other.id)).rejects.toMatchObject({ kind: 'NOT_FOUND' });
     const results = await Promise.allSettled([use(result.serialCode), use(result.serialCode)]);
-    expect(results.filter((value) => value.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((value) => value.status === 'fulfilled' && value.value.applied)).toHaveLength(1);
     expect((await repo.getClaim(orgId, result.voucherOwnershipId)).status).toBe('REDEEMED');
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
   });
@@ -613,6 +613,12 @@ describe('voucher terms publishing', () => {
     await expect(repo.updateVoucher(orgId, voucher.id, patch, () => {})).rejects.toThrow(
       new RegExp(`${field} cannot change`),
     );
+  });
+
+  it('a voucher cannot go back to DRAFT once publishing starts, because that would still activate it', async () => {
+    const voucher = await draft();
+    await expect(repo.updateVoucher(orgId, voucher.id, { status: 'DRAFT' }, () => {})).rejects.toThrow(/pause it/);
+    expect((await repo.updateVoucher(orgId, voucher.id, { status: 'PAUSED' }, () => {})).status).toBe('PAUSED');
   });
 
   it('supply and metadata stay editable after publishing', async () => {
@@ -723,6 +729,27 @@ describe('customer-signed voucher use', () => {
     expect(retry).toMatchObject({ isNew: false, operation: { id: first.operation.id } });
     const [refreshed] = await db.select().from(schema.operations).where(eq(schema.operations.id, first.operation.id));
     expect(refreshed.updatedAt.getTime()).toBeGreaterThan(Date.now() - 60 * 1000);
+  });
+
+  it('a new key replaces a use nobody signed, whose bytes can no longer finalize', async () => {
+    const coupon = await issued();
+    const first = await reserve(coupon.serialCode);
+    const second = await reserve(coupon.serialCode, 'other-key');
+    expect(second).toMatchObject({ isNew: true });
+    const [old] = await db.select().from(schema.operations).where(eq(schema.operations.id, first.operation.id));
+    expect(old.status).toBe('FAILED');
+    const operations = new OperationsRepository(db);
+    const params = { tenantId: orgId, suiTxDigest: 'late', expirationEpoch: 5n };
+    expect(await operations.recordSubmitDigestForCommand({ ...params, idempotencyKey: 'use-key' })).toBeNull();
+    expect(await operations.recordSubmitDigestForCommand({ ...params, idempotencyKey: 'other-key' })).toBe(
+      second.operation.id,
+    );
+  });
+
+  it('a new key waits for a use that was already submitted', async () => {
+    const coupon = await issued();
+    const { operation } = await reserve(coupon.serialCode);
+    await db.update(schema.operations).set({ suiTxDigest: 'sent' }).where(eq(schema.operations.id, operation.id));
     await expect(reserve(coupon.serialCode, 'other-key')).rejects.toMatchObject({ kind: 'CONFLICT' });
   });
 
@@ -842,7 +869,7 @@ describe('voucher redeem outbox retained from OCT-244', () => {
       .insert(schema.webhookEndpoints)
       .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test' });
     const attempts = await Promise.allSettled([use(result.serialCode), use(result.serialCode)]);
-    expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+    expect(attempts.filter((a) => a.status === 'fulfilled' && a.value.applied)).toHaveLength(1);
     const delivered = await db.select().from(schema.webhookDeliveries);
     expect(delivered).toHaveLength(1);
     expect(delivered[0]).toMatchObject({

@@ -11,7 +11,7 @@ export type UpdateVoucherBodyDto = UpdateVoucherRequest;
 
 export interface ClaimVoucherBodyDto {
   organizationEndUserId: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
 export type GrantVoucherBodyDto = GrantVoucherRequest;
