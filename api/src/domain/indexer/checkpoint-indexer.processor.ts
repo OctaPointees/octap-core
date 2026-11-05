@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
 import { CreditsRepository, parseVoucherClaimReference } from '#infra/db/repositories/credits.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
@@ -56,6 +57,7 @@ export class CheckpointIndexerProcessor {
     private readonly creditsRepo: CreditsRepository,
     private readonly operationsRepo: OperationsRepository,
     private readonly sui: SuiTransactionBuilderClient,
+    private readonly rewardsRepo: RewardsRepository,
   ) {}
 
   /** Processes at most one page; returns whether another page is available right away. */
@@ -114,6 +116,9 @@ export class CheckpointIndexerProcessor {
   }
 
   async applyEvent(event: CreditAccountEvent, tx: DrizzleDb): Promise<EventOutcome> {
+    if (event.name === 'VoucherGranted' || event.name === 'VoucherUsed') {
+      return this.applyVoucherEvent(event, tx);
+    }
     if (event.name !== 'CreditEarned' && event.name !== 'CreditRedeemed' && event.name !== 'CreditExpired') {
       return 'skipped';
     }
@@ -282,6 +287,38 @@ export class CheckpointIndexerProcessor {
       },
       tx,
     );
+    return 'confirmed';
+  }
+
+  /**
+   * A grant or use reached the chain, so PostgreSQL follows. A use is applied even with no command
+   * behind it: the customer signed it and the chain recorded it, however it was sent.
+   */
+  private async applyVoucherEvent(event: CreditAccountEvent, tx: DrizzleDb): Promise<EventOutcome> {
+    const voucherOwnershipId = parseVoucherClaimReference(decodeBytesField(event.json?.reference));
+    const accountId = event.json?.account_id;
+    if (!voucherOwnershipId || !UUID_PATTERN.test(voucherOwnershipId) || typeof accountId !== 'string') {
+      return 'skipped';
+    }
+    const account = await this.creditsRepo.findCreditOwnershipBySuiAccountId(accountId);
+    const voucher = account ? await this.rewardsRepo.findOwnershipWithVoucher(voucherOwnershipId) : null;
+    if (!account || !voucher || voucher.organizationEndUserId !== account.organizationEndUserId) {
+      this.logger.warn(`${event.name} ${event.transactionDigest} matches no voucher here; left for a human`);
+      return 'skipped';
+    }
+
+    const params = { voucherOwnershipId, digest: event.transactionDigest };
+    const settled =
+      event.name === 'VoucherGranted'
+        ? await this.rewardsRepo.confirmVoucherGrant(params, tx)
+        : await this.rewardsRepo.confirmVoucherUse(params, tx);
+    if (!settled) {
+      this.logger.warn(`${event.name} ${event.transactionDigest} found voucher ${voucherOwnershipId} already settled`);
+      return 'skipped';
+    }
+    if (settled.key) {
+      await this.operationsRepo.markSubmittedFromChain({ ...settled.key, suiTxDigest: event.transactionDigest }, tx);
+    }
     return 'confirmed';
   }
 

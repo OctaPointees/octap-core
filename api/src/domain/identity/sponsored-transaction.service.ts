@@ -43,6 +43,38 @@ export class SponsoredTransactionService {
     return { transactionBytes: sponsored.bytes, digest: sponsored.digest };
   }
 
+  /** Sponsors a customer-signed `claim_voucher`. The price comes from the terms. */
+  async previewSponsoredClaimVoucher(params: {
+    beneficiaryAddress: string;
+    accountId: string;
+    termsId: string;
+    reference: Uint8Array;
+  }): Promise<SponsoredRedeemPreview> {
+    const kindBytes = await this.builder.buildClaimVoucherTransactionKind(params);
+    const sponsored = await this.enoki.createSponsoredTransaction({
+      transactionKindBytes: kindBytes,
+      sender: params.beneficiaryAddress,
+      allowedMoveCallTargets: [this.builder.claimVoucherMoveCallTarget],
+    });
+    return { transactionBytes: sponsored.bytes, digest: sponsored.digest };
+  }
+
+  /** Sponsors a customer-signed `use_voucher`. */
+  async previewSponsoredUseVoucher(params: {
+    beneficiaryAddress: string;
+    accountId: string;
+    termsId: string;
+    reference: Uint8Array;
+  }): Promise<SponsoredRedeemPreview> {
+    const kindBytes = await this.builder.buildUseVoucherTransactionKind(params);
+    const sponsored = await this.enoki.createSponsoredTransaction({
+      transactionKindBytes: kindBytes,
+      sender: params.beneficiaryAddress,
+      allowedMoveCallTargets: [this.builder.useVoucherMoveCallTarget],
+    });
+    return { transactionBytes: sponsored.bytes, digest: sponsored.digest };
+  }
+
   /** Submits the beneficiary's signature over a digest `previewSponsoredRedeem` already sponsored. */
   async executeSponsoredRedeem(params: { digest: string; signature: string }): Promise<{ digest: string }> {
     return this.enoki.executeSponsoredTransaction(params);

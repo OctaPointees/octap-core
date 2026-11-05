@@ -10,6 +10,7 @@ import type { IssuanceBudgetService } from '#domain/credits/issuance-budget.serv
 import type { ReversalService } from '#domain/credits/reversal.service.js';
 import type { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import type { RewardsService } from '#domain/rewards/rewards.service.js';
+import type { VoucherUseService } from '#domain/rewards/voucher-use.service.js';
 import type { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import type { IdentityService } from '#domain/identity/identity.service.js';
 import type { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
@@ -123,31 +124,53 @@ describe('RewardsController', () => {
       listVouchers: ok([]),
       getVoucher: ok({ id: 'v-1' }),
       claimVoucher: ok({ serialCode: 's' }),
-      redeemVoucher: ok({ status: 'REDEEMED' }),
+      grantVoucher: ok({ serialCode: 's' }),
       listMemberVouchers: ok([]),
     };
-    const c = new RewardsController(stub<RewardsService>(service), stub<RefundPolicyService>({}));
+    const useService = {
+      prepare: ok({ digest: 'd' }),
+      finalize: ok({ status: 'REDEEMED' }),
+    };
+    const c = new RewardsController(
+      stub<RewardsService>(service),
+      stub<VoucherUseService>(useService),
+      stub<RefundPolicyService>({}),
+    );
     const voucher = { code: 'C', title: 'T', discountType: 'PERCENTAGE' as const };
 
     await c.createVoucher(tenant, voucher);
     await c.listVouchers(tenant);
     await c.getVoucher(tenant, 'v-1');
     await c.claimVoucher(tenant, 'v-1', { organizationEndUserId: 'user-1' });
-    await c.redeemVoucher(tenant, { serialCode: 's' });
+    await c.grantVoucher(tenant, 'v-1', { organizationEndUserId: 'user-1', idempotencyKey: 'k' });
+    await c.prepareVoucherUse(tenant, { serialCode: 's', idempotencyKey: 'k' });
+    await c.finalizeVoucherUse({ digest: 'd', signature: 'sig' });
     await c.listMemberVouchers(tenant, 'user-1');
 
     expect(service.createVoucher).toHaveBeenCalledWith('org-1', voucher);
     expect(service.listVouchers).toHaveBeenCalledWith('org-1');
     expect(service.getVoucher).toHaveBeenCalledWith('org-1', 'v-1');
     expect(service.claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', { organizationEndUserId: 'user-1' });
-    expect(service.redeemVoucher).toHaveBeenCalledWith('org-1', { serialCode: 's' });
+    expect(service.grantVoucher).toHaveBeenCalledWith('org-1', 'v-1', {
+      organizationEndUserId: 'user-1',
+      idempotencyKey: 'k',
+    });
+    expect(useService.prepare).toHaveBeenCalledWith('org-1', { serialCode: 's', idempotencyKey: 'k' });
+    expect(useService.finalize).toHaveBeenCalledWith({ digest: 'd', signature: 'sig' });
     expect(service.listMemberVouchers).toHaveBeenCalledWith('org-1', 'user-1');
 
     for (const missing of ['code', 'title', 'discountType'] as const) {
-      await bad(c.createVoucher(tenant, { ...voucher, [missing]: '' }), /code, title, and discountType are required/);
+      await bad(
+        c.createVoucher(tenant, { ...voucher, [missing]: '' }),
+        /code, title, and either discountType or terms/,
+      );
     }
+    await c.createVoucher(tenant, { code: 'C', title: 'T', terms: { benefit: 'one free coffee' } });
     await bad(c.claimVoucher(tenant, 'v-1', { organizationEndUserId: '' }), /organizationEndUserId is required/);
-    await bad(c.redeemVoucher(tenant, { serialCode: '' }), /serialCode is required/);
+    await bad(c.grantVoucher(tenant, 'v-1', { organizationEndUserId: '', idempotencyKey: 'k' }), /are required/);
+    await bad(c.prepareVoucherUse(tenant, { serialCode: '', idempotencyKey: 'k' }), /are required/);
+    await bad(c.prepareVoucherUse(tenant, { serialCode: 's', idempotencyKey: '' }), /are required/);
+    await bad(c.finalizeVoucherUse({ digest: '', signature: 'sig' }), /digest and signature/);
   });
 });
 

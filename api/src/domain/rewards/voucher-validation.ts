@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import type { CreateVoucherRequest, UpdateVoucherRequest } from '@octap/contracts';
+import { assertVoucherTermsFit } from './voucher-terms.js';
 
 /** Date.parse normalizes impossible calendar dates, so validate the components first. */
 function isIsoDateTime(value: string): boolean {
@@ -38,6 +39,7 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     'pointsCost',
     'discountType',
     'discountValue',
+    'terms',
     'totalSupply',
     'startsAt',
     'expiresAt',
@@ -72,8 +74,11 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
   ) {
     throw new BadRequestException('totalSupply must be a positive 32-bit integer or null');
   }
+  if (input.terms !== undefined && (!input.terms || typeof input.terms !== 'object' || Array.isArray(input.terms))) {
+    throw new BadRequestException('terms must be an object');
+  }
   if (
-    (!partial || input.discountType !== undefined) &&
+    (input.discountType !== undefined || (!partial && !input.terms)) &&
     !['PERCENTAGE', 'FIXED_AMOUNT', 'FREE_ITEM'].includes(input.discountType ?? '')
   ) {
     throw new BadRequestException('discountType must be PERCENTAGE, FIXED_AMOUNT or FREE_ITEM');
@@ -87,7 +92,7 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
   ) {
     throw new BadRequestException('discountValue must be a positive decimal string with at most two decimal places');
   }
-  if (!partial && input.discountType !== 'FREE_ITEM' && !input.discountValue) {
+  if (!partial && input.discountType && input.discountType !== 'FREE_ITEM' && !input.discountValue) {
     throw new BadRequestException('discountValue is required for a monetary or percentage reward');
   }
   if (input.discountType === 'PERCENTAGE' && input.discountValue && Number(input.discountValue) > 100) {
@@ -111,4 +116,5 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
   if (input.status !== undefined && !['DRAFT', 'ACTIVE', 'PAUSED'].includes(input.status)) {
     throw new BadRequestException('Editable status must be DRAFT, ACTIVE or PAUSED');
   }
+  if (!partial) assertVoucherTermsFit(input as CreateVoucherRequest);
 }

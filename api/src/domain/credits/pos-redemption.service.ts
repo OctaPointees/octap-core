@@ -131,9 +131,11 @@ export class PosRedemptionService {
       submittedDigest: string | null;
       /** A hold this request just created has no cached bytes to replay yet. */
       isNew?: boolean;
+      /** Set for a voucher claim: the chain debits these terms' price and records the voucher. */
+      voucherTermsId?: string;
     },
   ): Promise<ReservePosRedemptionResponse> {
-    const { transaction, accountId, isNew, submittedDigest } = hold;
+    const { transaction, accountId, isNew, submittedDigest, voucherTermsId } = hold;
 
     if (transaction.status !== 'PENDING') {
       // Settled by an earlier call under this idempotency key (CONFIRMED or FAILED) — nothing
@@ -182,12 +184,20 @@ export class PosRedemptionService {
       throw new BadRequestException(`Member ${request.organizationEndUserId} has no linked Sui address yet`);
     }
 
-    const sponsored = await this.sponsoredTx.previewSponsoredRedeem({
-      beneficiaryAddress,
-      accountId,
-      cost: BigInt(request.pointsAmount),
-      reference: new TextEncoder().encode(transaction.receiptReference ?? transaction.id),
-    });
+    const reference = new TextEncoder().encode(transaction.receiptReference ?? transaction.id);
+    const sponsored = voucherTermsId
+      ? await this.sponsoredTx.previewSponsoredClaimVoucher({
+          beneficiaryAddress,
+          accountId,
+          termsId: voucherTermsId,
+          reference,
+        })
+      : await this.sponsoredTx.previewSponsoredRedeem({
+          beneficiaryAddress,
+          accountId,
+          cost: BigInt(request.pointsAmount),
+          reference,
+        });
 
     const entry: CachedReserve = {
       organizationId,

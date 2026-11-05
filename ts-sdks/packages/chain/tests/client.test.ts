@@ -61,6 +61,32 @@ describe('OctapChainClient transaction builders', () => {
     expect(moveCalls(c.buildRedeemTransaction({ accountId: ID(1), cost: 5n, reference: new Uint8Array([1]) }))).toEqual(
       [`${PKG}::credit_account::redeem`],
     );
+    const reference = new Uint8Array([1]);
+    expect(
+      moveCalls(
+        c.buildPublishVoucherTermsTransaction({
+          issuerCapId: ID(1),
+          programId: ID(2),
+          reference,
+          terms: new Uint8Array([2]),
+          pointsCost: 5,
+          startsAtMs: 0,
+          expiresAtMs: 0,
+        }),
+      ),
+    ).toEqual([`${PKG}::voucher_terms::publish_terms`]);
+    expect(moveCalls(c.buildClaimVoucherTransaction({ accountId: ID(1), termsId: ID(2), reference }))).toEqual([
+      `${PKG}::credit_account::claim_voucher`,
+    ]);
+    expect(
+      moveCalls(c.buildGrantVoucherTransaction({ issuerCapId: ID(1), accountId: ID(2), termsId: ID(3), reference })),
+    ).toEqual([`${PKG}::credit_account::grant_voucher`]);
+    expect(moveCalls(c.buildUseVoucherTransaction({ accountId: ID(1), termsId: ID(2), reference }))).toEqual([
+      `${PKG}::credit_account::use_voucher`,
+    ]);
+    expect(moveCalls(c.buildCancelVoucherTransaction({ issuerCapId: ID(1), accountId: ID(2), reference }))).toEqual([
+      `${PKG}::credit_account::cancel_voucher`,
+    ]);
     expect(moveCalls(c.buildCreateProgramTransaction())).toEqual([`${PKG}::program_control::create_program_entry`]);
     expect(
       moveCalls(
@@ -402,6 +428,7 @@ describe('digest-first submission (OCT-52)', () => {
       next_bucket_seq: 0,
       non_expiring: 0,
       redemptions: { id: ID(4), size: 0 },
+      vouchers: { id: ID(5), size: 0 },
       lifetime_earned: 0,
       lifetime_redeemed: 0,
     }).toBytes();

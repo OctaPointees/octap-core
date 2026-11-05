@@ -45,6 +45,36 @@ export class SuiTransactionBuilderClient {
     return `${this.packageId}::credit_account::redeem`;
   }
 
+  /** The only Move call `buildClaimVoucherTransactionKind` can produce. */
+  get claimVoucherMoveCallTarget(): string {
+    return `${this.packageId}::credit_account::claim_voucher`;
+  }
+
+  /** The only Move call `buildUseVoucherTransactionKind` can produce. */
+  get useVoucherMoveCallTarget(): string {
+    return `${this.packageId}::credit_account::use_voucher`;
+  }
+
+  /** Builds `credit_account::claim_voucher`'s transaction kind. The price comes from the terms. */
+  async buildClaimVoucherTransactionKind(params: {
+    accountId: string;
+    termsId: string;
+    reference: Uint8Array;
+  }): Promise<Uint8Array> {
+    const tx = this.client.buildClaimVoucherTransaction(params);
+    return tx.build({ client: this.client.rpc, onlyTransactionKind: true });
+  }
+
+  /** Builds `credit_account::use_voucher`'s transaction kind. */
+  async buildUseVoucherTransactionKind(params: {
+    accountId: string;
+    termsId: string;
+    reference: Uint8Array;
+  }): Promise<Uint8Array> {
+    const tx = this.client.buildUseVoucherTransaction(params);
+    return tx.build({ client: this.client.rpc, onlyTransactionKind: true });
+  }
+
   /** Builds `credit_account::redeem`'s transaction kind: no sender, no gas, nothing signed yet. */
   async buildRedeemTransactionKind(params: {
     accountId: string;

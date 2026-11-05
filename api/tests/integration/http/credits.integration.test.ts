@@ -6,6 +6,7 @@ import { CreditsRepository } from '#infra/db/repositories/credits.repository.js'
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { IndexerRepository, CREDIT_ACCOUNT_STREAM } from '#infra/db/repositories/indexer.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { createTestApp } from '../support/app.js';
@@ -81,6 +82,7 @@ function chainSubmitWorker(
         earn(signed.program, signed.params),
     }),
     ctx.app.get(ProgramsRepository),
+    ctx.app.get(RewardsRepository),
   );
   return {
     async drain() {
@@ -192,6 +194,7 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
           endCursor: 'C1',
         }),
       }),
+      ctx.app.get(RewardsRepository),
     );
 
     expect(await indexer.processNextPage()).toBe(false);

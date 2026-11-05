@@ -68,6 +68,8 @@ function fakeCore(overrides: Record<string, () => Response | Promise<Response>> 
     [`/v1/identity/organizations/${ORG}/enroll`]: () =>
       Response.json({ organizationEndUserId: 'member-1', endUserId: 'eu-1', isNewEnrollment: true }),
     '/v1/identity/zklogin/proof': () => Response.json(PROOF),
+    '/v1/rewards/vouchers/use/finalize': () =>
+      Response.json({ voucherOwnershipId: 'own-1', status: 'REDEEMED', blockchainDigest: 'DIGEST' }),
     '/v1/credits/redeem/finalize': () =>
       Response.json({
         transactionId: 'tx-1',
@@ -1087,6 +1089,35 @@ describe('signAndFinalize', () => {
 
     await expect(errorFrom(auth.signAndFinalize(await claim(), { signal: controller.signal }))).resolves.toMatchObject({
       code: 'outcome-unknown',
+    });
+  });
+});
+
+describe('signAndFinalizeVoucherUse', () => {
+  let google: ReturnType<typeof installGoogle>['google'];
+
+  beforeEach(() => {
+    google = installGoogle().google;
+    installSessionStorage();
+  });
+
+  it('signs the bytes and finalizes through the voucher route', async () => {
+    const core = fakeCore();
+    const auth = authWith(core);
+    await signIn(auth, google);
+
+    await auth.signAndFinalizeVoucherUse({ digest: 'DIGEST', transactionBytes: await transactionBytes() });
+
+    const finalize = core.calls.at(-1)!;
+    expect(finalize.path).toBe('/v1/rewards/vouchers/use/finalize');
+    expect(finalize.body).toEqual({ digest: 'DIGEST', signature: expect.any(String) });
+  });
+
+  it('refuses a use with nothing to sign', async () => {
+    const auth = authWith(fakeCore());
+    await signIn(auth, google);
+    await expect(errorFrom(auth.signAndFinalizeVoucherUse({ digest: null }))).resolves.toMatchObject({
+      code: 'invalid-claim',
     });
   });
 });

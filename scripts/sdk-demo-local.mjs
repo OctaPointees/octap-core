@@ -76,7 +76,11 @@ try {
     .overrideProvider(SuiTransactionBuilderClient)
     .useValue({
       redeemMoveCallTarget: '0xpkg::credit_account::redeem',
+      claimVoucherMoveCallTarget: '0xpkg::credit_account::claim_voucher',
+      useVoucherMoveCallTarget: '0xpkg::credit_account::use_voucher',
       buildRedeemTransactionKind: async () => new Uint8Array([1]),
+      buildClaimVoucherTransactionKind: async () => new Uint8Array([2]),
+      buildUseVoucherTransactionKind: async () => new Uint8Array([3]),
       waitForTransaction: async (digest) => ({ digest, status: 'success', events: [] }),
     })
     .compile();
@@ -95,6 +99,9 @@ try {
     pointsCost: 25,
     totalSupply: 1,
   });
+  // No worker runs here: this is what it does once the chain holds the voucher's terms.
+  const { RewardsRepository } = await import('../api/dist/infra/db/repositories/rewards.repository.js');
+  await app.get(RewardsRepository).markVoucherPublished(voucher.id, '0xmockterms');
   const config = {
     memberId,
     voucherId: voucher.id,
@@ -112,7 +119,7 @@ try {
   assert.equal(replay.voucherOwnershipId, result.claim.voucherOwnershipId);
   assert.equal(replay.status, 'REDEEMED');
   await assert.rejects(
-    client.redeemVoucher({ serialCode: result.claim.serialCode }),
+    client.prepareVoucherUse({ serialCode: result.claim.serialCode, idempotencyKey: 'sdk-demo-second-use' }),
     (error) => error.statusCode === 400,
   );
   assert.equal((await client.getBalance(memberId)).confirmedBalance, 75);

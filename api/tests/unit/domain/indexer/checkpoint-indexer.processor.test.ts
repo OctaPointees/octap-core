@@ -4,6 +4,7 @@ import { CheckpointIndexerProcessor } from '#domain/indexer/checkpoint-indexer.p
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { stub } from '../../../helpers/stub.js';
@@ -69,12 +70,14 @@ function processor(
   creditsRepo: { [K in keyof CreditsRepository]?: unknown } = {},
   operationsRepo: { [K in keyof OperationsRepository]?: unknown } = {},
   sui: { [K in keyof SuiTransactionBuilderClient]?: unknown } = {},
+  rewardsRepo: { [K in keyof RewardsRepository]?: unknown } = {},
 ) {
   return new CheckpointIndexerProcessor(
     indexerRepo as IndexerRepository,
     stub<CreditsRepository>(creditsRepo),
     stub<OperationsRepository>(operationsRepo),
     stub<SuiTransactionBuilderClient>(sui),
+    stub<RewardsRepository>(rewardsRepo),
   );
 }
 
@@ -721,5 +724,104 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       );
       expect(await indexer.applyEvent(expired, tx)).toBe('confirmed');
     });
+  });
+});
+
+describe('CheckpointIndexerProcessor voucher events', () => {
+  const event = (name: string, overrides: Record<string, unknown> = {}): CreditAccountEvent =>
+    earnedEvent({
+      name,
+      transactionDigest: 'DIGEST-V',
+      json: {
+        account_id: '0xaccount',
+        reference: b64('voucher-claim-11111111-1111-4111-8111-111111111111'),
+        ...overrides,
+      },
+    });
+  const voucherId = '11111111-1111-4111-8111-111111111111';
+  const tx = {} as DrizzleDb;
+  const creditsRepo = {
+    findCreditOwnershipBySuiAccountId: async () => ({ organizationEndUserId: 'member-1' }),
+  };
+  const found = async () => ({ id: voucherId, organizationEndUserId: 'member-1' });
+
+  it('a use follows the chain and settles the command behind it', async () => {
+    const confirmVoucherUse = vi.fn(async () => ({ key: { tenantId: 'org-1', idempotencyKey: 'use-1' } }));
+    const markSubmittedFromChain = vi.fn(async () => {});
+    const outcome = await processor(
+      {},
+      creditsRepo,
+      { markSubmittedFromChain },
+      {},
+      {
+        findOwnershipWithVoucher: found,
+        confirmVoucherUse,
+      },
+    ).applyEvent(event('VoucherUsed'), tx);
+    expect(outcome).toBe('confirmed');
+    expect(confirmVoucherUse).toHaveBeenCalledWith({ voucherOwnershipId: voucherId, digest: 'DIGEST-V' }, tx);
+    expect(markSubmittedFromChain).toHaveBeenCalledWith(
+      { tenantId: 'org-1', idempotencyKey: 'use-1', suiTxDigest: 'DIGEST-V' },
+      tx,
+    );
+  });
+
+  it('a use with no command behind it still applies', async () => {
+    const markSubmittedFromChain = vi.fn();
+    const outcome = await processor(
+      {},
+      creditsRepo,
+      { markSubmittedFromChain },
+      {},
+      {
+        findOwnershipWithVoucher: found,
+        confirmVoucherUse: async () => ({ key: null }),
+      },
+    ).applyEvent(event('VoucherUsed'), tx);
+    expect(outcome).toBe('confirmed');
+    expect(markSubmittedFromChain).not.toHaveBeenCalled();
+  });
+
+  it('a grant confirms the reserved voucher', async () => {
+    const confirmVoucherGrant = vi.fn(async () => ({ key: null }));
+    const outcome = await processor(
+      {},
+      creditsRepo,
+      {},
+      {},
+      {
+        findOwnershipWithVoucher: found,
+        confirmVoucherGrant,
+      },
+    ).applyEvent(event('VoucherGranted'), tx);
+    expect(outcome).toBe('confirmed');
+    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: voucherId, digest: 'DIGEST-V' }, tx);
+  });
+
+  it.each([
+    ['an unrelated reference', event('VoucherUsed', { reference: b64('something-else') }), {}, {}],
+    ['a malformed account id', event('VoucherUsed', { account_id: 7 }), {}, {}],
+    [
+      "another deployment's account",
+      event('VoucherUsed'),
+      { findCreditOwnershipBySuiAccountId: async () => undefined },
+      {},
+    ],
+    ['an unknown voucher', event('VoucherUsed'), creditsRepo, { findOwnershipWithVoucher: async () => undefined }],
+    [
+      "another member's voucher",
+      event('VoucherUsed'),
+      creditsRepo,
+      { findOwnershipWithVoucher: async () => ({ id: voucherId, organizationEndUserId: 'member-2' }) },
+    ],
+    [
+      'a voucher already settled',
+      event('VoucherUsed'),
+      creditsRepo,
+      { findOwnershipWithVoucher: found, confirmVoucherUse: async () => null },
+    ],
+  ])('skips %s', async (_, voucherEvent, credits, rewards) => {
+    const outcome = await processor({}, credits, {}, {}, rewards).applyEvent(voucherEvent, tx);
+    expect(outcome).toBe('skipped');
   });
 });

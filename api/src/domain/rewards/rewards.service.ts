@@ -14,10 +14,11 @@ import type {
   VoucherDto,
   ClaimVoucherRequest,
   ClaimVoucherResponse,
-  RedeemVoucherRequest,
-  RedeemVoucherResponse,
+  GrantVoucherRequest,
   VoucherOwnershipDto,
 } from '@octap/contracts';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** postgres-js reports `code` directly; drizzle wraps it in an error whose `cause` carries it. */
 function isUniqueViolation(error: unknown): boolean {
@@ -59,8 +60,11 @@ export class RewardsService {
     if (existing) {
       throw new ConflictException(`Voucher with code "${req.code}" already exists for this organization`);
     }
-    if ((req.status ?? 'ACTIVE') === 'ACTIVE' && req.expiresAt && Date.parse(req.expiresAt) <= Date.now()) {
-      throw new BadRequestException('An expired voucher cannot be activated');
+    if ((req.status ?? 'ACTIVE') === 'ACTIVE') {
+      if (req.expiresAt && Date.parse(req.expiresAt) <= Date.now()) {
+        throw new BadRequestException('An expired voucher cannot be activated');
+      }
+      await requireProgramConfig(this.programsRepo, organizationId);
     }
 
     const created = await mapErrors(
@@ -72,6 +76,7 @@ export class RewardsService {
         pointsCost: req.pointsCost ?? 0,
         discountType: req.discountType,
         discountValue: req.discountValue,
+        terms: req.terms,
         totalSupply: req.totalSupply,
         startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
         expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
@@ -101,11 +106,7 @@ export class RewardsService {
     voucherId: string,
     req: ClaimVoucherRequest,
   ): Promise<ClaimVoucherResponse> {
-    if (
-      !req ||
-      typeof req.organizationEndUserId !== 'string' ||
-      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.organizationEndUserId)
-    ) {
+    if (!req || typeof req.organizationEndUserId !== 'string' || !UUID_PATTERN.test(req.organizationEndUserId)) {
       throw new BadRequestException('organizationEndUserId must be a UUID');
     }
     // Stable legacy fallback preserves existing callers; integrations should always supply a key.
@@ -117,31 +118,24 @@ export class RewardsService {
     }
     const voucher = await this.getVoucher(organizationId, voucherId);
     // A retry under an accepted key skips these: it only reports or resumes the existing claim.
-    const isNewPaidClaim =
-      voucher.pointsCost > 0 && !(await this.creditsRepo.findOperationForClaim(organizationId, key));
-    if (isNewPaidClaim) {
-      if (!req.idempotencyKey) throw new BadRequestException('idempotencyKey is required for paid voucher claims');
-      await requireProgramConfig(this.programsRepo, organizationId);
-      if (!(await this.creditsRepo.findBeneficiaryAddress(req.organizationEndUserId)))
-        throw new BadRequestException('Member has no linked Sui address');
+    const isNewClaim = !(await this.creditsRepo.findOperationForClaim(organizationId, key));
+    if (isNewClaim) {
+      if (voucher.pointsCost > 0 && !req.idempotencyKey) {
+        throw new BadRequestException('idempotencyKey is required for paid voucher claims');
+      }
+      await this.requireChainMember(organizationId, req.organizationEndUserId);
     }
-    let claim: ClaimVoucherResponse;
-    try {
-      claim = await this.rewardsRepo.claimVoucher(organizationId, voucherId, req.organizationEndUserId, key);
-    } catch (error) {
-      if (isUniqueViolation(error))
-        throw new ConflictException('Claim conflicts with an existing operation or voucher ownership');
-      throw toHttpError(error);
-    }
+    const claim = await this.reserveClaim(organizationId, voucherId, req.organizationEndUserId, key);
+    // A free claim is the worker's to record; there is nothing for the customer to sign.
     if (claim.status !== 'RESERVED' || !claim.transactionId) return claim;
 
-    if (!isNewPaidClaim) await requireProgramConfig(this.programsRepo, organizationId);
+    if (!isNewClaim) await requireProgramConfig(this.programsRepo, organizationId);
     const hold = await this.creditsRepo.findVoucherClaimHold(organizationId, key);
     if (!hold) throw new ConflictException('Claim reservation is missing');
     const sponsored = await this.posRedemption.sponsorReservation(
       organizationId,
       { organizationEndUserId: req.organizationEndUserId, pointsAmount: claim.pointsCost!, idempotencyKey: key },
-      hold,
+      { ...hold, voucherTermsId: voucher.suiTermsId ?? undefined },
     );
     if (sponsored.status !== 'PENDING') return this.getClaim(organizationId, claim.voucherOwnershipId);
     return { ...claim, digest: sponsored.digest, transactionBytes: sponsored.transactionBytes };
@@ -151,26 +145,31 @@ export class RewardsService {
     return mapErrors(this.rewardsRepo.getClaim(organizationId, ownershipId));
   }
 
-  async redeemVoucher(organizationId: string, req: RedeemVoucherRequest): Promise<RedeemVoucherResponse> {
-    if (!req || typeof req.serialCode !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(req.serialCode)) {
-      throw new BadRequestException('serialCode must contain 1-100 letters, numbers, underscores or hyphens');
+  /** Gives a customer a voucher without spending their points. The worker records it on-chain. */
+  async grantVoucher(
+    organizationId: string,
+    voucherId: string,
+    req: GrantVoucherRequest,
+  ): Promise<ClaimVoucherResponse> {
+    if (typeof req.organizationEndUserId !== 'string' || !UUID_PATTERN.test(req.organizationEndUserId)) {
+      throw new BadRequestException('organizationEndUserId must be a UUID');
     }
-    const { ownership, voucher } = await mapErrors(this.rewardsRepo.redeemVoucher(organizationId, req.serialCode));
-    return {
-      voucherOwnershipId: ownership.id,
-      voucherId: ownership.voucherId,
-      serialCode: ownership.serialCode,
-      status: ownership.status,
-      redeemedAt: ownership.redeemedAt!.toISOString(),
-      voucherTitle: voucher.title,
-      discountType: voucher.discountType,
-      discountValue: voucher.discountValue,
-    };
+    if (typeof req.idempotencyKey !== 'string' || !/^[a-zA-Z0-9:_-]{1,100}$/.test(req.idempotencyKey)) {
+      throw new BadRequestException(
+        'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
+      );
+    }
+    await this.getVoucher(organizationId, voucherId);
+    if (!(await this.creditsRepo.findOperationForClaim(organizationId, req.idempotencyKey))) {
+      await this.requireChainMember(organizationId, req.organizationEndUserId);
+    }
+    return this.reserveClaim(organizationId, voucherId, req.organizationEndUserId, req.idempotencyKey, { grant: true });
   }
 
   async updateVoucher(organizationId: string, voucherId: string, req: UpdateVoucherRequest): Promise<VoucherDto> {
     validateVoucher(req, true);
     if (!Object.keys(req).length) throw new BadRequestException('Provide at least one voucher field');
+    if (req.status === 'ACTIVE') await requireProgramConfig(this.programsRepo, organizationId);
     const { startsAt, expiresAt, ...fields } = req;
     const patch = {
       ...fields,
@@ -183,8 +182,9 @@ export class RewardsService {
           code: merged.code,
           title: merged.title,
           pointsCost: merged.pointsCost,
-          discountType: merged.discountType as CreateVoucherRequest['discountType'],
+          discountType: (merged.discountType ?? undefined) as CreateVoucherRequest['discountType'],
           discountValue: merged.discountValue ?? undefined,
+          terms: merged.terms ?? undefined,
           totalSupply: merged.totalSupply,
           startsAt: merged.startsAt?.toISOString(),
           expiresAt: merged.expiresAt?.toISOString(),
@@ -219,6 +219,29 @@ export class RewardsService {
       }));
   }
 
+  private async requireChainMember(organizationId: string, organizationEndUserId: string): Promise<void> {
+    await requireProgramConfig(this.programsRepo, organizationId);
+    if (!(await this.creditsRepo.findBeneficiaryAddress(organizationEndUserId))) {
+      throw new BadRequestException('Member has no linked Sui address');
+    }
+  }
+
+  private async reserveClaim(
+    organizationId: string,
+    voucherId: string,
+    organizationEndUserId: string,
+    key: string,
+    options: { grant?: boolean } = {},
+  ): Promise<ClaimVoucherResponse> {
+    try {
+      return await this.rewardsRepo.claimVoucher(organizationId, voucherId, organizationEndUserId, key, options);
+    } catch (error) {
+      if (isUniqueViolation(error))
+        throw new ConflictException('Claim conflicts with an existing operation or voucher ownership');
+      throw toHttpError(error);
+    }
+  }
+
   private mapVoucherDto(voucher: typeof vouchers.$inferSelect): VoucherDto {
     return {
       id: voucher.id,
@@ -229,6 +252,10 @@ export class RewardsService {
       pointsCost: Number(voucher.pointsCost),
       discountType: voucher.discountType,
       discountValue: voucher.discountValue,
+      terms: voucher.terms,
+      publishStatus: voucher.publishStatus,
+      suiTermsId: voucher.suiTermsId,
+      refundPolicy: voucher.refundPolicySnapshot,
       totalSupply: voucher.totalSupply,
       claimedCount: voucher.claimedCount,
       status: voucher.status,

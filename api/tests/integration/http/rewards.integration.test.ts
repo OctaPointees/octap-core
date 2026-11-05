@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
+import type { Response } from 'supertest';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { createTestApp } from '../support/app.js';
 import {
   schema,
@@ -34,7 +36,31 @@ afterAll(async () => {
   await ctx.close();
 });
 
-const createVoucher = (body: Record<string, unknown>) => ctx.http().post('/v1/rewards/vouchers').set(auth).send(body);
+/** POST, then what the worker does once the chain holds the terms, so callers get a claimable voucher. */
+const createVoucher = (body: Record<string, unknown>) => {
+  const sent = ctx.http().post('/v1/rewards/vouchers').set(auth).send(body);
+  const published = async (response: Response) => {
+    if (response.body?.publishStatus !== 'PUBLISHING') return response;
+    await ctx.app.get(RewardsRepository).markVoucherPublished(response.body.id, `0xterms-${response.body.id}`);
+    response.body = (await ctx.http().get(`/v1/rewards/vouchers/${response.body.id}`).set(auth)).body;
+    return response;
+  };
+  return {
+    expect: (status: number) => sent.expect(status).then(published),
+    then: <T>(done: (response: Response) => T) => sent.then(published).then(done),
+  };
+};
+let useCount = 0;
+/** The merchant asks and the customer signs. Returns the finalize response. */
+const useVoucher = async (serialCode: string) => {
+  const { body } = await ctx
+    .http()
+    .post('/v1/rewards/vouchers/use')
+    .set(auth)
+    .send({ serialCode, idempotencyKey: `use-${++useCount}` })
+    .expect(201);
+  return ctx.http().post('/v1/rewards/vouchers/use/finalize').send({ digest: body.digest, signature: 'customer' });
+};
 
 describe('rewards over HTTP', () => {
   it('returns 409 for concurrent duplicate creation and 400 for impossible dates or active expired rewards', async () => {
@@ -69,7 +95,19 @@ describe('rewards over HTTP', () => {
       .send({ organizationEndUserId: memberId, idempotencyKey: 'draft-claim' })
       .expect(400);
     const updated = await ctx.http().patch(path).set(auth).send({ title: 'New reward', status: 'ACTIVE' }).expect(200);
-    expect(updated.body).toMatchObject({ title: 'New reward', pointsCost: 25, status: 'ACTIVE' });
+    expect(updated.body).toMatchObject({
+      title: 'New reward',
+      pointsCost: 25,
+      status: 'DRAFT',
+      publishStatus: 'PUBLISHING',
+    });
+    await ctx.http().patch(path).set(auth).send({ title: 'Too late' }).expect(409);
+    await ctx.app.get(RewardsRepository).markVoucherPublished(created.body.id, '0xterms');
+    expect((await ctx.http().get(path).set(auth).expect(200)).body).toMatchObject({
+      status: 'ACTIVE',
+      publishStatus: 'PUBLISHED',
+      suiTermsId: '0xterms',
+    });
     await ctx.http().patch(path).set(auth).send({ discountValue: '101' }).expect(400);
     await ctx.http().patch(path).set(auth).send({ pointsCost: -1 }).expect(400);
     await ctx.http().patch(path).set(auth).send({ claimedCount: 0 }).expect(400);
@@ -147,9 +185,9 @@ describe('rewards over HTTP', () => {
     });
     await ctx
       .http()
-      .post('/v1/rewards/vouchers/redeem')
+      .post('/v1/rewards/vouchers/use')
       .set(auth)
-      .send({ serialCode: claimed.body.serialCode })
+      .send({ serialCode: claimed.body.serialCode, idempotencyKey: 'too-early' })
       .expect(400);
     await ctx
       .http()
@@ -170,19 +208,49 @@ describe('rewards over HTTP', () => {
       .send({ organizationEndUserId: memberId, idempotencyKey: 'claim-2' })
       .expect(400);
 
+    const prepared = await ctx
+      .http()
+      .post('/v1/rewards/vouchers/use')
+      .set(auth)
+      .send({ serialCode: claimed.body.serialCode, idempotencyKey: 'use-coffee' })
+      .expect(201);
+    expect(prepared.body).toMatchObject({
+      status: 'AVAILABLE',
+      digest: expect.any(String),
+      voucherTitle: 'Free coffee',
+    });
+    // An API key alone changes nothing.
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claimed.body.voucherOwnershipId}`).set(auth).expect(200)).body.status,
+    ).toBe('AVAILABLE');
     const redeemed = await ctx
       .http()
-      .post('/v1/rewards/vouchers/redeem')
-      .set(auth)
-      .send({ serialCode: claimed.body.serialCode })
+      .post('/v1/rewards/vouchers/use/finalize')
+      .send({ digest: prepared.body.digest, signature: 'customer-signature' })
       .expect(201);
-    expect(redeemed.body).toMatchObject({ status: 'REDEEMED', voucherTitle: 'Free coffee', discountType: 'FREE_ITEM' });
+    expect(redeemed.body).toMatchObject({
+      status: 'REDEEMED',
+      voucherTitle: 'Free coffee',
+      discountType: 'FREE_ITEM',
+      blockchainDigest: prepared.body.digest,
+    });
     await ctx
       .http()
-      .post('/v1/rewards/vouchers/redeem')
+      .post('/v1/rewards/vouchers/use')
       .set(auth)
-      .send({ serialCode: claimed.body.serialCode })
+      .send({ serialCode: claimed.body.serialCode, idempotencyKey: 'use-again' })
       .expect(400);
+    // A retry of the settled use reports it, with nothing left to sign.
+    expect(
+      (
+        await ctx
+          .http()
+          .post('/v1/rewards/vouchers/use')
+          .set(auth)
+          .send({ serialCode: claimed.body.serialCode, idempotencyKey: 'use-coffee' })
+          .expect(201)
+      ).body,
+    ).toMatchObject({ status: 'REDEEMED', digest: null, transactionBytes: null });
 
     const mine = (await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(auth).expect(200)).body;
     expect(mine).toMatchObject([{ status: 'REDEEMED', voucher: { code: 'coffee' } }]);
@@ -306,7 +374,117 @@ describe('rewards over HTTP', () => {
     await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(otherAuth).expect(404);
     await createVoucher({ title: 'no code' }).expect(400);
     await ctx.http().post(`/v1/rewards/vouchers/${created.body.id}/claim`).set(auth).send({}).expect(400);
-    await ctx.http().post('/v1/rewards/vouchers/redeem').set(auth).send({}).expect(400);
+    await ctx.http().post('/v1/rewards/vouchers/use').set(auth).send({}).expect(400);
+    await ctx.http().post(`/v1/rewards/vouchers/${created.body.id}/grant`).set(auth).send({}).expect(400);
+    await ctx.http().post('/v1/rewards/vouchers/use/finalize').send({}).expect(400);
+  });
+
+  it('accepts free-form terms in place of a discount type, and refuses terms too large for the chain', async () => {
+    const terms = { benefit: 'Two nights for one', fineprint: 'Weekdays only', layout: { banner: 'tet-2027' } };
+    const created = await createVoucher({ code: 'hotel', title: 'Hotel', terms, pointsCost: 10 }).expect(201);
+    expect(created.body).toMatchObject({ terms, discountType: null, status: 'ACTIVE', publishStatus: 'PUBLISHED' });
+    await createVoucher({ code: 'neither', title: 'Neither' }).expect(400);
+    await createVoucher({ code: 'array', title: 'Array', terms: ['no'] }).expect(400);
+    await createVoucher({ code: 'huge', title: 'Huge', terms: { text: 'x'.repeat(9000) } }).expect(400);
+  });
+
+  it('refuses to publish for an organization with no program', async () => {
+    await ctx.db.delete(schema.programs).where(eq(schema.programs.organizationId, orgId));
+    await createVoucher({ code: 'no-program', title: 'No program', discountType: 'FREE_ITEM' }).expect(422);
+    await createVoucher({ code: 'draft-ok', title: 'Draft', discountType: 'FREE_ITEM', status: 'DRAFT' }).expect(201);
+  });
+
+  it('a free claim and a grant both wait for the chain and spend no points', async () => {
+    const free = await createVoucher({ code: 'free', title: 'Free', discountType: 'FREE_ITEM' }).expect(201);
+    const claimed = await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${free.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId })
+      .expect(201);
+    expect(claimed.body).toMatchObject({ status: 'RESERVED', pointsCost: 0, digest: null, transactionBytes: null });
+
+    const gift = await createVoucher({ code: 'gift', title: 'Gift', discountType: 'FREE_ITEM', pointsCost: 99 }).expect(
+      201,
+    );
+    const path = `/v1/rewards/vouchers/${gift.body.id}/grant`;
+    const request = { organizationEndUserId: memberId, idempotencyKey: 'grant-1' };
+    const granted = await ctx.http().post(path).set(auth).send(request).expect(201);
+    expect(granted.body).toMatchObject({ status: 'RESERVED', pointsCost: 0, pointsDeducted: 0, transactionId: null });
+    expect((await ctx.http().post(path).set(auth).send(request).expect(201)).body).toEqual(granted.body);
+
+    expect(
+      (await ctx.db.select().from(schema.operations)).filter((o) => o.commandType === 'VOUCHER_GRANT'),
+    ).toHaveLength(2);
+    expect((await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body).toMatchObject({
+      confirmedBalance: 100,
+      pendingRedemption: 0,
+    });
+    const readonly = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read'] })).rawKey}` };
+    await ctx.http().post(path).set(readonly).send(request).expect(403);
+  });
+
+  it('removed the route that let an API key mark a voucher used', async () => {
+    await ctx.http().post('/v1/rewards/vouchers/redeem').set(auth).send({ serialCode: 'ANY' }).expect(404);
+  });
+
+  it('a voucher use needs the customer: finalize is public, and a failed verdict leaves it available', async () => {
+    const voucher = await createVoucher({
+      code: 'use',
+      title: 'Use',
+      discountType: 'FREE_ITEM',
+      pointsCost: 25,
+    }).expect(201);
+    const { body: claim } = await ctx
+      .http()
+      .post(`/v1/rewards/vouchers/${voucher.body.id}/claim`)
+      .set(auth)
+      .send({ organizationEndUserId: memberId, idempotencyKey: 'use-claim' })
+      .expect(201);
+    await ctx
+      .http()
+      .post('/v1/credits/redeem/finalize')
+      .send({ digest: claim.digest, signature: 'customer-signature' })
+      .expect(201);
+
+    const refundPath = `/v1/credits/transactions/${claim.transactionId}/reverse`;
+    const prepared = await ctx
+      .http()
+      .post('/v1/rewards/vouchers/use')
+      .set(auth)
+      .send({ serialCode: claim.serialCode, idempotencyKey: 'use-1' })
+      .expect(201);
+    expect(ctx.adapters.suiBuilder.buildUseVoucherTransactionKind).toHaveBeenCalled();
+    // A signed use could still land, so the refund waits.
+    await ctx.http().post(refundPath).set(auth).send({ idempotencyKey: 'refund', reason: 'Too soon' }).expect(409);
+    await ctx
+      .http()
+      .post('/v1/rewards/vouchers/use')
+      .set(auth)
+      .send({ serialCode: claim.serialCode, idempotencyKey: 'use-2' })
+      .expect(409);
+
+    ctx.adapters.suiBuilder.waitForTransaction.mockResolvedValueOnce({
+      digest: prepared.body.digest,
+      status: 'failure',
+      errorMessage: 'EVoucherNotActive',
+      events: [],
+    } as never);
+    await ctx
+      .http()
+      .post('/v1/rewards/vouchers/use/finalize')
+      .send({ digest: prepared.body.digest, signature: 'customer-signature' })
+      .expect(400);
+    expect(
+      (await ctx.http().get(`/v1/rewards/claims/${claim.voucherOwnershipId}`).set(auth).expect(200)).body.status,
+    ).toBe('AVAILABLE');
+
+    // The failed use no longer blocks the refund, which then asks the chain to cancel the voucher.
+    await ctx.http().post(refundPath).set(auth).send({ idempotencyKey: 'refund', reason: 'After failure' }).expect(201);
+    const reversal = (await ctx.db.select().from(schema.operations)).find(
+      (o) => o.commandType === 'CREDIT_REVERSAL_CHAIN_SUBMIT',
+    );
+    expect(reversal?.payload).toMatchObject({ voucherAction: 'CANCEL' });
   });
 });
 
@@ -348,12 +526,7 @@ describe('voucher refund policy over HTTP', () => {
         .send({ digest: claim.digest, signature: 'customer-signature' })
         .expect(201);
       if (state === 'REDEEMED') {
-        await ctx
-          .http()
-          .post('/v1/rewards/vouchers/redeem')
-          .set(auth)
-          .send({ serialCode: claim.serialCode })
-          .expect(201);
+        expect((await useVoucher(claim.serialCode)).status).toBe(201);
       } else {
         await ctx.db
           .update(schema.voucherOwnerships)

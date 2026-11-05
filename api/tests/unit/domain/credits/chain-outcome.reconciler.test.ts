@@ -13,6 +13,12 @@ import {
   type CreditsRepository,
 } from '#infra/db/repositories/credits.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import {
+  VOUCHER_GRANT_COMMAND_TYPE,
+  VOUCHER_PUBLISH_COMMAND_TYPE,
+  VOUCHER_USE_COMMAND_TYPE,
+  type RewardsRepository,
+} from '#infra/db/repositories/rewards.repository.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { stub } from '../../../helpers/stub.js';
@@ -46,11 +52,13 @@ function fixture({
   outcomes = {},
   epoch = 10n,
   creditsRepo = {},
+  rewardsRepo = {},
 }: {
   operations: Operation[];
   outcomes?: Record<string, SubmittedChainTransaction>;
   epoch?: bigint;
   creditsRepo?: { [K in keyof CreditsRepository]?: unknown };
+  rewardsRepo?: { [K in keyof RewardsRepository]?: unknown };
 }) {
   const ops = {
     listUnresolvedChainOutcomes: vi.fn(async () => operations),
@@ -78,6 +86,7 @@ function fixture({
     stub<SuiTransactionBuilderClient>(reader),
     // Only the issuer address: reconciling never signs or sends anything.
     stub<SuiClientService>({ issuerAddress: () => '0xissuer' }),
+    stub<RewardsRepository>(rewardsRepo),
   );
   return { ops, credits, reader, reconciler };
 }
@@ -88,9 +97,14 @@ describe('ChainOutcomeReconciler', () => {
 
     await expect(reconciler.reconcileOnce()).resolves.toEqual([]);
     expect(ops.listUnresolvedChainOutcomes).toHaveBeenCalledWith({
-      unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
-      customerRedeemCommandTypes: CUSTOMER_REDEEM_COMMAND_TYPES,
-      abandonedUnsignedCommandType: VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+      unknownCommandTypes: [
+        EARN_COMMAND_TYPE,
+        REVERSAL_COMMAND_TYPE,
+        VOUCHER_PUBLISH_COMMAND_TYPE,
+        VOUCHER_GRANT_COMMAND_TYPE,
+      ],
+      customerRedeemCommandTypes: [...CUSTOMER_REDEEM_COMMAND_TYPES, VOUCHER_USE_COMMAND_TYPE],
+      abandonedUnsignedCommandTypes: [VOUCHER_CLAIM_RESERVE_COMMAND_TYPE, VOUCHER_USE_COMMAND_TYPE],
       abandonedAfterMs: ABANDONED_POS_HOLD_GRACE_MS,
       olderThanMs: 5 * 60 * 1000,
       limit: 20,
@@ -388,5 +402,98 @@ describe('ChainOutcomeReconciler reversals (OCT-50)', () => {
     );
     expect(credits.failEarnOnChain).not.toHaveBeenCalled();
     expect(credits.failPosRedemptionOnChain).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChainOutcomeReconciler voucher commands', () => {
+  const op = (commandType: string, payload: Record<string, unknown>, overrides = {}) =>
+    buildOperation({
+      id: 'op-v',
+      commandType,
+      status: 'UNKNOWN',
+      suiTxDigest: 'DIGEST-V',
+      suiTxExpirationEpoch: 5n,
+      payload,
+      ...overrides,
+    });
+  const published = landed('DIGEST-V', [
+    { type: '0xpkg::voucher_terms::VoucherTermsPublished', parsedJson: { terms_id: '0xterms' } } as never,
+  ]);
+  const failed = { digest: 'DIGEST-V', status: 'failure', errorMessage: 'aborted', events: [] } as never;
+
+  it('confirms a publish from its event, and leaves one with no event for a human', async () => {
+    const markVoucherPublished = vi.fn(async () => {});
+    const operation = op(VOUCHER_PUBLISH_COMMAND_TYPE, { voucherId: 'v-1' });
+    const ok = fixture({
+      operations: [operation],
+      outcomes: { 'DIGEST-V': published },
+      rewardsRepo: { markVoucherPublished },
+    });
+    expect(await ok.reconciler.reconcileOnce()).toEqual(['confirmed']);
+    expect(markVoucherPublished).toHaveBeenCalledWith('v-1', '0xterms');
+
+    const silent = fixture({
+      operations: [operation],
+      outcomes: { 'DIGEST-V': landed('DIGEST-V') },
+      rewardsRepo: { markVoucherPublished },
+    });
+    expect(await silent.reconciler.reconcileOnce()).toEqual(['waiting']);
+    expect(markVoucherPublished).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails a publish and a grant on a failure verdict', async () => {
+    const failVoucherPublish = vi.fn(async () => {});
+    const failVoucherGrant = vi.fn(async () => {});
+    const rewardsRepo = { failVoucherPublish, failVoucherGrant };
+    await fixture({
+      operations: [op(VOUCHER_PUBLISH_COMMAND_TYPE, { voucherId: 'v-1' })],
+      outcomes: { 'DIGEST-V': failed },
+      rewardsRepo,
+    }).reconciler.reconcileOnce();
+    expect(failVoucherPublish).toHaveBeenCalledWith('v-1');
+    await fixture({
+      operations: [op(VOUCHER_GRANT_COMMAND_TYPE, { voucherOwnershipId: 'own-1' })],
+      outcomes: { 'DIGEST-V': failed },
+      rewardsRepo,
+    }).reconciler.reconcileOnce();
+    expect(failVoucherGrant).toHaveBeenCalledWith('own-1');
+  });
+
+  it('confirms a grant from its digest', async () => {
+    const confirmVoucherGrant = vi.fn(async () => ({ key: null }));
+    const { reconciler } = fixture({
+      operations: [op(VOUCHER_GRANT_COMMAND_TYPE, { voucherOwnershipId: 'own-1' })],
+      outcomes: { 'DIGEST-V': landed('DIGEST-V') },
+      rewardsRepo: { confirmVoucherGrant },
+    });
+    expect(await reconciler.reconcileOnce()).toEqual(['confirmed']);
+    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: 'own-1', digest: 'DIGEST-V' });
+  });
+
+  it('confirms a use from its digest, even when the voucher here was already taken back', async () => {
+    const confirmVoucherUse = vi.fn(async () => null);
+    const { reconciler, ops } = fixture({
+      operations: [op(VOUCHER_USE_COMMAND_TYPE, { voucherOwnershipId: 'own-1' })],
+      outcomes: { 'DIGEST-V': landed('DIGEST-V') },
+      rewardsRepo: { confirmVoucherUse },
+    });
+    expect(await reconciler.reconcileOnce()).toEqual(['confirmed']);
+    expect(ops.settleFromChain).toHaveBeenCalledWith('op-v', 'SUBMITTED');
+  });
+
+  it('ends an abandoned unsigned use, and yields if finalize pinned a digest first', async () => {
+    const operation = op(
+      VOUCHER_USE_COMMAND_TYPE,
+      { voucherOwnershipId: 'own-1' },
+      { status: 'PENDING', suiTxDigest: null },
+    );
+    const ended = vi.fn(async () => true);
+    const released = fixture({ operations: [operation], rewardsRepo: { failVoucherUse: ended } });
+    expect(await released.reconciler.reconcileOnce()).toEqual(['failed']);
+    expect(ended).toHaveBeenCalledWith({ operationId: 'op-v', voucherOwnershipId: 'own-1', onlyIfUnsubmitted: true });
+
+    const yielded = fixture({ operations: [operation], rewardsRepo: { failVoucherUse: async () => false } });
+    expect(await yielded.reconciler.reconcileOnce()).toEqual(['waiting']);
+    expect(yielded.ops.settleFromChain).not.toHaveBeenCalled();
   });
 });

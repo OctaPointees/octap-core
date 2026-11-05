@@ -79,7 +79,7 @@ export async function runVoucherDemo(client, config, log = console.log) {
     if (!config.signTransaction) {
       log(`Customer signature required for digest ${claim.digest}. Transaction bytes: ${claim.transactionBytes}`);
       log(
-        'Sign these bytes in the customer zkLogin session, call finalizeVoucherClaim, then read getVoucherClaim. Do not redeem a RESERVED serial.',
+        'Sign these bytes in the customer zkLogin session, call finalizeVoucherClaim, then read getVoucherClaim. A RESERVED voucher cannot be used.',
       );
       return { before, claim, pending: true };
     }
@@ -95,7 +95,11 @@ export async function runVoucherDemo(client, config, log = console.log) {
   ) {
     throw new Error('Unexpected claim result. Inspect ownership and balance before continuing.');
   }
-  const redeemed = await client.redeemVoucher({ serialCode: claim.serialCode });
+  // Only the customer's signature can mark a voucher used: the API key can only ask.
+  const use = await client.prepareVoucherUse({ serialCode: claim.serialCode, idempotencyKey: `${idempotencyKey}-use` });
+  if (!use.digest || !use.transactionBytes) throw new Error('Invalid voucher use');
+  const useSignature = await config.signTransaction(use.transactionBytes, use.digest);
+  const redeemed = await client.finalizeVoucherUse({ digest: use.digest, signature: useSignature });
   log(`Redemption response: ${redeemed.status}. Reading persisted state…`);
   const after = await client.getBalance(memberId);
   const owned = await client.listMemberVouchers(memberId);
