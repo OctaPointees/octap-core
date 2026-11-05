@@ -1,3 +1,5 @@
+import type { ChainMoveAbort } from '@octap/chain';
+import { earnFailureCode } from './earn-failure.js';
 import { Injectable, Logger } from '@nestjs/common';
 import { eventField, type SubmittedChainTransaction } from '@octap/chain';
 import {
@@ -117,7 +119,11 @@ export class ChainOutcomeReconciler {
       return this.confirmPosRedeem(operation, outcome);
     }
     if (outcome?.status === 'failure') {
-      return this.fail(operation, outcome.errorMessage ?? `${operation.suiTxDigest} failed on-chain`);
+      return this.fail(
+        operation,
+        outcome.errorMessage ?? `${operation.suiTxDigest} failed on-chain`,
+        outcome.moveAbort,
+      );
     }
 
     const expiration = operation.suiTxExpirationEpoch;
@@ -192,12 +198,13 @@ export class ChainOutcomeReconciler {
     return 'confirmed';
   }
 
-  private async fail(operation: Operation, reason: string): Promise<ReconcileOutcome> {
+  private async fail(operation: Operation, reason: string, moveAbort?: ChainMoveAbort): Promise<ReconcileOutcome> {
     if (operation.commandType === EARN_COMMAND_TYPE) {
       const payload = operation.payload as unknown as EarnPayload;
       await this.creditsRepo.failEarnOnChain({
         loyaltyTransactionId: payload.loyaltyTransactionId,
         organizationEndUserId: payload.organizationEndUserId,
+        failureCode: earnFailureCode(moveAbort),
       });
     } else if (CUSTOMER_REDEEM_COMMAND_TYPES.includes(operation.commandType)) {
       const payload = operation.payload as unknown as PosRedeemPayload;

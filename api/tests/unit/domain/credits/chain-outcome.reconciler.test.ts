@@ -188,8 +188,27 @@ describe('ChainOutcomeReconciler', () => {
     expect(credits.failEarnOnChain).toHaveBeenCalledWith({
       loyaltyTransactionId: 'tx-1',
       organizationEndUserId: 'user-1',
+      failureCode: 'REJECTED',
     });
     expect(ops.settleFromChain).toHaveBeenCalledWith('op-1', 'FAILED', 'MoveAbort EBudgetExhausted');
+  });
+
+  it('reports an exhausted budget from the failed digest', async () => {
+    const { credits, reconciler } = fixture({
+      operations: [unknownEarn()],
+      outcomes: {
+        'DIGEST-E': {
+          digest: 'DIGEST-E',
+          status: 'failure',
+          errorMessage: 'MoveAbort',
+          moveAbort: { module: 'budget_shard', functionName: 'debit', abortCode: '2' },
+          events: [],
+        },
+      },
+    });
+
+    await reconciler.reconcileOnce();
+    expect(credits.failEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ failureCode: 'BUDGET_EXHAUSTED' }));
   });
 
   it('an on-chain failure without a message still names the digest', async () => {

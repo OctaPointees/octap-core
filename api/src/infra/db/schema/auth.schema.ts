@@ -27,6 +27,7 @@ export const changeRequestTypeEnum = pgEnum('change_request_type', [
   'DEACTIVATE',
   'SUSPEND',
   'REINSTATE',
+  'BUDGET_TOP_UP',
 ]);
 
 /**

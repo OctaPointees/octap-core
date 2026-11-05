@@ -13,6 +13,7 @@ import {
   signerFromPrivateKey,
   transactionExpirationEpoch,
 } from '../src/index.js';
+import { BudgetShard } from '../src/contracts/octap/budget_shard.js';
 import { CreditAccount } from '../src/contracts/octap/credit_account.js';
 
 const PKG = '0x' + 'ab'.repeat(32);
@@ -415,6 +416,20 @@ describe('digest-first submission (OCT-52)', () => {
     expect(getObject).toHaveBeenCalledWith({ objectId: ID(1), include: { content: true } });
     await expect(c.creditAccountProgramId(ID(2))).resolves.toBeNull();
     await expect(c.creditAccountProgramId(ID(5))).rejects.toBe(boom);
+  });
+
+  it('budgetShardRemaining reads the remaining points from the object', async () => {
+    const c = client();
+    const content = BudgetShard.serialize({
+      id: ID(1),
+      program_id: ID(2),
+      shard_index: 0,
+      shard_count: 1,
+      remaining: 4200,
+    }).toBytes();
+    vi.spyOn(c.rpc.core, 'getObject').mockResolvedValueOnce({ object: { content } } as never);
+
+    await expect(c.budgetShardRemaining(ID(1))).resolves.toBe(4200n);
   });
 
   it('currentEpoch reads the system state', async () => {

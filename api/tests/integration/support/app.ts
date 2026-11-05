@@ -31,6 +31,7 @@ export function fakeChainAdapters() {
     redeemMoveCallTarget: '0xpkg::credit_account::redeem',
     buildRedeemTransactionKind: vi.fn(async () => new Uint8Array([1, 2, 3])),
     waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
+    budgetShardRemaining: vi.fn(async (): Promise<bigint> => 1_000_000n),
     listCreditAccountEvents: vi.fn(async () => ({
       events: [],
       hasNextPage: false,

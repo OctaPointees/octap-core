@@ -23,6 +23,7 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | --- | --- | --- |
 | `credits.earned` | an earn is accepted (still PENDING on-chain) | `EarnService`, via `emit()` |
 | `credits.earn.confirmed` | the chain confirmed an earn | `CreditsRepository.confirmEarnOnChain` |
+| `credits.earn.failed` | an accepted earn definitely failed | `CreditsRepository.failEarnOnChain` |
 | `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
 | `credits.reversed` | a CONFIRMED earn or redemption was reversed in the ledger (not on a replayed key) | `CreditsRepository.recordReversalTransaction` |
 | `voucher.redeemed` | a claimed voucher instance was used | `RewardsRepository.redeemVoucher` |

@@ -76,6 +76,27 @@ getBalance(programId: string, memberId: string, options?): Promise<BalanceSnapsh
 
 Khi có `programId`, giá trị có thể là ID dòng hoặc ID on-chain của chương trình, các giá trị khác nhận 404. Dạng này trả về `BalanceSnapshot`: `confirmed_balance`, `pending_earn` và `pending_redemption` dạng chuỗi, cùng `as_of_checkpoint`, `observed_at` và `stale`.
 
+## getIssuanceBudget
+
+Đọc số điểm chương trình của bạn còn được phát, trực tiếp từ chain. [Khái niệm](/vi/concepts/issuance-budget/)
+
+`GET /v1/credits/budget` · Scope: `read`
+
+```ts
+getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
+```
+
+| Field trả về | Kiểu | Mô tả |
+| --- | --- | --- |
+| `organizationId` | `string` | |
+| `remaining` | `number` | Số điểm còn lại trên mọi shard. Các lệnh earn đang xử lý chưa bị trừ. |
+| `initialBudget` | `number` | Số đặt khi provision, trước mọi lần top-up |
+| `shards` | `{ shardId, remaining }[]` | Shard không mượn nhau |
+| `recentTopUps` | `{ operationId, amount, status, createdAt }[]` | Mới nhất trước, tối đa 20 |
+| `observedAt` | `string` | Thời điểm đọc, theo ISO 8601 |
+
+Ném `OctaApiError` với status 404 nếu bạn không có chương trình đang hoạt động, và 503 nếu không đọc được chain.
+
 ## listTransactions
 
 Liệt kê giao dịch của thành viên.

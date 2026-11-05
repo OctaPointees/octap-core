@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { operations } from '../schema/operations.schema.js';
 
@@ -110,6 +110,14 @@ export class OperationsRepository {
    * batch in one round-trip instead of N+1; fine for today's single worker, worth revisiting
    * before running more than one worker instance.)
    */
+  listRecent(tenantId: string, commandType: string, limit: number) {
+    return this.db.query.operations.findMany({
+      where: and(eq(operations.tenantId, tenantId), eq(operations.commandType, commandType)),
+      orderBy: [desc(operations.createdAt)],
+      limit,
+    });
+  }
+
   async claimNextPending(commandTypes: string[], limit = 5) {
     const candidates = await this.db.query.operations.findMany({
       where: and(eq(operations.status, 'PENDING'), inArray(operations.commandType, commandTypes)),

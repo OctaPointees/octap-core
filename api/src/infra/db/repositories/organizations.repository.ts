@@ -9,6 +9,7 @@ import { operations } from '../schema/operations.schema.js';
 import { acceptCommand } from './operations.repository.js';
 import { ConsoleConflictError, ConsoleNotFoundError, requireSystemAdmin } from './console-access.js';
 export const ORGANIZATION_PROVISION_COMMAND = 'ORGANIZATION_PROGRAM_PROVISION';
+export const ORGANIZATION_BUDGET_TOP_UP_COMMAND = 'ORGANIZATION_BUDGET_TOP_UP';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const fields = {
   id: organizations.id,
@@ -156,7 +157,7 @@ export class OrganizationsRepository {
       .where(
         and(
           eq(operations.id, id),
-          eq(operations.commandType, ORGANIZATION_PROVISION_COMMAND),
+          inArray(operations.commandType, [ORGANIZATION_PROVISION_COMMAND, ORGANIZATION_BUDGET_TOP_UP_COMMAND]),
           inArray(operations.status, ['PROCESSING', 'UNKNOWN']),
         ),
       );

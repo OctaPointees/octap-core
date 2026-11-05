@@ -14,6 +14,9 @@ export type {
   LoyaltyTxStatus,
   EarnPointsRequest,
   EarnPointsResponse,
+  IssuanceBudgetDto,
+  IssuanceBudgetShard,
+  IssuanceBudgetTopUp,
   ReservePosRedemptionRequest,
   ReservePosRedemptionResponse,
   FinalizePosRedemptionRequest,
@@ -48,4 +51,6 @@ export type {
   WebhookEvent,
   CreditsEarnedEventData,
   CreditsChainConfirmedEventData,
+  CreditsEarnFailedEventData,
+  EarnFailureCode,
 } from '@octap/contracts';

@@ -558,6 +558,12 @@ export class OctapChainClient {
     }
   }
 
+  /** A budget shard's remaining points, read straight from the object. Throws if it can't be read. */
+  async budgetShardRemaining(shardId: string): Promise<bigint> {
+    const { object } = await this.rpc.core.getObject({ objectId: shardId, include: { content: true } });
+    return BigInt(budgetShard.BudgetShard.parse(object.content).remaining);
+  }
+
   async currentEpoch(): Promise<bigint> {
     const { systemState } = await this.rpc.core.getCurrentSystemState();
     return BigInt(systemState.epoch);

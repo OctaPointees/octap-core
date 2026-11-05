@@ -15,6 +15,7 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | --- | --- | --- |
 | [`credits.earned`](#creditsearned) | Lệnh earn được nhận và vẫn đang chờ | Best-effort |
 | [`credits.earn.confirmed`](#creditsearnconfirmed) | Chain xác nhận lệnh earn | Xếp hàng đúng một lần cho mỗi giao dịch |
+| [`credits.earn.failed`](#creditsearnfailed) | Lệnh earn đã nhận chắc chắn thất bại | Xếp hàng cùng lúc ghi nhận thất bại |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | Chain xác nhận lệnh tiêu, cho thanh toán hoặc voucher trả phí | Xếp hàng đúng một lần cho mỗi giao dịch |
 | [`credits.reversed`](#creditsreversed) | Lệnh earn hoặc redeem đã xác nhận bị đảo | Xếp hàng cùng lệnh đảo |
 | [`voucher.redeemed`](#voucherredeemed) | Một serial voucher được sử dụng | Xếp hàng cùng lệnh redeem |
@@ -42,6 +43,18 @@ Lệnh earn đang trên đường lên chain. Hãy chờ `credits.earn.confirmed
 | `pointsAmount` | `number` | Số điểm thực sự được cộng on-chain |
 | `newBalance` | `number` | Số dư đã xác nhận ngay sau giao dịch này |
 | `blockchainDigest` | `string` | |
+
+## credits.earn.failed
+
+Khoản giữ đã được giải phóng và không có gì được cộng. Key vẫn được tính là đã dùng, nên [thử lại cần key mới](/vi/guides/earn-and-reverse-points/).
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `transactionId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `purchaseAmount` | `number \| null` | Chỉ `null` với giao dịch cũ |
+| `estimatedPoints` | `number` | Số ước tính đã giữ |
+| `failureCode` | `'BUDGET_EXHAUSTED' \| 'REJECTED'` | `BUDGET_EXHAUSTED`: [yêu cầu top-up](/vi/concepts/issuance-budget/), rồi thử lại. `REJECTED`: mọi thất bại chắc chắn khác. |
 
 ## credits.redemption.confirmed
 

@@ -13,7 +13,7 @@ Một key có thể có scope `read`, `write` và `admin`. Key thiếu scope c�
 
 | Scope | Method của SDK |
 | --- | --- |
-| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
+| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
 | `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `redeemVoucher` |
 | `admin` | `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `registerWebhookEndpoint`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `replayWebhookDelivery` |
 | Không cần | `finalizePosRedemption`, `finalizeVoucherClaim`: chữ ký của khách hàng xác nhận các lệnh này |

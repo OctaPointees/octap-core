@@ -40,6 +40,7 @@ export interface WebhookDeliveryDto {
 export type WebhookEventType =
   | 'credits.earned'
   | 'credits.earn.confirmed'
+  | 'credits.earn.failed'
   | 'credits.redemption.confirmed'
   | 'credits.reversed'
   | 'voucher.redeemed';
@@ -70,6 +71,20 @@ export interface CreditsChainConfirmedEventData {
   /** The confirmed balance right after this transaction. */
   newBalance: number;
   blockchainDigest: string;
+}
+
+export type EarnFailureCode = 'BUDGET_EXHAUSTED' | 'REJECTED';
+
+/**
+ * `credits.earn.failed`: an accepted earn definitely failed. Its hold was released and nothing was
+ * credited. Its key stays used, so a new attempt needs a new key.
+ */
+export interface CreditsEarnFailedEventData {
+  transactionId: string;
+  organizationEndUserId: string;
+  purchaseAmount: number | null;
+  estimatedPoints: number;
+  failureCode: EarnFailureCode;
 }
 
 /**
@@ -106,6 +121,7 @@ interface WebhookEventOf<T extends WebhookEventType, D> {
 export type WebhookEvent =
   | WebhookEventOf<'credits.earned', CreditsEarnedEventData>
   | WebhookEventOf<'credits.earn.confirmed', CreditsChainConfirmedEventData>
+  | WebhookEventOf<'credits.earn.failed', CreditsEarnFailedEventData>
   | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.reversed', ReversalEventData>
   | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>;

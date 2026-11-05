@@ -13,7 +13,7 @@ Sui là nguồn chuẩn về điểm đã xác nhận, và giao dịch trên cha
 
 Ví dụ, 100.000 với 100 basis point (1%) giữ 1.000 điểm ước tính và xác nhận 1.000 điểm. Số ước tính có thể khác kết quả, nên chỉ tin vào số đã xác nhận.
 
-Giao dịch làm tròn xuống còn 0 điểm sẽ bị từ chối với 400, vì chain sẽ abort nó.
+Giao dịch làm tròn xuống còn 0 điểm sẽ bị từ chối với 400, vì chain sẽ abort nó. Mỗi lệnh earn cũng phải nằm trong [ngân sách phát hành](/vi/concepts/issuance-budget/).
 
 ## Ý nghĩa của từng field
 

@@ -344,6 +344,7 @@ describe('earn', () => {
       repo.failEarnOnChain({
         loyaltyTransactionId: transaction.id,
         organizationEndUserId: memberId,
+        failureCode: 'REJECTED',
       });
 
     await fail();
@@ -364,6 +365,7 @@ describe('earn', () => {
     await repo.failEarnOnChain({
       loyaltyTransactionId: transaction.id,
       organizationEndUserId: memberId,
+      failureCode: 'REJECTED',
     });
 
     expect(
@@ -1067,13 +1069,14 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
     expect(await deliveries()).toHaveLength(1);
   });
 
-  it('a failed earn queues no confirmation', async () => {
+  it('a failed earn queues its failure, and no confirmation', async () => {
     const tx = await acceptEarn('e');
     await repo.failEarnOnChain({
       loyaltyTransactionId: tx.id,
       organizationEndUserId: memberId,
+      failureCode: 'REJECTED',
     });
-    expect(await deliveries()).toEqual([]);
+    expect((await deliveries()).map((delivery) => delivery.eventType)).toEqual(['credits.earn.failed']);
   });
 
   it('a confirmed POS redemption queues exactly one credits.redemption.confirmed', async () => {
@@ -1142,6 +1145,7 @@ it('releases the exact persisted earn estimate on confirmation and failure', asy
   await repo.failEarnOnChain({
     loyaltyTransactionId: b.transaction.id,
     organizationEndUserId: memberId,
+    failureCode: 'REJECTED',
   });
   expect(await getOwnership(db, memberId)).toMatchObject({ pendingEarn: 0, confirmedBalance: 900 });
 });

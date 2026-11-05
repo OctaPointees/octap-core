@@ -27,6 +27,10 @@ Timeout, hủy request, lỗi mạng hay 5xx không cho bạn biết điều gì
 
 SDK không bao giờ tự thử lại, nên quyết định này thuộc về bạn.
 
+## Lệnh earn thất bại
+
+Lệnh earn `FAILED` giữ nguyên key, và gửi lại request sẽ lại trả về `FAILED`. Vì chắc chắn không cộng gì, hãy thử lại với key mới. Xem [Earn và đảo điểm](/vi/guides/earn-and-reverse-points/).
+
 ## Voucher trả phí
 
 Claim trả phí tuân theo cùng quy tắc, với chữ ký của khách hàng ở giữa.

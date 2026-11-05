@@ -15,6 +15,7 @@ Every event has this shape, and `data` depends on `type`:
 | --- | --- | --- |
 | [`credits.earned`](#creditsearned) | An earn was accepted, and is still pending | Best-effort |
 | [`credits.earn.confirmed`](#creditsearnconfirmed) | The chain confirmed an earn | Exactly one per transaction is queued |
+| [`credits.earn.failed`](#creditsearnfailed) | An accepted earn definitely failed | Queued with the failure |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | The chain confirmed a spend, for checkout or a paid voucher | Exactly one per transaction is queued |
 | [`credits.reversed`](#creditsreversed) | A confirmed earn or redemption was reversed | Queued with the reversal |
 | [`voucher.redeemed`](#voucherredeemed) | A voucher serial was used | Queued with the redemption |
@@ -42,6 +43,18 @@ An earn is on its way to the chain. Wait for `credits.earn.confirmed` before tre
 | `pointsAmount` | `number` | The amount actually credited on-chain |
 | `newBalance` | `number` | Confirmed balance right after this transaction |
 | `blockchainDigest` | `string` | |
+
+## credits.earn.failed
+
+The hold was released and nothing was credited. The key stays used, so [a retry needs a new key](/guides/earn-and-reverse-points/#when-an-earn-fails).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `transactionId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `purchaseAmount` | `number \| null` | `null` only for older transactions |
+| `estimatedPoints` | `number` | The estimate that was held |
+| `failureCode` | `'BUDGET_EXHAUSTED' \| 'REJECTED'` | `BUDGET_EXHAUSTED`: [request a top-up](/concepts/issuance-budget/#request-a-top-up), then retry. `REJECTED`: any other definite failure. |
 
 ## credits.redemption.confirmed
 

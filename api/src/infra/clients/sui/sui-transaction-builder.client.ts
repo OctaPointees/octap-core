@@ -65,6 +65,11 @@ export class SuiTransactionBuilderClient {
     return this.client.waitForTransaction(digest);
   }
 
+  /** A budget shard's remaining points. No signer involved. */
+  async budgetShardRemaining(shardId: string): Promise<bigint> {
+    return this.client.budgetShardRemaining(shardId);
+  }
+
   /** One lookup by digest, no polling; null if the chain has no such transaction. Read-only. */
   async findTransaction(digest: string): Promise<SubmittedChainTransaction | null> {
     return this.client.findTransaction(digest);

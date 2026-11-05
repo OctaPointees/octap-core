@@ -105,7 +105,6 @@ Then everything runs as before:
 ```bash
 node --env-file=.env api/dist/worker.js
 node --env-file=.env scripts/provision-program.mjs <orgId> 500 365 1000000
-node --env-file=.env scripts/top-up-budget.mjs <orgId> 100000
 node --env-file=.env scripts/check-kms-signer.mjs both 20   # smoke + latency
 ```
 

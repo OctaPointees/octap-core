@@ -1,10 +1,17 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
+import { IssuanceBudgetService } from './issuance-budget.service.js';
 import { mapMemberEligibilityError } from './member-eligibility-error.js';
 
 type LoyaltyTransaction = Awaited<ReturnType<CreditsRepository['recordEarnTransaction']>>['transaction'];
@@ -29,6 +36,7 @@ export class EarnService {
     private readonly creditsRepo: CreditsRepository,
     private readonly webhooks: WebhookDeliveryService,
     private readonly programsRepo: ProgramsRepository,
+    private readonly issuanceBudget: IssuanceBudgetService,
   ) {}
 
   async executeEarn(organizationId: string, request: EarnPointsRequest): Promise<EarnPointsResponse> {
@@ -45,7 +53,7 @@ export class EarnService {
     const accepted = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
     const estimatedPoints = accepted
       ? accepted.pointsAmount
-      : await this.estimatePoints(organizationId, request.purchaseAmount);
+      : await this.estimatePoints(organizationId, request.purchaseAmount, request.idempotencyKey);
 
     const { transaction, newBalance, isNew } = await this.creditsRepo
       .recordEarnTransaction({
@@ -76,16 +84,24 @@ export class EarnService {
   }
 
   /** Rejects before reserving anything: the chain-submit worker would otherwise fail the earn after it was accepted. */
-  private async estimatePoints(organizationId: string, purchaseAmount: number): Promise<number> {
-    const { earnBps } = await requireProgramConfig(this.programsRepo, organizationId);
+  private async estimatePoints(
+    organizationId: string,
+    purchaseAmount: number,
+    idempotencyKey: string,
+  ): Promise<number> {
+    const program = await requireProgramConfig(this.programsRepo, organizationId);
     // Integer arithmetic matches Move's floor(purchase * earn_bps / 10_000), which aborts on zero.
-    const estimate = (BigInt(purchaseAmount) * BigInt(earnBps)) / 10_000n;
+    const estimate = (BigInt(purchaseAmount) * BigInt(program.earnBps)) / 10_000n;
     if (estimate === 0n) {
       throw new BadRequestException('Purchase amount is too small to earn any points');
     }
     if (estimate > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new BadRequestException('Estimated points exceed safe integer range');
     }
-    return Number(estimate);
+    const estimatedPoints = Number(estimate);
+    if (!(await this.issuanceBudget.canCover(program, idempotencyKey, estimatedPoints))) {
+      throw new UnprocessableEntityException('The issuance budget cannot cover this earn; request a top-up');
+    }
+    return estimatedPoints;
   }
 }

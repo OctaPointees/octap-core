@@ -54,5 +54,9 @@ For example, purchase 100000 at 100 bps reserves 1000 estimated points and confi
 `credits.earned` contains purchase/estimate fields; `credits.earn.confirmed.pointsAmount` is actual points.
 POS reserve and reversal still use real `pointsAmount` values.
 
+An earn the owning budget shard cannot cover gets 422, using a best-effort read of the chain that ignores earns in flight. An accepted earn that later fails sends `credits.earn.failed` with `failureCode`; its key stays used, so another attempt needs a new key.
+
+`GET /v1/credits/budget` (`read` scope), `GET /v1/console/organizations/:id/budget` (any member) and `GET /v1/platform/organizations/:id/budget` (System Admin) return the live issuance budget.
+
 `GET .../balance?programId=...` accepts the tenant's program row ID or its on-chain program-control ID;
 a different program returns 404 rather than silently reading another balance.

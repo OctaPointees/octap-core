@@ -13,6 +13,7 @@ import { CheckpointIndexerProcessor } from './domain/indexer/checkpoint-indexer.
 import { ProgramsService } from './domain/programs/programs.service.js';
 import { OrganizationProvisioningWorker } from './domain/organizations/provisioning.worker.js';
 import { OrganizationProvisioningProcessor } from './domain/organizations/provisioning.processor.js';
+import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.processor.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
 // the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
@@ -24,6 +25,7 @@ import { OrganizationProvisioningProcessor } from './domain/organizations/provis
   providers: [
     OrganizationProvisioningWorker,
     OrganizationProvisioningProcessor,
+    BudgetTopUpProcessor,
     ChainSubmitWorker,
     ChainSubmitProcessor,
     ChainOutcomeReconciler,
