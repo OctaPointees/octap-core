@@ -31,7 +31,7 @@ export interface AdminProgramIdOptions {
     ];
 }
 export function adminProgramId(options: AdminProgramIdOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -53,7 +53,7 @@ export interface IssuerProgramIdOptions {
     ];
 }
 export function issuerProgramId(options: IssuerProgramIdOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
