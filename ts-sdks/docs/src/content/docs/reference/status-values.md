@@ -24,8 +24,8 @@ description: What each transaction, voucher and webhook status means.
 
 | Status | Meaning | Next |
 | --- | --- | --- |
-| `RESERVED` | Points and stock are held, and the customer doesn't own it yet | Sign and finalize |
-| `AVAILABLE` | Owned, and ready to use | Redeem the serial |
+| `RESERVED` | Waiting for the chain, and the customer doesn't own it yet | A paid claim: sign and finalize. A grant or free claim: wait. |
+| `AVAILABLE` | Owned, and ready to use | Prepare a use for the customer to sign |
 | `REDEEMED` | Used | None |
 | `EXPIRED` | Passed its expiry | None |
 | `CANCELLED` | Failed, abandoned or refunded | A new key can claim again |

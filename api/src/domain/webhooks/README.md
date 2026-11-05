@@ -27,7 +27,8 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `budget.low` | the fullest budget shard crossed 80% or 95% used | `ProgramsRepository.recordBudgetWarning` |
 | `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
 | `credits.reversed` | a CONFIRMED earn or redemption was reversed in the ledger (not on a replayed key) | `CreditsRepository.recordReversalTransaction` |
-| `voucher.redeemed` | a claimed voucher instance was used | `RewardsRepository.redeemVoucher` |
+| `voucher.granted` | the chain recorded a grant or free claim | `RewardsRepository.confirmVoucherGrant` |
+| `voucher.redeemed` | the chain recorded a customer-signed use | `RewardsRepository.confirmVoucherUse` |
 
 The two `*.confirmed` events are queued with `enqueueWebhookEvent(tx, ...)` inside the confirm's
 own transaction (OCT-209): they commit or roll back with it, and only the caller that wins the

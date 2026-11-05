@@ -10,10 +10,14 @@ import {
   Param,
   ParseUUIDPipe,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import type { SetVoucherRefundPolicyRequest } from '@octap/contracts';
 import { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
+import { VoucherUseService } from '#domain/rewards/voucher-use.service.js';
+import { Public } from '#infra/auth/public.decorator.js';
+import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
@@ -21,14 +25,23 @@ import type {
   CreateVoucherBodyDto,
   UpdateVoucherBodyDto,
   ClaimVoucherBodyDto,
-  RedeemVoucherBodyDto,
+  GrantVoucherBodyDto,
+  PrepareVoucherUseBodyDto,
+  FinalizeVoucherUseBodyDto,
 } from '../dto/rewards.dto.js';
-import type { VoucherDto, ClaimVoucherResponse, RedeemVoucherResponse, VoucherOwnershipDto } from '@octap/contracts';
+import type {
+  VoucherDto,
+  ClaimVoucherResponse,
+  RedeemVoucherResponse,
+  VoucherOwnershipDto,
+  PrepareVoucherUseResponse,
+} from '@octap/contracts';
 
 @Controller('v1/rewards')
 export class RewardsController {
   constructor(
     private readonly rewardsService: RewardsService,
+    private readonly voucherUseService: VoucherUseService,
     private readonly refundPolicy: RefundPolicyService,
   ) {}
 
@@ -57,8 +70,8 @@ export class RewardsController {
   @Post('vouchers')
   @Scopes('write')
   async createVoucher(@Tenant() tenant: TenantContext, @Body() body: CreateVoucherBodyDto): Promise<VoucherDto> {
-    if (!body?.code || !body.title || !body.discountType) {
-      throw new BadRequestException('code, title, and discountType are required');
+    if (!body?.code || !body.title || (!body.discountType && !body.terms)) {
+      throw new BadRequestException('code, title, and either discountType or terms are required');
     }
     return this.rewardsService.createVoucher(tenant.organizationId, body);
   }
@@ -107,16 +120,45 @@ export class RewardsController {
     return this.rewardsService.getClaim(tenant.organizationId, id);
   }
 
-  @Post('vouchers/redeem')
+  /** Gives a customer a voucher without spending their points. */
+  @Post('vouchers/:id/grant')
   @Scopes('write')
-  async redeemVoucher(
+  async grantVoucher(
     @Tenant() tenant: TenantContext,
-    @Body() body: RedeemVoucherBodyDto,
-  ): Promise<RedeemVoucherResponse> {
-    if (!body?.serialCode) {
-      throw new BadRequestException('serialCode is required');
+    @Param('id', new ParseUUIDPipe()) voucherId: string,
+    @Body() body: GrantVoucherBodyDto,
+  ): Promise<ClaimVoucherResponse> {
+    if (!body?.organizationEndUserId || !body.idempotencyKey) {
+      throw new BadRequestException('organizationEndUserId and idempotencyKey are required');
     }
-    return this.rewardsService.redeemVoucher(tenant.organizationId, body);
+    return this.rewardsService.grantVoucher(tenant.organizationId, voucherId, body);
+  }
+
+  /** Returns bytes for the customer to sign. An API key alone cannot mark a voucher used. */
+  @Post('vouchers/use')
+  @Scopes('write')
+  async prepareVoucherUse(
+    @Tenant() tenant: TenantContext,
+    @Body() body: PrepareVoucherUseBodyDto,
+  ): Promise<PrepareVoucherUseResponse> {
+    if (!body?.serialCode || !body.idempotencyKey) {
+      throw new BadRequestException('serialCode and idempotencyKey are required');
+    }
+    return this.voucherUseService.prepare(tenant.organizationId, body);
+  }
+
+  /**
+   * `@Public()`, same reasoning as `POST /v1/credits/redeem/finalize`: the caller is the customer's
+   * own device, and the signature over the cached digest is the proof of authorization.
+   */
+  @Public()
+  @UseGuards(PublicRateLimitGuard)
+  @Post('vouchers/use/finalize')
+  async finalizeVoucherUse(@Body() body: FinalizeVoucherUseBodyDto): Promise<RedeemVoucherResponse> {
+    if (!body?.digest || !body.signature) {
+      throw new BadRequestException('digest and signature are required');
+    }
+    return this.voucherUseService.finalize(body);
   }
 
   @Get('members/:memberId/vouchers')

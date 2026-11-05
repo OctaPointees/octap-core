@@ -1,14 +1,19 @@
-import type { CreateVoucherRequest, UpdateVoucherRequest } from '@octap/contracts';
+import type {
+  CreateVoucherRequest,
+  UpdateVoucherRequest,
+  GrantVoucherRequest,
+  PrepareVoucherUseRequest,
+  FinalizeVoucherUseRequest,
+} from '@octap/contracts';
 
 export type CreateVoucherBodyDto = CreateVoucherRequest;
 export type UpdateVoucherBodyDto = UpdateVoucherRequest;
 
 export interface ClaimVoucherBodyDto {
   organizationEndUserId: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
-export interface RedeemVoucherBodyDto {
-  serialCode: string;
-  receiptReference?: string;
-}
+export type GrantVoucherBodyDto = GrantVoucherRequest;
+export type PrepareVoucherUseBodyDto = PrepareVoucherUseRequest;
+export type FinalizeVoucherUseBodyDto = FinalizeVoucherUseRequest;

@@ -31,6 +31,13 @@ export const voucherOwnershipStatusEnum = pgEnum('voucher_ownership_status', [
 /**
  * VOUCHER: Campaign / reward catalog definitions created by an Organization.
  */
+export const voucherPublishStatusEnum = pgEnum('voucher_publish_status', [
+  'NOT_PUBLISHED',
+  'PUBLISHING',
+  'PUBLISHED',
+  'FAILED',
+]);
+
 export const vouchers = pgTable(
   'vouchers',
   {
@@ -42,8 +49,15 @@ export const vouchers = pgTable(
     title: text('title').notNull(),
     description: text('description'),
     pointsCost: bigint('points_cost', { mode: 'number' }).default(0).notNull(),
-    discountType: text('discount_type').notNull(), // 'PERCENTAGE', 'FIXED_AMOUNT', 'FREE_ITEM'
+    discountType: text('discount_type'), // 'PERCENTAGE', 'FIXED_AMOUNT', 'FREE_ITEM'; optional when `terms` is set
     discountValue: numeric('discount_value', { precision: 12, scale: 2 }),
+    /** The merchant's own free-form description of the promise, published on-chain with the rest. */
+    terms: jsonb('terms').$type<Record<string, unknown>>(),
+    publishStatus: voucherPublishStatusEnum('publish_status').default('NOT_PUBLISHED').notNull(),
+    /** The frozen `VoucherTerms`. Everything in those terms is immutable once publishing starts. */
+    suiTermsId: text('sui_terms_id'),
+    /** Taken when publishing starts, and published as part of the promise. */
+    refundPolicySnapshot: jsonb('refund_policy_snapshot').$type<VoucherRefundPolicySnapshot>(),
     totalSupply: integer('total_supply'),
     claimedCount: integer('claimed_count').default(0).notNull(),
     status: voucherStatusEnum('status').default('DRAFT').notNull(),
@@ -91,6 +105,11 @@ export const voucherOwnerships = pgTable(
       refundWindowDays: null,
     }),
     status: voucherOwnershipStatusEnum('status').default('AVAILABLE').notNull(),
+    /**
+     * The grant or use still in flight, if any. A refund is refused while it is set, so a refund can't
+     * race a transaction the customer already signed.
+     */
+    pendingOperationId: uuid('pending_operation_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
     redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),

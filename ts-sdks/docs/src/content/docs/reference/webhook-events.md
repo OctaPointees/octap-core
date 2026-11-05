@@ -18,7 +18,8 @@ Every event has this shape, and `data` depends on `type`:
 | [`credits.earn.failed`](#creditsearnfailed) | An accepted earn definitely failed | Queued with the failure |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | The chain confirmed a spend, for checkout or a paid voucher | Exactly one per transaction is queued |
 | [`credits.reversed`](#creditsreversed) | A confirmed earn or redemption was reversed | Queued with the reversal |
-| [`voucher.redeemed`](#voucherredeemed) | A voucher serial was used | Queued with the redemption |
+| [`voucher.granted`](#vouchergranted) | The chain recorded a grant or free claim | Exactly one per voucher is queued |
+| [`voucher.redeemed`](#voucherredeemed) | The customer signed and the chain marked a voucher used | Exactly one per voucher is queued |
 | [`budget.low`](#budgetlow) | The issuance budget crossed 80% or 95% used | Checked every few minutes, one per crossing |
 
 Queued events can still be retried, so your receiver may see the same `id` more than once.
@@ -74,9 +75,22 @@ Settled in the ledger immediately. A chain-confirmed original is also mirrored o
 | `newBalance` | `number` | |
 | `balanceWentNegative` | `boolean` | True when reversing a spent earn left a debt |
 
+## voucher.granted
+
+The customer now holds the voucher. A paid claim reports through `credits.redemption.confirmed` instead.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `voucherOwnershipId` | `string` | |
+| `voucherId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `serialCode` | `string` | |
+| `status` | `string` | `AVAILABLE` |
+| `blockchainDigest` | `string` | |
+
 ## voucher.redeemed
 
-No points move here. A paid claim already sent `credits.redemption.confirmed` for its cost.
+Deliver the benefit on this event. No points move here. A paid claim already sent `credits.redemption.confirmed` for its cost.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -87,8 +101,9 @@ No points move here. A paid claim already sent `credits.redemption.confirmed` fo
 | `status` | `string` | `REDEEMED` |
 | `redeemedAt` | `string` | |
 | `voucherTitle` | `string` | |
-| `discountType` | `string` | |
+| `discountType` | `string \| null` | |
 | `discountValue` | `string \| null` | |
+| `blockchainDigest` | `string` | The customer-signed transaction |
 
 ## budget.low
 

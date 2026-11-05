@@ -1,12 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { CreditsRepository, voucherClaimReference } from '#infra/db/repositories/credits.repository.js';
 // Not `import type`: NestJS DI resolves this constructor param by its runtime type (reflect-metadata),
 // which an erased type-only import would turn into a bare `Function` and break resolution.
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import {
+  RewardsRepository,
+  VOUCHER_GRANT_COMMAND_TYPE,
+  VOUCHER_PUBLISH_COMMAND_TYPE,
+} from '#infra/db/repositories/rewards.repository.js';
+import { buildVoucherTermsBytes } from '#domain/rewards/voucher-terms.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.client.js';
-import { moveAbortOf, sameSuiAddress, type ChainMoveAbort, type OctapProgramConfig } from '@octap/chain';
+import {
+  moveAbortOf,
+  sameSuiAddress,
+  type ChainMoveAbort,
+  type OctapProgramConfig,
+  type SignedChainTransaction,
+} from '@octap/chain';
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 import { earnFailureCode } from './earn-failure.js';
@@ -24,6 +36,17 @@ export interface ReversalChainSubmitPayload {
   organizationEndUserId: string;
   /** The original's on-chain handle: an earn's `operation_key`, or a POS redemption's `reference`. */
   chainKey: string;
+  /** An unused voucher's refund: the chain cancels the voucher and refunds its points together. */
+  voucherAction?: 'CANCEL';
+}
+
+interface VoucherPublishPayload {
+  voucherId: string;
+}
+
+interface VoucherGrantPayload {
+  voucherOwnershipId: string;
+  organizationEndUserId: string;
 }
 
 /**
@@ -70,6 +93,7 @@ export class ChainSubmitProcessor {
     private readonly creditsRepo: CreditsRepository,
     private readonly suiClient: SuiClientService,
     private readonly programsRepo: ProgramsRepository,
+    private readonly rewardsRepo: RewardsRepository,
   ) {}
 
   async process(operation: typeof operations.$inferSelect): Promise<void> {
@@ -81,7 +105,127 @@ export class ChainSubmitProcessor {
       await this.processReversal(operation, operation.payload as unknown as ReversalChainSubmitPayload);
       return;
     }
+    if (operation.commandType === VOUCHER_PUBLISH_COMMAND_TYPE) {
+      await this.processVoucherPublish(operation, operation.payload as unknown as VoucherPublishPayload);
+      return;
+    }
+    if (operation.commandType === VOUCHER_GRANT_COMMAND_TYPE) {
+      await this.processVoucherGrant(operation, operation.payload as unknown as VoucherGrantPayload);
+      return;
+    }
     await this.operationsRepo.markFailed(operation.id, `Unsupported commandType "${operation.commandType}"`);
+  }
+
+  /** Freezes a voucher's terms on-chain; it becomes ACTIVE once they are there. */
+  private async processVoucherPublish(
+    operation: typeof operations.$inferSelect,
+    payload: VoucherPublishPayload,
+  ): Promise<void> {
+    await this.submitVoucherCommand(operation, {
+      label: `voucher ${payload.voucherId} publish`,
+      sign: async () => {
+        const voucher = await this.rewardsRepo.findVoucherById(payload.voucherId);
+        if (!voucher) throw new Error(`Voucher ${payload.voucherId} no longer exists`);
+        const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+        return this.suiClient.signPublishVoucherTerms(program, {
+          voucherId: voucher.id,
+          terms: buildVoucherTermsBytes(voucher),
+          pointsCost: Number(voucher.pointsCost),
+          startsAtMs: voucher.startsAt?.getTime() ?? 0,
+          expiresAtMs: voucher.expiresAt?.getTime() ?? 0,
+        });
+      },
+      confirm: async (result) => {
+        const termsId = result.eventField<string>('VoucherTermsPublished', 'terms_id');
+        if (!termsId) throw new Error('publish_terms succeeded but emitted no VoucherTermsPublished event');
+        await this.rewardsRepo.markVoucherPublished(payload.voucherId, termsId);
+      },
+      fail: () => this.rewardsRepo.failVoucherPublish(payload.voucherId),
+    });
+  }
+
+  /** Records a grant or free claim on-chain; the voucher stays RESERVED until then. */
+  private async processVoucherGrant(
+    operation: typeof operations.$inferSelect,
+    payload: VoucherGrantPayload,
+  ): Promise<void> {
+    await this.submitVoucherCommand(operation, {
+      label: `voucher ${payload.voucherOwnershipId} grant`,
+      sign: async () => {
+        const claim = await this.rewardsRepo.findOwnershipWithVoucher(payload.voucherOwnershipId);
+        if (!claim?.voucher.suiTermsId) throw new Error('This voucher has no published terms to grant under');
+        const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+        const ownership = await this.creditsRepo.getOrCreateCreditOwnership(payload.organizationEndUserId);
+        const accountId =
+          ownership.suiCreditAccountId ?? (await this.openCreditAccount(program, ownership.id, payload));
+        return this.suiClient.signGrantVoucher(program, {
+          accountId,
+          termsId: claim.voucher.suiTermsId,
+          reference: voucherClaimReference(payload.voucherOwnershipId),
+        });
+      },
+      confirm: async (result) => {
+        await this.rewardsRepo.confirmVoucherGrant({
+          voucherOwnershipId: payload.voucherOwnershipId,
+          digest: result.digest,
+        });
+      },
+      fail: () => this.rewardsRepo.failVoucherGrant(payload.voucherOwnershipId),
+    });
+  }
+
+  /**
+   * One worker-signed voucher command, digest-first like `submitEarn`. A failure before sending, or a
+   * failure verdict, is definitive and runs `fail`. Otherwise the outcome stays UNKNOWN, for
+   * `ChainOutcomeReconciler` and the indexer to settle.
+   */
+  private async submitVoucherCommand(
+    operation: typeof operations.$inferSelect,
+    command: {
+      label: string;
+      sign: () => Promise<SignedChainTransaction>;
+      confirm: (result: ChainCallResult) => Promise<void>;
+      fail: () => Promise<void>;
+    },
+  ): Promise<void> {
+    const failDefinitively = async (message: string) => {
+      this.logger.error(`${command.label} failed: ${message}`);
+      await command.fail();
+      await this.operationsRepo.markFailed(operation.id, message);
+    };
+
+    let signed: SignedChainTransaction;
+    try {
+      signed = await command.sign();
+      await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
+    } catch (err: unknown) {
+      await failDefinitively(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    let result: ChainCallResult;
+    try {
+      result = await this.suiClient.execute(signed);
+    } catch (err: unknown) {
+      const message = `${command.label} outcome unknown: ${err instanceof Error ? err.message : String(err)}`;
+      this.logger.error(`operation ${operation.id}: ${message}; left for reconciliation`);
+      await this.markUnknown(operation.id, message);
+      return;
+    }
+    if (result.status !== 'success') {
+      await failDefinitively(result.errorMessage ?? `${command.label} failed on-chain`);
+      return;
+    }
+
+    try {
+      await command.confirm(result);
+      await this.operationsRepo.markSubmitted(operation.id, result.digest);
+      this.logger.log(`${command.label} confirmed: digest=${result.digest}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`${command.label} landed (digest=${result.digest}) but recording it failed: ${message}`);
+      await this.markUnknown(operation.id, message, result.digest);
+    }
   }
 
   /**
@@ -106,7 +250,9 @@ export class ChainSubmitProcessor {
       const signed =
         payload.reversedTransactionType === 'EARN'
           ? await this.suiClient.signReverseEarn(program, { accountId, operationKey: payload.chainKey })
-          : await this.suiClient.signReverseRedeem(program, { accountId, reference: payload.chainKey });
+          : payload.voucherAction === 'CANCEL'
+            ? await this.suiClient.signCancelVoucher(program, { accountId, reference: payload.chainKey })
+            : await this.suiClient.signReverseRedeem(program, { accountId, reference: payload.chainKey });
       await this.operationsRepo.recordSubmitDigest(operation.id, signed.digest, signed.expirationEpoch);
 
       let result: Awaited<ReturnType<SuiClientService['execute']>>;
@@ -153,7 +299,7 @@ export class ChainSubmitProcessor {
   private async openCreditAccount(
     program: OctapProgramConfig,
     ownershipId: string,
-    payload: EarnChainSubmitPayload,
+    payload: { organizationEndUserId: string },
   ): Promise<string> {
     const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
     if (!beneficiaryAddress) {

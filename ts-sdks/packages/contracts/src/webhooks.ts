@@ -1,5 +1,5 @@
 import type { BudgetWarningThreshold } from './loyalty.js';
-import type { RedeemVoucherResponse } from './rewards.js';
+import type { RedeemVoucherResponse, VoucherOwnershipStatus } from './rewards.js';
 
 export type WebhookEndpointStatus = 'ACTIVE' | 'DISABLED';
 export type WebhookDeliveryStatus = 'PENDING' | 'DELIVERED' | 'DEAD_LETTER';
@@ -44,6 +44,7 @@ export type WebhookEventType =
   | 'credits.earn.failed'
   | 'credits.redemption.confirmed'
   | 'credits.reversed'
+  | 'voucher.granted'
   | 'voucher.redeemed'
   | 'budget.low';
 
@@ -115,8 +116,21 @@ export interface ReversalEventData {
 }
 
 /**
- * `voucher.redeemed`: a claimed voucher instance was used at checkout (marked REDEEMED). No points
- * move here; a paid claim already sent `credits.redemption.confirmed` for its points cost.
+ * `voucher.granted`: the chain recorded a voucher given without spending points, through a grant or
+ * a free claim. A paid claim reports through `credits.redemption.confirmed` instead.
+ */
+export interface VoucherGrantedEventData {
+  voucherOwnershipId: string;
+  voucherId: string;
+  organizationEndUserId: string;
+  serialCode: string;
+  status: VoucherOwnershipStatus;
+  blockchainDigest: string;
+}
+
+/**
+ * `voucher.redeemed`: the customer signed and the chain marked their voucher used. Deliver the benefit
+ * on this event. No points move here; a paid claim already sent `credits.redemption.confirmed`.
  */
 export interface VoucherRedeemedEventData extends RedeemVoucherResponse {
   organizationEndUserId: string;
@@ -136,5 +150,6 @@ export type WebhookEvent =
   | WebhookEventOf<'credits.earn.failed', CreditsEarnFailedEventData>
   | WebhookEventOf<'credits.redemption.confirmed', CreditsChainConfirmedEventData>
   | WebhookEventOf<'credits.reversed', ReversalEventData>
+  | WebhookEventOf<'voucher.granted', VoucherGrantedEventData>
   | WebhookEventOf<'voucher.redeemed', VoucherRedeemedEventData>
   | WebhookEventOf<'budget.low', BudgetLowEventData>;

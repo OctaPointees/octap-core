@@ -213,7 +213,7 @@ async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, c
 }
 
 /** Puts a cancelled coupon's unit back in the catalog; the caller holds the voucher row lock. */
-async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
+export async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
   await tx
     .update(vouchers)
     .set({
@@ -1071,6 +1071,7 @@ export class CreditsRepository {
         where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
       });
       let refundAudit: Record<string, unknown> = {};
+      let voucherAction: 'CANCEL' | undefined;
       if (found) {
         await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, found.voucherId)).for('update');
         const [coupon] = await tx
@@ -1078,9 +1079,14 @@ export class CreditsRepository {
           .from(voucherOwnerships)
           .where(eq(voucherOwnerships.id, found.id))
           .for('update');
+        // A use the customer may already have signed would land after this refund.
+        if (coupon.pendingOperationId)
+          throw new VoucherClaimNotReversibleError(coupon.status, 'a use of this voucher is still in progress');
         const nowMs = Date.now();
         const decision = params.evaluateRefund(coupon, nowMs);
         if (!decision.allowed) throw new VoucherClaimNotReversibleError(decision.couponStatus, decision.reason);
+        // The chain only lets a used voucher be refunded on its own; an unused one is cancelled with it.
+        voucherAction = coupon.status === 'REDEEMED' ? undefined : 'CANCEL';
         await tx
           .update(voucherOwnerships)
           .set({ status: decision.nextStatus, updatedAt: new Date(nowMs) })
@@ -1153,6 +1159,7 @@ export class CreditsRepository {
             reversedTransactionId: params.original.id,
             reversedTransactionType: params.original.transactionType,
             organizationEndUserId: params.original.organizationEndUserId,
+            ...(voucherAction ? { voucherAction } : {}),
             // The original's on-chain handle: an earn's `operation_key` is its idempotency key, a
             // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts),
             // a voucher claim's is its receipt reference (`voucherClaimReference`).

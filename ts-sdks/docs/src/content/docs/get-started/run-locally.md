@@ -13,7 +13,7 @@ This runs a full paid claim against a real API with a disposable database. It ne
 npm run demo:sdk:local
 ```
 
-It reads the balance, claims a voucher, hands off the signature, finalizes and redeems the serial, then checks the saved state. Read `scripts/sdk-voucher-demo.mjs` to see the backend side of the flow.
+It reads the balance, claims a voucher, hands off the signature, finalizes, has the customer sign the voucher's use, then checks the saved state. Read `scripts/sdk-voucher-demo.mjs` to see the backend side of the flow.
 
 To run the same flow against your own API, set these in your shell. It stops at the customer signature, because only the customer can sign.
 

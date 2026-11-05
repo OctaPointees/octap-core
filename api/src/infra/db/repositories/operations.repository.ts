@@ -13,7 +13,7 @@ export class OperationPayloadConflictError extends Error {
 }
 
 /** JSON with object keys sorted at every level, so the same logical payload always hashes the same. */
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(',')}]`;
   }
@@ -196,15 +196,15 @@ export class OperationsRepository {
    * UNKNOWN chain-submit earns, and POS redemptions whose finalize recorded a digest but never
    * settled (`executeSponsoredRedeem` or the wait after it threw). A POS reserve with no digest was
    * never finalized, so there is nothing on-chain to ask about; only an unsigned hold of
-   * `abandonedUnsignedCommandType` is listed, once it is old enough to be abandoned.
+   * `abandonedUnsignedCommandTypes` is listed, once it is old enough to be abandoned.
    */
   async listUnresolvedChainOutcomes(params: {
     /** Worker-signed commands: only an UNKNOWN one needs settling (earn, reversal). */
     unknownCommandTypes: string[];
     /** Customer-signed redeems: listed once their finalize recorded a digest. */
     customerRedeemCommandTypes: string[];
-    /** The customer-signed command whose unsigned hold is released here, past `abandonedAfterMs`. */
-    abandonedUnsignedCommandType: string;
+    /** The customer-signed commands released here once unsigned past `abandonedAfterMs`. */
+    abandonedUnsignedCommandTypes: string[];
     abandonedAfterMs: number;
     olderThanMs: number;
     limit: number;
@@ -221,7 +221,7 @@ export class OperationsRepository {
             or(
               isNotNull(operations.suiTxDigest),
               and(
-                eq(operations.commandType, params.abandonedUnsignedCommandType),
+                inArray(operations.commandType, params.abandonedUnsignedCommandTypes),
                 lt(operations.updatedAt, new Date(Date.now() - params.abandonedAfterMs)),
               ),
             ),
