@@ -9,11 +9,17 @@ export interface SponsoredRedeemPreview {
   digest: string;
 }
 
+interface SponsoredVoucherParams {
+  beneficiaryAddress: string;
+  accountId: string;
+  termsId: string;
+  reference: Uint8Array;
+}
+
 /**
- * The only place a sponsored `credit_account::redeem` transaction gets built. Callers pass typed
- * domain values — account id, cost, reference — never raw transaction bytes, and there is no
- * parameter anywhere on this class that could make it build or sponsor anything other than
- * `credit_account::redeem`: `allowedMoveCallTargets` is always exactly one hardcoded entry.
+ * The only place a sponsored customer-signed transaction gets built: `redeem`, `claim_voucher` or
+ * `use_voucher`. Callers pass typed domain values, never raw transaction bytes, and no parameter
+ * here can make it sponsor anything else: `allowedMoveCallTargets` is always exactly one of those.
  *
  * `previewSponsoredRedeem` only builds and sponsors; `executeSponsoredRedeem` only submits a
  * signature against an already-sponsored digest. Neither touches PostgreSQL ownership/balance
@@ -35,10 +41,26 @@ export class SponsoredTransactionService {
     reference: Uint8Array;
   }): Promise<SponsoredRedeemPreview> {
     const kindBytes = await this.builder.buildRedeemTransactionKind(params);
+    return this.sponsor(params.beneficiaryAddress, kindBytes, this.builder.redeemMoveCallTarget);
+  }
+
+  /** Sponsors a customer-signed `claim_voucher`. The price comes from the terms. */
+  async previewSponsoredClaimVoucher(params: SponsoredVoucherParams): Promise<SponsoredRedeemPreview> {
+    const kindBytes = await this.builder.buildClaimVoucherTransactionKind(params);
+    return this.sponsor(params.beneficiaryAddress, kindBytes, this.builder.claimVoucherMoveCallTarget);
+  }
+
+  /** Sponsors a customer-signed `use_voucher`. */
+  async previewSponsoredUseVoucher(params: SponsoredVoucherParams): Promise<SponsoredRedeemPreview> {
+    const kindBytes = await this.builder.buildUseVoucherTransactionKind(params);
+    return this.sponsor(params.beneficiaryAddress, kindBytes, this.builder.useVoucherMoveCallTarget);
+  }
+
+  private async sponsor(sender: string, transactionKindBytes: Uint8Array, target: string) {
     const sponsored = await this.enoki.createSponsoredTransaction({
-      transactionKindBytes: kindBytes,
-      sender: params.beneficiaryAddress,
-      allowedMoveCallTargets: [this.builder.redeemMoveCallTarget],
+      transactionKindBytes,
+      sender,
+      allowedMoveCallTargets: [target],
     });
     return { transactionBytes: sponsored.bytes, digest: sponsored.digest };
   }

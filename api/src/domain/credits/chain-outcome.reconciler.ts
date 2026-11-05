@@ -9,6 +9,12 @@ import {
   VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
 } from '#infra/db/repositories/credits.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import {
+  RewardsRepository,
+  VOUCHER_GRANT_COMMAND_TYPE,
+  VOUCHER_PUBLISH_COMMAND_TYPE,
+  VOUCHER_USE_COMMAND_TYPE,
+} from '#infra/db/repositories/rewards.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
@@ -68,13 +74,19 @@ export class ChainOutcomeReconciler {
     private readonly creditsRepo: CreditsRepository,
     private readonly suiReader: SuiTransactionBuilderClient,
     private readonly suiClient: SuiClientService,
+    private readonly rewardsRepo: RewardsRepository,
   ) {}
 
   async reconcileOnce(): Promise<ReconcileOutcome[]> {
     const due = await this.operationsRepo.listUnresolvedChainOutcomes({
-      unknownCommandTypes: [EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE],
-      customerRedeemCommandTypes: CUSTOMER_REDEEM_COMMAND_TYPES,
-      abandonedUnsignedCommandType: VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
+      unknownCommandTypes: [
+        EARN_COMMAND_TYPE,
+        REVERSAL_COMMAND_TYPE,
+        VOUCHER_PUBLISH_COMMAND_TYPE,
+        VOUCHER_GRANT_COMMAND_TYPE,
+      ],
+      customerRedeemCommandTypes: [...CUSTOMER_REDEEM_COMMAND_TYPES, VOUCHER_USE_COMMAND_TYPE],
+      abandonedUnsignedCommandTypes: [VOUCHER_CLAIM_RESERVE_COMMAND_TYPE, VOUCHER_USE_COMMAND_TYPE],
       abandonedAfterMs: ABANDONED_POS_HOLD_GRACE_MS,
       olderThanMs: RECONCILE_AFTER_MS,
       limit: BATCH_SIZE,
@@ -115,6 +127,15 @@ export class ChainOutcomeReconciler {
       }
       if (operation.commandType === REVERSAL_COMMAND_TYPE) {
         return this.confirmReversal(operation, outcome);
+      }
+      if (operation.commandType === VOUCHER_PUBLISH_COMMAND_TYPE) {
+        return this.confirmVoucherPublish(operation, outcome);
+      }
+      if (operation.commandType === VOUCHER_GRANT_COMMAND_TYPE) {
+        return this.confirmVoucherGrant(operation, outcome);
+      }
+      if (operation.commandType === VOUCHER_USE_COMMAND_TYPE) {
+        return this.confirmVoucherUse(operation, outcome);
       }
       return this.confirmPosRedeem(operation, outcome);
     }
@@ -176,6 +197,42 @@ export class ChainOutcomeReconciler {
     return 'confirmed';
   }
 
+  private async confirmVoucherPublish(
+    operation: Operation,
+    outcome: SubmittedChainTransaction,
+  ): Promise<ReconcileOutcome> {
+    const { voucherId } = operation.payload as unknown as { voucherId: string };
+    const termsId = eventField<string>(outcome, 'VoucherTermsPublished', 'terms_id');
+    if (!termsId) {
+      this.logger.error(`${outcome.digest} emitted no VoucherTermsPublished; operation ${operation.id} needs a human`);
+      await this.operationsRepo.touch(operation.id);
+      return 'waiting';
+    }
+    await this.rewardsRepo.markVoucherPublished(voucherId, termsId);
+    await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
+    return 'confirmed';
+  }
+
+  private async confirmVoucherGrant(
+    operation: Operation,
+    outcome: SubmittedChainTransaction,
+  ): Promise<ReconcileOutcome> {
+    const { voucherOwnershipId } = operation.payload as unknown as { voucherOwnershipId: string };
+    await this.rewardsRepo.confirmVoucherGrant({ voucherOwnershipId, digest: outcome.digest });
+    await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
+    return 'confirmed';
+  }
+
+  private async confirmVoucherUse(operation: Operation, outcome: SubmittedChainTransaction): Promise<ReconcileOutcome> {
+    const { voucherOwnershipId } = operation.payload as unknown as { voucherOwnershipId: string };
+    const confirmed = await this.rewardsRepo.confirmVoucherUse({ voucherOwnershipId, digest: outcome.digest });
+    if (!confirmed) {
+      this.logger.error(`${outcome.digest} used voucher ${voucherOwnershipId}, which is no longer available here`);
+    }
+    await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
+    return 'confirmed';
+  }
+
   private async confirmPosRedeem(operation: Operation, outcome: SubmittedChainTransaction): Promise<ReconcileOutcome> {
     const payload = operation.payload as unknown as PosRedeemPayload;
     const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(operation.tenantId, operation.idempotencyKey);
@@ -221,6 +278,20 @@ export class ChainOutcomeReconciler {
         });
         if (released === false) return 'waiting';
       }
+    } else if (operation.commandType === VOUCHER_PUBLISH_COMMAND_TYPE) {
+      const { voucherId } = operation.payload as unknown as { voucherId: string };
+      await this.rewardsRepo.failVoucherPublish(voucherId);
+    } else if (operation.commandType === VOUCHER_GRANT_COMMAND_TYPE) {
+      const { voucherOwnershipId } = operation.payload as unknown as { voucherOwnershipId: string };
+      await this.rewardsRepo.failVoucherGrant(voucherOwnershipId);
+    } else if (operation.commandType === VOUCHER_USE_COMMAND_TYPE) {
+      const { voucherOwnershipId } = operation.payload as unknown as { voucherOwnershipId: string };
+      const released = await this.rewardsRepo.failVoucherUse({
+        operationId: operation.id,
+        voucherOwnershipId,
+        onlyIfUnsubmitted: !operation.suiTxDigest,
+      });
+      if (!released) return 'waiting';
     }
     await this.operationsRepo.settleFromChain(operation.id, 'FAILED', reason);
     this.logger.warn(`operation ${operation.id} failed by reconciliation: ${reason}`);

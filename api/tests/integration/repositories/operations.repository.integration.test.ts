@@ -180,7 +180,7 @@ describe('OperationsRepository outcome reconciliation (OCT-52, live)', () => {
   const ago = (ms: number) => new Date(Date.now() - ms);
   const customerRedeem = {
     customerRedeemCommandTypes: ['CREDIT_POS_REDEEM_RESERVE', 'VOUCHER_CLAIM_RESERVE'],
-    abandonedUnsignedCommandType: 'VOUCHER_CLAIM_RESERVE',
+    abandonedUnsignedCommandTypes: ['VOUCHER_CLAIM_RESERVE'],
     abandonedAfterMs: 30 * 60 * 1000,
   };
 

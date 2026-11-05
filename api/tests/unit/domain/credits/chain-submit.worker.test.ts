@@ -31,7 +31,7 @@ describe('ChainSubmitWorker', () => {
     worker.onModuleDestroy();
 
     expect(recoverStaleProcessing).toHaveBeenCalledWith(
-      ['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT'],
+      ['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT', 'VOUCHER_TERMS_PUBLISH', 'VOUCHER_GRANT'],
       5 * 60 * 1000,
     );
   });
@@ -53,7 +53,10 @@ describe('ChainSubmitWorker', () => {
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     worker.onModuleDestroy();
 
-    expect(claimNextPending).toHaveBeenCalledWith(['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT'], 5);
+    expect(claimNextPending).toHaveBeenCalledWith(
+      ['CREDIT_EARN_CHAIN_SUBMIT', 'CREDIT_REVERSAL_CHAIN_SUBMIT', 'VOUCHER_TERMS_PUBLISH', 'VOUCHER_GRANT'],
+      5,
+    );
   });
 
   it('a non-Error startup recovery failure is also swallowed', async () => {

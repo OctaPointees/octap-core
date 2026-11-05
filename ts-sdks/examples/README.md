@@ -24,7 +24,7 @@ await auth.signAndFinalize(claim);
 
 A customer client does not need a merchant credential for this call. Invalid signatures cannot authorize the chain transaction. A host that signs some other way can pass its signature to the Node SDK's `finalizeVoucherClaim`.
 
-The merchant server can read `getVoucherClaim(ownershipId)` or retry the same claim key to recover the current persisted state. Wait for AVAILABLE before asking the customer to use the voucher. After a timeout, inspect state and allow the indexer/digest reconciler to settle the existing operation; do not create a new key or assume failure. RESERVED stays unusable while the chain outcome is unknown. Definitive failure produces CANCELLED and releases stock/point holds; a new claim may then use a new key. Free rewards become AVAILABLE immediately.
+The merchant server can read `getVoucherClaim(ownershipId)` or retry the same claim key to recover the current persisted state. Wait for AVAILABLE before asking the customer to use the voucher. After a timeout, inspect state and allow the indexer/digest reconciler to settle the existing operation; do not create a new key or assume failure. RESERVED stays unusable while the chain outcome is unknown. Definitive failure produces CANCELLED and releases stock/point holds; a new claim may then use a new key. A free reward stays RESERVED until OctaP records it on-chain, then `voucher.granted` arrives.
 
 ## Runnable demo
 

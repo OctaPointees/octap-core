@@ -67,7 +67,7 @@ claimVoucher(voucherId: string, request: ClaimVoucherRequest, options?): Promise
 | Tham số | Kiểu | Mô tả |
 | --- | --- | --- |
 | `organizationEndUserId` | `string` | **Bắt buộc.** Một UUID. |
-| `idempotencyKey` | `string` | **Bắt buộc với claim trả phí.** 1–100 chữ cái, chữ số, `:`, `_` hoặc `-`. |
+| `idempotencyKey` | `string` | **Bắt buộc.** 1–100 chữ cái, chữ số, `:`, `_` hoặc `-`. |
 
 | Field trả về | Kiểu | Mô tả |
 | --- | --- | --- |

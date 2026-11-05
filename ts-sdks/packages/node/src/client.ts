@@ -12,7 +12,10 @@ import type {
   ClaimVoucherResponse,
   FinalizePosRedemptionRequest,
   FinalizePosRedemptionResponse,
-  RedeemVoucherRequest,
+  GrantVoucherRequest,
+  PrepareVoucherUseRequest,
+  PrepareVoucherUseResponse,
+  FinalizeVoucherUseRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
   SetVoucherRefundPolicyRequest,
@@ -252,7 +255,7 @@ export class OctaPointClient {
   // REWARDS & VOUCHERS API
   // ==========================================
 
-  /** Current terms for future voucher claims. */
+  /** The policy the next published voucher takes. A published voucher keeps the one it was published with. */
   async getVoucherRefundPolicy(options?: RequestOptions): Promise<VoucherRefundPolicyDto> {
     return this.request('/v1/rewards/refund-policy', 'GET', undefined, options);
   }
@@ -335,10 +338,39 @@ export class OctaPointClient {
   }
 
   /**
-   * Redeem a claimed voucher by its serial code.
+   * Give a customer a voucher without spending their points. It stays RESERVED until the chain
+   * records it; `voucher.granted` reports that.
    */
-  async redeemVoucher(request: RedeemVoucherRequest, options?: RequestOptions): Promise<RedeemVoucherResponse> {
-    return this.request<RedeemVoucherResponse>('/v1/rewards/vouchers/redeem', 'POST', request, options);
+  async grantVoucher(
+    voucherId: string,
+    request: GrantVoucherRequest,
+    options?: RequestOptions,
+  ): Promise<ClaimVoucherResponse> {
+    return this.request<ClaimVoucherResponse>(
+      `/v1/rewards/vouchers/${encodeURIComponent(voucherId)}/grant`,
+      'POST',
+      request,
+      options,
+    );
+  }
+
+  /**
+   * Ask the customer to use a voucher. Returns bytes for their device to sign: your API key cannot
+   * mark a voucher used. Deliver the benefit on the `voucher.redeemed` webhook.
+   */
+  async prepareVoucherUse(
+    request: PrepareVoucherUseRequest,
+    options?: RequestOptions,
+  ): Promise<PrepareVoucherUseResponse> {
+    return this.request<PrepareVoucherUseResponse>('/v1/rewards/vouchers/use', 'POST', request, options);
+  }
+
+  /** The customer signs the returned bytes with their zkLogin session; finalize needs no merchant key. */
+  async finalizeVoucherUse(
+    request: FinalizeVoucherUseRequest,
+    options?: RequestOptions,
+  ): Promise<RedeemVoucherResponse> {
+    return this.request<RedeemVoucherResponse>('/v1/rewards/vouchers/use/finalize', 'POST', request, options);
   }
 
   /**

@@ -3,6 +3,7 @@ import { SimulationError } from '@mysten/sui/client';
 import { ChainSubmitProcessor } from '#domain/credits/chain-submit.processor.js';
 import type { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
+import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
@@ -10,6 +11,7 @@ import {
   PROGRAMS_REPO,
   buildOperation,
   buildProgramRow,
+  buildVoucher,
   fakeChainResult,
   programConfigFor,
   programsRepoFor,
@@ -33,6 +35,7 @@ function processor(
   creditsRepo: { [K in keyof CreditsRepository]?: unknown },
   suiClient: SuiDouble,
   programsRepo: ProgramsRepository = PROGRAMS_REPO,
+  rewardsRepo: { [K in keyof RewardsRepository]?: unknown } = {},
 ) {
   const { earn, ...rest } = suiClient;
   const sui = earn
@@ -52,6 +55,7 @@ function processor(
     stub<CreditsRepository>(creditsRepo),
     stub<SuiClientService>({ issuerAddress: () => '0xissuer', ...sui }),
     programsRepo,
+    stub<RewardsRepository>(rewardsRepo),
   );
 }
 
@@ -984,5 +988,184 @@ describe('ChainSubmitProcessor re-provisioned organization recovery (OCT-244)', 
 
     expect(recordSubmitDigest).toHaveBeenLastCalledWith('op-1', 'DIGEST2', 7n);
     expect(markUnknown).toHaveBeenCalledWith('op-1', expect.stringMatching(/ETIMEDOUT/), undefined);
+  });
+});
+
+describe('ChainSubmitProcessor voucher commands', () => {
+  const publishOp = buildOperation({ id: 'op-p', commandType: 'VOUCHER_TERMS_PUBLISH', payload: { voucherId: 'v-1' } });
+  const grantOp = buildOperation({
+    id: 'op-g',
+    commandType: 'VOUCHER_GRANT',
+    payload: { voucherOwnershipId: 'own-1', organizationEndUserId: 'member-1' },
+  });
+  const signed = { digest: 'DIGEST-V', expirationEpoch: 7n };
+  const voucher = buildVoucher({ pointsCost: 25, expiresAt: new Date(5000), startsAt: null });
+  const termsPublished = fakeChainResult({
+    events: [{ type: 'pkg::voucher_terms::VoucherTermsPublished', parsedJson: { terms_id: '0xterms' } }],
+  });
+
+  function ops() {
+    return {
+      recordSubmitDigest: vi.fn(async () => {}),
+      markSubmitted: vi.fn(async () => {}),
+      markFailed: vi.fn(async () => {}),
+      markUnknown: vi.fn(async () => true),
+    };
+  }
+
+  it('publishes the promise and records the frozen object', async () => {
+    const operations = ops();
+    const signPublishVoucherTerms = vi.fn(async () => signed);
+    const markVoucherPublished = vi.fn(async () => {});
+    await processor(operations, {}, { signPublishVoucherTerms, execute: async () => termsPublished }, PROGRAMS_REPO, {
+      findVoucherById: async () => voucher,
+      markVoucherPublished,
+    }).process(publishOp);
+    expect(signPublishVoucherTerms).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ voucherId: 'v-1', pointsCost: 25, startsAtMs: 0, expiresAtMs: 5000 }),
+    );
+    expect(operations.recordSubmitDigest).toHaveBeenCalledWith('op-p', 'DIGEST-V', 7n);
+    expect(markVoucherPublished).toHaveBeenCalledWith('v-1', '0xterms');
+    expect(operations.markSubmitted).toHaveBeenCalled();
+  });
+
+  it('a failure before sending is definitive', async () => {
+    const operations = ops();
+    const failVoucherPublish = vi.fn(async () => {});
+    await processor(operations, {}, {}, PROGRAMS_REPO, {
+      findVoucherById: async () => undefined,
+      failVoucherPublish,
+    }).process(publishOp);
+    expect(failVoucherPublish).toHaveBeenCalledWith('v-1');
+    expect(operations.markFailed).toHaveBeenCalledWith('op-p', expect.stringMatching(/no longer exists/));
+  });
+
+  it('a failure verdict is definitive, and a lost answer is left for reconciliation', async () => {
+    const operations = ops();
+    const failVoucherPublish = vi.fn(async () => {});
+    const rewards = { findVoucherById: async () => voucher, failVoucherPublish };
+    await processor(
+      operations,
+      {},
+      {
+        signPublishVoucherTerms: async () => signed,
+        execute: async () => fakeChainResult({ status: 'failure', errorMessage: 'aborted' }),
+      },
+      PROGRAMS_REPO,
+      rewards,
+    ).process(publishOp);
+    expect(operations.markFailed).toHaveBeenCalledWith('op-p', 'aborted');
+    expect(failVoucherPublish).toHaveBeenCalledTimes(1);
+
+    const lost = ops();
+    await processor(
+      lost,
+      {},
+      {
+        signPublishVoucherTerms: async () => signed,
+        execute: async () => {
+          throw new Error('connection dropped');
+        },
+      },
+      PROGRAMS_REPO,
+      rewards,
+    ).process(publishOp);
+    expect(lost.markUnknown).toHaveBeenCalledWith('op-p', expect.stringMatching(/outcome unknown/), undefined);
+    expect(failVoucherPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it('a landed publish that cannot be recorded stays unknown, with its digest', async () => {
+    const operations = ops();
+    await processor(
+      operations,
+      {},
+      { signPublishVoucherTerms: async () => signed, execute: async () => fakeChainResult({ digest: 'LANDED' }) },
+      PROGRAMS_REPO,
+      { findVoucherById: async () => voucher },
+    ).process(publishOp);
+    expect(operations.markUnknown).toHaveBeenCalledWith(
+      'op-p',
+      expect.stringMatching(/VoucherTermsPublished/),
+      'LANDED',
+    );
+  });
+
+  it('grants through an existing account', async () => {
+    const operations = ops();
+    const signGrantVoucher = vi.fn(async () => signed);
+    const confirmVoucherGrant = vi.fn(async () => ({ key: null }));
+    const openAccount = vi.fn();
+    await processor(
+      operations,
+      { getOrCreateCreditOwnership: existingAccount },
+      { signGrantVoucher, openAccount, execute: async () => fakeChainResult({ digest: 'DIGEST-V' }) },
+      PROGRAMS_REPO,
+      { findOwnershipWithVoucher: async () => ({ voucher }), confirmVoucherGrant },
+    ).process(grantOp);
+    expect(openAccount).not.toHaveBeenCalled();
+    expect(signGrantVoucher).toHaveBeenCalledWith(expect.anything(), {
+      accountId: '0xexisting',
+      termsId: '0xterms',
+      reference: 'voucher-claim-own-1',
+    });
+    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: 'own-1', digest: 'DIGEST-V' });
+  });
+
+  it('opens an account first for a member who never earned', async () => {
+    const setSuiCreditAccountId = vi.fn(async () => {});
+    const signGrantVoucher = vi.fn(async () => signed);
+    await processor(
+      ops(),
+      {
+        getOrCreateCreditOwnership: async () => ({ id: 'ownership-1', suiCreditAccountId: null }),
+        findBeneficiaryAddress: async () => '0xmember',
+        setSuiCreditAccountId,
+      },
+      {
+        signGrantVoucher,
+        openAccount: async () =>
+          fakeChainResult({
+            events: [{ type: 'pkg::credit_account::CreditAccountOpened', parsedJson: { account_id: '0xnew' } }],
+          }),
+        execute: async () => fakeChainResult(),
+      },
+      PROGRAMS_REPO,
+      { findOwnershipWithVoucher: async () => ({ voucher }), confirmVoucherGrant: async () => ({ key: null }) },
+    ).process(grantOp);
+    expect(setSuiCreditAccountId).toHaveBeenCalledWith('ownership-1', '0xnew');
+    expect(signGrantVoucher).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ accountId: '0xnew' }));
+  });
+
+  it('cancels the voucher on-chain when refunding an unused one, and reverses the debit otherwise', async () => {
+    const reversal = (voucherAction?: 'CANCEL') =>
+      buildOperation({
+        commandType: 'CREDIT_REVERSAL_CHAIN_SUBMIT',
+        payload: {
+          reversalTransactionId: 'rev-1',
+          reversedTransactionType: 'REDEEM',
+          organizationEndUserId: 'member-1',
+          chainKey: 'voucher-claim-own-1',
+          ...(voucherAction ? { voucherAction } : {}),
+        },
+      });
+    const signCancelVoucher = vi.fn(async () => signed);
+    const signReverseRedeem = vi.fn(async () => signed);
+    const run = (operation: ReturnType<typeof reversal>) =>
+      processor(
+        ops(),
+        { getCreditOwnershipByEndUserId: existingAccount, recordReversalOnChain: async () => ({ id: 'btx' }) },
+        { signCancelVoucher, signReverseRedeem, execute: async () => fakeChainResult() },
+      ).process(operation);
+
+    await run(reversal('CANCEL'));
+    expect(signCancelVoucher).toHaveBeenCalledWith(expect.anything(), {
+      accountId: '0xexisting',
+      reference: 'voucher-claim-own-1',
+    });
+    expect(signReverseRedeem).not.toHaveBeenCalled();
+
+    await run(reversal());
+    expect(signReverseRedeem).toHaveBeenCalledTimes(1);
   });
 });

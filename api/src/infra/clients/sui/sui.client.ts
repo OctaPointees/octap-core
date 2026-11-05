@@ -137,6 +137,57 @@ export class SuiClientService {
     return this.client.sign(tx, await this.issuerSigner());
   }
 
+  /** Builds and signs a `publish_terms`, without sending it. */
+  async signPublishVoucherTerms(
+    program: OctapProgramConfig,
+    params: { voucherId: string; terms: Uint8Array; pointsCost: number; startsAtMs: number; expiresAtMs: number },
+  ): Promise<SignedChainTransaction> {
+    const tx = this.client.buildPublishVoucherTermsTransaction({
+      issuerCapId: program.issuerCapId,
+      programId: program.programControlId,
+      reference: new TextEncoder().encode(params.voucherId),
+      terms: params.terms,
+      pointsCost: params.pointsCost,
+      startsAtMs: params.startsAtMs,
+      expiresAtMs: params.expiresAtMs,
+    });
+    // Up to 8 KB of terms is stored on-chain, which costs more than the other calls here.
+    tx.setGasBudget(100_000_000);
+    this.logger.log(`publishing voucher terms for ${params.voucherId} in program ${program.programControlId}`);
+    return this.client.sign(tx, await this.issuerSigner());
+  }
+
+  /** Builds and signs a `grant_voucher`, without sending it. */
+  async signGrantVoucher(
+    program: OctapProgramConfig,
+    params: { accountId: string; termsId: string; reference: string },
+  ): Promise<SignedChainTransaction> {
+    const tx = this.client.buildGrantVoucherTransaction({
+      issuerCapId: program.issuerCapId,
+      accountId: params.accountId,
+      termsId: params.termsId,
+      reference: new TextEncoder().encode(params.reference),
+    });
+    tx.setGasBudget(50_000_000);
+    this.logger.log(`granting voucher ${params.reference} to account ${params.accountId}`);
+    return this.client.sign(tx, await this.issuerSigner());
+  }
+
+  /** Builds and signs a `cancel_voucher`, without sending it. */
+  async signCancelVoucher(
+    program: OctapProgramConfig,
+    params: { accountId: string; reference: string },
+  ): Promise<SignedChainTransaction> {
+    const tx = this.client.buildCancelVoucherTransaction({
+      issuerCapId: program.issuerCapId,
+      accountId: params.accountId,
+      reference: new TextEncoder().encode(params.reference),
+    });
+    tx.setGasBudget(50_000_000);
+    this.logger.log(`cancelling voucher ${params.reference} on account ${params.accountId}`);
+    return this.client.sign(tx, await this.issuerSigner());
+  }
+
   /** Read-only: the program a `CreditAccount` was opened in, or null if the object doesn't exist. */
   async creditAccountProgramId(accountId: string): Promise<string | null> {
     return this.client.creditAccountProgramId(accountId);

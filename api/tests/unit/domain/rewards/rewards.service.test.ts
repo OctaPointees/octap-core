@@ -10,6 +10,7 @@ import { PROGRAMS_REPO, buildVoucher, programsRepoFor } from '../../../helpers/f
 const sameOrgMember = stub<CreditsRepository>({
   findMemberOrganizationId: async () => 'org-1',
   findOperationForClaim: async () => undefined,
+  findBeneficiaryAddress: async () => '0xmember',
 });
 
 function ownership(overrides: Record<string, unknown> = {}) {
@@ -126,9 +127,7 @@ describe('RewardsService claims and redemption', () => {
         idempotencyKey: 'claim-key',
       }),
     ).toEqual(result);
-    expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'claim-key');
-    await service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId });
-    expect(claimVoucher).toHaveBeenLastCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`);
+    expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'claim-key', {});
   });
   describe('a paid claim', () => {
     const reserved = {
@@ -172,7 +171,7 @@ describe('RewardsService claims and redemption', () => {
       const run = (idempotencyKey: string | null = 'claim-key') =>
         rewards.claimVoucher('org-1', 'v-1', {
           organizationEndUserId: memberId,
-          idempotencyKey: idempotencyKey ?? undefined,
+          idempotencyKey: idempotencyKey as string,
         });
       return { run, claimVoucher, sponsorReservation, findVoucherClaimHold, getClaim };
     }
@@ -190,13 +189,13 @@ describe('RewardsService claims and redemption', () => {
       expect(sponsorReservation).toHaveBeenCalledWith(
         'org-1',
         { organizationEndUserId: memberId, pointsAmount: 25, idempotencyKey: 'claim-key' },
-        hold,
+        { ...hold, voucherTermsId: '0xterms' },
       );
     });
 
     it('requires an explicit idempotency key', async () => {
       const { run, claimVoucher } = paidClaim();
-      await expect(run(null)).rejects.toThrow(/idempotencyKey is required/);
+      await expect(run(null)).rejects.toThrow(/idempotencyKey/);
       expect(claimVoucher).not.toHaveBeenCalled();
     });
 
@@ -217,8 +216,8 @@ describe('RewardsService claims and redemption', () => {
         previousOperation: { suiTxDigest: null },
         beneficiary: null,
       });
-      await expect(run(null)).resolves.toMatchObject({ digest: 'digest' });
-      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, `claim-v-1-${memberId}`);
+      await expect(run()).resolves.toMatchObject({ digest: 'digest' });
+      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'claim-key', {});
       expect(sponsorReservation).toHaveBeenCalledOnce();
     });
 
@@ -258,32 +257,68 @@ describe('RewardsService claims and redemption', () => {
       throw failure;
     });
     await expect(
-      service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId }),
+      service({ claimVoucher }).claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: 'k' }),
     ).rejects.toMatchObject({ name });
+  });
+
+  describe('grantVoucher', () => {
+    const request = { organizationEndUserId: memberId, idempotencyKey: 'grant-1' };
+
+    it('reserves a grant, spending nothing, with no bytes to sign', async () => {
+      const claimVoucher = vi.fn(async () => ({ status: 'RESERVED', transactionId: null }));
+      await expect(service({ claimVoucher }).grantVoucher('org-1', 'v-1', request)).resolves.toMatchObject({
+        status: 'RESERVED',
+      });
+      expect(claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', memberId, 'grant-1', { grant: true });
+    });
+
+    it('validates the member and key, and needs an address on-chain', async () => {
+      const claimVoucher = vi.fn();
+      const rewards = service({ claimVoucher });
+      await expect(rewards.grantVoucher('org-1', 'v-1', { ...request, organizationEndUserId: 'bad' })).rejects.toThrow(
+        /UUID/,
+      );
+      await expect(rewards.grantVoucher('org-1', 'v-1', { ...request, idempotencyKey: '' })).rejects.toThrow(
+        /idempotencyKey/,
+      );
+      const noAddress = stub<CreditsRepository>({
+        findOperationForClaim: async () => undefined,
+        findBeneficiaryAddress: async () => null,
+      });
+      await expect(service({ claimVoucher }, noAddress).grantVoucher('org-1', 'v-1', request)).rejects.toThrow(
+        /no linked Sui address/,
+      );
+      expect(claimVoucher).not.toHaveBeenCalled();
+    });
+
+    it('a retry skips the prechecks, and a voucher from another organization is not found', async () => {
+      const claimVoucher = vi.fn(async () => ({ status: 'RESERVED', transactionId: null }));
+      const retrying = stub<CreditsRepository>({
+        findOperationForClaim: async () => ({ id: 'op' }),
+        findBeneficiaryAddress: async () => null,
+      });
+      await service({ claimVoucher }, retrying).grantVoucher('org-1', 'v-1', request);
+      expect(claimVoucher).toHaveBeenCalledOnce();
+      await expect(
+        service({ findVoucherById: async () => buildVoucher({ organizationId: 'org-2' }) }).grantVoucher(
+          'org-1',
+          'v-1',
+          request,
+        ),
+      ).rejects.toThrow(/not found/);
+    });
   });
 
   it('rejects malformed members and claim keys before reaching the database', async () => {
     const claimVoucher = vi.fn();
     const rewards = service({ claimVoucher });
-    await expect(rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'bad' })).rejects.toThrow(/UUID/);
+    await expect(
+      rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: 'bad', idempotencyKey: 'k' }),
+    ).rejects.toThrow(/UUID/);
     await expect(
       rewards.claimVoucher('org-1', 'v-1', { organizationEndUserId: memberId, idempotencyKey: '' }),
     ).rejects.toThrow(/idempotencyKey/);
     expect(claimVoucher).not.toHaveBeenCalled();
-  });
-  it('maps the atomically redeemed ownership and frozen reward benefit', async () => {
-    const redeemVoucher = vi.fn(async () => ({
-      ownership: ownership({ status: 'REDEEMED', redeemedAt: new Date('2026-10-03T00:00:00Z') }),
-      voucher: buildVoucher(),
-    }));
-    const result = await service({ redeemVoucher }).redeemVoucher('org-1', { serialCode: 'CODE-123' });
-    expect(result).toMatchObject({
-      status: 'REDEEMED',
-      redeemedAt: '2026-10-03T00:00:00.000Z',
-      voucherTitle: '10% Off',
-    });
-    expect(redeemVoucher).toHaveBeenCalledWith('org-1', 'CODE-123');
-    await expect(service({ redeemVoucher }).redeemVoucher('org-1', { serialCode: '' })).rejects.toThrow(/serialCode/);
   });
 });
 

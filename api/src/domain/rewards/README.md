@@ -45,7 +45,7 @@ Only the customer can mark a voucher used:
 
 Exactly one AVAILABLE -> REDEEMED transition queues the webhook, whichever of finalize, the reconciler or the indexer gets there first. The indexer also applies a use with no command behind it: the customer signed it and the chain recorded it.
 
-An unsigned use is ended after 30 minutes by the reconciler and leaves the voucher AVAILABLE. A voucher's serial is a lookup key: knowing it does not let anyone use the voucher.
+A new key replaces an unsigned use, so a customer who declined can be asked again. Otherwise the reconciler ends it after 30 minutes. Either way the voucher stays AVAILABLE. A failed Enoki execute keeps its digest, so that voucher waits for the reconciler until the transaction's expiration epoch passes. A voucher's serial is a lookup key: knowing it does not let anyone use the voucher.
 
 ## Paid claim details
 
@@ -79,7 +79,7 @@ A changed voucher/member payload under the same organization-scoped key returns 
 
 `POST /v1/rewards/vouchers` asks for ACTIVE by default and also accepts DRAFT or PAUSED. `PATCH /v1/rewards/vouchers/:id` edits permitted fields or sets DRAFT/ACTIVE/PAUSED. Both require a merchant `write` scope; reads require `read`. See Publishing for what becomes immutable.
 
-Supply cannot fall below claimed count; an exhausted or expired voucher cannot be activated. Increasing exhausted supply requires explicit activation. Pausing prevents new claims but does not revoke already-issued vouchers or alter their benefit/expiry.
+Supply cannot fall below claimed count; an exhausted voucher, or one with less than 24 hours left before it expires, cannot be activated. Claims and grants need the same 24 hours of use left, which the contract enforces too (`voucher_terms::is_issuable`). Increasing exhausted supply requires explicit activation. Pausing prevents new claims but does not revoke already-issued vouchers or alter their benefit/expiry.
 
 Dates must be real calendar dates in ISO date-time format with seconds and a timezone (for example `2030-01-01T00:00:00Z`). Impossible dates and out-of-range times are rejected. Numerically equivalent discount strings such as `10` and `10.00` represent the same benefit.
 
