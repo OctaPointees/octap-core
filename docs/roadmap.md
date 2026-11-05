@@ -13,7 +13,7 @@ then move the row to **Implemented** in the same pull request.
 | --- | --- |
 | PostgreSQL (Supabase) connection, Drizzle schema, first migration, RLS helper | api/src/infra/db; api/db/postgres/migrations |
 | Earn from purchase amounts, customer-signed POS redeem, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
-| Voucher create/list/get/claim/redeem, member vouchers | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts |
+| Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for credits, vouchers, webhook management, structured errors and cancellation | ts-sdks/packages/node |
 | Browser auth SDK for merchant websites: Firebase-style Google sign-in, enrollment, session restore, zkLogin transaction signing and finalize, over Core's proxy routes. Live Testnet signing is verified by hand (`ts-sdks/examples/README.md`) | ts-sdks/packages/browser; ts-sdks/examples/browser-auth |
@@ -45,6 +45,7 @@ then move the row to **Implemented** in the same pull request.
 
 ### Known gaps in implemented features
 
+- On-chain vouchers (OCT-279) are an alpha. Core still holds the issuer key for merchants, so a merchant's terms are published on its behalf; moving `AdminCap` to merchant owners and revoking caps are not started. A customer paying their own gas can call `claim_voucher` directly, which bypasses catalog stock and pausing, and which the indexer does not project; `credit_account::redeem` has the same gap. A customer's own-gas `use_voucher` landing after a refund leaves the voucher cancelled here and used on-chain, which only a log reports. The refund policy is published as part of the terms, and Core enforces it, not Move. The serial-only redeem route is gone, so the POC's redeem path needs OCT-228. Live Testnet verification through a real Enoki sponsorship is outstanding.
 - Voucher refund policy settings have no frontend editor, approval queue or console staff roles yet. Use server-side admin API credentials. Refund windows measure elapsed time from claim, not appointment time; coupon reactivation/reissuance and expiry extensions remain unimplemented. Live Testnet verification of the configurable policy cases remains outstanding.
 
 - The **indexer** only reconciles rows still PENDING. The chain-submit worker now marks a row
@@ -57,7 +58,7 @@ then move the row to **Implemented** in the same pull request.
   (see `api/src/domain/indexer/README.md`).
 
 - **Earn** is chain-dispatched (worker, IssuerCap-signed) and **POS redemption** is now also
-  chain-dispatched (customer-signed, Enoki-sponsored, see the row above). Paid voucher claims now reserve stock and points atomically, require a customer signature through the same sponsored redeem/finalize pipeline, and activate only after chain confirmation (OCT-231). Coupon catalog and serial records remain in PostgreSQL.
+  chain-dispatched (customer-signed, Enoki-sponsored, see the row above). Paid voucher claims now reserve stock and points atomically, require a customer signature through the same sponsored redeem/finalize pipeline, and activate only after chain confirmation (OCT-231). Since OCT-279, the claim also records the voucher on-chain in the same transaction, and only the customer's signature can mark it used. The catalog and serials remain in PostgreSQL.
 
 - POS redemption's reserve/finalize split has no equivalent of Harbor's `/resume` endpoint for a
   package-version cutover mid-reserve (not applicable yet — this repo has no published-package

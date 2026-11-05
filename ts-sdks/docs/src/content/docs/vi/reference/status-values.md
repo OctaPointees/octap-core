@@ -24,8 +24,8 @@ description: Ý nghĩa của từng trạng thái giao dịch, voucher và webho
 
 | Trạng thái | Ý nghĩa | Tiếp theo |
 | --- | --- | --- |
-| `RESERVED` | Điểm và tồn kho đang được giữ, khách hàng chưa sở hữu | Ký và finalize |
-| `AVAILABLE` | Đã sở hữu và sẵn sàng dùng | Redeem serial |
+| `RESERVED` | Đang chờ chain, khách hàng chưa sở hữu | Claim trả phí: ký và finalize. Tặng hoặc claim miễn phí: chờ. |
+| `AVAILABLE` | Đã sở hữu và sẵn sàng dùng | Chuẩn bị lượt dùng để khách hàng ký |
 | `REDEEMED` | Đã dùng | Không có |
 | `EXPIRED` | Đã quá hạn | Không có |
 | `CANCELLED` | Thất bại, bị bỏ dở hoặc đã hoàn tiền | Key mới có thể claim lại |

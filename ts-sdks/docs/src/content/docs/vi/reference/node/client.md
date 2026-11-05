@@ -40,7 +40,7 @@ Mọi method nhận `RequestOptions` làm tham số cuối.
 | Nhóm | Method |
 | --- | --- |
 | [Định danh và credits](/vi/reference/node/credits/) | `verifyCustomer`, `earnPoints`, `getBalance`, `getIssuanceBudget`, `listTransactions`, `reservePosRedemption`, `finalizePosRedemption`, `reverseTransaction` |
-| [Voucher](/vi/reference/node/vouchers/) | `createVoucher`, `updateVoucher`, `listVouchers`, `getVoucher`, `claimVoucher`, `getVoucherClaim`, `finalizeVoucherClaim`, `redeemVoucher`, `listMemberVouchers`, `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
+| [Voucher](/vi/reference/node/vouchers/) | `createVoucher`, `updateVoucher`, `listVouchers`, `getVoucher`, `claimVoucher`, `getVoucherClaim`, `finalizeVoucherClaim`, `grantVoucher`, `prepareVoucherUse`, `finalizeVoucherUse`, `listMemberVouchers`, `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | [Webhook](/vi/reference/node/webhooks/) | `registerWebhookEndpoint`, `listWebhookEndpoints`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `listWebhookDeliveries`, `replayWebhookDelivery`, `verifyWebhookSignature`, `constructWebhookEvent` |
 
 ## Ngoài phạm vi

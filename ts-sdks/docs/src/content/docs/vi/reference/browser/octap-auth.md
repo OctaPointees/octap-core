@@ -79,6 +79,17 @@ auth.signAndFinalize(claim: SignableClaim, options?: RequestOptions): Promise<Fi
 
 Mọi lỗi trừ giới hạn tần suất đều trở thành `outcome-unknown`, vì response lỗi không chứng minh được giao dịch không lên chain. Giới hạn tần suất là lỗi duy nhất chứng minh chưa có gì được thực hiện, nên nó xuất hiện dưới dạng `api-error` với status 429.
 
+
+## signAndFinalizeVoucherUse
+
+Ký lượt dùng voucher của khách hàng và finalize. Hãy cho khách hàng thấy họ đang dùng gì trước: chữ ký này là thứ duy nhất đánh dấu được voucher của họ là đã dùng.
+
+```ts
+auth.signAndFinalizeVoucherUse(use: SignableVoucherUse, options?: RequestOptions): Promise<FinalizedVoucherUse>
+```
+
+`use` là kết quả `prepareVoucherUse` trả về trên server của bạn. Giống `signAndFinalize`, nó không bao giờ tự thử lại, và báo `outcome-unknown` khi chưa rõ kết quả. Nó thất bại với `invalid-claim` khi không có gì để ký.
+
 ## signTransaction
 
 Trả về chữ ký zkLogin trên transaction bytes dạng base64, và không gửi gì. Từ chối bytes có người gửi không phải khách hàng đang đăng nhập.

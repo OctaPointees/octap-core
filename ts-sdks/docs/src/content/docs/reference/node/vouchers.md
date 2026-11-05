@@ -1,6 +1,6 @@
 ---
 title: Vouchers
-description: Node SDK methods for the voucher catalog, claims, redemption and refund policy.
+description: Node SDK methods for the voucher catalog, claims, grants, customer-signed use and refund policy.
 ---
 
 ## createVoucher
@@ -15,7 +15,8 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | --- | --- | --- |
 | `code` | `string` | **Required.** Unique in your organization. |
 | `title` | `string` | **Required.** |
-| `discountType` | `'PERCENTAGE' \| 'FIXED_AMOUNT' \| 'FREE_ITEM'` | **Required.** |
+| `discountType` | `'PERCENTAGE' \| 'FIXED_AMOUNT' \| 'FREE_ITEM'` | **Required** unless `terms` is set. |
+| `terms` | `object` | Your own description of the promise. Published on-chain, so no personal data. |
 | `description` | `string` | |
 | `pointsCost` | `number` | Defaults to 0, a free voucher. |
 | `discountValue` | `string` | |
@@ -23,13 +24,13 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `startsAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `expiresAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `metadata` | `object` | |
-| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`. |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. |
 
-`VoucherDto` adds `id`, `organizationId`, `claimedCount`, `createdAt` and `updatedAt`.
+`VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` and `updatedAt`.
 
 ## updateVoucher
 
-Takes any fields from `createVoucher`. After the first claim, `code`, `pointsCost`, discount and dates are fixed. [Guide](/guides/manage-vouchers/#edit-a-voucher)
+Takes any fields from `createVoucher`. Once publishing starts, everything in the terms is fixed; metadata, supply and status are not. [Guide](/guides/manage-vouchers/#edit-a-voucher)
 
 `PATCH /v1/rewards/vouchers/:id` · Scope: `write`
 
@@ -55,7 +56,7 @@ getVoucher(voucherId: string, options?): Promise<VoucherDto>
 
 ## claimVoucher
 
-Reserves a voucher. A paid claim stays `RESERVED` until the chain confirms. [Guide](/guides/claim-a-paid-voucher/)
+Reserves a voucher. It stays `RESERVED` until the chain confirms. [Guide](/guides/claim-a-paid-voucher/)
 
 `POST /v1/rewards/vouchers/:id/claim` · Scope: `write`
 
@@ -73,14 +74,14 @@ claimVoucher(voucherId: string, request: ClaimVoucherRequest, options?): Promise
 | `voucherOwnershipId` | `string` | Use it with `getVoucherClaim`. |
 | `voucherId` | `string` | |
 | `organizationEndUserId` | `string` | |
-| `serialCode` | `string` | Use it with `redeemVoucher` once `AVAILABLE`. |
+| `serialCode` | `string` | Use it with `prepareVoucherUse` once `AVAILABLE`. |
 | `status` | [`VoucherOwnershipStatus`](/reference/status-values/) | |
 | `pointsDeducted` | `number` | Zero until the chain confirms. |
 | `pointsCost` | `number` | |
 | `transactionId` | `string \| null` | The `REDEEM` transaction. Use it to reverse the claim. |
 | `digest` | `string \| null` | Present on a claim response while `RESERVED` |
 | `transactionBytes` | `string \| null` | Present on a claim response while `RESERVED` |
-| `refundPolicy` | `VoucherRefundPolicySnapshot` | Terms kept with this claim |
+| `refundPolicy` | `VoucherRefundPolicySnapshot` | Published with the voucher's terms |
 | `claimedAt` | `string` | |
 | `expiresAt` | `string \| null` | |
 
@@ -104,22 +105,49 @@ Submits the customer's signature for a claim, on the same route as `finalizePosR
 finalizeVoucherClaim(request: { digest: string; signature: string }, options?): Promise<FinalizePosRedemptionResponse>
 ```
 
-## redeemVoucher
+## grantVoucher
 
-Uses a claimed voucher. No points move. A serial can only be redeemed once.
+Gives a customer a voucher without spending their points. It stays `RESERVED` until the chain records it, and `voucher.granted` reports that. [Guide](/guides/manage-vouchers/#give-a-voucher)
 
-`POST /v1/rewards/vouchers/redeem` · Scope: `write`
+`POST /v1/rewards/vouchers/:id/grant` · Scope: `write`
 
 ```ts
-redeemVoucher(request: RedeemVoucherRequest, options?): Promise<RedeemVoucherResponse>
+grantVoucher(voucherId: string, request: GrantVoucherRequest, options?): Promise<ClaimVoucherResponse>
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `organizationEndUserId` | `string` | **Required.** A UUID. |
+| `idempotencyKey` | `string` | **Required.** 1–100 letters, numbers, `:`, `_` or `-`. |
+
+## prepareVoucherUse
+
+Asks the customer to use a voucher. It returns bytes for their device to sign and marks nothing used. [Guide](/guides/claim-a-paid-voucher/#4-use-the-voucher)
+
+`POST /v1/rewards/vouchers/use` · Scope: `write`
+
+```ts
+prepareVoucherUse(request: PrepareVoucherUseRequest, options?): Promise<PrepareVoucherUseResponse>
 ```
 
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `serialCode` | `string` | **Required.** 1–100 letters, numbers, `_` or `-`. |
-| `receiptReference` | `string` | Your reference. |
+| `idempotencyKey` | `string` | **Required.** 1–100 letters, numbers, `:`, `_` or `-`. |
 
-Returns `voucherOwnershipId`, `voucherId`, `serialCode`, `status`, `redeemedAt`, `voucherTitle`, `discountType` and `discountValue`.
+Returns `voucherOwnershipId`, `voucherId`, `serialCode`, `status`, `digest`, `transactionBytes`, `voucherTitle`, `discountType` and `discountValue`. `digest` and `transactionBytes` are null once the use has settled.
+
+## finalizeVoucherUse
+
+Submits the customer's signature for a use. In a browser, use `auth.signAndFinalizeVoucherUse`.
+
+`POST /v1/rewards/vouchers/use/finalize` · Public: the signature authorizes it
+
+```ts
+finalizeVoucherUse(request: { digest: string; signature: string }, options?): Promise<RedeemVoucherResponse>
+```
+
+Returns `voucherOwnershipId`, `voucherId`, `serialCode`, `status`, `redeemedAt`, `voucherTitle`, `discountType`, `discountValue` and `blockchainDigest`.
 
 ## listMemberVouchers
 
@@ -131,7 +159,7 @@ listMemberVouchers(memberId: string, options?): Promise<VoucherOwnershipDto[]>
 
 ## getVoucherRefundPolicy
 
-Reads the terms for future claims.
+Reads the policy the next published voucher takes.
 
 `GET /v1/rewards/refund-policy` · Scope: `read`
 
@@ -141,7 +169,7 @@ getVoucherRefundPolicy(options?): Promise<VoucherRefundPolicyDto>
 
 ## setVoucherRefundPolicy
 
-Publishes new terms for future claims. [Settings](/guides/manage-vouchers/#refunds)
+Sets the policy for vouchers published from now on. [Settings](/guides/manage-vouchers/#refunds)
 
 `PUT /v1/rewards/refund-policy` · Scope: `admin`
 

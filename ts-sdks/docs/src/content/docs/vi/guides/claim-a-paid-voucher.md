@@ -10,7 +10,7 @@ Luồng này dùng cả hai SDK. Server của bạn giữ chỗ voucher, khách 
 | 1. Giữ chỗ | Server của bạn | Giữ điểm và một đơn vị tồn kho. Voucher ở trạng thái `RESERVED`. |
 | 2. Ký và finalize | Trình duyệt của khách hàng | Khách hàng ký, và giao dịch được gửi lên chain. |
 | 3. Xác nhận | Server của bạn | Đọc claim cho đến khi nó là `AVAILABLE`. |
-| 4. Redeem | Server của bạn | Dùng serial khi thanh toán. Không có điểm nào thay đổi ở bước này. |
+| 4. Dùng | Server, rồi trình duyệt | Bạn yêu cầu, khách hàng ký. Không có điểm nào thay đổi ở bước này. |
 
 ## 1. Giữ chỗ trên server
 
@@ -28,7 +28,7 @@ const claim = await client.claimVoucher(voucherId, {
 return claim;
 ```
 
-Claim trả phí trả về `status: 'RESERVED'`, `pointsDeducted: 0`, `digest` và `transactionBytes`. Voucher miễn phí trả về `AVAILABLE` ngay, nên không có gì để ký.
+Claim trả phí trả về `status: 'RESERVED'`, `pointsDeducted: 0`, `digest` và `transactionBytes`. Voucher miễn phí cũng trả về `RESERVED` nhưng không có gì để ký: OctaP ghi nó lên chain, rồi `voucher.granted` báo cho bạn khi nó là `AVAILABLE`.
 
 ## 2. Ký và finalize trên trình duyệt
 
@@ -62,20 +62,25 @@ switch (claim.status) {
 }
 ```
 
-Hãy kiểm tra `organizationEndUserId` của claim đúng là thành viên đã xác minh trước khi trả về. API key của bạn đọc được claim của mọi thành viên, và claim chứa mã serial có thể redeem.
+Hãy kiểm tra `organizationEndUserId` của claim đúng là thành viên đã xác minh trước khi trả về. API key của bạn đọc được claim của mọi thành viên, và claim chứa mã serial của nó.
 
-## 4. Redeem khi thanh toán
+## 4. Dùng voucher
 
-Redeem là dùng voucher. Điểm đã bị trừ từ trước, nên không có điểm nào thay đổi.
+Dùng voucher cần chữ ký của khách hàng. API key của bạn chỉ có thể yêu cầu, nên không ai dùng được voucher nếu người giữ không đồng ý.
 
-```ts
-const redeemed = await client.redeemVoucher({
+```ts title="Server của bạn"
+const use = await client.prepareVoucherUse({
   serialCode: claim.serialCode,
-  receiptReference: order.id,
+  idempotencyKey: `use-${order.id}`,
 });
+return use;
 ```
 
-Mỗi serial chỉ redeem được một lần. Lệnh này không có idempotency key, nên sau khi chưa rõ kết quả, hãy đọc trạng thái trước khi thử lại.
+```ts title="Trình duyệt của khách hàng"
+await auth.signAndFinalizeVoucherUse(use);
+```
+
+Hãy giao quyền lợi khi nhận webhook `voucher.redeemed`. Thử lại với cùng key sẽ tiếp tục đúng lượt dùng đó. Lượt dùng mà khách hàng không ký sẽ kết thúc sau 30 phút và voucher vẫn là `AVAILABLE`. Trong khi đang có lượt dùng, voucher không thể được hoàn tiền.
 
 ## Quy tắc cho giao diện của bạn
 

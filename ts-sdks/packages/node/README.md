@@ -41,7 +41,9 @@ and `signal`, including both balance overloads.
 | `GET/PUT /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | `POST/GET /v1/rewards/vouchers`, `GET/PATCH .../:id` | `createVoucher`, `listVouchers`, `getVoucher`, `updateVoucher` |
 | `POST .../vouchers/:id/claim`, `GET .../claims/:id` | `claimVoucher`, `getVoucherClaim` |
-| `POST .../vouchers/redeem`, `GET .../members/:id/vouchers` | `redeemVoucher`, `listMemberVouchers` |
+| `POST .../vouchers/:id/grant` | `grantVoucher` |
+| `POST .../vouchers/use`, `/use/finalize` | `prepareVoucherUse`, `finalizeVoucherUse` |
+| `GET .../members/:id/vouchers` | `listMemberVouchers` |
 | `POST/GET /v1/webhooks/endpoints` | `registerWebhookEndpoint`, `listWebhookEndpoints` |
 | `POST .../endpoints/:id/disable`, `/enable`, `/rotate-secret` | `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret` |
 | `GET /v1/webhooks/deliveries`, `POST .../:id/replay` | `listWebhookDeliveries`, `replayWebhookDelivery` |
