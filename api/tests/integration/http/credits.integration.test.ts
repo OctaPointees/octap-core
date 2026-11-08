@@ -6,6 +6,7 @@ import { CreditsRepository } from '#infra/db/repositories/credits.repository.js'
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { IndexerRepository, CREDIT_ACCOUNT_STREAM } from '#infra/db/repositories/indexer.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
+import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
 import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { createTestApp } from '../support/app.js';
@@ -19,7 +20,7 @@ import {
   seedProgram,
 } from '../support/db.js';
 import { stub } from '../../helpers/stub.js';
-import { b64, fakeChainResult } from '../../helpers/fixtures.js';
+import { POS_BENEFIT, b64, fakeChainResult } from '../../helpers/fixtures.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
@@ -81,6 +82,7 @@ function chainSubmitWorker(
         earn(signed.program, signed.params),
     }),
     ctx.app.get(ProgramsRepository),
+    ctx.app.get(RewardsRepository),
   );
   return {
     async drain() {
@@ -192,6 +194,7 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
           endCursor: 'C1',
         }),
       }),
+      ctx.app.get(RewardsRepository),
     );
 
     expect(await indexer.processNextPage()).toBe(false);
@@ -245,7 +248,7 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
       .http()
       .post('/v1/credits/redeem/reserve')
       .set(bareAuth)
-      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve' })
+      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve', ...POS_BENEFIT })
       .expect(422);
 
     expect(
@@ -269,7 +272,7 @@ describe('POS redemption: reserve -> customer signs -> finalize', () => {
       .http()
       .post('/v1/credits/redeem/reserve')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
+      .send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey, ...POS_BENEFIT });
 
   it('holds, sponsors, and settles on the chain’s verdict; finalize needs no merchant key', async () => {
     const reserved = await reserve(30).expect(201);

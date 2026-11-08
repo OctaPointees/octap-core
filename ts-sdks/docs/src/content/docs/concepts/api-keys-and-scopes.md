@@ -14,9 +14,9 @@ A key can hold the `read`, `write` and `admin` scopes. A key missing the require
 | Scope | SDK methods |
 | --- | --- |
 | `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
-| `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `redeemVoucher` |
+| `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
 | `admin` | `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `registerWebhookEndpoint`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `replayWebhookDelivery` |
-| None | `finalizePosRedemption`, `finalizeVoucherClaim`: the customer's signature authorizes these |
+| None | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: the customer's signature authorizes these |
 
 Some refunds also need `admin`: a reversal that the refund policy allows only for an expired or already redeemed voucher.
 

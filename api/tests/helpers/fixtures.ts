@@ -8,6 +8,9 @@ import type { programs } from '#infra/db/schema/programs.schema.js';
 import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from './stub.js';
 
+/** The order and discount a POS redemption binds on-chain. */
+export const POS_BENEFIT = { orderReference: 'order-1', discountAmount: 25000, currency: 'VND' };
+
 export const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
 
 /** What `SuiClientService` returns: a submitted transaction plus the `eventField` lookup. */
@@ -87,6 +90,10 @@ export function buildVoucher(overrides: Partial<typeof vouchers.$inferSelect> = 
     pointsCost: 50,
     discountType: 'PERCENTAGE',
     discountValue: '10.00',
+    terms: null,
+    publishStatus: 'PUBLISHED',
+    suiTermsId: '0xterms',
+    refundPolicySnapshot: null,
     totalSupply: 100,
     claimedCount: 0,
     status: 'ACTIVE',

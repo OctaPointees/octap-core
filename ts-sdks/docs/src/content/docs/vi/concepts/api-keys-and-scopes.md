@@ -14,9 +14,9 @@ Một key có thể có scope `read`, `write` và `admin`. Key thiếu scope c�
 | Scope | Method của SDK |
 | --- | --- |
 | `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
-| `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `redeemVoucher` |
+| `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
 | `admin` | `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `registerWebhookEndpoint`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `replayWebhookDelivery` |
-| Không cần | `finalizePosRedemption`, `finalizeVoucherClaim`: chữ ký của khách hàng xác nhận các lệnh này |
+| Không cần | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: chữ ký của khách hàng xác nhận các lệnh này |
 
 Một số lần hoàn tiền cũng cần `admin`: khi chính sách hoàn tiền chỉ cho phép đảo giao dịch đối với voucher đã hết hạn hoặc đã redeem.
 

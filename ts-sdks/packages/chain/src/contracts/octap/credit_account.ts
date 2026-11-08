@@ -21,6 +21,10 @@
  * silently clawing back less; `reverse_redeem` gives a redemption's credits back
  * as a non-expiring balance. Each original can be reversed at most once, enforced
  * here, not only in PostgreSQL.
+ * 
+ * A customer's voucher is a record in this account, not an object they hold: it
+ * cannot be transferred, and `use_voucher` is the only way to mark it used. Its
+ * promise lives in the frozen `VoucherTerms` it points to.
  */
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.js';
@@ -41,6 +45,13 @@ export const Redemption = new MoveStruct({ name: `${$moduleName}::Redemption`, f
         amount: bcs.u64(),
         reversed: bcs.bool()
     } });
+export const VoucherRecord = new MoveStruct({ name: `${$moduleName}::VoucherRecord`, fields: {
+        terms_id: bcs.Address,
+        /** Zero for a granted voucher, which has nothing to refund. */
+        points_paid: bcs.u64(),
+        status: bcs.u8(),
+        issued_at_ms: bcs.u64()
+    } });
 export const CreditAccount = new MoveStruct({ name: `${$moduleName}::CreditAccount`, fields: {
         id: bcs.Address,
         program_id: bcs.Address,
@@ -54,6 +65,8 @@ export const CreditAccount = new MoveStruct({ name: `${$moduleName}::CreditAccou
         non_expiring: bcs.u64(),
         /** `reference` of every `redeem` -> what it spent. */
         redemptions: table.Table,
+        /** `reference` of every voucher -> its record. */
+        vouchers: table.Table,
         lifetime_earned: bcs.u64(),
         lifetime_redeemed: bcs.u64()
     } });
@@ -91,6 +104,36 @@ export const CreditRedeemReversed = new MoveStruct({ name: `${$moduleName}::Cred
         amount: bcs.u64(),
         reference: bcs.vector(bcs.u8())
     } });
+export const VoucherClaimed = new MoveStruct({ name: `${$moduleName}::VoucherClaimed`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        terms_id: bcs.Address,
+        points_paid: bcs.u64(),
+        reference: bcs.vector(bcs.u8())
+    } });
+export const VoucherGranted = new MoveStruct({ name: `${$moduleName}::VoucherGranted`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        terms_id: bcs.Address,
+        reference: bcs.vector(bcs.u8())
+    } });
+export const VoucherUsed = new MoveStruct({ name: `${$moduleName}::VoucherUsed`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        terms_id: bcs.Address,
+        reference: bcs.vector(bcs.u8())
+    } });
+export const VoucherCancelled = new MoveStruct({ name: `${$moduleName}::VoucherCancelled`, fields: {
+        account_id: bcs.Address,
+        program_id: bcs.Address,
+        beneficiary: bcs.Address,
+        terms_id: bcs.Address,
+        points_refunded: bcs.u64(),
+        reference: bcs.vector(bcs.u8())
+    } });
 export const CreditExpired = new MoveStruct({ name: `${$moduleName}::CreditExpired`, fields: {
         account_id: bcs.Address,
         program_id: bcs.Address,
@@ -116,7 +159,7 @@ export interface OpenAccountOptions {
  * anyone spam shared objects.
  */
 export function openAccount(options: OpenAccountOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         null,
@@ -165,7 +208,7 @@ export interface EarnOptions {
  * budget shard aborts `budget_shard::EBudgetExceeded`.
  */
 export function earn(options: EarnOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         null,
@@ -207,7 +250,7 @@ export interface RedeemOptions {
  * (`EDuplicateRedemption`): it is what `reverse_redeem` later names.
  */
 export function redeem(options: RedeemOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         'u64',
@@ -219,6 +262,143 @@ export function redeem(options: RedeemOptions) {
         package: packageAddress,
         module: 'credit_account',
         function: 'redeem',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ClaimVoucherArguments {
+    account: RawTransactionArgument<string>;
+    terms: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface ClaimVoucherOptions {
+    package?: string;
+    arguments: ClaimVoucherArguments | [
+        account: RawTransactionArgument<string>,
+        terms: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Spends the terms' points and records the voucher in one transaction, so a
+ * customer never pays without holding the voucher. The price comes from the frozen
+ * terms, not the caller. `reference` also names the debit, so `CreditRedeemed` and
+ * `reverse_redeem` work as they do for `redeem`.
+ */
+export function claimVoucher(options: ClaimVoucherOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        null,
+        'vector<u8>',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["account", "terms", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'claim_voucher',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface GrantVoucherArguments {
+    issuer: RawTransactionArgument<string>;
+    account: RawTransactionArgument<string>;
+    terms: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface GrantVoucherOptions {
+    package?: string;
+    arguments: GrantVoucherArguments | [
+        issuer: RawTransactionArgument<string>,
+        account: RawTransactionArgument<string>,
+        terms: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Gives the customer a voucher without spending their points, so it needs no
+ * customer signature. Only using it does.
+ */
+export function grantVoucher(options: GrantVoucherOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        'vector<u8>',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["issuer", "account", "terms", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'grant_voucher',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface UseVoucherArguments {
+    account: RawTransactionArgument<string>;
+    terms: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface UseVoucherOptions {
+    package?: string;
+    arguments: UseVoucherArguments | [
+        account: RawTransactionArgument<string>,
+        terms: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Marks the voucher used. Requires the beneficiary's own signature: there is no
+ * path for an organization or admin to use a customer's voucher.
+ */
+export function useVoucher(options: UseVoucherOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        null,
+        'vector<u8>',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["account", "terms", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'use_voucher',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface CancelVoucherArguments {
+    issuer: RawTransactionArgument<string>;
+    account: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface CancelVoucherOptions {
+    package?: string;
+    arguments: CancelVoucherArguments | [
+        issuer: RawTransactionArgument<string>,
+        account: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Cancels a paid, unused voucher and refunds its points in one transaction, as
+ * non-expiring credits like `reverse_redeem`. An issuer can only take back a
+ * voucher by returning what it cost: a granted voucher cannot be cancelled.
+ */
+export function cancelVoucher(options: CancelVoucherOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        null,
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["issuer", "account", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'cancel_voucher',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -251,7 +431,7 @@ export interface ReverseEarnOptions {
  * key aborts `operation_shard::EAlreadyReversed`.
  */
 export function reverseEarn(options: ReverseEarnOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         null,
@@ -288,7 +468,7 @@ export interface ReverseRedeemOptions {
  * `reference`.
  */
 export function reverseRedeem(options: ReverseRedeemOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         null,
@@ -316,7 +496,7 @@ export interface SpendableOptions {
  * the PostgreSQL projection without needing a transaction.
  */
 export function spendable(options: SpendableOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null,
         '0x2::clock::Clock'
@@ -326,6 +506,64 @@ export function spendable(options: SpendableOptions) {
         package: packageAddress,
         module: 'credit_account',
         function: 'spendable',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface VoucherIsUsedArguments {
+    account: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface VoucherIsUsedOptions {
+    package?: string;
+    arguments: VoucherIsUsedArguments | [
+        account: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * `true` once `use_voucher` has marked this voucher used. Aborts for an unknown
+ * voucher.
+ */
+export function voucherIsUsed(options: VoucherIsUsedOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["account", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'voucher_is_used',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface VoucherIsCancelledArguments {
+    account: RawTransactionArgument<string>;
+    reference: RawTransactionArgument<Array<number>>;
+}
+export interface VoucherIsCancelledOptions {
+    package?: string;
+    arguments: VoucherIsCancelledArguments | [
+        account: RawTransactionArgument<string>,
+        reference: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * `true` once `cancel_voucher` has cancelled this voucher. Aborts for an unknown
+ * voucher.
+ */
+export function voucherIsCancelled(options: VoucherIsCancelledOptions) {
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const argumentsTypes = [
+        null,
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["account", "reference"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_account',
+        function: 'voucher_is_cancelled',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -339,7 +577,7 @@ export interface BeneficiaryOptions {
     ];
 }
 export function beneficiary(options: BeneficiaryOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -361,7 +599,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b';
+    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

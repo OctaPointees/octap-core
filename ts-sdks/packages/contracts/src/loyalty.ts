@@ -34,7 +34,20 @@ export interface EarnPointsResponse {
   idempotencyKey: string;
 }
 
-export interface ReservePosRedemptionRequest {
+/**
+ * What the customer gets for the points: a discount on one of your orders. It is hashed into the
+ * on-chain redemption the customer signs, so the chain records what each spend paid for.
+ */
+export interface PosRedemptionBenefit {
+  /** Your own order id. Must hold no personal data. */
+  orderReference: string;
+  /** The discount on that order, in `currency`'s major units (e.g. 25000 for 25.000 VND). */
+  discountAmount: number;
+  /** ISO 4217 code, e.g. `VND`. */
+  currency: string;
+}
+
+export interface ReservePosRedemptionRequest extends PosRedemptionBenefit {
   organizationEndUserId: string;
   pointsAmount: number;
   idempotencyKey: string;

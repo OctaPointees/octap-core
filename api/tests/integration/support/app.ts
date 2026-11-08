@@ -29,7 +29,11 @@ export function fakeChainAdapters() {
   };
   const suiBuilder = {
     redeemMoveCallTarget: '0xpkg::credit_account::redeem',
+    claimVoucherMoveCallTarget: '0xpkg::credit_account::claim_voucher',
+    useVoucherMoveCallTarget: '0xpkg::credit_account::use_voucher',
     buildRedeemTransactionKind: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    buildClaimVoucherTransactionKind: vi.fn(async () => new Uint8Array([4, 5, 6])),
+    buildUseVoucherTransactionKind: vi.fn(async () => new Uint8Array([7, 8, 9])),
     waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
     budgetShardRemaining: vi.fn<(shardId: string) => Promise<bigint>>(async () => 1_000_000n),
     listCreditAccountEvents: vi.fn(async () => ({

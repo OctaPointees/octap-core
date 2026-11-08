@@ -7,6 +7,7 @@ import { normalizeSuiAddress } from '@mysten/sui/utils';
 import type { Signer } from '@mysten/sui/cryptography';
 
 import * as creditAccount from './contracts/octap/credit_account.js';
+import * as voucherTerms from './contracts/octap/voucher_terms.js';
 import * as programControl from './contracts/octap/program_control.js';
 import * as policyVersion from './contracts/octap/policy_version.js';
 import * as operationShard from './contracts/octap/operation_shard.js';
@@ -75,6 +76,45 @@ export interface RedeemParams {
   /** Credit amount to debit, already resolved off-chain (e.g. a voucher's credit cost). */
   cost: number | bigint;
   /** Opaque off-chain reference (e.g. a redemption id), for event correlation. */
+  reference: Uint8Array;
+}
+
+export interface PublishVoucherTermsParams {
+  issuerCapId: string;
+  programId: string;
+  /** The off-chain voucher id, for correlating the event. */
+  reference: Uint8Array;
+  /** Canonical JSON of the promise. */
+  terms: Uint8Array;
+  pointsCost: number | bigint;
+  /** Zero means no start limit. */
+  startsAtMs: number | bigint;
+  /** Zero means it never expires. */
+  expiresAtMs: number | bigint;
+}
+
+export interface ClaimVoucherParams {
+  accountId: string;
+  termsId: string;
+  reference: Uint8Array;
+}
+
+export interface GrantVoucherParams {
+  issuerCapId: string;
+  accountId: string;
+  termsId: string;
+  reference: Uint8Array;
+}
+
+export interface UseVoucherParams {
+  accountId: string;
+  termsId: string;
+  reference: Uint8Array;
+}
+
+export interface CancelVoucherParams {
+  issuerCapId: string;
+  accountId: string;
   reference: Uint8Array;
 }
 
@@ -307,6 +347,76 @@ export class OctapChainClient {
       arguments: {
         account: params.accountId,
         cost: params.cost,
+        reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildPublishVoucherTermsTransaction(params: PublishVoucherTermsParams): Transaction {
+    const tx = new Transaction();
+    voucherTerms.publishTerms({
+      package: this.packageId,
+      arguments: {
+        issuer: params.issuerCapId,
+        program: params.programId,
+        reference: Array.from(params.reference),
+        terms: Array.from(params.terms),
+        pointsCost: params.pointsCost,
+        startsAtMs: params.startsAtMs,
+        expiresAtMs: params.expiresAtMs,
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildClaimVoucherTransaction(params: ClaimVoucherParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.claimVoucher({
+      package: this.packageId,
+      arguments: {
+        account: params.accountId,
+        terms: params.termsId,
+        reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildGrantVoucherTransaction(params: GrantVoucherParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.grantVoucher({
+      package: this.packageId,
+      arguments: {
+        issuer: params.issuerCapId,
+        account: params.accountId,
+        terms: params.termsId,
+        reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildUseVoucherTransaction(params: UseVoucherParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.useVoucher({
+      package: this.packageId,
+      arguments: {
+        account: params.accountId,
+        terms: params.termsId,
+        reference: Array.from(params.reference),
+      },
+    })(tx);
+    return tx;
+  }
+
+  buildCancelVoucherTransaction(params: CancelVoucherParams): Transaction {
+    const tx = new Transaction();
+    creditAccount.cancelVoucher({
+      package: this.packageId,
+      arguments: {
+        issuer: params.issuerCapId,
+        account: params.accountId,
         reference: Array.from(params.reference),
       },
     })(tx);

@@ -7,7 +7,8 @@ of "an UNKNOWN operation stays UNKNOWN until someone checks the chain by hand" (
 - `checkpoint-indexer.worker.ts` / `.processor.ts`: polls `octap::credit_account` events through
   `SuiTransactionBuilderClient.listCreditAccountEvents` (gRPC `core.listEvents`, read-only, no
   signer). For each `CreditEarned` (matched by `operation_key` = the command's idempotency key) or
-  `CreditRedeemed` (matched by `reference` = the loyalty transaction id) whose loyalty transaction
+  `CreditRedeemed` (matched by `reference` = the redemption's receipt reference, which must equal
+  the row's `receiptReference`: `posRedemptionReference` or `voucherClaimReference`) whose loyalty transaction
   is still PENDING, it calls the same `confirmEarnOnChain`/`confirmPosRedemptionOnChain` the
   synchronous paths use, and moves the operation to SUBMITTED. For an already-CONFIRMED row it
   still settles the operation (one left UNKNOWN by a failed `markSubmitted` after the ledger

@@ -86,7 +86,14 @@ describe('OctaPointClient', () => {
     expect(earn).toMatchObject({ transactionId: 'tx-sdk-1', newBalance: 200 });
 
     await client.reservePosRedemption(
-      { organizationEndUserId: 'user-456', pointsAmount: 50, idempotencyKey: 'idem-key-2' },
+      {
+        organizationEndUserId: 'user-456',
+        pointsAmount: 50,
+        idempotencyKey: 'idem-key-2',
+        orderReference: 'order-1',
+        discountAmount: 25000,
+        currency: 'VND',
+      },
       { organizationId: 'org-override' },
     );
     expect(last().url).toBe('https://api.octap.network/v1/credits/redeem/reserve');
@@ -155,11 +162,19 @@ describe('OctaPointClient', () => {
     await client.getVoucher('v-10');
     expect(last().url).toBe('https://api.octap.network/v1/rewards/vouchers/v-10');
 
-    expect((await client.claimVoucher('v-10', { organizationEndUserId: 'user-1' })).serialCode).toBe('DISCOUNT-ABC123');
+    expect(
+      (await client.claimVoucher('v-10', { organizationEndUserId: 'user-1', idempotencyKey: 'claim-1' })).serialCode,
+    ).toBe('DISCOUNT-ABC123');
     expect(last().url).toBe('https://api.octap.network/v1/rewards/vouchers/v-10/claim');
 
-    expect((await client.redeemVoucher({ serialCode: 'DISCOUNT-ABC123' })).status).toBe('REDEEMED');
-    expect(last().url).toBe('https://api.octap.network/v1/rewards/vouchers/redeem');
+    await client.grantVoucher('v-10', { organizationEndUserId: 'user-1', idempotencyKey: 'grant-1' });
+    expect(last()).toMatchObject({ url: 'https://api.octap.network/v1/rewards/vouchers/v-10/grant', method: 'POST' });
+
+    await client.prepareVoucherUse({ serialCode: 'DISCOUNT-ABC123', idempotencyKey: 'use-1' });
+    expect(last()).toMatchObject({ url: 'https://api.octap.network/v1/rewards/vouchers/use', method: 'POST' });
+
+    await client.finalizeVoucherUse({ digest: 'd', signature: 's' });
+    expect(last()).toMatchObject({ url: 'https://api.octap.network/v1/rewards/vouchers/use/finalize', method: 'POST' });
 
     await client.listMemberVouchers('user-1');
     expect(last().url).toBe('https://api.octap.network/v1/rewards/members/user-1/vouchers');
@@ -175,7 +190,14 @@ describe('OctaPointClient', () => {
     })) as unknown as typeof fetch;
 
     const err = await createOctaPointClient({ fetchFn })
-      .reservePosRedemption({ organizationEndUserId: 'user-1', pointsAmount: 9999, idempotencyKey: 'idem' })
+      .reservePosRedemption({
+        organizationEndUserId: 'user-1',
+        pointsAmount: 9999,
+        idempotencyKey: 'idem',
+        orderReference: 'order-1',
+        discountAmount: 25000,
+        currency: 'VND',
+      })
       .catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(OctaApiError);

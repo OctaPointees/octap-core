@@ -14,8 +14,13 @@ const reservation = await client.reservePosRedemption({
   organizationEndUserId: memberId,
   pointsAmount: 500,
   idempotencyKey: `pos-${order.id}`,
+  orderReference: order.id,
+  discountAmount: 50000,
+  currency: 'VND',
 });
 ```
+
+`orderReference`, `discountAmount` and `currency` say what the points pay for. They are hashed into the transaction the customer signs, so the chain records which order and discount each spend bought. Show the customer the same discount before they sign. `orderReference` must hold no personal data.
 
 Send `digest` and `transactionBytes` to the customer's device. If the same key already settled, both are `null` and `status` tells you the result.
 

@@ -126,6 +126,11 @@ reservePosRedemption(request: ReservePosRedemptionRequest, options?): Promise<Re
 | `organizationEndUserId` | `string` | **Required.** |
 | `pointsAmount` | `number` | **Required.** Greater than zero. |
 | `idempotencyKey` | `string` | **Required.** |
+| `orderReference` | `string` | **Required.** Your order id, 1–100 characters, no personal data. |
+| `discountAmount` | `number` | **Required.** The discount on that order, in `currency`'s major units. Greater than zero. |
+| `currency` | `string` | **Required.** ISO 4217 code, such as `VND`. |
+
+The last three are hashed into the on-chain redemption the customer signs.
 
 | Returned field | Type | Description |
 | --- | --- | --- |

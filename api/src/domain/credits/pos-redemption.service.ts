@@ -1,7 +1,7 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
-import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import { CreditsRepository, requireReceiptReference } from '#infra/db/repositories/credits.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { SponsoredTransactionService } from '../identity/sponsored-transaction.service.js';
@@ -39,7 +39,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /** Unparseable bytes only cost the "expired, never landed" shortcut, never the finalize itself. */
-function expirationOf(transactionBytes: string): bigint | null {
+export function expirationOf(transactionBytes: string): bigint | null {
   try {
     return transactionExpirationEpoch(transactionBytes);
   } catch {
@@ -86,6 +86,15 @@ export class PosRedemptionService {
     if (request.pointsAmount <= 0) {
       throw new BadRequestException('Points amount must be greater than zero');
     }
+    if (!request.orderReference?.trim() || request.orderReference.length > 100) {
+      throw new BadRequestException('orderReference must be 1-100 characters');
+    }
+    if (!Number.isFinite(request.discountAmount) || request.discountAmount <= 0) {
+      throw new BadRequestException('discountAmount must be greater than zero');
+    }
+    if (!/^[A-Z]{3}$/.test(request.currency ?? '')) {
+      throw new BadRequestException('currency must be an ISO 4217 code such as VND');
+    }
 
     const memberOrgId = await this.creditsRepo.findMemberOrganizationId(request.organizationEndUserId);
     if (memberOrgId !== organizationId) {
@@ -104,6 +113,11 @@ export class PosRedemptionService {
         organizationEndUserId: request.organizationEndUserId,
         pointsAmount: request.pointsAmount,
         idempotencyKey: request.idempotencyKey,
+        benefit: {
+          orderReference: request.orderReference,
+          discountAmount: request.discountAmount,
+          currency: request.currency,
+        },
       });
     } catch (err: unknown) {
       if (err instanceof MemberEligibilityError) throw mapMemberEligibilityError(err);
@@ -118,12 +132,12 @@ export class PosRedemptionService {
 
   /**
    * Sponsors the customer-signable redeem for an existing hold, or replays the bytes still cached
-   * for it. The on-chain `reference` is the hold's receipt reference (a voucher claim's
-   * `voucherClaimReference`), else its transaction id.
+   * for it. The on-chain `reference` is the hold's receipt reference: `posRedemptionReference` for
+   * a POS redemption, `voucherClaimReference` for a voucher claim.
    */
   async sponsorReservation(
     organizationId: string,
-    request: ReservePosRedemptionRequest,
+    request: Pick<ReservePosRedemptionRequest, 'organizationEndUserId' | 'pointsAmount' | 'idempotencyKey'>,
     hold: {
       transaction: ReservedHold['transaction'];
       accountId: string | null;
@@ -131,9 +145,11 @@ export class PosRedemptionService {
       submittedDigest: string | null;
       /** A hold this request just created has no cached bytes to replay yet. */
       isNew?: boolean;
+      /** Set for a voucher claim: the chain debits these terms' price and records the voucher. */
+      voucherTermsId?: string;
     },
   ): Promise<ReservePosRedemptionResponse> {
-    const { transaction, accountId, isNew, submittedDigest } = hold;
+    const { transaction, accountId, isNew, submittedDigest, voucherTermsId } = hold;
 
     if (transaction.status !== 'PENDING') {
       // Settled by an earlier call under this idempotency key (CONFIRMED or FAILED) — nothing
@@ -182,12 +198,20 @@ export class PosRedemptionService {
       throw new BadRequestException(`Member ${request.organizationEndUserId} has no linked Sui address yet`);
     }
 
-    const sponsored = await this.sponsoredTx.previewSponsoredRedeem({
-      beneficiaryAddress,
-      accountId,
-      cost: BigInt(request.pointsAmount),
-      reference: new TextEncoder().encode(transaction.receiptReference ?? transaction.id),
-    });
+    const reference = new TextEncoder().encode(requireReceiptReference(transaction));
+    const sponsored = voucherTermsId
+      ? await this.sponsoredTx.previewSponsoredClaimVoucher({
+          beneficiaryAddress,
+          accountId,
+          termsId: voucherTermsId,
+          reference,
+        })
+      : await this.sponsoredTx.previewSponsoredRedeem({
+          beneficiaryAddress,
+          accountId,
+          cost: BigInt(request.pointsAmount),
+          reference,
+        });
 
     const entry: CachedReserve = {
       organizationId,

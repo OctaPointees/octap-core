@@ -8,6 +8,7 @@ describe('voucher input validation', () => {
     { ...valid },
     { ...valid, discountType: 'PERCENTAGE', discountValue: '10.50' },
     { ...valid, discountType: 'FIXED_AMOUNT', discountValue: '1000', totalSupply: null },
+    { code: 'FREEFORM', title: 'Free-form', terms: { benefit: 'Two nights for one' } },
     { ...valid, startsAt: '2030-01-01T00:00:00Z', expiresAt: '2030-02-01T00:00:00+07:00', metadata: {} },
     { ...valid, startsAt: '2028-02-29T23:59:59.999-07:00' },
   ])('accepts a valid reward: %j', (input) =>
@@ -28,6 +29,10 @@ describe('voucher input validation', () => {
     { ...valid, totalSupply: 1.1 },
     { ...valid, totalSupply: 2147483648 },
     { ...valid, discountType: 'UNKNOWN' },
+    { code: 'NEITHER', title: 'Neither' },
+    { ...valid, terms: ['not', 'an', 'object'] },
+    { ...valid, terms: null },
+    { ...valid, terms: { text: 'x'.repeat(9000) } },
     { ...valid, discountType: 'PERCENTAGE' },
     { ...valid, discountValue: 'NaN' },
     { ...valid, discountValue: '0' },

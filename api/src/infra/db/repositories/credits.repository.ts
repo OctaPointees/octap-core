@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import type { EarnFailureCode, VoucherRefundPolicySnapshot } from '@octap/contracts';
+import { createHash, randomUUID } from 'node:crypto';
+import type { EarnFailureCode, PosRedemptionBenefit, VoucherRefundPolicySnapshot } from '@octap/contracts';
 import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
@@ -11,7 +11,12 @@ import {
 } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
-import { acceptCommand, lockIdempotencyKey, OperationPayloadConflictError } from './operations.repository.js';
+import {
+  acceptCommand,
+  canonicalJson,
+  lockIdempotencyKey,
+  OperationPayloadConflictError,
+} from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { withRls } from '../rls.js';
@@ -213,7 +218,7 @@ async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, c
 }
 
 /** Puts a cancelled coupon's unit back in the catalog; the caller holds the voucher row lock. */
-async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
+export async function returnVoucherUnit(tx: DrizzleDb, voucherId: string) {
   await tx
     .update(vouchers)
     .set({
@@ -270,6 +275,38 @@ export function parseVoucherClaimReference(reference: string | null | undefined)
   return reference?.startsWith(VOUCHER_CLAIM_REFERENCE_PREFIX)
     ? reference.slice(VOUCHER_CLAIM_REFERENCE_PREFIX.length)
     : null;
+}
+
+const POS_REDEMPTION_REFERENCE_PREFIX = 'pos-redeem-';
+
+/**
+ * A POS redemption's receipt reference, also passed as the on-chain `reference` of its
+ * `credit_account::redeem`: the hold's transaction id, then a SHA-256 of the benefit the customer
+ * signs for. The chain then records which order and discount each spend paid for, and the indexer
+ * and `reverse_redeem` find the hold from it.
+ */
+export function posRedemptionReference(
+  transactionId: string,
+  pointsAmount: number,
+  benefit: PosRedemptionBenefit,
+): string {
+  const digest = createHash('sha256')
+    .update(canonicalJson({ version: 1, pointsAmount, ...benefit }))
+    .digest('hex');
+  return `${POS_REDEMPTION_REFERENCE_PREFIX}${transactionId}:${digest}`;
+}
+
+/** The hold's transaction id, or null when `reference` is not a POS redemption's. */
+export function parsePosRedemptionReference(reference: string | null | undefined): string | null {
+  if (!reference?.startsWith(POS_REDEMPTION_REFERENCE_PREFIX)) return null;
+  const [transactionId] = reference.slice(POS_REDEMPTION_REFERENCE_PREFIX.length).split(':');
+  return transactionId || null;
+}
+
+/** A redemption's on-chain `reference`. Every redemption is reserved with one. */
+export function requireReceiptReference(transaction: { id: string; receiptReference: string | null }): string {
+  if (!transaction.receiptReference) throw new Error(`Redemption ${transaction.id} has no on-chain reference`);
+  return transaction.receiptReference;
 }
 
 /** Every command whose hold settles through a customer-signed `credit_account::redeem`. */
@@ -813,6 +850,7 @@ export class CreditsRepository {
     organizationEndUserId: string;
     pointsAmount: number;
     idempotencyKey: string;
+    benefit: PosRedemptionBenefit;
     /** Age past which this reserve releases the member's never-finalized holds first. */
     abandonedHoldGraceMs?: number;
   }): Promise<{
@@ -839,6 +877,7 @@ export class CreditsRepository {
         payload: {
           organizationEndUserId: params.organizationEndUserId,
           pointsAmount: params.pointsAmount,
+          ...params.benefit,
         },
       });
 
@@ -894,16 +933,19 @@ export class CreditsRepository {
         throw new Error(`Member ${params.organizationEndUserId} has no on-chain CreditAccount yet (no prior earn)`);
       }
 
+      const transactionId = randomUUID();
       const [transaction] = await tx
         .insert(loyaltyTransactions)
         .values({
+          id: transactionId,
           organizationId: params.organizationId,
           organizationEndUserId: params.organizationEndUserId,
           transactionType: 'REDEEM',
           pointsAmount: params.pointsAmount,
           idempotencyKey: params.idempotencyKey,
+          receiptReference: posRedemptionReference(transactionId, params.pointsAmount, params.benefit),
           status: 'PENDING',
-          metadata: {},
+          metadata: { ...params.benefit },
         })
         .returning();
 
@@ -1071,6 +1113,7 @@ export class CreditsRepository {
         where: eq(voucherOwnerships.loyaltyTransactionId, params.original.id),
       });
       let refundAudit: Record<string, unknown> = {};
+      let voucherAction: 'CANCEL' | undefined;
       if (found) {
         await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, found.voucherId)).for('update');
         const [coupon] = await tx
@@ -1078,9 +1121,14 @@ export class CreditsRepository {
           .from(voucherOwnerships)
           .where(eq(voucherOwnerships.id, found.id))
           .for('update');
+        // A use the customer may already have signed would land after this refund.
+        if (coupon.pendingOperationId)
+          throw new VoucherClaimNotReversibleError(coupon.status, 'a use of this voucher is still in progress');
         const nowMs = Date.now();
         const decision = params.evaluateRefund(coupon, nowMs);
         if (!decision.allowed) throw new VoucherClaimNotReversibleError(decision.couponStatus, decision.reason);
+        // The chain only lets a used voucher be refunded on its own; an unused one is cancelled with it.
+        voucherAction = coupon.status === 'REDEEMED' ? undefined : 'CANCEL';
         await tx
           .update(voucherOwnerships)
           .set({ status: decision.nextStatus, updatedAt: new Date(nowMs) })
@@ -1153,15 +1201,14 @@ export class CreditsRepository {
             reversedTransactionId: params.original.id,
             reversedTransactionType: params.original.transactionType,
             organizationEndUserId: params.original.organizationEndUserId,
+            ...(voucherAction ? { voucherAction } : {}),
             // The original's on-chain handle: an earn's `operation_key` is its idempotency key, a
-            // POS redemption's `reference` is its own transaction id (see pos-redemption.service.ts),
-            // a voucher claim's is its receipt reference (`voucherClaimReference`).
+            // redemption's `reference` is its receipt reference (`posRedemptionReference` or
+            // `voucherClaimReference`).
             chainKey:
               params.original.transactionType === 'EARN'
                 ? params.original.idempotencyKey
-                : parseVoucherClaimReference(params.original.receiptReference)
-                  ? params.original.receiptReference
-                  : params.original.id,
+                : requireReceiptReference(params.original),
           },
         });
       }

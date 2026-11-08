@@ -38,6 +38,24 @@ export interface SignableClaim {
   transactionBytes?: string | null;
 }
 
+/** What `prepareVoucherUse` returned on the merchant's server. */
+export interface SignableVoucherUse {
+  digest?: string | null;
+  transactionBytes?: string | null;
+}
+
+export interface FinalizedVoucherUse {
+  voucherOwnershipId: string;
+  voucherId: string;
+  serialCode: string;
+  status: string;
+  redeemedAt: string;
+  voucherTitle: string;
+  discountType?: string | null;
+  discountValue?: string | null;
+  blockchainDigest: string;
+}
+
 export interface FinalizedClaim {
   transactionId: string;
   organizationEndUserId: string;
@@ -146,11 +164,42 @@ export class OctapAuth {
     if (claim.status !== 'RESERVED' || !claim.digest || !claim.transactionBytes) {
       throw new OctapAuthError('invalid-claim', 'Only a RESERVED claim with transaction bytes can be signed.');
     }
-    const signature = await this.signTransaction(claim.transactionBytes);
+    return this.submitSigned<FinalizedClaim>(
+      '/v1/credits/redeem/finalize',
+      claim.digest,
+      claim.transactionBytes,
+      options,
+    );
+  }
+
+  /**
+   * Signs the customer's use of a voucher and finalizes it. Show the customer what they are using
+   * first: this signature is the only thing that can mark their voucher used. Never retried
+   * automatically; on `outcome-unknown`, read the voucher from your backend.
+   */
+  async signAndFinalizeVoucherUse(use: SignableVoucherUse, options: RequestOptions = {}): Promise<FinalizedVoucherUse> {
+    if (!use.digest || !use.transactionBytes) {
+      throw new OctapAuthError('invalid-claim', 'Only a voucher use with transaction bytes can be signed.');
+    }
+    return this.submitSigned<FinalizedVoucherUse>(
+      '/v1/rewards/vouchers/use/finalize',
+      use.digest,
+      use.transactionBytes,
+      options,
+    );
+  }
+
+  private async submitSigned<T>(
+    path: string,
+    digest: string,
+    transactionBytes: string,
+    options: RequestOptions,
+  ): Promise<T> {
+    const signature = await this.signTransaction(transactionBytes);
     try {
-      return await this.api.post<FinalizedClaim>(
-        '/v1/credits/redeem/finalize',
-        { digest: claim.digest, signature },
+      return await this.api.post<T>(
+        path,
+        { digest, signature },
         { ...options, timeoutMs: options.timeoutMs ?? FINALIZE_TIMEOUT_MS },
       );
     } catch (err: unknown) {

@@ -107,6 +107,11 @@ async function fixture(t, overrides = {}) {
         organizationEndUserId: state.claimMemberId ?? memberId,
       });
     }
+    if (req.url.endsWith('/use/finalize')) {
+      assert.equal(body.signature, 'customer-signature');
+      state.redeemed = true;
+      return send({ voucherOwnershipId: ownership.id, status: 'REDEEMED' });
+    }
     if (req.url.endsWith('/finalize')) {
       assert.equal(body.signature, 'customer-signature');
       state.confirmed = true;
@@ -121,10 +126,14 @@ async function fixture(t, overrides = {}) {
         organizationEndUserId: memberId,
       });
     }
-    if (req.url.endsWith('/redeem')) {
+    if (req.url.endsWith('/vouchers/use')) {
       if (state.redeemFails) return send({ message: 'Redemption failed' }, 503);
-      state.redeemed = true;
-      return send({ voucherOwnershipId: ownership.id, status: 'REDEEMED' });
+      return send({
+        voucherOwnershipId: ownership.id,
+        status: 'AVAILABLE',
+        digest: 'use-digest',
+        transactionBytes: 'use-bytes',
+      });
     }
     send({ message: 'Unknown route' }, 404);
   });
@@ -145,10 +154,11 @@ test('public SDK spends points once, redeems the claimed serial and reads persis
   assert.equal(result.after.confirmedBalance, 75);
   assert.equal(result.ownership.status, 'REDEEMED');
   const writes = calls.filter((call) => call.method === 'POST');
-  assert.equal(writes.length, 3);
+  assert.equal(writes.length, 4);
   assert.deepEqual(writes[0].body, { organizationEndUserId: memberId, idempotencyKey: config.idempotencyKey });
   assert.deepEqual(writes[1].body, { digest: 'claim-digest', signature: 'customer-signature' });
-  assert.deepEqual(writes[2].body, { serialCode: 'COFFEE-ABC' });
+  assert.deepEqual(writes[2].body, { serialCode: 'COFFEE-ABC', idempotencyKey: `${config.idempotencyKey}-use` });
+  assert.deepEqual(writes[3].body, { digest: 'use-digest', signature: 'customer-signature' });
   assert.ok(calls.every((call) => call.authorization === 'Bearer fixture-key'));
   assert.ok(logs.some((line) => line.includes('100 → 75')));
   assert.ok(logs.every((line) => !line.includes('fixture-key')));
@@ -157,7 +167,7 @@ test('public SDK spends points once, redeems the claimed serial and reads persis
     runVoucherDemo(client, { ...config, idempotencyKey: 'another-run' }, () => {}),
     /already owns/,
   );
-  assert.equal(calls.filter((call) => call.method === 'POST').length, 3);
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 4);
 });
 
 for (const [name, state, message] of [
@@ -182,7 +192,7 @@ test('failed claim is not retried and cannot trigger redemption', async (t) => {
     OctaApiError,
   );
   assert.equal(calls.filter((call) => call.method === 'POST').length, 1);
-  assert.ok(!calls.some((call) => call.url.endsWith('/redeem')));
+  assert.ok(!calls.some((call) => call.url.endsWith('/vouchers/use')));
 });
 
 test('does not redeem a claim response belonging to a different member', async (t) => {
@@ -191,7 +201,7 @@ test('does not redeem a claim response belonging to a different member', async (
     runVoucherDemo(client, config, () => {}),
     /Unexpected claim result/,
   );
-  assert.ok(!calls.some((call) => call.url.endsWith('/redeem')));
+  assert.ok(!calls.some((call) => call.url.endsWith('/vouchers/use')));
 });
 
 test('failed redemption preserves a printed claim recovery reference without retrying', async (t) => {

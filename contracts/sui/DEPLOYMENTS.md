@@ -14,12 +14,19 @@ Move source.
 
 | Object | Id |
 | --- | --- |
-| Package (`published-at` = `original-id`, v1) | `0x0e7f5c0b716781d15f2675079b5a169e307ad6ba652a4c5f2fbe67d6b594bd9b` |
-| `0x2::package::UpgradeCap` | `0x91c6cb36de66ecae455e8dbb1e45ac944ca3b4286ace81ca141c405a8b5c7323` |
-| Publish tx | `DYv3YrwCm1XhixAaJ7sQU25TxjzKCXLvVu33tncVJwHz` |
+| Package (`published-at` = `original-id`, v1) | `0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23` |
+| `0x2::package::UpgradeCap` | `0x8fee847b4618fedd327f7706bbed03c512d69b499469f416bd90298acb0164bf` |
+| Publish tx | `G2NjYTyY4vnnX1FxFZoZyrycFDy8UmiHKPAmz88NZuMj` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
 | Issuer address (issuer signer, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+
+Fresh publish for OCT-279 (`voucher_terms`, and `claim_voucher`, `grant_voucher`, `use_voucher`,
+`cancel_voucher` in `credit_account`): `CreditAccount` gained a `vouchers` table, which is not
+upgrade-compatible, and `reverse_redeem` now refuses an unused voucher. Claims and grants also need
+at least 24 hours of use left on the terms (`voucher_terms::is_issuable`, which replaced `is_active`).
+The previous packages `0xc44f5ce0...` (earlier OCT-279 build) and `0x0e7f5c0b...` (OCT-50) are
+abandoned on testnet, not migrated.
 
 Fresh publish for OCT-50 (`reverse_earn`/`reverse_redeem`): `Bucket`, `CreditAccount` and
 `OperationShard`'s table value changed shape, and `budget_shard::debit` /

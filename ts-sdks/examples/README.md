@@ -1,6 +1,6 @@
 # Customer-signed voucher claim example
 
-Paid voucher conversion uses Sui as the debit authority. Vouchers and their serials stay in PostgreSQL. Keep merchant API credentials on the server.
+A paid claim debits points and records the voucher on Sui in one customer-signed transaction. PostgreSQL holds the catalog, serials and a projection. Keep merchant API credentials on the server.
 
 ## Development prerequisites
 
@@ -24,7 +24,7 @@ await auth.signAndFinalize(claim);
 
 A customer client does not need a merchant credential for this call. Invalid signatures cannot authorize the chain transaction. A host that signs some other way can pass its signature to the Node SDK's `finalizeVoucherClaim`.
 
-The merchant server can read `getVoucherClaim(ownershipId)` or retry the same claim key to recover the current persisted state. Wait for AVAILABLE before redeeming the serial. After a timeout, inspect state and allow the indexer/digest reconciler to settle the existing operation; do not create a new key or assume failure. RESERVED stays unusable while the chain outcome is unknown. Definitive failure produces CANCELLED and releases stock/point holds; a new claim may then use a new key. Free rewards become AVAILABLE immediately.
+The merchant server can read `getVoucherClaim(ownershipId)` or retry the same claim key to recover the current persisted state. Wait for AVAILABLE before asking the customer to use the voucher. After a timeout, inspect state and allow the indexer/digest reconciler to settle the existing operation; do not create a new key or assume failure. RESERVED stays unusable while the chain outcome is unknown. Definitive failure produces CANCELLED and releases stock/point holds; a new claim may then use a new key. A free reward stays RESERVED until OctaP records it on-chain, then `voucher.granted` arrives.
 
 ## Runnable demo
 
@@ -34,7 +34,7 @@ With Docker Desktop running:
 npm run demo:sdk:local
 ```
 
-The demo builds the workspace, creates disposable PostgreSQL/Redis, applies migrations, starts the real API, and exercises reserve, signature handoff, finalize, state reads and serial redemption via the public SDK. It verifies 100 -> 75 points, a single redeemed coupon, current-state claim replay and duplicate-use rejection. Only external Enoki/Sui sponsorship, customer signature and chain verdict are mocked. It does not prove a live Testnet transaction or Google login. No real wallet or existing database is used. Cleanup attempts every resource even after another closer fails.
+The demo builds the workspace, creates disposable PostgreSQL/Redis, applies migrations, starts the real API, and exercises reserve, signature handoff, finalize, state reads and customer-signed voucher use via the public SDK. It verifies 100 -> 75 points, a single redeemed coupon, current-state claim replay and duplicate-use rejection. Only external Enoki/Sui sponsorship, customer signature and chain verdict are mocked. It does not prove a live Testnet transaction or Google login. No real wallet or existing database is used. Cleanup attempts every resource even after another closer fails.
 
 `runVoucherDemo(client, { memberId, voucherId, idempotencyKey, signTransaction })` can instead use a host-provided asynchronous customer signing callback `(transactionBytes, digest) => signature`. Do not sign as the issuer. With no callback the demo returns a pending claim and prints the digest/bytes; finalize from the customer's session and inspect state without claiming again.
 

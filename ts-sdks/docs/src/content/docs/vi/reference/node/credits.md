@@ -126,6 +126,11 @@ reservePosRedemption(request: ReservePosRedemptionRequest, options?): Promise<Re
 | `organizationEndUserId` | `string` | **Bắt buộc.** |
 | `pointsAmount` | `number` | **Bắt buộc.** Lớn hơn 0. |
 | `idempotencyKey` | `string` | **Bắt buộc.** |
+| `orderReference` | `string` | **Bắt buộc.** Mã đơn hàng của bạn, 1–100 ký tự, không chứa dữ liệu cá nhân. |
+| `discountAmount` | `number` | **Bắt buộc.** Mức giảm cho đơn đó, theo đơn vị chính của `currency`. Lớn hơn 0. |
+| `currency` | `string` | **Bắt buộc.** Mã ISO 4217, ví dụ `VND`. |
+
+Ba tham số cuối được hash vào giao dịch redeem on-chain mà khách hàng ký.
 
 | Field trả về | Kiểu | Mô tả |
 | --- | --- | --- |

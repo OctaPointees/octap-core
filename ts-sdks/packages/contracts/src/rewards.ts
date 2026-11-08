@@ -3,16 +3,31 @@ import type { VoucherRefundPolicySnapshot } from './voucher-refunds.js';
 export type VoucherStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED';
 export type VoucherOwnershipStatus = 'AVAILABLE' | 'RESERVED' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
 export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_ITEM';
+/** Whether a voucher's terms are on-chain. Only a PUBLISHED voucher can be ACTIVE. */
+export type VoucherPublishStatus = 'NOT_PUBLISHED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
+
+/**
+ * How long a voucher must stay valid after it is claimed or granted. The contract enforces it, so a
+ * voucher with less time than this left before `expiresAt` can't be activated, claimed or granted.
+ */
+export const VOUCHER_MIN_USE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface CreateVoucherRequest {
   code: string;
   title: string;
   description?: string;
   pointsCost?: number;
-  discountType: DiscountType;
+  /** Required unless `terms` describes the benefit. */
+  discountType?: DiscountType;
   discountValue?: string;
+  /**
+   * Your own description of the promise, in any shape. It is published on-chain with the rest of the
+   * voucher's terms and cannot change afterwards, so it must hold no personal data.
+   */
+  terms?: Record<string, unknown>;
   totalSupply?: number | null;
   startsAt?: string | null;
+  /** At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated. */
   expiresAt?: string | null;
   metadata?: Record<string, unknown>;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED';
@@ -27,8 +42,14 @@ export interface VoucherDto {
   title: string;
   description?: string | null;
   pointsCost: number;
-  discountType: string;
+  discountType?: string | null;
   discountValue?: string | null;
+  terms?: Record<string, unknown> | null;
+  publishStatus: VoucherPublishStatus;
+  /** The frozen on-chain `VoucherTerms`, once published. */
+  suiTermsId?: string | null;
+  /** The refund policy published with the terms. */
+  refundPolicy?: VoucherRefundPolicySnapshot | null;
   totalSupply?: number | null;
   claimedCount: number;
   status: VoucherStatus;
@@ -41,8 +62,8 @@ export interface VoucherDto {
 
 export interface ClaimVoucherRequest {
   organizationEndUserId: string;
-  /** Required for paid claims; persist the same key across retries. */
-  idempotencyKey?: string;
+  /** Persist the same key across retries. Use a new key only after a claim is CANCELLED. */
+  idempotencyKey: string;
 }
 
 export interface ClaimVoucherResponse {
@@ -56,16 +77,44 @@ export interface ClaimVoucherResponse {
   pointsDeducted: number;
   pointsCost?: number;
   transactionId?: string | null;
-  /** Paid claims are RESERVED until finalize/indexer confirmation. */
+  /** Every claim is RESERVED until the chain confirms it. Only a paid claim has bytes to sign. */
   digest?: string | null;
   transactionBytes?: string | null;
   claimedAt: string;
   expiresAt?: string | null;
 }
 
-export interface RedeemVoucherRequest {
+/** Gives a customer a voucher without spending their points. */
+export interface GrantVoucherRequest {
+  organizationEndUserId: string;
+  /** Persist the same key across retries. */
+  idempotencyKey: string;
+}
+
+/** Asks the customer to use a voucher. Only their signature marks it used. */
+export interface PrepareVoucherUseRequest {
   serialCode: string;
-  receiptReference?: string;
+  /** Persist the same key across retries. */
+  idempotencyKey: string;
+}
+
+export interface PrepareVoucherUseResponse {
+  voucherOwnershipId: string;
+  voucherId: string;
+  serialCode: string;
+  /** AVAILABLE until the chain confirms the use. */
+  status: VoucherOwnershipStatus;
+  /** For the customer's device to sign. Null once the use has settled. */
+  digest: string | null;
+  transactionBytes: string | null;
+  voucherTitle: string;
+  discountType?: string | null;
+  discountValue?: string | null;
+}
+
+export interface FinalizeVoucherUseRequest {
+  digest: string;
+  signature: string;
 }
 
 export interface RedeemVoucherResponse {
@@ -75,8 +124,10 @@ export interface RedeemVoucherResponse {
   status: VoucherOwnershipStatus;
   redeemedAt: string;
   voucherTitle: string;
-  discountType: string;
+  discountType?: string | null;
   discountValue?: string | null;
+  /** The customer-signed transaction that marked it used. */
+  blockchainDigest: string;
 }
 
 export interface VoucherOwnershipDto {
