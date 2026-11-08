@@ -93,6 +93,7 @@ const redeemedEvent = (reference: unknown, overrides: Partial<CreditAccountEvent
   ...overrides,
 });
 const LOYALTY_ID = '0b3c1f9e-6a55-4d0b-9a63-2f1d7d1e8c11';
+const POS_REFERENCE = `pos-redeem-${LOYALTY_ID}:benefit-hash`;
 const pendingRedeemRow = (overrides: Parameters<typeof buildLoyaltyTransaction>[0] = {}) =>
   buildLoyaltyTransaction({
     id: LOYALTY_ID,
@@ -100,6 +101,7 @@ const pendingRedeemRow = (overrides: Parameters<typeof buildLoyaltyTransaction>[
     status: 'PENDING',
     pointsAmount: 50,
     idempotencyKey: 'idem-pos-1',
+    receiptReference: POS_REFERENCE,
     ...overrides,
   });
 
@@ -285,7 +287,7 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
         confirmPosRedemptionOnChain,
       },
       { markSubmittedFromChain },
-      { listCreditAccountEvents: async () => page([redeemedEvent(b64(LOYALTY_ID))], { endCursor: 'C1' }) },
+      { listCreditAccountEvents: async () => page([redeemedEvent(b64(POS_REFERENCE))], { endCursor: 'C1' }) },
     ).processNextPage();
 
     expect(confirmPosRedemptionOnChain).toHaveBeenCalledWith(
@@ -307,7 +309,9 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
 
   it('settles a customer-signed voucher claim from its ownership reference', async () => {
     const store = fakeIndexerStore({ streamName: 'octap::credit_account', cursor: 'C0', lastCheckpoint: null });
-    const findVoucherClaimTransaction = vi.fn(async () => pendingRedeemRow());
+    const findVoucherClaimTransaction = vi.fn(async () =>
+      pendingRedeemRow({ receiptReference: `voucher-claim-${LOYALTY_ID}` }),
+    );
     const confirmPosRedemptionOnChain = vi.fn(async () => ({ id: 'receipt' }));
     await processor(
       store.repo,
@@ -604,7 +608,8 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
   describe('CreditRedeemed', () => {
     it.each([
       ['a missing reference', undefined],
-      ['a reference that is not a uuid', b64('not-a-uuid')],
+      ['a bare transaction id', b64(LOYALTY_ID)],
+      ['a reference that is not a uuid', b64('pos-redeem-not-a-uuid:benefit-hash')],
     ])('skips %s', async (_label, reference) => {
       const indexer = processor(
         {},
@@ -622,6 +627,7 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
       ['another member’s transaction', pendingRedeemRow({ organizationEndUserId: 'user-2' })],
       ['a FAILED transaction', pendingRedeemRow({ status: 'FAILED' })],
       ['an amount mismatch', pendingRedeemRow({ pointsAmount: 49 })],
+      ['a different benefit', pendingRedeemRow({ receiptReference: `pos-redeem-${LOYALTY_ID}:other-hash` })],
     ])('skips %s', async (_label, row) => {
       const indexer = processor(
         {},
@@ -631,7 +637,7 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
           confirmPosRedemptionOnChain: () => expect.fail('must not confirm'),
         },
       );
-      expect(await indexer.applyEvent(redeemedEvent(b64(LOYALTY_ID)), tx)).toBe('skipped');
+      expect(await indexer.applyEvent(redeemedEvent(b64(POS_REFERENCE)), tx)).toBe('skipped');
     });
 
     it('settles the operation of an already-CONFIRMED redemption', async () => {
@@ -645,7 +651,7 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
         { markSubmittedFromChain },
       );
 
-      expect(await indexer.applyEvent(redeemedEvent(b64(LOYALTY_ID)), tx)).toBe('skipped');
+      expect(await indexer.applyEvent(redeemedEvent(b64(POS_REFERENCE)), tx)).toBe('skipped');
       expect(markSubmittedFromChain).toHaveBeenCalledWith(
         { tenantId: 'org-1', idempotencyKey: 'idem-pos-1', suiTxDigest: 'DIGEST-REDEEM' },
         tx,
@@ -662,7 +668,7 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
         },
         { markSubmittedFromChain: () => expect.fail('the winner settles it') },
       );
-      expect(await indexer.applyEvent(redeemedEvent(b64(LOYALTY_ID)), tx)).toBe('skipped');
+      expect(await indexer.applyEvent(redeemedEvent(b64(POS_REFERENCE)), tx)).toBe('skipped');
     });
 
     it('reports confirmed for a confirmed PENDING redemption', async () => {
@@ -675,7 +681,7 @@ describe('CheckpointIndexerProcessor.applyEvent', () => {
         },
         { markSubmittedFromChain: async () => {} },
       );
-      expect(await indexer.applyEvent(redeemedEvent(b64(LOYALTY_ID)), tx)).toBe('confirmed');
+      expect(await indexer.applyEvent(redeemedEvent(b64(POS_REFERENCE)), tx)).toBe('confirmed');
     });
   });
 

@@ -18,6 +18,7 @@ import {
   getOwnership,
   insertLoyaltyTransaction,
 } from '../support/db.js';
+import { POS_BENEFIT } from '../../helpers/fixtures.js';
 
 const { db, client } = connectTestDb();
 const repo = new RewardsRepository(db);
@@ -105,6 +106,7 @@ describe('atomic voucher conversion', () => {
         organizationEndUserId: memberId,
         pointsAmount: 80,
         idempotencyKey: 'pos-reserve',
+        benefit: POS_BENEFIT,
       }),
       claim(voucher.id),
     ]);

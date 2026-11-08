@@ -20,7 +20,7 @@ import {
   seedProgram,
 } from '../support/db.js';
 import { stub } from '../../helpers/stub.js';
-import { b64, fakeChainResult } from '../../helpers/fixtures.js';
+import { POS_BENEFIT, b64, fakeChainResult } from '../../helpers/fixtures.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
@@ -248,7 +248,7 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
       .http()
       .post('/v1/credits/redeem/reserve')
       .set(bareAuth)
-      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve' })
+      .send({ organizationEndUserId: bareMember, pointsAmount: 1, idempotencyKey: 'bare-reserve', ...POS_BENEFIT })
       .expect(422);
 
     expect(
@@ -272,7 +272,7 @@ describe('POS redemption: reserve -> customer signs -> finalize', () => {
       .http()
       .post('/v1/credits/redeem/reserve')
       .set(auth)
-      .send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey });
+      .send({ organizationEndUserId: memberId, pointsAmount, idempotencyKey, ...POS_BENEFIT });
 
   it('holds, sponsors, and settles on the chain’s verdict; finalize needs no merchant key', async () => {
     const reserved = await reserve(30).expect(201);

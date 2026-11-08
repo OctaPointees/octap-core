@@ -1,7 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
-import { CreditsRepository, expireDueBuckets } from '#infra/db/repositories/credits.repository.js';
+import {
+  CreditsRepository,
+  expireDueBuckets,
+  parsePosRedemptionReference,
+  posRedemptionReference,
+} from '#infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import {
@@ -15,6 +20,7 @@ import {
   seedOrganization,
   setOwnership,
 } from '../support/db.js';
+import { POS_BENEFIT } from '../../helpers/fixtures.js';
 
 const { db, client } = connectTestDb();
 const repo = new CreditsRepository(db);
@@ -65,7 +71,7 @@ async function confirmedPosRedeem(params: {
 }) {
   const ownership = await repo.getOrCreateCreditOwnership(params.organizationEndUserId);
   await repo.setSuiCreditAccountId(ownership.id, '0xacc');
-  const hold = await repo.reservePosRedemption(params);
+  const hold = await repo.reservePosRedemption({ ...params, benefit: POS_BENEFIT });
   await repo.confirmPosRedemptionOnChain({
     loyaltyTransactionId: hold.transaction.id,
     organizationEndUserId: params.organizationEndUserId,
@@ -395,7 +401,13 @@ describe('POS redemption', () => {
   });
 
   const reserve = (pointsAmount: number, idempotencyKey = 'pos-1') =>
-    repo.reservePosRedemption({ organizationId: orgId, organizationEndUserId: memberId, pointsAmount, idempotencyKey });
+    repo.reservePosRedemption({
+      organizationId: orgId,
+      organizationEndUserId: memberId,
+      pointsAmount,
+      idempotencyKey,
+      benefit: POS_BENEFIT,
+    });
 
   it('holds the amount in pendingRedemption and records a PENDING redeem + command', async () => {
     const { transaction, accountId, isNew } = await reserve(30);
@@ -403,6 +415,10 @@ describe('POS redemption', () => {
     expect(isNew).toBe(true);
     expect(accountId).toBe('0xacc');
     expect(transaction).toMatchObject({ status: 'PENDING', transactionType: 'REDEEM', pointsAmount: 30 });
+    // The on-chain reference binds the order and discount; the indexer finds the hold from it.
+    expect(transaction.receiptReference).toBe(posRedemptionReference(transaction.id, 30, POS_BENEFIT));
+    expect(parsePosRedemptionReference(transaction.receiptReference)).toBe(transaction.id);
+    expect(transaction.metadata).toEqual(POS_BENEFIT);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 30 });
     const [operation] = await db
       .select()
@@ -419,6 +435,15 @@ describe('POS redemption', () => {
     expect(replay.transaction.id).toBe(first.transaction.id);
     expect((await getOwnership(db, memberId)).pendingRedemption).toBe(30);
     await expect(reserve(31)).rejects.toThrow(OperationPayloadConflictError);
+    await expect(
+      repo.reservePosRedemption({
+        organizationId: orgId,
+        organizationEndUserId: memberId,
+        pointsAmount: 30,
+        idempotencyKey: 'pos-1',
+        benefit: { ...POS_BENEFIT, discountAmount: 30000 },
+      }),
+    ).rejects.toThrow(OperationPayloadConflictError);
   });
 
   it('a replay reports the digest a finalize already sent for the hold (OCT-52), so no fresh bytes are sponsored', async () => {
@@ -451,6 +476,7 @@ describe('POS redemption', () => {
         organizationEndUserId: fresh,
         pointsAmount: 1,
         idempotencyKey: 'x',
+        benefit: POS_BENEFIT,
       }),
     ).rejects.toThrow(/available 0/);
 
@@ -461,6 +487,7 @@ describe('POS redemption', () => {
         organizationEndUserId: fresh,
         pointsAmount: 1,
         idempotencyKey: 'y',
+        benefit: POS_BENEFIT,
       }),
     ).rejects.toThrow(/no on-chain CreditAccount yet/);
   });
@@ -598,6 +625,7 @@ describe('POS redemption', () => {
         organizationEndUserId: other,
         pointsAmount: 50,
         idempotencyKey: 'pos-other',
+        benefit: POS_BENEFIT,
       });
       await setCommand('pos-other', { updatedAt: minutesAgo(31) });
 
@@ -1089,6 +1117,7 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
       organizationEndUserId: memberId,
       pointsAmount: 30,
       idempotencyKey: 'pos',
+      benefit: POS_BENEFIT,
     });
 
     const confirm = () =>

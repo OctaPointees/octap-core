@@ -18,6 +18,7 @@ export type {
   IssuanceBudgetShard,
   IssuanceBudgetTopUp,
   BudgetWarningThreshold,
+  PosRedemptionBenefit,
   ReservePosRedemptionRequest,
   ReservePosRedemptionResponse,
   FinalizePosRedemptionRequest,

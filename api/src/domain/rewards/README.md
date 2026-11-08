@@ -21,6 +21,14 @@ Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/
 | Catalog stock, drafts, pausing new claims | `vouchers` | Itself |
 | Serial codes | `voucher_ownerships` | A lookup, never proof of anything |
 
+## What OctaP guarantees, and what it can't
+
+OctaP runs the whole voucher lifecycle: catalog, stock, claims, grants and use all go through its API, so a merchant needs no voucher database of its own. The merchant decides the offer, shows the catalog in its own channels and layout, and applies the benefit at checkout from `discountType`, `discountValue` and the conditions in `terms`.
+
+Every point a customer spends is tied to what it bought, and the customer agrees to that by signing. A voucher claim is tied to its frozen terms. A POS redemption is tied to the order and discount hashed into its reference (`posRedemptionReference`). A voucher also stays usable for at least 24 hours after it is claimed or granted.
+
+The chain can't make a merchant deliver an off-chain benefit. If a merchant refuses a valid voucher, or gets the customer's signature on `use_voucher` and then withholds the discount, the chain is the evidence for the dispute. Resolving it is OctaP policy; cancelling an unused voucher refunds its points. Core also holds each program's `IssuerCap`, so customers trust OctaP not to grant, cancel or reverse on its own. Each of those is a public on-chain event.
+
 ## Publishing
 
 A voucher is `ACTIVE` only once the chain holds its terms. Asking for `ACTIVE` sets `publishStatus: PUBLISHING`, snapshots the current refund policy into the voucher, and queues `VOUCHER_TERMS_PUBLISH` for the worker. On success the voucher becomes `PUBLISHED` and `ACTIVE`; a voucher paused meanwhile stays paused. On failure it becomes `FAILED`, can be edited, and can be activated again.

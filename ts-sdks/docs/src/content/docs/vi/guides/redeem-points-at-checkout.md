@@ -14,8 +14,13 @@ const reservation = await client.reservePosRedemption({
   organizationEndUserId: memberId,
   pointsAmount: 500,
   idempotencyKey: `pos-${order.id}`,
+  orderReference: order.id,
+  discountAmount: 50000,
+  currency: 'VND',
 });
 ```
+
+`orderReference`, `discountAmount` và `currency` cho biết số điểm này đổi lấy gì. Chúng được hash vào giao dịch khách hàng ký, nên chain ghi lại mỗi lần tiêu điểm đổi lấy đơn hàng và mức giảm nào. Hãy cho khách hàng xem đúng mức giảm đó trước khi ký. `orderReference` không được chứa dữ liệu cá nhân.
 
 Gửi `digest` và `transactionBytes` xuống thiết bị của khách hàng. Nếu key này đã được xử lý xong, cả hai là `null` và `status` cho biết kết quả.
 

@@ -86,7 +86,14 @@ describe('OctaPointClient', () => {
     expect(earn).toMatchObject({ transactionId: 'tx-sdk-1', newBalance: 200 });
 
     await client.reservePosRedemption(
-      { organizationEndUserId: 'user-456', pointsAmount: 50, idempotencyKey: 'idem-key-2' },
+      {
+        organizationEndUserId: 'user-456',
+        pointsAmount: 50,
+        idempotencyKey: 'idem-key-2',
+        orderReference: 'order-1',
+        discountAmount: 25000,
+        currency: 'VND',
+      },
       { organizationId: 'org-override' },
     );
     expect(last().url).toBe('https://api.octap.network/v1/credits/redeem/reserve');
@@ -183,7 +190,14 @@ describe('OctaPointClient', () => {
     })) as unknown as typeof fetch;
 
     const err = await createOctaPointClient({ fetchFn })
-      .reservePosRedemption({ organizationEndUserId: 'user-1', pointsAmount: 9999, idempotencyKey: 'idem' })
+      .reservePosRedemption({
+        organizationEndUserId: 'user-1',
+        pointsAmount: 9999,
+        idempotencyKey: 'idem',
+        orderReference: 'order-1',
+        discountAmount: 25000,
+        currency: 'VND',
+      })
       .catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(OctaApiError);

@@ -11,9 +11,10 @@ import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transac
 import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
-import { PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
+import { POS_BENEFIT, PROGRAMS_REPO, buildLoyaltyTransaction, programsRepoFor } from '../../../helpers/fixtures.js';
 
-const reserveRequest = { organizationEndUserId: 'user-1', pointsAmount: 50, idempotencyKey: 'idem-1' };
+const reserveRequest = { organizationEndUserId: 'user-1', pointsAmount: 50, idempotencyKey: 'idem-1', ...POS_BENEFIT };
+const receiptReference = 'pos-redeem-tx-1:benefit-hash';
 const cachedReserve = {
   organizationId: 'org-1',
   organizationEndUserId: 'user-1',
@@ -29,7 +30,13 @@ function pendingHold(
   accountId: string | null = 'account-1',
 ) {
   return async () => ({
-    transaction: buildLoyaltyTransaction({ id: 'tx-1', transactionType: 'REDEEM', status, idempotencyKey: 'idem-1' }),
+    transaction: buildLoyaltyTransaction({
+      id: 'tx-1',
+      transactionType: 'REDEEM',
+      status,
+      idempotencyKey: 'idem-1',
+      receiptReference,
+    }),
     accountId,
     isNew,
     submittedDigest: null as string | null,
@@ -90,12 +97,19 @@ describe('PosRedemptionService.reserve', () => {
       status: 'PENDING',
       idempotencyKey: 'idem-1',
     });
-    expect(reservePosRedemption).toHaveBeenCalledWith({ organizationId: 'org-1', ...reserveRequest });
+    expect(reservePosRedemption).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      organizationEndUserId: 'user-1',
+      pointsAmount: 50,
+      idempotencyKey: 'idem-1',
+      benefit: POS_BENEFIT,
+    });
+    // The hold's receipt reference binds the order and discount the customer signs for.
     expect(previewSponsoredRedeem).toHaveBeenCalledWith({
       beneficiaryAddress: '0xbeneficiary',
       accountId: 'account-1',
       cost: 50n,
-      reference: new TextEncoder().encode('tx-1'),
+      reference: new TextEncoder().encode(receiptReference),
     });
     expect(JSON.parse((await redis.get('pos-redeem:reserve:digest-1'))!)).toEqual(cachedReserve);
     expect(await redis.get('pos-redeem:idem:org-1:idem-1')).toBe('digest-1');
@@ -106,6 +120,15 @@ describe('PosRedemptionService.reserve', () => {
     await expect(service().reserve('org-1', { ...reserveRequest, pointsAmount: 0 })).rejects.toThrow(
       /greater than zero/,
     );
+  });
+
+  it.each([
+    [{ orderReference: ' ' }, /orderReference/],
+    [{ orderReference: 'o'.repeat(101) }, /orderReference/],
+    [{ discountAmount: 0 }, /discountAmount/],
+    [{ currency: 'vnd' }, /ISO 4217/],
+  ])('rejects a redemption without a valid benefit: %o', async (override, message) => {
+    await expect(service().reserve('org-1', { ...reserveRequest, ...override })).rejects.toThrow(message);
   });
 
   it('rejects a member from another organization', async () => {

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CreditAccountEvent } from '@octap/chain';
-import { CreditsRepository, parseVoucherClaimReference } from '#infra/db/repositories/credits.repository.js';
+import {
+  CreditsRepository,
+  parsePosRedemptionReference,
+  parseVoucherClaimReference,
+} from '#infra/db/repositories/credits.repository.js';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
@@ -230,22 +234,22 @@ export class CheckpointIndexerProcessor {
     organizationEndUserId: string,
     amount: number,
   ): Promise<EventOutcome> {
-    // POS redemption passes the loyalty transaction id as `reference` (pos-redemption.service.ts),
-    // a paid voucher claim its `voucherClaimReference`.
-    const loyaltyTransactionId = decodeBytesField(event.json?.reference);
-    const claimId = parseVoucherClaimReference(loyaltyTransactionId);
-    if (
-      !loyaltyTransactionId ||
-      !(UUID_PATTERN.test(loyaltyTransactionId) || (claimId && UUID_PATTERN.test(claimId)))
-    ) {
+    // The `reference` is the redemption's receipt reference: `posRedemptionReference` for POS,
+    // `voucherClaimReference` for a paid voucher claim.
+    const reference = decodeBytesField(event.json?.reference);
+    const claimId = parseVoucherClaimReference(reference);
+    const posTransactionId = parsePosRedemptionReference(reference);
+    const id = claimId ?? posTransactionId;
+    if (!id || !UUID_PATTERN.test(id)) {
       return 'skipped';
     }
     const loyaltyTx = claimId
-      ? await this.creditsRepo.findVoucherClaimTransaction(claimId)
-      : await this.creditsRepo.getLoyaltyTransactionById(loyaltyTransactionId);
+      ? await this.creditsRepo.findVoucherClaimTransaction(id)
+      : await this.creditsRepo.getLoyaltyTransactionById(id);
     if (
       !loyaltyTx ||
       loyaltyTx.transactionType !== 'REDEEM' ||
+      loyaltyTx.receiptReference !== reference ||
       loyaltyTx.organizationEndUserId !== organizationEndUserId
     ) {
       return 'skipped';

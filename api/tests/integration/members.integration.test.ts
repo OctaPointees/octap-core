@@ -6,6 +6,7 @@ import { CreditsRepository } from '#infra/db/repositories/credits.repository.js'
 import { EarnService } from '#domain/credits/earn.service.js';
 import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
+import { POS_BENEFIT } from '../helpers/fixtures.js';
 
 describe('tenant customer member directory', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
@@ -131,7 +132,9 @@ describe('tenant customer member directory', () => {
       idempotencyKey: 'blocked',
     };
     await expect(credits.recordEarnTransaction(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
-    await expect(credits.reservePosRedemption(params)).rejects.toMatchObject({ kind: 'FORBIDDEN' });
+    await expect(credits.reservePosRedemption({ ...params, benefit: POS_BENEFIT })).rejects.toMatchObject({
+      kind: 'FORBIDDEN',
+    });
     await seedProgram(ctx.db, orgId);
     const [voucher] = await ctx.db
       .insert(schema.vouchers)
@@ -148,6 +151,9 @@ describe('tenant customer member directory', () => {
       pointsAmount: 10,
       purchaseAmount: 1000,
       idempotencyKey: 'blocked-service',
+      orderReference: 'order-1',
+      discountAmount: 1000,
+      currency: 'VND',
     };
     await expect(ctx.app.get(EarnService).executeEarn(orgId, request)).rejects.toMatchObject({ status: 403 });
     await expect(ctx.app.get(PosRedemptionService).reserve(orgId, request)).rejects.toMatchObject({ status: 403 });

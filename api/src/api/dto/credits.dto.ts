@@ -15,6 +15,9 @@ export interface ReservePosRedemptionBodyDto {
   organizationEndUserId: string;
   pointsAmount: number;
   idempotencyKey: string;
+  orderReference: string;
+  discountAmount: number;
+  currency: string;
 }
 
 export interface FinalizePosRedemptionBodyDto {

@@ -18,6 +18,7 @@ import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.s
 import type { ApiCredentialsService } from '#infra/auth/api-credentials.service.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import { stub } from '../../../helpers/stub.js';
+import { POS_BENEFIT } from '../../../helpers/fixtures.js';
 
 const tenant: TenantContext = { organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write', 'admin'] };
 const ok = <T>(value: T) => vi.fn(async () => value);
@@ -43,7 +44,7 @@ describe('CreditsController', () => {
       stub<IssuanceBudgetService>(),
     );
   }
-  const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k' };
+  const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k', ...POS_BENEFIT };
 
   it('earn and reserve validate their separate amount contracts', async () => {
     const executeEarn = ok({ transactionId: 'e' });
