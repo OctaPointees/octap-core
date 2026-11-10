@@ -57,6 +57,7 @@ npm test                  # unit tests (no infrastructure needed)
 npm run test:integration  # real Postgres/Redis via testcontainers (Docker or Podman)
 npm run test:coverage     # both, with the coverage gate CI enforces
 npm run check:bootstrap
+npm run openapi:check     # docs/openapi.json matches the routes (after build)
 npm run start:api
 npm run start:worker
 ```

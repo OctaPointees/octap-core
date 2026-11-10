@@ -40,3 +40,16 @@ first credential for a new organization is issued out of band (there is no boots
 since calling one would itself need a key): `npm run seed:dev-credential -- <organizationId>`.
 That key carries the `admin` scope, which can then issue/revoke/rotate further keys via
 `/v1/api-credentials`.
+
+## API docs
+
+The OpenAPI document is built from the controllers (`src/api/openapi/openapi.document.ts`). Each
+route's auth (merchant API key, console user, public) and required scopes are read from the same
+metadata the guards enforce, so a new route needs no swagger decorator to be listed correctly.
+
+- Set `OPENAPI_ENABLED=true` to serve Swagger UI at `/docs` and the spec at `/docs/openapi.json`.
+  It is off by default; leave it off in production.
+- `docs/openapi.json` is the committed copy for frontend and Postman use. After adding or changing a
+  route, run `npm run build && npm run openapi:generate` and commit the result; CI runs
+  `npm run openapi:check` and fails when the file is stale.
+- Request and response bodies are not described yet; see OCT-285.

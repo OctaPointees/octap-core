@@ -65,7 +65,7 @@ permission checks remain required even when Web hides a surface.
 Run before opening a pull request:
 
 ```sh
-npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap
+npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap && npm run openapi:check
 ```
 
 `npm run format` applies the Prettier style (`.prettierrc.json`; Markdown and generated code are

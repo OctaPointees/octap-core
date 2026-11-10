@@ -1,0 +1,3068 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/v1/platform/organizations": {
+      "get": {
+        "operationId": "PlatformOrganizationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      },
+      "post": {
+        "operationId": "PlatformOrganizationsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organizations/{id}": {
+      "get": {
+        "operationId": "PlatformOrganizationsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/owner-candidates": {
+      "get": {
+        "operationId": "PlatformOrganizationsController_owners",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organizations/{id}/provision": {
+      "post": {
+        "operationId": "PlatformOrganizationsController_provision",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/organizations/resolve/{slug}": {
+      "get": {
+        "operationId": "OrganizationResolutionController_resolve",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Organization Resolution"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": false
+        },
+        "description": "**Auth:** none (public)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/budget": {
+      "get": {
+        "operationId": "ConsoleIssuanceBudgetController_read",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Issuance Budget"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/budget": {
+      "get": {
+        "operationId": "PlatformIssuanceBudgetController_read",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Issuance Budget"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/change-requests": {
+      "post": {
+        "operationId": "ConsoleChangeRequestsController_propose",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Change Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/platform/change-requests": {
+      "get": {
+        "operationId": "PlatformChangeRequestsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Change Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/change-requests": {
+      "post": {
+        "operationId": "PlatformChangeRequestsController_propose",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Change Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/change-requests/{id}/approve": {
+      "post": {
+        "operationId": "PlatformChangeRequestsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Change Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/change-requests/{id}/reject": {
+      "post": {
+        "operationId": "PlatformChangeRequestsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Change Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/members": {
+      "get": {
+        "operationId": "MembersController_list",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/members/{memberId}": {
+      "get": {
+        "operationId": "MembersController_detail",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      },
+      "patch": {
+        "operationId": "MembersController_patch",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/credits/earn": {
+      "post": {
+        "operationId": "CreditsController_earn",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/credits/redeem/reserve": {
+      "post": {
+        "operationId": "CreditsController_reservePosRedemption",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/credits/redeem/finalize": {
+      "post": {
+        "operationId": "CreditsController_finalizePosRedemption",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/credits/transactions/{transactionId}/reverse": {
+      "post": {
+        "operationId": "CreditsController_reverseTransaction",
+        "parameters": [
+          {
+            "name": "transactionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/credits/budget": {
+      "get": {
+        "operationId": "CreditsController_getBudget",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/credits/members/{memberId}/balance": {
+      "get": {
+        "operationId": "CreditsController_getBalance",
+        "parameters": [
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "programId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/credits/members/{memberId}/transactions": {
+      "get": {
+        "operationId": "CreditsController_getTransactions",
+        "parameters": [
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Credits"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/rewards/refund-policy": {
+      "get": {
+        "operationId": "RewardsController_getRefundPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      },
+      "put": {
+        "operationId": "RewardsController_setRefundPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/rewards/refund-policy/history": {
+      "get": {
+        "operationId": "RewardsController_getRefundPolicyHistory",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "beforeVersion",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/rewards/vouchers": {
+      "post": {
+        "operationId": "RewardsController_createVoucher",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      },
+      "get": {
+        "operationId": "RewardsController_listVouchers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/rewards/vouchers/{id}": {
+      "get": {
+        "operationId": "RewardsController_getVoucher",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      },
+      "patch": {
+        "operationId": "RewardsController_updateVoucher",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/vouchers/{id}/claim": {
+      "post": {
+        "operationId": "RewardsController_claimVoucher",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/claims/{id}": {
+      "get": {
+        "operationId": "RewardsController_getClaim",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/rewards/vouchers/{id}/grant": {
+      "post": {
+        "operationId": "RewardsController_grantVoucher",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/vouchers/use": {
+      "post": {
+        "operationId": "RewardsController_prepareVoucherUse",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/vouchers/use/finalize": {
+      "post": {
+        "operationId": "RewardsController_finalizeVoucherUse",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/rewards/members/{memberId}/vouchers": {
+      "get": {
+        "operationId": "RewardsController_listMemberVouchers",
+        "parameters": [
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rewards"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/api-credentials": {
+      "get": {
+        "operationId": "ApiCredentialsController_list",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Api Credentials"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      },
+      "post": {
+        "operationId": "ApiCredentialsController_issue",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Api Credentials"
+        ],
+        "security": [
+          {
+            "apiKey": [],
+            "signedTimestamp": [],
+            "signedNonce": [],
+            "signedSignature": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": true
+        },
+        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/api-credentials/{id}": {
+      "delete": {
+        "operationId": "ApiCredentialsController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Api Credentials"
+        ],
+        "security": [
+          {
+            "apiKey": [],
+            "signedTimestamp": [],
+            "signedNonce": [],
+            "signedSignature": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": true
+        },
+        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/api-credentials/{id}/rotate": {
+      "post": {
+        "operationId": "ApiCredentialsController_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Api Credentials"
+        ],
+        "security": [
+          {
+            "apiKey": [],
+            "signedTimestamp": [],
+            "signedNonce": [],
+            "signedSignature": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": true
+        },
+        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/webhooks/endpoints": {
+      "post": {
+        "operationId": "WebhooksController_registerEndpoint",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      },
+      "get": {
+        "operationId": "WebhooksController_listEndpoints",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/webhooks/endpoints/{id}/disable": {
+      "post": {
+        "operationId": "WebhooksController_disableEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/webhooks/endpoints/{id}/enable": {
+      "post": {
+        "operationId": "WebhooksController_enableEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/webhooks/endpoints/{id}/rotate-secret": {
+      "post": {
+        "operationId": "WebhooksController_rotateSecret",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/webhooks/deliveries": {
+      "get": {
+        "operationId": "WebhooksController_listDeliveries",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/webhooks/deliveries/{id}/replay": {
+      "post": {
+        "operationId": "WebhooksController_replayDelivery",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "admin"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+      }
+    },
+    "/v1/identity/google-login": {
+      "post": {
+        "operationId": "IdentityController_googleLogin",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/identity/organizations/{organizationId}/enroll": {
+      "post": {
+        "operationId": "IdentityController_enroll",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/identity/zklogin/nonce": {
+      "post": {
+        "operationId": "IdentityController_createNonce",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/identity/zklogin/proof": {
+      "post": {
+        "operationId": "IdentityController_createProof",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": true
+        },
+        "description": "**Auth:** none (public), rate limited per client IP."
+      }
+    },
+    "/v1/identity/verify": {
+      "post": {
+        "operationId": "CustomerVerificationController_verify",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Customer Verification"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ],
+          "signedRequest": false
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/console/auth/google": {
+      "post": {
+        "operationId": "ConsoleIdentityController_login",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Identity"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": false
+        },
+        "description": "**Auth:** none (public)."
+      }
+    },
+    "/v1/console/me": {
+      "get": {
+        "operationId": "ConsoleIdentityController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Identity"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organization-requests": {
+      "post": {
+        "operationId": "ConsoleOrganizationsController_apply",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      },
+      "get": {
+        "operationId": "ConsoleOrganizationsController_applications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}": {
+      "get": {
+        "operationId": "ConsoleOrganizationsController_organization",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/profile": {
+      "patch": {
+        "operationId": "ConsoleOrganizationsController_profile",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/staff": {
+      "get": {
+        "operationId": "ConsoleOrganizationsController_staff",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/staff/{userId}": {
+      "patch": {
+        "operationId": "ConsoleOrganizationsController_staffAccess",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/api-credentials": {
+      "get": {
+        "operationId": "ConsoleOrganizationsController_credentials",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/invitations": {
+      "post": {
+        "operationId": "ConsoleOrganizationsController_invite",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      },
+      "get": {
+        "operationId": "ConsoleOrganizationsController_invitations",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/invitations/{id}/revoke": {
+      "post": {
+        "operationId": "ConsoleOrganizationsController_revoke",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/invitations/{token}/accept": {
+      "post": {
+        "operationId": "ConsoleOrganizationsController_accept",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/platform/organization-requests": {
+      "get": {
+        "operationId": "PlatformOrganizationRequestsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organization Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organization-requests/{id}/approve": {
+      "post": {
+        "operationId": "PlatformOrganizationRequestsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organization Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organization-requests/{id}/reject": {
+      "post": {
+        "operationId": "PlatformOrganizationRequestsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organization Requests"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/owner": {
+      "post": {
+        "operationId": "PlatformOrganizationOwnersController_bootstrap",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organization Owners"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    }
+  },
+  "info": {
+    "title": "OctaP Core API",
+    "description": "REST API of octap-core. Three kinds of caller:\n\n- **Merchant backend**: `Authorization: Bearer <api key>`. Send `X-Organization-Id` to have the\n  key checked against the organization you expect. Some routes also need a signed request.\n- **Console user**: `Authorization: Bearer <Google ID token>` from the console sign-in.\n- **Customer device**: public routes with no credential, rate limited per client IP.\n\nEach operation lists its auth, required scopes and limits in its description and in the\n`x-octap-auth` extension. Errors use the shared `ErrorResponse` shape.",
+    "version": "v1",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "Api Credentials"
+    },
+    {
+      "name": "Console Change Requests"
+    },
+    {
+      "name": "Console Identity"
+    },
+    {
+      "name": "Console Issuance Budget"
+    },
+    {
+      "name": "Console Organizations"
+    },
+    {
+      "name": "Credits"
+    },
+    {
+      "name": "Customer Verification"
+    },
+    {
+      "name": "Identity"
+    },
+    {
+      "name": "Members"
+    },
+    {
+      "name": "Organization Resolution"
+    },
+    {
+      "name": "Platform Change Requests"
+    },
+    {
+      "name": "Platform Issuance Budget"
+    },
+    {
+      "name": "Platform Organization Owners"
+    },
+    {
+      "name": "Platform Organization Requests"
+    },
+    {
+      "name": "Platform Organizations"
+    },
+    {
+      "name": "Rewards"
+    },
+    {
+      "name": "Webhooks"
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "Merchant API key, issued per organization."
+      },
+      "consoleSession": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "Google ID token of a signed-in console user."
+      },
+      "signedTimestamp": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-OctaP-Timestamp",
+        "description": "Unix seconds; must be within the replay window."
+      },
+      "signedNonce": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-OctaP-Nonce",
+        "description": "Unique per request; reuse is rejected."
+      },
+      "signedSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-OctaP-Signature",
+        "description": "HMAC of the request, keyed by the API key. See the SDK for the exact canonical string."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "statusCode",
+          "message"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "example": 400
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "example": "idempotencyKey is required"
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "OrganizationIdHeader": {
+        "name": "X-Organization-Id",
+        "in": "header",
+        "required": false,
+        "description": "Optional. When sent, the request is rejected (403) unless the API key belongs to this organization.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

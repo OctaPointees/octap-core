@@ -24,7 +24,7 @@ implementations, copy their shape).
 - **Stacked PRs**: when a change genuinely depends on another PR that hasn't been reviewed yet,
   base the new PR on that PR's branch (not `main`), and say so in the PR description. Retarget to
   `main` once the upstream PR merges — don't leave it stacked.
-- Before opening a PR: `npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap` must all pass (`test:coverage` runs unit + integration tests; integration needs Docker or Podman — see `api/tests/README.md`). CI runs the same checks but can't block a merge (no branch protection on this plan), so check it before merging. A new repository method or route
+- Before opening a PR: `npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap && npm run openapi:check` must all pass (`test:coverage` runs unit + integration tests; integration needs Docker or Podman — see `api/tests/README.md`). CI runs the same checks but can't block a merge (no branch protection on this plan), so check it before merging. A new repository method or route
   gets an integration spec under `api/tests/integration` (real Postgres/Redis) rather than a
   throwaway script — this codebase's convention is "verified live, not just unit tests" for
   anything DB-facing. Chain calls stay faked in tests; verify those against testnet by hand.

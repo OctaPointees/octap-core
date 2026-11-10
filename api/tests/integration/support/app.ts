@@ -56,6 +56,7 @@ export type ChainAdapters = ReturnType<typeof fakeChainAdapters>;
 export async function createTestApp(
   adapters: ChainAdapters = fakeChainAdapters(),
   google?: Pick<GoogleIdentityClient, 'verify'>,
+  beforeInit?: (app: INestApplication) => void,
 ) {
   const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EnokiClient)
@@ -65,6 +66,7 @@ export async function createTestApp(
   if (google) builder.overrideProvider(GoogleIdentityClient).useValue(google);
   const moduleRef = await builder.compile();
   const app: INestApplication = moduleRef.createNestApplication({ rawBody: true, logger: false });
+  beforeInit?.(app);
   await app.init();
   return {
     app,

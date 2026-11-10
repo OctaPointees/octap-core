@@ -25,6 +25,8 @@
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
     "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "openapi:generate": "node scripts/openapi.mjs",
+    "openapi:check": "node scripts/openapi.mjs --check",
     "seed:dev-credential": "node scripts/seed-dev-credential.mjs",
     "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
