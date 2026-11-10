@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { parseTrustedProxyHops } from '#infra/auth/public-rate-limit.guard.js';
+import { OPENAPI_DOCS_PATH, setupOpenApi } from '#api/openapi/openapi.document.js';
 // rawBody: true preserves the exact request bytes on request.rawBody — request signature
 // verification (infra/auth/request-signing.util.ts) must hash what was actually sent, not a
 // re-serialized JSON.stringify(request.body), which can differ in key order/whitespace.
@@ -15,5 +16,8 @@ app.enableShutdownHooks();
 // known gaps), so this isn't loosening a real security boundary. Scope this to an allowlist once
 // API keys/auth land.
 app.enableCors();
+// Swagger UI at /docs and the raw spec at /docs/openapi.json, only where OPENAPI_ENABLED=true
+// (local, staging): the document lists every route, including platform-admin ones.
+if (setupOpenApi(app)) Logger.log(`API docs at /${OPENAPI_DOCS_PATH}.`);
 await app.listen(Number(process.env.API_PORT ?? 3000), process.env.API_HOST ?? '127.0.0.1');
 Logger.log('API listening.');

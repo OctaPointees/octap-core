@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Query, Req,
 import { MembersService } from '#domain/members/members.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import type { MemberDirectoryQueryDto, MemberProfilePatchBodyDto } from '../dto/console.dto.js';
 @Public()
 @UseGuards(ConsoleAccessGuard)
 @Controller('v1/console/organizations/:organizationId/members')
@@ -12,7 +13,7 @@ export class MembersController {
   list(
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
-    @Query() query: Record<string, unknown>,
+    @Query() query: MemberDirectoryQueryDto,
   ) {
     return this.members.list(req.consoleIdentity.user.id, orgId, query);
   }
@@ -31,7 +32,7 @@ export class MembersController {
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
     @Param('memberId', ParseUUIDPipe) memberId: string,
-    @Body() input: Record<string, unknown>,
+    @Body() input: MemberProfilePatchBodyDto,
   ) {
     return this.members.patch(req.consoleIdentity.user.id, orgId, memberId, input);
   }

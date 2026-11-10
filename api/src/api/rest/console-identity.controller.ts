@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleIdentityService } from '#domain/identity/console-identity.service.js';
+import type { ConsoleGoogleLoginBodyDto } from '../dto/console.dto.js';
 
 /** These routes verify Google credentials directly, never merchant API keys. */
 @Public()
@@ -19,7 +20,7 @@ export class ConsoleIdentityController {
 
   @Post('auth/google')
   @Header('Cache-Control', 'no-store')
-  login(@Body() body: { idToken?: unknown }) {
+  login(@Body() body: ConsoleGoogleLoginBodyDto) {
     if (typeof body?.idToken !== 'string') throw new BadRequestException('idToken is required');
     return this.identity.authenticate(body.idToken);
   }

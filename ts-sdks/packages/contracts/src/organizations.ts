@@ -1,3 +1,4 @@
+import type { OrganizationApplicationInput } from './console.js';
 export interface ProvisionOrganizationInput {
   earnBps: number;
   expiryDays: number;
@@ -24,4 +25,19 @@ export interface PlatformOrganization {
   programControlId: string | null;
   createdAt: string;
   provisioning: OrganizationProvisioningStatus | null;
+}
+/** `GET /v1/platform/organizations` query. */
+export interface PlatformOrganizationListQuery {
+  /** 1–100, default 25. */
+  limit?: number;
+  /** @format uuid */
+  cursor?: string;
+  status?: 'ACTIVE' | 'SUSPENDED' | 'PENDING_APPROVAL' | 'ARCHIVED';
+  /** Name or slug search, up to 160 characters. */
+  q?: string;
+}
+/** `POST /v1/platform/organizations`: a System Admin applies on behalf of an existing Google user. */
+export interface PlatformOrganizationInput extends OrganizationApplicationInput {
+  /** @format uuid */
+  ownerUserId: string;
 }

@@ -14,6 +14,11 @@ import {
 import { OrganizationsService } from '#domain/organizations/organizations.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
+import type {
+  PlatformOrganizationBodyDto,
+  PlatformOrganizationListQueryDto,
+  ProvisionOrganizationBodyDto,
+} from '../dto/console.dto.js';
 @Public()
 @UseGuards(ConsoleAccessGuard)
 @PlatformAdminOnly()
@@ -22,7 +27,7 @@ export class PlatformOrganizationsController {
   constructor(private readonly organizations: OrganizationsService) {}
   @Get('organizations')
   @Header('Cache-Control', 'no-store')
-  list(@Req() req: ConsoleRequest, @Query() query: Record<string, unknown>) {
+  list(@Req() req: ConsoleRequest, @Query() query: PlatformOrganizationListQueryDto) {
     return this.organizations.list(req.consoleIdentity.user.id, query);
   }
   @Get('organizations/:id')
@@ -32,12 +37,12 @@ export class PlatformOrganizationsController {
   }
   @Post('organizations')
   @Header('Cache-Control', 'no-store')
-  create(@Req() req: ConsoleRequest, @Body() input: Record<string, unknown>) {
+  create(@Req() req: ConsoleRequest, @Body() input: PlatformOrganizationBodyDto) {
     return this.organizations.create(req.consoleIdentity.user.id, input);
   }
   @Get('owner-candidates')
   @Header('Cache-Control', 'no-store')
-  owners(@Req() req: ConsoleRequest, @Query('q') query: unknown) {
+  owners(@Req() req: ConsoleRequest, @Query('q') query?: string) {
     return this.organizations.owners(req.consoleIdentity.user.id, query);
   }
   @Post('organizations/:id/provision')
@@ -45,7 +50,7 @@ export class PlatformOrganizationsController {
   provision(
     @Req() req: ConsoleRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() input: Record<string, unknown>,
+    @Body() input: ProvisionOrganizationBodyDto,
   ) {
     return this.organizations.provision(req.consoleIdentity.user.id, id, input);
   }

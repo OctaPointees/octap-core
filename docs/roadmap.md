@@ -22,6 +22,7 @@ then move the row to **Implemented** in the same pull request.
 | Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
+| OpenAPI document for every REST route (paths, params, auth per route read from the guards' metadata), Swagger UI at `/docs` behind `OPENAPI_ENABLED`, request/response/query schemas generated from each handler's TypeScript types, committed `docs/openapi.json` (3.1) checked in CI (OCT-285) | api/src/api/openapi; scripts/openapi*.mjs; docs/openapi.json |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
@@ -241,7 +242,7 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 | Request validation pipes, error filters, interceptors | api/src/common or api/src/api |
 | Redis cache and realtime push | infra/cache; infra/realtime |
 | gRPC transport (server and Node SDK) | api/src/api/grpc; ts-sdks/packages/node/src/transports |
-| OpenAPI / protobuf contracts | ts-sdks/packages/contracts |
+| Protobuf contracts | ts-sdks/packages/contracts |
 
 ### Sui Move contracts (contracts/sui/sources)
 

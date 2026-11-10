@@ -25,6 +25,9 @@
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
     "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "openapi:schemas": "node scripts/openapi-schemas.mjs",
+    "openapi:generate": "node scripts/openapi.mjs",
+    "openapi:check": "node scripts/openapi-schemas.mjs --check && node scripts/openapi.mjs --check",
     "seed:dev-credential": "node scripts/seed-dev-credential.mjs",
     "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
@@ -49,6 +52,7 @@
     "testcontainers": "^12.2.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0",
+    "typescript-json-schema": "^0.68.0",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"
   }

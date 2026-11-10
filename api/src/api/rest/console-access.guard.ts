@@ -14,7 +14,8 @@ export interface ConsoleRequest {
   headers: { authorization?: string };
   consoleIdentity: ConsoleIdentity;
 }
-export const PlatformAdminOnly = () => SetMetadata('console.platform-admin', true);
+export const PLATFORM_ADMIN_ONLY_KEY = 'console.platform-admin';
+export const PlatformAdminOnly = () => SetMetadata(PLATFORM_ADMIN_ONLY_KEY, true);
 
 @Injectable()
 export class ConsoleAccessGuard implements CanActivate {
@@ -28,7 +29,7 @@ export class ConsoleAccessGuard implements CanActivate {
     if (!credential) throw new UnauthorizedException('Google ID token is required');
     request.consoleIdentity = await this.identity.authenticate(credential);
     if (
-      this.reflector.getAllAndOverride<boolean>('console.platform-admin', [context.getHandler(), context.getClass()]) &&
+      this.reflector.getAllAndOverride<boolean>(PLATFORM_ADMIN_ONLY_KEY, [context.getHandler(), context.getClass()]) &&
       request.consoleIdentity.user.systemRole !== 'SYSTEM_ADMIN'
     )
       throw new ForbiddenException('System Admin access is required');

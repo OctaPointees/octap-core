@@ -38,3 +38,4 @@ jobs:
       - name: SDK demo against disposable API and database
         run: node scripts/sdk-demo-local.mjs
       - run: npm run check:bootstrap
+      - run: npm run openapi:check
