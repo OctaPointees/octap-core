@@ -2,6 +2,13 @@ import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Req, 
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleOrganizationsService } from '#domain/identity/console-organizations.service.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
+import type {
+  ConsoleInvitationBodyDto,
+  ConsoleStaffAccessBodyDto,
+  OrganizationApplicationBodyDto,
+  OrganizationProfileBodyDto,
+  ReviewDecisionBodyDto,
+} from '../dto/console.dto.js';
 
 @Public()
 @UseGuards(ConsoleAccessGuard)
@@ -10,7 +17,7 @@ export class ConsoleOrganizationsController {
   constructor(private readonly organizations: ConsoleOrganizationsService) {}
   @Post('organization-requests')
   @Header('Cache-Control', 'no-store')
-  apply(@Req() request: ConsoleRequest, @Body() body: Record<string, unknown>) {
+  apply(@Req() request: ConsoleRequest, @Body() body: OrganizationApplicationBodyDto) {
     return this.organizations.apply(request.consoleIdentity.user.id, body);
   }
   @Get('organization-requests')
@@ -27,7 +34,7 @@ export class ConsoleOrganizationsController {
   profile(
     @Req() request: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: OrganizationProfileBodyDto,
   ) {
     return this.organizations.profile(request.consoleIdentity.user.id, orgId, body);
   }
@@ -42,7 +49,7 @@ export class ConsoleOrganizationsController {
     @Req() request: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: ConsoleStaffAccessBodyDto,
   ) {
     return this.organizations.staffAccess(request.consoleIdentity.user.id, orgId, userId, body);
   }
@@ -56,7 +63,7 @@ export class ConsoleOrganizationsController {
   invite(
     @Req() request: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: ConsoleInvitationBodyDto,
   ) {
     return this.organizations.invite(request.consoleIdentity.user.id, orgId, body);
   }
@@ -94,12 +101,12 @@ export class PlatformOrganizationRequestsController {
   }
   @Post(':id/approve')
   @Header('Cache-Control', 'no-store')
-  approve(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: { reason?: unknown }) {
+  approve(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReviewDecisionBodyDto) {
     return this.organizations.decide(request.consoleIdentity.user.id, id, true, body?.reason);
   }
   @Post(':id/reject')
   @Header('Cache-Control', 'no-store')
-  reject(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: { reason?: unknown }) {
+  reject(@Req() request: ConsoleRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReviewDecisionBodyDto) {
     return this.organizations.decide(request.consoleIdentity.user.id, id, false, body?.reason);
   }
 }

@@ -14,6 +14,7 @@ import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
 import { REQUIRE_SIGNED_REQUEST_KEY } from '#infra/auth/signed-request.decorator.js';
 import { ConsoleAccessGuard, PLATFORM_ADMIN_ONLY_KEY } from '#api/rest/console-access.guard.js';
+import { ROUTE_SCHEMAS } from './route-schemas.generated.js';
 
 /** Swagger UI is served at `/docs`, the raw document at `/docs/openapi.json`. */
 export const OPENAPI_DOCS_PATH = 'docs';
@@ -60,6 +61,8 @@ export function setupOpenApi(app: INestApplication, env: NodeJS.ProcessEnv = pro
 
 export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
+    // 3.1: the generated schemas are JSON Schema (`type: ['null', 'string']`), which 3.0 rejects.
+    .setOpenAPIVersion('3.1.0')
     .setTitle('OctaP Core API')
     .setDescription(
       [
@@ -145,7 +148,7 @@ export function routeAccess(controller: Type, handler: (...args: never[]) => unk
 
 function annotateOperations(document: OpenAPIObject, controllers: Map<string, Type>): void {
   const components = (document.components ??= {});
-  components.schemas = { ...components.schemas, ErrorResponse: ERROR_RESPONSE_SCHEMA };
+  components.schemas = { ...components.schemas, ...ROUTE_SCHEMAS, ErrorResponse: ERROR_RESPONSE_SCHEMA };
   components.parameters = { ...components.parameters, OrganizationIdHeader: ORGANIZATION_ID_HEADER };
   const tags = new Set<string>();
 
@@ -168,6 +171,7 @@ function annotateOperations(document: OpenAPIObject, controllers: Map<string, Ty
       operation.tags = [tag];
       tags.add(tag);
       applyAccess(operation, access);
+      applySchemas(operation, method, operation.operationId!);
       for (const response of Object.values(operation.responses)) {
         if (response && 'description' in response && !response.description) response.description = 'Success.';
       }
@@ -178,6 +182,58 @@ function annotateOperations(document: OpenAPIObject, controllers: Map<string, Ty
     }
   }
   document.tags = [...tags].sort().map((name) => ({ name }));
+}
+
+type Schema = Record<string, unknown>;
+const schemaRef = (name: string) => ({ $ref: `#/components/schemas/${name}` });
+
+/** A schema that is only `{ $ref }` points straight at its target, so tools show `VoucherDto`, not an alias. */
+function refTo(name: string): { $ref: string } {
+  const schema = ROUTE_SCHEMAS[name];
+  return schema && Object.keys(schema).length === 1 && typeof schema.$ref === 'string'
+    ? { $ref: schema.$ref }
+    : schemaRef(name);
+}
+
+function resolveSchema(schema: Schema | undefined): Schema | undefined {
+  const ref = typeof schema?.$ref === 'string' ? schema.$ref.replace('#/components/schemas/', '') : undefined;
+  return ref ? resolveSchema(ROUTE_SCHEMAS[ref]) : schema;
+}
+
+/**
+ * Attaches the schemas scripts/openapi-schemas.mjs generated from each handler's own TypeScript
+ * types (`<Controller>_<method>_Body|Query|Response`), so bodies and responses follow the code.
+ */
+function applySchemas(operation: OperationObject, method: string, operationId: string): void {
+  const body = `${operationId}_Body`;
+  if (ROUTE_SCHEMAS[body] && method !== 'get') {
+    operation.requestBody = { required: true, content: { 'application/json': { schema: refTo(body) } } };
+  }
+
+  const query = resolveSchema(ROUTE_SCHEMAS[`${operationId}_Query`]);
+  const properties = (query?.properties ?? {}) as Record<string, Schema>;
+  const required = new Set((query?.required as string[] | undefined) ?? []);
+  const parameters = (operation.parameters ??= []);
+  for (const [name, property] of Object.entries(properties)) {
+    if (parameters.some((p) => 'in' in p && p.in === 'query' && p.name === name)) continue;
+    const { description, ...schema } = property;
+    parameters.push({
+      name,
+      in: 'query',
+      required: required.has(name),
+      ...(typeof description === 'string' ? { description } : {}),
+      schema,
+    });
+  }
+
+  const response = `${operationId}_Response`;
+  const success = Object.keys(operation.responses).find((status) => /^2\d\d$/.test(status));
+  if (ROUTE_SCHEMAS[response] && success) {
+    operation.responses[success] = {
+      description: 'Success.',
+      content: { 'application/json': { schema: refTo(response) } },
+    };
+  }
 }
 
 /** OpenAPI allows `x-` vendor extensions on any object; swagger's type does not declare them. */

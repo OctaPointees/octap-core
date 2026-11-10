@@ -116,6 +116,65 @@ describe('OpenAPI document', () => {
   });
 });
 
+describe('OpenAPI request and response schemas', () => {
+  const schemas = () => document.components!.schemas as Record<string, Record<string, unknown>>;
+  const resolve = (schema: Record<string, unknown>): Record<string, unknown> =>
+    typeof schema.$ref === 'string' ? resolve(schemas()[schema.$ref.split('/').pop()!]) : schema;
+  const bodyOf = (method: string, path: string) =>
+    resolve(
+      (operation(method, path).requestBody as { content: Record<string, { schema: Record<string, unknown> }> }).content[
+        'application/json'
+      ].schema,
+    );
+
+  it('is OpenAPI 3.1, because the generated schemas use JSON Schema type arrays', () => {
+    expect(document.openapi).toBe('3.1.0');
+  });
+
+  it('gives every operation a JSON success response schema', () => {
+    for (const { operation: op } of operations()) {
+      const success = Object.entries(op.responses).find(([status]) => /^2\d\d$/.test(status));
+      expect(success, op.operationId).toBeDefined();
+      expect((success![1] as { content?: unknown }).content, op.operationId).toBeDefined();
+    }
+  });
+
+  it('describes a typed body with its required fields', () => {
+    const earn = bodyOf('post', '/v1/credits/earn');
+    expect(earn.required).toEqual(
+      expect.arrayContaining(['organizationEndUserId', 'purchaseAmount', 'idempotencyKey']),
+    );
+    expect(Object.keys(earn.properties as object)).toContain('receiptReference');
+  });
+
+  it('describes bodies that the services validate by hand (Wire<…> DTOs)', () => {
+    const patch = bodyOf('patch', '/v1/console/organizations/{organizationId}/members/{memberId}');
+    expect(Object.keys(patch.properties as object).sort()).toEqual(['externalMemberId', 'metadata', 'status']);
+    const apply = bodyOf('post', '/v1/console/organization-requests');
+    expect(apply.required).toEqual(expect.arrayContaining(['name', 'slug', 'organizationType']));
+  });
+
+  it('describes an inferred response type that has no named interface', () => {
+    const response = operation('get', '/v1/organizations/resolve/{slug}').responses['200'] as unknown as {
+      content: Record<string, { schema: Record<string, unknown> }>;
+    };
+    expect(resolve(response.content['application/json'].schema).required).toEqual(
+      expect.arrayContaining(['organizationId', 'name', 'slug']),
+    );
+  });
+
+  it('expands a typed query object into query parameters', () => {
+    const names = (operation('get', '/v1/console/organizations/{organizationId}/members').parameters ?? [])
+      .filter((p) => 'in' in p && p.in === 'query')
+      .map((p) => ('name' in p ? p.name : ''));
+    expect(names.sort()).toEqual(['cursor', 'externalMemberId', 'limit', 'q', 'status']);
+  });
+
+  it('does not describe a body on GET routes', () => {
+    for (const { method, operation: op } of operations()) if (method === 'get') expect(op.requestBody).toBeUndefined();
+  });
+});
+
 describe('OpenAPI helpers', () => {
   it('serves docs only when OPENAPI_ENABLED is exactly "true"', () => {
     expect(isOpenApiEnabled({})).toBe(false);

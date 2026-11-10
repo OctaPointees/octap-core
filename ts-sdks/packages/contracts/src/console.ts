@@ -69,3 +69,15 @@ export interface ConsoleCredential {
   scopes: unknown;
   status: string;
 }
+export interface ConsoleGoogleLoginInput {
+  /** Google ID token from the console sign-in. */
+  idToken: string;
+}
+export interface ConsoleStaffAccessPatch {
+  status: 'ACTIVE' | 'SUSPENDED';
+}
+export interface ConsoleInvitationInput {
+  /** @format email */
+  email: string;
+  persona?: 'BUSINESS_DEVELOPER';
+}

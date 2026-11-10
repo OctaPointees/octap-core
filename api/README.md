@@ -49,7 +49,13 @@ metadata the guards enforce, so a new route needs no swagger decorator to be lis
 
 - Set `OPENAPI_ENABLED=true` to serve Swagger UI at `/docs` and the spec at `/docs/openapi.json`.
   It is off by default; leave it off in production.
-- `docs/openapi.json` is the committed copy for frontend and Postman use. After adding or changing a
-  route, run `npm run build && npm run openapi:generate` and commit the result; CI runs
-  `npm run openapi:check` and fails when the file is stale.
-- Request and response bodies are not described yet; see OCT-285.
+- `docs/openapi.json` (OpenAPI 3.1) is the committed copy for frontend, Postman and client
+  generators. CI runs `npm run openapi:check` and fails when any generated file is stale.
+- Request bodies, query objects and responses come from each handler's own TypeScript types,
+  declared or inferred: `npm run openapi:schemas` writes `src/api/openapi/route-types.generated.ts`
+  (one alias per route, so `npm run typecheck` breaks if a handler changes without regenerating)
+  and `route-schemas.generated.ts` (JSON Schemas from the type checker). Type a new `@Body()` or
+  `@Query()` with a real type, not `Record<string, unknown>`; for console and platform bodies the
+  service validates by hand, declare `Wire<SomeContractType>` from `src/api/dto/console.dto.ts`.
+- After changing a route or a wire type: `npm run openapi:schemas && npm run build && npm run
+  openapi:generate`, then commit the three generated files.
