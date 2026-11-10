@@ -11,7 +11,8 @@
     "ts-sdks/packages/chain",
     "ts-sdks/packages/node",
     "ts-sdks/packages/browser",
-    "api"
+    "api",
+    "mcp"
   ],
   "scripts": {
     "demo:sdk": "node scripts/sdk-voucher-demo.mjs",
