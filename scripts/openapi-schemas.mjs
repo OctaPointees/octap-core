@@ -53,16 +53,27 @@ for (const fileName of readdirSync(restDir)
       const params = `Parameters<${controller}['${method}']>`;
       const parts = [{ name: 'Response', type: `Awaited<ReturnType<${controller}['${method}']>>` }];
       const bodyFields = [];
+      const queryFields = [];
       member.parameters.forEach((param, index) => {
+        // `limit?: string` or `limit = 50`: the caller may leave it out.
+        const optional = param.questionToken || param.initializer ? '?' : '';
+        const field = (key) => `${JSON.stringify(key)}${optional}: ${params}[${index}]`;
         for (const d of decoratorsOf(param)) {
           const name = decoratorName(d);
           const key = firstStringArg(d);
           if (name === 'Body' && key === undefined) parts.push({ name: 'Body', type: `${params}[${index}]` });
-          else if (name === 'Body') bodyFields.push(`${JSON.stringify(key)}: ${params}[${index}]`);
+          else if (name === 'Body') bodyFields.push(field(key));
           else if (name === 'Query' && key === undefined) parts.push({ name: 'Query', type: `${params}[${index}]` });
+          else if (name === 'Query') queryFields.push(field(key));
         }
       });
       if (bodyFields.length) parts.push({ name: 'Body', type: `{ ${bodyFields.join('; ')} }` });
+      if (queryFields.length) {
+        if (parts.some((p) => p.name === 'Query')) {
+          throw new Error(`${controller}.${method} mixes @Query() and @Query('key'); use one of them`);
+        }
+        parts.push({ name: 'Query', type: `{ ${queryFields.join('; ')} }` });
+      }
       routes.push({ file: fileName.replace(/\.ts$/, '.js'), controller, method, parts });
     }
   }

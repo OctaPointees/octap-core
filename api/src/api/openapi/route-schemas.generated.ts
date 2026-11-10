@@ -1243,6 +1243,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "transactionId"
     ]
   },
+  "CreditsController_getBalance_Query": {
+    "type": "object",
+    "properties": {
+      "programId": {
+        "type": "string"
+      }
+    }
+  },
   "CreditsController_getBalance_Response": {
     "type": "object",
     "properties": {
@@ -1354,6 +1362,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "shards",
       "warningThreshold"
     ]
+  },
+  "CreditsController_getTransactions_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "string"
+      }
+    }
   },
   "CreditsController_getTransactions_Response": {
     "type": "array",
@@ -2828,6 +2844,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "nextCursor"
     ]
   },
+  "PlatformOrganizationsController_owners_Query": {
+    "type": "object",
+    "properties": {
+      "q": {
+        "type": "string"
+      }
+    }
+  },
   "PlatformOrganizationsController_owners_Response": {
     "type": "array",
     "items": {
@@ -3294,6 +3318,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "voucherId",
       "voucherOwnershipId"
     ]
+  },
+  "RewardsController_getRefundPolicyHistory_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "beforeVersion": {
+        "type": "number"
+      }
+    }
   },
   "RewardsController_getRefundPolicyHistory_Response": {
     "type": "array",

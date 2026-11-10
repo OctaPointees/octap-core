@@ -1,4 +1,4 @@
-import type { INestApplication, Type } from '@nestjs/common';
+import { Logger, type INestApplication, type Type } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants.js';
 import { ModulesContainer } from '@nestjs/core';
 import {
@@ -50,12 +50,27 @@ export function isOpenApiEnabled(env: NodeJS.ProcessEnv = process.env): boolean 
  * Call before `app.init()`/`listen()`: the routes go straight onto the HTTP adapter (outside Nest's
  * router and guards), and Express's not-found handler is registered at init.
  */
-export function setupOpenApi(app: INestApplication, env: NodeJS.ProcessEnv = process.env): boolean {
+export const openApiLogger = new Logger('OpenAPI');
+
+export function setupOpenApi(
+  app: INestApplication,
+  env: NodeJS.ProcessEnv = process.env,
+  build: (app: INestApplication) => OpenAPIObject = buildOpenApiDocument,
+): boolean {
   if (!isOpenApiEnabled(env)) return false;
-  SwaggerModule.setup(OPENAPI_DOCS_PATH, app, buildOpenApiDocument(app), {
-    jsonDocumentUrl: OPENAPI_JSON_PATH,
-    raw: ['json'],
-  });
+  let document: OpenAPIObject;
+  try {
+    document = build(app);
+  } catch (error) {
+    // Docs are a convenience: a document that cannot be built must not stop the API from starting.
+    // `npm run openapi:check` builds the same document in CI and fails there instead.
+    openApiLogger.error(
+      `API docs disabled: ${error instanceof Error ? error.message : String(error)}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+    return false;
+  }
+  SwaggerModule.setup(OPENAPI_DOCS_PATH, app, document, { jsonDocumentUrl: OPENAPI_JSON_PATH, raw: ['json'] });
   return true;
 }
 
@@ -215,15 +230,19 @@ function applySchemas(operation: OperationObject, method: string, operationId: s
   const required = new Set((query?.required as string[] | undefined) ?? []);
   const parameters = (operation.parameters ??= []);
   for (const [name, property] of Object.entries(properties)) {
-    if (parameters.some((p) => 'in' in p && p.in === 'query' && p.name === name)) continue;
     const { description, ...schema } = property;
-    parameters.push({
+    const parameter: ParameterObject = {
       name,
       in: 'query',
       required: required.has(name),
       ...(typeof description === 'string' ? { description } : {}),
       schema,
-    });
+    };
+    // Swagger reflects a keyed `@Query('limit')` as required whatever the signature says; the
+    // handler's own type (optional `?` or a default) is the truth, so it replaces the reflected one.
+    const reflected = parameters.findIndex((p) => 'in' in p && p.in === 'query' && p.name === name);
+    if (reflected >= 0) parameters[reflected] = parameter;
+    else parameters.push(parameter);
   }
 
   const response = `${operationId}_Response`;

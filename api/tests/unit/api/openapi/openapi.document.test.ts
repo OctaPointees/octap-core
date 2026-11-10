@@ -170,6 +170,35 @@ describe('OpenAPI request and response schemas', () => {
     expect(names.sort()).toEqual(['cursor', 'externalMemberId', 'limit', 'q', 'status']);
   });
 
+  it('documents a keyed @Query param as optional when the handler signature makes it optional', () => {
+    const query = (method: string, path: string) =>
+      Object.fromEntries(
+        (operation(method, path).parameters ?? [])
+          .filter((p) => 'in' in p && p.in === 'query')
+          .map((p) => ('name' in p ? [p.name, p] : ['', p])),
+      ) as Record<string, { required?: boolean; schema?: Record<string, unknown> }>;
+    expect(query('get', '/v1/credits/members/{memberId}/balance').programId.required).toBe(false);
+    expect(query('get', '/v1/credits/members/{memberId}/transactions').limit.required).toBe(false);
+    const history = query('get', '/v1/rewards/refund-policy/history');
+    expect(history.limit).toMatchObject({ required: false, schema: { type: 'number' } });
+    expect(history.beforeVersion.required).toBe(false);
+    expect(query('get', '/v1/platform/owner-candidates').q.required).toBe(false);
+    // Path params stay required.
+    const memberId = operation('get', '/v1/credits/members/{memberId}/balance').parameters?.find(
+      (p) => 'in' in p && p.in === 'path' && p.name === 'memberId',
+    );
+    expect(memberId).toMatchObject({ required: true });
+  });
+
+  it('documents no query param twice', () => {
+    for (const { operation: op } of operations()) {
+      const names = (op.parameters ?? [])
+        .filter((p) => 'in' in p && p.in === 'query')
+        .map((p) => ('name' in p ? p.name : ''));
+      expect(new Set(names).size, op.operationId).toBe(names.length);
+    }
+  });
+
   it('does not describe a body on GET routes', () => {
     for (const { method, operation: op } of operations()) if (method === 'get') expect(op.requestBody).toBeUndefined();
   });
