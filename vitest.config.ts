@@ -32,7 +32,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['api/tests/unit/**/*.test.ts', 'ts-sdks/packages/*/tests/**/*.test.ts'],
+          include: ['api/tests/unit/**/*.test.ts', 'ts-sdks/packages/*/tests/**/*.test.ts', 'mcp/tests/**/*.test.ts'],
         },
       },
       {

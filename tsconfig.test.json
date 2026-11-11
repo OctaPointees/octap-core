@@ -10,5 +10,5 @@
       "@octap/browser-sdk": ["./ts-sdks/packages/browser/src/index.ts"]
     }
   },
-  "include": ["vitest.config.ts", "api/tests/**/*.ts", "ts-sdks/packages/*/tests/**/*.ts"]
+  "include": ["vitest.config.ts", "api/tests/**/*.ts", "ts-sdks/packages/*/tests/**/*.ts", "mcp/tests/**/*.ts"]
 }
