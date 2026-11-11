@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { createTestApp } from './support/app.js';
@@ -9,6 +9,7 @@ import {
   ApiCredentialsService,
   MAX_ACTIVE_API_CREDENTIALS,
 } from '#infra/auth/api-credentials.service.js';
+import { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
 
 const ACTORS = ['owner', 'developer', 'stranger', 'inactive', 'outsider'] as const;
 type Actor = (typeof ACTORS)[number];
@@ -109,6 +110,19 @@ describe('console API keys: issue, rename and revoke from a Google session', () 
     expect(JSON.stringify(listed)).not.toContain(rawKey);
   });
 
+  it('answers 200 even when recording lastUsedAt fails', async () => {
+    const { rawKey } = (await issue('owner').expect(201)).body as { rawKey: string };
+    const touch = vi.spyOn(ApiCredentialsRepository.prototype, 'touchLastUsed').mockRejectedValue(new Error('db down'));
+    try {
+      await ctx.http().get('/v1/rewards/vouchers').set(withKey(rawKey)).expect(200);
+      expect(touch).toHaveBeenCalledOnce();
+      // The rejected write is caught in the guard: the process is still serving.
+      await ctx.http().get('/v1/rewards/vouchers').set(withKey(rawKey)).expect(200);
+    } finally {
+      touch.mockRestore();
+    }
+  });
+
   it('reports when a key was last used', async () => {
     const { rawKey } = (await issue('owner').expect(201)).body as { rawKey: string };
     await ctx.http().get('/v1/rewards/vouchers').set(withKey(rawKey)).expect(200);
@@ -170,10 +184,15 @@ describe('console API keys: issue, rename and revoke from a Google session', () 
     expect((await credentialRow(id)).status).toBe('ACTIVE');
   });
 
-  it('issues no key for an organization that is not ACTIVE', async () => {
+  it('issues, renames and revokes no key for an organization that is not ACTIVE', async () => {
+    const { id } = (await issue('owner').expect(201)).body as { id: string };
     await ctx.db.update(schema.organizations).set({ status: 'SUSPENDED' }).where(eq(schema.organizations.id, orgId));
     await issue('owner').expect(403);
-    expect(await ctx.db.select().from(schema.apiCredentials)).toEqual([]);
+    await ctx.http().patch(`${path()}/${id}`).set(as('owner')).send({ name: 'renamed' }).expect(403);
+    await ctx.http().delete(`${path()}/${id}`).set(as('owner')).expect(403);
+    const rows = await ctx.db.select().from(schema.apiCredentials);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id, status: 'ACTIVE', name: 'pos' });
   });
 
   it('cannot revoke or rename another organization’s key through this organization’s path', async () => {
@@ -194,15 +213,14 @@ describe('console API keys: issue, rename and revoke from a Google session', () 
     await ctx.http().patch(`${path()}/${id}`).set(as('owner')).send({ name: 'again' }).expect(404);
   });
 
-  it(`holds an organization to ${MAX_ACTIVE_API_CREDENTIALS} ACTIVE keys, even under concurrent requests`, async () => {
+  // The concurrent case, where two issues overlap, is the gated test in the repository spec.
+  it(`holds an organization to ${MAX_ACTIVE_API_CREDENTIALS} ACTIVE keys`, async () => {
     // Script-issued and revoked keys: the first count, the second do not.
     for (let i = 0; i < MAX_ACTIVE_API_CREDENTIALS - 2; i += 1) await seedCredential(ctx.db, orgId);
     await seedCredential(ctx.db, orgId, { status: 'REVOKED' });
     const kept = (await issue('owner').expect(201)).body as { id: string };
+    await issue('developer').expect(201);
 
-    // One slot left: two requests at once must not both take it.
-    const statuses = (await Promise.all([issue('owner'), issue('developer')])).map((r) => r.status).sort();
-    expect(statuses).toEqual([201, 409]);
     const refused = await issue('owner').expect(409);
     expect(refused.body).toMatchObject({ statusCode: 409, code: API_CREDENTIAL_LIMIT_REACHED });
     const active = await ctx.db.select().from(schema.apiCredentials).where(eq(schema.apiCredentials.status, 'ACTIVE'));

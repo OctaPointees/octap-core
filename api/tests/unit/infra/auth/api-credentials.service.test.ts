@@ -3,7 +3,6 @@ import { ConflictException } from '@nestjs/common';
 import {
   API_CREDENTIAL_LIMIT_REACHED,
   ApiCredentialsService,
-  DEFAULT_SCOPES,
   MAX_ACTIVE_API_CREDENTIALS,
 } from '#infra/auth/api-credentials.service.js';
 import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
@@ -50,13 +49,13 @@ function inMemoryRepo() {
 describe('ApiCredentialsService', () => {
   it('issues a key whose raw value is never persisted, only its hash and display prefix', async () => {
     const { repo } = inMemoryRepo();
-    const { credential, rawKey } = await new ApiCredentialsService(repo).issue('org-1', 'pos-terminal-1');
+    const { credential, rawKey } = await new ApiCredentialsService(repo).issue('org-1', 'pos-terminal-1', ['read']);
 
     expect(rawKey).toMatch(/^octap_live_[0-9a-f]{48}$/);
     expect(credential.keyHash).toBe(hashApiKey(rawKey));
     expect(credential.keyPrefix).toBe(rawKey.slice(0, 'octap_live_'.length + 8));
     expect(JSON.stringify(credential)).not.toContain(rawKey);
-    expect(credential.scopes).toEqual(DEFAULT_SCOPES);
+    expect(credential.scopes).toEqual(['read']);
   });
 
   it('passes the caller transaction and the active-key limit to the repository', async () => {
@@ -69,19 +68,20 @@ describe('ApiCredentialsService', () => {
     const { repo } = inMemoryRepo();
     const service = new ApiCredentialsService(repo);
     const issued = [];
-    for (let i = 0; i < MAX_ACTIVE_API_CREDENTIALS; i += 1) issued.push(await service.issue('org-1', `k${i}`));
+    for (let i = 0; i < MAX_ACTIVE_API_CREDENTIALS; i += 1)
+      issued.push(await service.issue('org-1', `k${i}`, ['read']));
 
-    const refused = await service.issue('org-1', 'one too many').catch((error: unknown) => error);
+    const refused = await service.issue('org-1', 'one too many', ['read']).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ConflictException);
     expect((refused as ConflictException).getResponse()).toMatchObject({
       statusCode: 409,
       code: API_CREDENTIAL_LIMIT_REACHED,
     });
     // Another organization has its own limit.
-    await expect(service.issue('org-2', 'k')).resolves.toBeDefined();
+    await expect(service.issue('org-2', 'k', ['read'])).resolves.toBeDefined();
 
     await service.revoke('org-1', issued[0].credential.id);
-    await expect(service.issue('org-1', 'after revoke')).resolves.toBeDefined();
+    await expect(service.issue('org-1', 'after revoke', ['read'])).resolves.toBeDefined();
   });
 
   it('fails closed across tenants on revoke and rename', async () => {
@@ -99,14 +99,29 @@ describe('ApiCredentialsService', () => {
   it('revoking an already-revoked credential is idempotent and writes nothing; a revoked key cannot be renamed', async () => {
     const { repo, revoke, inTransaction } = inMemoryRepo();
     const service = new ApiCredentialsService(repo);
-    const { credential } = await service.issue('org-1', 'k');
+    const { credential } = await service.issue('org-1', 'k', ['read']);
 
-    await service.revoke('org-1', credential.id, TX);
+    await service.revoke('org-1', credential.id, { tx: TX });
     const again = await service.revoke('org-1', credential.id);
 
     expect(again.status).toBe('REVOKED');
     expect(revoke).toHaveBeenCalledOnce();
     expect(inTransaction).toHaveBeenCalledWith(TX, expect.any(Function));
     await expect(service.rename('org-1', credential.id, 'x')).rejects.toThrow(/not found/);
+  });
+
+  it('runs authorize on the locked row before writing, and writes nothing when it refuses', async () => {
+    const { repo, revoke } = inMemoryRepo();
+    const service = new ApiCredentialsService(repo);
+    const { credential } = await service.issue('org-1', 'k', ['read', 'write']);
+    const refuse = vi.fn(() => {
+      throw new Error('refused');
+    });
+
+    await expect(service.rename('org-1', credential.id, 'x', { authorize: refuse })).rejects.toThrow('refused');
+    await expect(service.revoke('org-1', credential.id, { authorize: refuse })).rejects.toThrow('refused');
+    expect(refuse).toHaveBeenCalledWith(expect.objectContaining({ id: credential.id, scopes: ['read', 'write'] }));
+    expect(revoke).not.toHaveBeenCalled();
+    expect(credential.name).toBe('k');
   });
 });

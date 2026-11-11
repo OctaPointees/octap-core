@@ -7,6 +7,7 @@ import { IdentityService } from './identity.service.js';
 import { SponsoredTransactionService } from './sponsored-transaction.service.js';
 import { ConsoleIdentityService } from './console-identity.service.js';
 import { ConsoleOrganizationsService } from './console-organizations.service.js';
+import { ConsoleApiCredentialsService } from './console-api-credentials.service.js';
 import { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
 
 @Module({
@@ -17,6 +18,7 @@ import { GoogleIdentityClient } from '#infra/clients/google/google-identity.clie
     ConsoleIdentityService,
     GoogleIdentityClient,
     ConsoleOrganizationsService,
+    ConsoleApiCredentialsService,
   ],
   exports: [
     IdentityService,
@@ -24,6 +26,7 @@ import { GoogleIdentityClient } from '#infra/clients/google/google-identity.clie
     ConsoleIdentityService,
     GoogleIdentityClient,
     ConsoleOrganizationsService,
+    ConsoleApiCredentialsService,
   ],
 })
 export class IdentityModule {}

@@ -7,14 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type {
-  ConsoleCredential,
-  ConsoleIdentity,
-  CreatedConsoleCredential,
-  OrganizationApplicationInput,
-} from '@octap/contracts';
-import { ApiCredentialsService } from '#infra/auth/api-credentials.service.js';
-import type { ApiCredential } from '#infra/db/repositories/api-credentials.repository.js';
+import type { ConsoleIdentity, OrganizationApplicationInput } from '@octap/contracts';
 import {
   ConsoleAccessError,
   ConsoleConflictError,
@@ -26,10 +19,7 @@ import {
 
 @Injectable()
 export class ConsoleOrganizationsService {
-  constructor(
-    private readonly organizations: ConsoleOrganizationsRepository,
-    private readonly apiCredentials: ApiCredentialsService,
-  ) {}
+  constructor(private readonly organizations: ConsoleOrganizationsRepository) {}
   private async run<T>(action: () => Promise<T>): Promise<T> {
     try {
       return await action();
@@ -153,57 +143,6 @@ export class ConsoleOrganizationsService {
       return { created: true };
     });
   }
-  credentials(userId: string, orgId: string): Promise<ConsoleCredential[]> {
-    return this.run(async () => (await this.organizations.credentials(userId, orgId)).map(toConsoleCredential));
-  }
-  /**
-   * Owner or Business Developer; only the Owner creates `write` keys, and `read` is the default.
-   * Console keys are never `admin`: that stays with the seed script.
-   */
-  issueCredential(userId: string, orgId: string, input: Record<string, unknown>): Promise<CreatedConsoleCredential> {
-    if (!input || typeof input !== 'object' || Object.keys(input).some((key) => key !== 'name' && key !== 'scope'))
-      throw new BadRequestException('Only name and scope can be set on an API key');
-    const name = credentialName(input.name);
-    if (input.scope !== undefined && input.scope !== 'read' && input.scope !== 'write')
-      throw new BadRequestException('scope must be read or write');
-    const scopes = input.scope === 'write' ? ['read', 'write'] : ['read'];
-    return this.run(async () => {
-      const { credential, rawKey } = await this.organizations.withStaffAccess(userId, orgId, (tx, role) => {
-        if (role !== 'OWNER' && scopes.includes('write'))
-          throw new ForbiddenException('Only the Owner can create a write key; a Business Developer creates read keys');
-        return this.apiCredentials.issue(orgId, name, scopes, tx);
-      });
-      return { ...toConsoleCredential(credential), rawKey };
-    });
-  }
-  renameCredential(
-    userId: string,
-    orgId: string,
-    credentialId: string,
-    input: Record<string, unknown>,
-  ): Promise<ConsoleCredential> {
-    if (!input || typeof input !== 'object' || Object.keys(input).some((key) => key !== 'name'))
-      throw new BadRequestException('Only the name of an API key can be changed');
-    const name = credentialName(input.name);
-    return this.run(async () =>
-      toConsoleCredential(
-        await this.organizations.withStaffAccess(userId, orgId, async (tx, role) => {
-          requireKeyAuthority(role, await this.apiCredentials.findOwned(tx, orgId, credentialId));
-          return this.apiCredentials.rename(orgId, credentialId, name, tx);
-        }),
-      ),
-    );
-  }
-  /** The row stays, as REVOKED; the key fails authentication from the next request on. */
-  revokeCredential(userId: string, orgId: string, credentialId: string) {
-    return this.run(async () => {
-      await this.organizations.withStaffAccess(userId, orgId, async (tx, role) => {
-        requireKeyAuthority(role, await this.apiCredentials.findOwned(tx, orgId, credentialId));
-        return this.apiCredentials.revoke(orgId, credentialId, tx);
-      });
-      return { revoked: true as const };
-    });
-  }
   invite(userId: string, orgId: string, input: Record<string, unknown>) {
     if (
       typeof input?.email !== 'string' ||
@@ -246,35 +185,4 @@ export class ConsoleOrganizationsService {
     if (!/^[a-f0-9]{64}$/.test(token)) throw new NotFoundException('Invitation not found');
     return this.run(() => this.organizations.accept(identity, token));
   }
-}
-
-/**
- * A key's scopes are what it can do, whoever holds it. The Owner manages every key; a Business
- * Developer only read-only keys, so it cannot revoke or rename the Owner's write keys.
- */
-function requireKeyAuthority(role: 'OWNER' | 'BUSINESS_DEVELOPER', credential: Pick<ApiCredential, 'scopes'>) {
-  if (role === 'OWNER') return;
-  if ((credential.scopes as string[]).some((scope) => scope !== 'read'))
-    throw new ForbiddenException('Only the Owner can revoke or rename a key with more than read access');
-}
-
-function credentialName(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim() || value.trim().length > 100)
-    throw new BadRequestException('name must be 1–100 characters');
-  return value.trim();
-}
-
-/** Whitelists the fields the console may see: never the key hash. */
-function toConsoleCredential(
-  row: Pick<ApiCredential, 'id' | 'name' | 'keyPrefix' | 'scopes' | 'status' | 'createdAt' | 'lastUsedAt'>,
-): ConsoleCredential {
-  return {
-    id: row.id,
-    name: row.name,
-    keyPrefix: row.keyPrefix,
-    scopes: row.scopes as string[],
-    status: row.status,
-    createdAt: row.createdAt.toISOString(),
-    lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
-  };
 }

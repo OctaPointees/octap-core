@@ -8,7 +8,7 @@ export const redisClientProvider: Provider = {
   useFactory: () => {
     return new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
       // Fail fast rather than queueing commands indefinitely when Redis is down — callers
-      // (nonce/replay checks, rate limiting) must see the error and fail closed, not hang.
+      // (rate limiting) must see the error and fail closed, not hang.
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
       lazyConnect: false,

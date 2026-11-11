@@ -12,7 +12,6 @@ import {
 import { IS_PUBLIC_KEY } from '#infra/auth/public.decorator.js';
 import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
-import { REQUIRE_SIGNED_REQUEST_KEY } from '#infra/auth/signed-request.decorator.js';
 import { ConsoleAccessGuard, PLATFORM_ADMIN_ONLY_KEY } from '#api/rest/console-access.guard.js';
 import { ROUTE_SCHEMAS } from './route-schemas.generated.js';
 
@@ -23,20 +22,17 @@ export const OPENAPI_JSON_PATH = `${OPENAPI_DOCS_PATH}/openapi.json`;
 export const SECURITY_SCHEMES = {
   apiKey: 'apiKey',
   consoleSession: 'consoleSession',
-  signedTimestamp: 'signedTimestamp',
-  signedNonce: 'signedNonce',
-  signedSignature: 'signedSignature',
 } as const;
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
 
 /**
  * How a route is authenticated, read from the same metadata the guards enforce (`@Public()`,
- * `@UseGuards(ConsoleAccessGuard)`, `@PlatformAdminOnly()`, `@Scopes()`, `@RequireSignedRequest()`),
+ * `@UseGuards(ConsoleAccessGuard)`, `@PlatformAdminOnly()`, `@Scopes()`),
  * so the document cannot drift from the guards and a new route needs no swagger decorator for auth.
  */
 export type RouteAccess =
-  | { kind: 'apiKey'; scopes: string[]; signed: boolean }
+  | { kind: 'apiKey'; scopes: string[] }
   | { kind: 'console'; platformAdminOnly: boolean }
   | { kind: 'public'; rateLimited: boolean };
 
@@ -84,7 +80,7 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
         'REST API of octap-core. Three kinds of caller:',
         '',
         '- **Merchant backend**: `Authorization: Bearer <api key>`. Send `X-Organization-Id` to have the',
-        '  key checked against the organization you expect. Some routes also need a signed request.',
+        '  key checked against the organization you expect.',
         '- **Console user**: `Authorization: Bearer <Google ID token>` from the console sign-in.',
         '- **Customer device**: public routes with no credential, rate limited per client IP.',
         '',
@@ -100,28 +96,6 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', description: 'Google ID token of a signed-in console user.' },
       SECURITY_SCHEMES.consoleSession,
-    )
-    .addApiKey(
-      {
-        type: 'apiKey',
-        in: 'header',
-        name: 'X-OctaP-Timestamp',
-        description: 'Unix seconds; must be within the replay window.',
-      },
-      SECURITY_SCHEMES.signedTimestamp,
-    )
-    .addApiKey(
-      { type: 'apiKey', in: 'header', name: 'X-OctaP-Nonce', description: 'Unique per request; reuse is rejected.' },
-      SECURITY_SCHEMES.signedNonce,
-    )
-    .addApiKey(
-      {
-        type: 'apiKey',
-        in: 'header',
-        name: 'X-OctaP-Signature',
-        description: 'HMAC of the request, keyed by the API key. See the SDK for the exact canonical string.',
-      },
-      SECURITY_SCHEMES.signedSignature,
     )
     .build();
 
@@ -149,11 +123,7 @@ export function routeAccess(controller: Type, handler: (...args: never[]) => unk
     ...((Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[] | undefined) ?? []),
   ];
   if (!read<boolean>(IS_PUBLIC_KEY)) {
-    return {
-      kind: 'apiKey',
-      scopes: read<string[]>(SCOPES_KEY) ?? [],
-      signed: read<boolean>(REQUIRE_SIGNED_REQUEST_KEY) ?? false,
-    };
+    return { kind: 'apiKey', scopes: read<string[]>(SCOPES_KEY) ?? [] };
   }
   if (guards.includes(ConsoleAccessGuard)) {
     return { kind: 'console', platformAdminOnly: read<boolean>(PLATFORM_ADMIN_ONLY_KEY) ?? false };
@@ -261,20 +231,11 @@ type ExtensibleOperation = OperationObject & { 'x-octap-auth'?: Record<string, u
 function applyAccess(operation: ExtensibleOperation, access: RouteAccess): void {
   const notes: string[] = [];
   if (access.kind === 'apiKey') {
-    operation.security = [
-      access.signed
-        ? {
-            [SECURITY_SCHEMES.apiKey]: [],
-            [SECURITY_SCHEMES.signedTimestamp]: [],
-            [SECURITY_SCHEMES.signedNonce]: [],
-            [SECURITY_SCHEMES.signedSignature]: [],
-          }
-        : { [SECURITY_SCHEMES.apiKey]: [] },
-    ];
+    operation.security = [{ [SECURITY_SCHEMES.apiKey]: [] }];
     operation.parameters = [...(operation.parameters ?? []), { $ref: '#/components/parameters/OrganizationIdHeader' }];
-    notes.push(`**Auth:** merchant API key${access.signed ? ' + signed request' : ''}.`);
+    notes.push('**Auth:** merchant API key.');
     if (access.scopes.length) notes.push(`**Required scopes:** ${access.scopes.map((s) => `\`${s}\``).join(', ')}.`);
-    operation['x-octap-auth'] = { kind: 'apiKey', scopes: access.scopes, signedRequest: access.signed };
+    operation['x-octap-auth'] = { kind: 'apiKey', scopes: access.scopes };
   } else if (access.kind === 'console') {
     operation.security = [{ [SECURITY_SCHEMES.consoleSession]: [] }];
     notes.push(`**Auth:** console user (Google ID token)${access.platformAdminOnly ? ', System Admin only' : ''}.`);

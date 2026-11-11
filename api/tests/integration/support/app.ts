@@ -47,9 +47,8 @@ export function fakeChainAdapters() {
 export type ChainAdapters = ReturnType<typeof fakeChainAdapters>;
 
 /**
- * Boots the real `AppModule` exactly as `main.ts` does (`rawBody: true`, so request signing hashes
- * the bytes actually sent), against the integration Postgres/Redis, with only the chain adapters
- * replaced.
+ * Boots the real `AppModule` exactly as `main.ts` does, against the integration Postgres/Redis, with
+ * only the chain adapters replaced.
  */
 export async function createTestApp(
   adapters: ChainAdapters = fakeChainAdapters(),
@@ -63,7 +62,7 @@ export async function createTestApp(
     .useValue(adapters.suiBuilder);
   if (google) builder.overrideProvider(GoogleIdentityClient).useValue(google);
   const moduleRef = await builder.compile();
-  const app: INestApplication = moduleRef.createNestApplication({ rawBody: true, logger: false });
+  const app: INestApplication = moduleRef.createNestApplication({ logger: false });
   beforeInit?.(app);
   await app.init();
   return {

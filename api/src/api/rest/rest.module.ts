@@ -13,6 +13,7 @@ import {
 } from './console-organizations.controller.js';
 import { ConsoleAccessGuard } from './console-access.guard.js';
 import { MembersController } from './members.controller.js';
+import { ConsoleApiCredentialsController } from './console-api-credentials.controller.js';
 import { ConsoleChangeRequestsController, PlatformChangeRequestsController } from './administration.controller.js';
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
@@ -27,6 +28,7 @@ import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } fro
     ConsoleChangeRequestsController,
     PlatformChangeRequestsController,
     MembersController,
+    ConsoleApiCredentialsController,
     CreditsController,
     RewardsController,
     WebhooksController,

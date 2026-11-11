@@ -118,7 +118,7 @@ export class ConsoleOrganizationsRepository {
    * commits only while the caller still has access (unlike `withAccess`, whose writes are Owner-only).
    * `action` gets the caller's role, for rules that differ between the two.
    */
-  async withStaffAccess<T>(
+  async withDeveloperAccess<T>(
     userId: string,
     organizationId: string,
     action: (tx: Tx, role: 'OWNER' | 'BUSINESS_DEVELOPER') => Promise<T>,

@@ -9,8 +9,7 @@ import { ApiCredentialsModule } from './api-credentials.module.js';
  * Registers ApiKeyGuard as an APP_GUARD so every route in the app is authenticated
  * by default — new controllers can't accidentally ship without a tenant check, which
  * is exactly the gap this module exists to close. Use `@Scopes(...)` to require more
- * than the default (any valid, active credential), and `@RequireSignedRequest()` to
- * additionally require HMAC request signing with replay protection.
+ * than the default (any valid, active credential).
  */
 @Module({
   imports: [PostgresModule, CacheModule, ApiCredentialsModule],

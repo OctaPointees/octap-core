@@ -82,21 +82,13 @@ describe('OpenAPI document', () => {
     expect(operation('post', '/v1/credits/earn')['x-octap-auth']).toEqual({
       kind: 'apiKey',
       scopes: ['write'],
-      signedRequest: false,
     });
     expect(operation('post', '/v1/credits/earn').security).toEqual([{ apiKey: [] }]);
 
     expect(operation('put', '/v1/rewards/refund-policy')['x-octap-auth']).toEqual({
       kind: 'apiKey',
       scopes: ['admin'],
-      signedRequest: false,
     });
-    // `@RequireSignedRequest()` is kept, but no route requires a signed request today.
-    for (const { operation: op } of operations()) {
-      expect((op as unknown as { 'x-octap-auth': { signedRequest?: boolean } })['x-octap-auth'].signedRequest).not.toBe(
-        true,
-      );
-    }
     expect(operation('post', '/v1/console/organizations/{organizationId}/api-credentials')['x-octap-auth']).toEqual({
       kind: 'console',
       platformAdminOnly: false,

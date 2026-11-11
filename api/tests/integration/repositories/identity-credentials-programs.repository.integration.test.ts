@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { IdentityRepository } from '#infra/db/repositories/identity.repository.js';
 import { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
@@ -86,6 +86,47 @@ describe('ApiCredentialsRepository', () => {
     expect(await repo.createWithinLimit(key('b', 'hash-b'), 1)).toMatchObject({ status: 'ACTIVE' });
     expect(await repo.createWithinLimit(key('c', 'hash-c'), 1)).toBeUndefined();
     expect((await repo.createWithinLimit(key('d', 'hash-d'), 2))?.status).toBe('ACTIVE');
+  });
+
+  it('makes a second issue wait for an open one, then refuses it at the limit', async () => {
+    await repo.createWithinLimit(key('a', 'hash-a'), 2);
+
+    // The first issue takes the last slot and keeps its transaction open until the gate opens.
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    let markInserted!: () => void;
+    const inserted = new Promise<void>((resolve) => (markInserted = resolve));
+    const first = db.transaction(async (tx) => {
+      const created = await repo.createWithinLimit(key('b', 'hash-b'), 2, tx);
+      markInserted();
+      await gate;
+      return created;
+    });
+    await inserted;
+
+    let secondSettled = false;
+    const second = repo.createWithinLimit(key('c', 'hash-c'), 2).finally(() => (secondSettled = true));
+    // Wait until the second is blocked on a row lock, or has finished without waiting (no lock).
+    let lockWaiters = 0;
+    for (let i = 0; i < 100 && !secondSettled && lockWaiters === 0; i += 1) {
+      const [row] = await db.execute<{ waiting: number }>(
+        sql`select count(*)::int as waiting from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock'`,
+      );
+      lockWaiters = row.waiting;
+      if (lockWaiters === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(secondSettled).toBe(false);
+    expect(lockWaiters).toBe(1);
+
+    openGate();
+    expect(await first).toMatchObject({ status: 'ACTIVE' });
+    expect(await second).toBeUndefined();
+    const active = await db
+      .select()
+      .from(schema.apiCredentials)
+      .where(and(eq(schema.apiCredentials.organizationId, orgId), eq(schema.apiCredentials.status, 'ACTIVE')));
+    expect(active).toHaveLength(2);
   });
 });
 
