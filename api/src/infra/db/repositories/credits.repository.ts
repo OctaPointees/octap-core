@@ -611,6 +611,17 @@ export class CreditsRepository {
   }
 
   /**
+   * Whether this environment has ever recorded a loyalty transaction — the signal
+   * `checkpoint-indexer.processor.ts` uses to tell a genuinely fresh environment (safe to start
+   * indexing at the chain head) from a wiped/deleted cursor sitting next to data this stream
+   * already produced (not safe: jumping to head would silently skip every event in between).
+   */
+  async hasAnyLoyaltyTransactions(): Promise<boolean> {
+    const row = await this.db.query.loyaltyTransactions.findFirst({ columns: { id: true } });
+    return row !== undefined;
+  }
+
+  /**
    * Idempotency keys are only unique per organization; scoping by member (which belongs to exactly
    * one organization) is at least as narrow, and is what a chain event identifies via its account.
    */
