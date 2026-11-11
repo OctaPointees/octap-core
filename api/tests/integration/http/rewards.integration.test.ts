@@ -63,6 +63,32 @@ const useVoucher = async (serialCode: string) => {
 };
 
 describe('rewards over HTTP', () => {
+  it('keeps the API-key route as it was: required fields, ACTIVE and free by default, editable with the key', async () => {
+    for (const body of [
+      { title: 'T', discountType: 'FREE_ITEM' },
+      { code: 'c', discountType: 'FREE_ITEM' },
+      { code: 'c', title: 'T' },
+    ]) {
+      const refused = await ctx.http().post('/v1/rewards/vouchers').set(auth).send(body).expect(400);
+      expect(refused.body.message).toBe('code, title, and either discountType or terms are required');
+    }
+    // No status: activated straight away, unlike the console route. No pointsCost: free.
+    const created = await ctx
+      .http()
+      .post('/v1/rewards/vouchers')
+      .set(auth)
+      .send({ code: 'api-key', title: 'API key reward', discountType: 'FREE_ITEM' })
+      .expect(201);
+    expect(created.body).toMatchObject({ pointsCost: 0, status: 'DRAFT', publishStatus: 'PUBLISHING' });
+    await ctx.app.get(RewardsRepository).markVoucherPublished(created.body.id, '0xterms-api-key');
+    const paused = await ctx
+      .http()
+      .patch(`/v1/rewards/vouchers/${created.body.id}`)
+      .set(auth)
+      .send({ status: 'PAUSED', totalSupply: 3 })
+      .expect(200);
+    expect(paused.body).toMatchObject({ status: 'PAUSED', totalSupply: 3 });
+  });
   it('returns 409 for concurrent duplicate creation and 400 for impossible dates or active expired rewards', async () => {
     const input = { code: 'duplicate', title: 'Duplicate', discountType: 'FREE_ITEM' };
     const responses = await Promise.all([createVoucher(input), createVoucher(input)]);

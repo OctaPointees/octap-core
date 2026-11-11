@@ -11,6 +11,8 @@ Giữ key trên server tin cậy. Việc quản lý API key không nằm trong S
 
 Một key có thể có scope `read`, `write` và `admin`. Key thiếu scope cần thiết sẽ nhận 403.
 
+Key có scope nào thì làm được việc đó, bất kể ai đang cầm key: route không xét vai trò của người đã tạo key. Trên Console, chỉ Owner của tổ chức tạo được key `write`; Business Developer chỉ tạo key `read`.
+
 | Scope | Method của SDK |
 | --- | --- |
 | `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |

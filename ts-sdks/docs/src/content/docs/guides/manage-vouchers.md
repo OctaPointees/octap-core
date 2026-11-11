@@ -18,6 +18,8 @@ const voucher = await client.createVoucher({
 
 `pointsCost` defaults to 0, which makes a free voucher. `status` defaults to `ACTIVE`, and also accepts `DRAFT` or `PAUSED`. A `code` must be unique in your organization, or you get a 409.
 
+If a create times out or its response is lost, the voucher may exist anyway, and a retry gets a 409 for its `code`. Then call `listVouchers` and find it by `code` instead of creating it again.
+
 ### Publishing
 
 Asking for `ACTIVE` publishes the voucher's terms on-chain, where nobody can change them. Until the chain confirms, the voucher is `DRAFT` with `publishStatus: 'PUBLISHING'`, and it can't be claimed. Read it until `publishStatus` is `PUBLISHED`. If it is `FAILED`, you can edit it and activate it again. Your organization needs a provisioned program, or you get a 422.

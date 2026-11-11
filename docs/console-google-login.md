@@ -50,6 +50,10 @@ administrator receives no implicit tenant membership.
   otherwise). A key's scopes are its access whoever holds it. The raw key is in the POST
   response only. DELETE marks the key REVOKED (the row stays) and is idempotent. At most 25 ACTIVE
   keys per organization (OCT-70).
+- GET `/:id/vouchers`, GET `/:id/vouchers/:voucherId`: Owner/Developer view of the reward catalog.
+  POST `/:id/vouchers` and PATCH `/:id/vouchers/:voucherId` (fields, or `{ status: 'ACTIVE' | 'PAUSED' }`):
+  Owner only. A console create is always a `DRAFT` (any other `status` is a 400) and requires `pointsCost`.
+  Another organization's voucher is a 404 (OCT-236).
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
 Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.

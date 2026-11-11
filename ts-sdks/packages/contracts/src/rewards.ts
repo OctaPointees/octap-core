@@ -35,6 +35,17 @@ export interface CreateVoucherRequest {
 
 export type UpdateVoucherRequest = Partial<CreateVoucherRequest>;
 
+/**
+ * Creating a voucher from the console session, which is stricter than `CreateVoucherRequest`: it is
+ * always a `DRAFT`, activated afterwards with `PATCH { status: 'ACTIVE' }`, and `pointsCost` must be
+ * sent (0 for a free reward). Only the Owner may create one.
+ */
+export interface ConsoleVoucherInput extends Omit<CreateVoucherRequest, 'status'> {
+  pointsCost: number;
+  /** Only `DRAFT`, which is also the default; any other status is a 400. */
+  status?: 'DRAFT';
+}
+
 export interface VoucherDto {
   id: string;
   organizationId: string;

@@ -11,6 +11,8 @@ Keep keys on a trusted server. API key management is not part of this SDK.
 
 A key can hold the `read`, `write` and `admin` scopes. A key missing the required scope gets a 403.
 
+A key's scopes are what it can do, whoever holds it: a route never checks the role of the person who created the key. In the console, only the organization's Owner creates `write` keys; a Business Developer creates `read` keys.
+
 | Scope | SDK methods |
 | --- | --- |
 | `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, ConflictException, NotFoundException }
 import { RewardsRepository, RewardsRuleError } from '#infra/db/repositories/rewards.repository.js';
 import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { PosRedemptionService } from '../credits/pos-redemption.service.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
@@ -55,9 +56,13 @@ export class RewardsService {
     private readonly programsRepo: ProgramsRepository,
   ) {}
 
-  async createVoucher(organizationId: string, req: CreateVoucherRequest): Promise<VoucherDto> {
+  /** `tx` joins the caller's transaction, e.g. the console's Owner check; see `RewardsRepository`. */
+  async createVoucher(organizationId: string, req: CreateVoucherRequest, tx?: DrizzleDb): Promise<VoucherDto> {
+    if (!req?.code || !req.title || (!req.discountType && !req.terms)) {
+      throw new BadRequestException('code, title, and either discountType or terms are required');
+    }
     validateVoucher(req);
-    const existing = await this.rewardsRepo.findVoucherByCode(organizationId, req.code);
+    const existing = await this.rewardsRepo.findVoucherByCode(organizationId, req.code, tx);
     if (existing) {
       throw new ConflictException(`Voucher with code "${req.code}" already exists for this organization`);
     }
@@ -65,25 +70,28 @@ export class RewardsService {
       if (req.expiresAt && Date.parse(req.expiresAt) < Date.now() + VOUCHER_MIN_USE_WINDOW_MS) {
         throw new BadRequestException('A voucher must stay valid for at least 24 hours to be activated');
       }
-      await requireProgramConfig(this.programsRepo, organizationId);
+      await requireProgramConfig(this.programs(tx), organizationId);
     }
 
     const created = await mapErrors(
-      this.rewardsRepo.createVoucher({
-        organizationId,
-        code: req.code,
-        title: req.title,
-        description: req.description,
-        pointsCost: req.pointsCost ?? 0,
-        discountType: req.discountType,
-        discountValue: req.discountValue,
-        terms: req.terms,
-        totalSupply: req.totalSupply,
-        startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
-        expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
-        metadata: req.metadata,
-        status: req.status,
-      }),
+      this.rewardsRepo.createVoucher(
+        {
+          organizationId,
+          code: req.code,
+          title: req.title,
+          description: req.description,
+          pointsCost: req.pointsCost ?? 0,
+          discountType: req.discountType,
+          discountValue: req.discountValue,
+          terms: req.terms,
+          totalSupply: req.totalSupply,
+          startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
+          expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
+          metadata: req.metadata,
+          status: req.status,
+        },
+        tx,
+      ),
     );
 
     return this.mapVoucherDto(created);
@@ -164,10 +172,15 @@ export class RewardsService {
     return this.reserveClaim(organizationId, voucherId, req.organizationEndUserId, req.idempotencyKey, { grant: true });
   }
 
-  async updateVoucher(organizationId: string, voucherId: string, req: UpdateVoucherRequest): Promise<VoucherDto> {
+  async updateVoucher(
+    organizationId: string,
+    voucherId: string,
+    req: UpdateVoucherRequest,
+    tx?: DrizzleDb,
+  ): Promise<VoucherDto> {
     validateVoucher(req, true);
     if (!Object.keys(req).length) throw new BadRequestException('Provide at least one voucher field');
-    if (req.status === 'ACTIVE') await requireProgramConfig(this.programsRepo, organizationId);
+    if (req.status === 'ACTIVE') await requireProgramConfig(this.programs(tx), organizationId);
     const { startsAt, expiresAt, ...fields } = req;
     const patch = {
       ...fields,
@@ -175,20 +188,26 @@ export class RewardsService {
       ...(expiresAt !== undefined ? { expiresAt: expiresAt === null ? null : new Date(expiresAt) } : {}),
     };
     try {
-      const updated = await this.rewardsRepo.updateVoucher(organizationId, voucherId, patch, (merged) => {
-        validateVoucher({
-          code: merged.code,
-          title: merged.title,
-          description: merged.description ?? undefined,
-          pointsCost: merged.pointsCost,
-          discountType: (merged.discountType ?? undefined) as CreateVoucherRequest['discountType'],
-          discountValue: merged.discountValue ?? undefined,
-          terms: merged.terms ?? undefined,
-          totalSupply: merged.totalSupply,
-          startsAt: merged.startsAt?.toISOString(),
-          expiresAt: merged.expiresAt?.toISOString(),
-        });
-      });
+      const updated = await this.rewardsRepo.updateVoucher(
+        organizationId,
+        voucherId,
+        patch,
+        (merged) => {
+          validateVoucher({
+            code: merged.code,
+            title: merged.title,
+            description: merged.description ?? undefined,
+            pointsCost: merged.pointsCost,
+            discountType: (merged.discountType ?? undefined) as CreateVoucherRequest['discountType'],
+            discountValue: merged.discountValue ?? undefined,
+            terms: merged.terms ?? undefined,
+            totalSupply: merged.totalSupply,
+            startsAt: merged.startsAt?.toISOString(),
+            expiresAt: merged.expiresAt?.toISOString(),
+          });
+        },
+        tx,
+      );
       return this.mapVoucherDto(updated);
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('Voucher code already exists');
@@ -239,6 +258,15 @@ export class RewardsService {
         throw new ConflictException('Claim conflicts with an existing operation or voucher ownership');
       throw toHttpError(error);
     }
+  }
+
+  /**
+   * Program lookups on the caller's transaction when there is one. A query on another pooled
+   * connection while that transaction holds its own would need two connections per request, and
+   * enough concurrent requests could then hold the whole pool while each waits for a second one.
+   */
+  private programs(tx?: DrizzleDb) {
+    return { findByOrganization: (organizationId: string) => this.programsRepo.findByOrganization(organizationId, tx) };
   }
 
   private mapVoucherDto(voucher: typeof vouchers.$inferSelect): VoucherDto {

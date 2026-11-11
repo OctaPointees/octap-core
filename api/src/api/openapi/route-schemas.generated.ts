@@ -874,6 +874,150 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       ]
     }
   },
+  "ConsoleRewardsController_create_Body": {
+    "description": "Creating a voucher from the console session, which is stricter than `CreateVoucherRequest`: it is\nalways a `DRAFT`, activated afterwards with `PATCH { status: 'ACTIVE' }`, and `pointsCost` must be\nsent (0 for a free reward). Only the Owner may create one.",
+    "type": "object",
+    "properties": {
+      "pointsCost": {
+        "type": "number"
+      },
+      "status": {
+        "description": "Only `DRAFT`, which is also the default; any other status is a 400.",
+        "const": "DRAFT",
+        "type": "string"
+      },
+      "code": {
+        "type": "string"
+      },
+      "metadata": {
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "title": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "discountType": {
+        "description": "Required unless `terms` describes the benefit.",
+        "enum": [
+          "FIXED_AMOUNT",
+          "FREE_ITEM",
+          "PERCENTAGE"
+        ],
+        "type": "string"
+      },
+      "discountValue": {
+        "type": "string"
+      },
+      "terms": {
+        "description": "Your own description of the promise, in any shape. It is published on-chain with the rest of the\nvoucher's terms and cannot change afterwards, so it must hold no personal data.",
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "totalSupply": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "startsAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "expiresAt": {
+        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "code",
+      "pointsCost",
+      "title"
+    ]
+  },
+  "ConsoleRewardsController_create_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleRewardsController_detail_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleRewardsController_list_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/VoucherDto"
+    }
+  },
+  "ConsoleRewardsController_update_Body": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "pointsCost": {
+        "type": "number"
+      },
+      "discountType": {
+        "description": "Required unless `terms` describes the benefit.",
+        "enum": [
+          "FIXED_AMOUNT",
+          "FREE_ITEM",
+          "PERCENTAGE"
+        ],
+        "type": "string"
+      },
+      "discountValue": {
+        "type": "string"
+      },
+      "terms": {
+        "description": "Your own description of the promise, in any shape. It is published on-chain with the rest of the\nvoucher's terms and cannot change afterwards, so it must hold no personal data.",
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "totalSupply": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "startsAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "expiresAt": {
+        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "metadata": {
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DRAFT",
+          "PAUSED"
+        ],
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRewardsController_update_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
   "CreditsController_earn_Body": {
     "type": "object",
     "properties": {
@@ -2821,125 +2965,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "RewardsController_createVoucher_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "code": {
-        "type": "string"
-      },
-      "title": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "pointsCost": {
-        "type": "number"
-      },
-      "discountType": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "discountValue": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "terms": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/Record_string_unknown"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "publishStatus": {
-        "$ref": "#/components/schemas/VoucherPublishStatus"
-      },
-      "suiTermsId": {
-        "description": "The frozen on-chain `VoucherTerms`, once published.",
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "refundPolicy": {
-        "description": "The refund policy published with the terms.",
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/VoucherRefundPolicySnapshot"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "totalSupply": {
-        "type": [
-          "null",
-          "number"
-        ]
-      },
-      "claimedCount": {
-        "type": "number"
-      },
-      "status": {
-        "$ref": "#/components/schemas/VoucherStatus"
-      },
-      "startsAt": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "expiresAt": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "metadata": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/Record_string_unknown"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "createdAt": {
-        "type": "string"
-      },
-      "updatedAt": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "claimedCount",
-      "code",
-      "createdAt",
-      "id",
-      "organizationId",
-      "pointsCost",
-      "publishStatus",
-      "status",
-      "title",
-      "updatedAt"
-    ]
+    "$ref": "#/components/schemas/VoucherDto"
   },
   "RewardsController_finalizeVoucherUse_Body": {
     "type": "object",

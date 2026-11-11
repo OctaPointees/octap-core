@@ -3,6 +3,7 @@ import type { ConsoleChangeRequestsController, PlatformChangeRequestsController 
 import type { ConsoleApiCredentialsController } from '../rest/console-api-credentials.controller.js';
 import type { ConsoleIdentityController } from '../rest/console-identity.controller.js';
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
+import type { ConsoleRewardsController } from '../rest/console-rewards.controller.js';
 import type { CreditsController } from '../rest/credits.controller.js';
 import type { CustomerVerificationController, IdentityController } from '../rest/identity.controller.js';
 import type { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from '../rest/issuance-budget.controller.js';
@@ -51,6 +52,12 @@ export type PlatformOrganizationRequestsController_reject_Response = Awaited<Ret
 export type PlatformOrganizationRequestsController_reject_Body = Parameters<PlatformOrganizationRequestsController['reject']>[2];
 export type PlatformOrganizationOwnersController_bootstrap_Response = Awaited<ReturnType<PlatformOrganizationOwnersController['bootstrap']>>;
 export type PlatformOrganizationOwnersController_bootstrap_Body = { "systemUserId": Parameters<PlatformOrganizationOwnersController['bootstrap']>[2] };
+export type ConsoleRewardsController_list_Response = Awaited<ReturnType<ConsoleRewardsController['list']>>;
+export type ConsoleRewardsController_detail_Response = Awaited<ReturnType<ConsoleRewardsController['detail']>>;
+export type ConsoleRewardsController_create_Response = Awaited<ReturnType<ConsoleRewardsController['create']>>;
+export type ConsoleRewardsController_create_Body = Parameters<ConsoleRewardsController['create']>[2];
+export type ConsoleRewardsController_update_Response = Awaited<ReturnType<ConsoleRewardsController['update']>>;
+export type ConsoleRewardsController_update_Body = Parameters<ConsoleRewardsController['update']>[3];
 export type CreditsController_earn_Response = Awaited<ReturnType<CreditsController['earn']>>;
 export type CreditsController_earn_Body = Parameters<CreditsController['earn']>[1];
 export type CreditsController_reservePosRedemption_Response = Awaited<ReturnType<CreditsController['reservePosRedemption']>>;

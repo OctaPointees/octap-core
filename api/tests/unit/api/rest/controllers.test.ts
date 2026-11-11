@@ -161,13 +161,6 @@ describe('RewardsController', () => {
     expect(useService.finalize).toHaveBeenCalledWith({ digest: 'd', signature: 'sig' });
     expect(service.listMemberVouchers).toHaveBeenCalledWith('org-1', 'user-1');
 
-    for (const missing of ['code', 'title', 'discountType'] as const) {
-      await bad(
-        c.createVoucher(tenant, { ...voucher, [missing]: '' }),
-        /code, title, and either discountType or terms/,
-      );
-    }
-    await c.createVoucher(tenant, { code: 'C', title: 'T', terms: { benefit: 'one free coffee' } });
     await bad(
       c.claimVoucher(tenant, 'v-1', { organizationEndUserId: '', idempotencyKey: 'k' }),
       /organizationEndUserId is required/,

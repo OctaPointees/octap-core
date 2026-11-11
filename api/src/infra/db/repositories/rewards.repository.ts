@@ -96,15 +96,20 @@ const invalid = (message: string) => new RewardsRuleError('INVALID', message);
 export class RewardsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
+  /**
+   * Pass `tx` to join the caller's transaction (it runs in a savepoint there), e.g. so the console's
+   * Owner check commits with the write. Without it, it opens its own transaction.
+   */
   async createVoucher(
     data: Omit<CreateVoucherRequest, 'startsAt' | 'expiresAt'> & {
       organizationId: string;
       startsAt?: Date;
       expiresAt?: Date;
     },
+    db: DrizzleDb = this.db,
   ) {
     const status = data.status ?? 'ACTIVE';
-    return this.db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
       const [voucher] = await tx
         .insert(vouchers)
         // A voucher becomes ACTIVE only once the chain holds its terms.
@@ -173,8 +178,8 @@ export class RewardsRepository {
     return this.db.query.vouchers.findFirst({ where: eq(vouchers.id, id) });
   }
 
-  async findVoucherByCode(organizationId: string, code: string) {
-    return this.db.query.vouchers.findFirst({
+  async findVoucherByCode(organizationId: string, code: string, db: DrizzleDb = this.db) {
+    return db.query.vouchers.findFirst({
       where: and(eq(vouchers.organizationId, organizationId), eq(vouchers.code, code)),
     });
   }
@@ -186,9 +191,19 @@ export class RewardsRepository {
     });
   }
 
-  /** Serialize edits with claims; the domain validator sees the merged row under the lock. */
-  async updateVoucher(organizationId: string, id: string, patch: VoucherPatch, validate: (merged: Voucher) => void) {
-    return this.db.transaction(async (tx) => {
+  /**
+   * Serialize edits with claims; the domain validator sees the merged row under the lock. `db` joins
+   * the caller's transaction, as in `createVoucher`. A caller that already holds a lock on the
+   * organization row must hold it FOR SHARE: a claim locks this voucher first, then the organization.
+   */
+  async updateVoucher(
+    organizationId: string,
+    id: string,
+    patch: VoucherPatch,
+    validate: (merged: Voucher) => void,
+    db: DrizzleDb = this.db,
+  ) {
+    return db.transaction(async (tx) => {
       const [current] = await tx
         .select()
         .from(vouchers)

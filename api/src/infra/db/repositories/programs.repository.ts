@@ -8,8 +8,9 @@ import { enqueueWebhookEvent } from './webhooks.repository.js';
 export class ProgramsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
-  async findByOrganization(organizationId: string) {
-    return this.db.query.programs.findFirst({ where: eq(programs.organizationId, organizationId) });
+  /** `db` reads inside the caller's transaction, so it needs no second pooled connection. */
+  async findByOrganization(organizationId: string, db: DrizzleDb = this.db) {
+    return db.query.programs.findFirst({ where: eq(programs.organizationId, organizationId) });
   }
 
   listActive() {
