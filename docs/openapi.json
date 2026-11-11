@@ -2126,231 +2126,6 @@
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
       }
     },
-    "/v1/api-credentials": {
-      "get": {
-        "operationId": "ApiCredentialsController_list",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiCredentialsController_list_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Api Credentials"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ],
-          "signedRequest": false
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
-      },
-      "post": {
-        "operationId": "ApiCredentialsController_issue",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiCredentialsController_issue_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Api Credentials"
-        ],
-        "security": [
-          {
-            "apiKey": [],
-            "signedTimestamp": [],
-            "signedNonce": [],
-            "signedSignature": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ],
-          "signedRequest": true
-        },
-        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiCredentialsController_issue_Body"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/api-credentials/{id}": {
-      "delete": {
-        "operationId": "ApiCredentialsController_revoke",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiCredentialsController_revoke_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Api Credentials"
-        ],
-        "security": [
-          {
-            "apiKey": [],
-            "signedTimestamp": [],
-            "signedNonce": [],
-            "signedSignature": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ],
-          "signedRequest": true
-        },
-        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`."
-      }
-    },
-    "/v1/api-credentials/{id}/rotate": {
-      "post": {
-        "operationId": "ApiCredentialsController_rotate",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiCredentialsController_rotate_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Api Credentials"
-        ],
-        "security": [
-          {
-            "apiKey": [],
-            "signedTimestamp": [],
-            "signedNonce": [],
-            "signedSignature": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ],
-          "signedRequest": true
-        },
-        "description": "**Auth:** merchant API key + signed request.\n\n**Required scopes:** `admin`."
-      }
-    },
     "/v1/webhooks/endpoints": {
       "post": {
         "operationId": "WebhooksController_registerEndpoint",
@@ -3436,6 +3211,188 @@
           "platformAdminOnly": false
         },
         "description": "**Auth:** console user (Google ID token)."
+      },
+      "post": {
+        "operationId": "ConsoleOrganizationsController_issueCredential",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOrganizationsController_issueCredential_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleOrganizationsController_issueCredential_Body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}/api-credentials/{id}": {
+      "patch": {
+        "operationId": "ConsoleOrganizationsController_renameCredential",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOrganizationsController_renameCredential_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleOrganizationsController_renameCredential_Body"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "ConsoleOrganizationsController_revokeCredential",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOrganizationsController_revokeCredential_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
       }
     },
     "/v1/console/organizations/{organizationId}/invitations": {
@@ -3884,9 +3841,6 @@
   },
   "tags": [
     {
-      "name": "Api Credentials"
-    },
-    {
       "name": "Console Change Requests"
     },
     {
@@ -3970,322 +3924,6 @@
       }
     },
     "schemas": {
-      "ApiCredentialsController_issue_Body": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "name"
-        ]
-      },
-      "ApiCredentialsController_issue_Response": {
-        "type": "object",
-        "properties": {
-          "rawKey": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "EXPIRED",
-              "REVOKED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "keyPrefix": {
-            "type": "string"
-          },
-          "keyHash": {
-            "type": "string"
-          },
-          "scopes": {},
-          "lastUsedAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "expiresAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "createdAt",
-          "expiresAt",
-          "id",
-          "keyHash",
-          "keyPrefix",
-          "lastUsedAt",
-          "name",
-          "organizationId",
-          "rawKey",
-          "scopes",
-          "status",
-          "updatedAt"
-        ]
-      },
-      "ApiCredentialsController_list_Response": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "name": {
-              "type": "string"
-            },
-            "status": {
-              "enum": [
-                "ACTIVE",
-                "EXPIRED",
-                "REVOKED"
-              ],
-              "type": "string"
-            },
-            "createdAt": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "updatedAt": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "organizationId": {
-              "type": "string"
-            },
-            "keyPrefix": {
-              "type": "string"
-            },
-            "keyHash": {
-              "type": "string"
-            },
-            "scopes": {},
-            "lastUsedAt": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "expiresAt": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "createdAt",
-            "expiresAt",
-            "id",
-            "keyHash",
-            "keyPrefix",
-            "lastUsedAt",
-            "name",
-            "organizationId",
-            "scopes",
-            "status",
-            "updatedAt"
-          ]
-        }
-      },
-      "ApiCredentialsController_revoke_Response": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "EXPIRED",
-              "REVOKED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "keyPrefix": {
-            "type": "string"
-          },
-          "keyHash": {
-            "type": "string"
-          },
-          "scopes": {},
-          "lastUsedAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "expiresAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "createdAt",
-          "expiresAt",
-          "id",
-          "keyHash",
-          "keyPrefix",
-          "lastUsedAt",
-          "name",
-          "organizationId",
-          "scopes",
-          "status",
-          "updatedAt"
-        ]
-      },
-      "ApiCredentialsController_rotate_Response": {
-        "type": "object",
-        "properties": {
-          "rawKey": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "EXPIRED",
-              "REVOKED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "keyPrefix": {
-            "type": "string"
-          },
-          "keyHash": {
-            "type": "string"
-          },
-          "scopes": {},
-          "lastUsedAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "expiresAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "createdAt",
-          "expiresAt",
-          "id",
-          "keyHash",
-          "keyPrefix",
-          "lastUsedAt",
-          "name",
-          "organizationId",
-          "rawKey",
-          "scopes",
-          "status",
-          "updatedAt"
-        ]
-      },
       "ConsoleChangeRequestsController_propose_Body": {
         "type": "object",
         "properties": {
@@ -4785,34 +4423,7 @@
       "ConsoleOrganizationsController_credentials_Response": {
         "type": "array",
         "items": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "name": {
-              "type": "string"
-            },
-            "keyPrefix": {
-              "type": "string"
-            },
-            "scopes": {},
-            "status": {
-              "enum": [
-                "ACTIVE",
-                "EXPIRED",
-                "REVOKED"
-              ],
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "keyPrefix",
-            "name",
-            "scopes",
-            "status"
-          ]
+          "$ref": "#/components/schemas/ConsoleCredential"
         }
       },
       "ConsoleOrganizationsController_invitations_Response": {
@@ -4904,6 +4515,73 @@
           "persona",
           "status",
           "token"
+        ]
+      },
+      "ConsoleOrganizationsController_issueCredential_Body": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "1–100 characters.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "`read` (the default) grants `['read']`; `write` grants `['read', 'write']` and only the Owner may\nask for it. A Business Developer revokes and renames read keys only.",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ConsoleOrganizationsController_issueCredential_Response": {
+        "description": "Returned once, when the key is created: store `rawKey` now, it cannot be read again.",
+        "type": "object",
+        "properties": {
+          "rawKey": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "keyPrefix": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "description": "Approximate: recorded after each authenticated request, not inside it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "keyPrefix",
+          "lastUsedAt",
+          "name",
+          "rawKey",
+          "scopes",
+          "status"
         ]
       },
       "ConsoleOrganizationsController_organization_Response": {
@@ -5023,6 +4701,34 @@
         },
         "required": [
           "updated"
+        ]
+      },
+      "ConsoleOrganizationsController_renameCredential_Body": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "1–100 characters.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ConsoleOrganizationsController_renameCredential_Response": {
+        "$ref": "#/components/schemas/ConsoleCredential",
+        "description": "An organization's API key as the console lists it: never the raw key or its hash."
+      },
+      "ConsoleOrganizationsController_revokeCredential_Response": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "revoked"
         ]
       },
       "ConsoleOrganizationsController_revoke_Response": {
@@ -8065,6 +7771,49 @@
           "status",
           "updatedAt",
           "url"
+        ]
+      },
+      "ConsoleCredential": {
+        "description": "An organization's API key as the console lists it: never the raw key or its hash.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "keyPrefix": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "description": "Approximate: recorded after each authenticated request, not inside it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "keyPrefix",
+          "lastUsedAt",
+          "name",
+          "scopes",
+          "status"
         ]
       },
       "CreditBalanceSnapshot": {

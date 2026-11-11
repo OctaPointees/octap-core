@@ -15,11 +15,16 @@ Server-to-server authentication and tenant resolution for the REST API.
   signing secret needs to be issued or stored. Canonical request = method + path + timestamp +
   nonce + sha256(raw body); `main.ts`'s `{ rawBody: true }` is what makes the real request
   bytes available to hash, instead of a re-serialized `JSON.stringify(request.body)`.
-  `signed-request.decorator.ts`'s `@RequireSignedRequest()` is opt-in per route (applied today
-  to `ApiCredentialsController`'s mutating routes) — existing clients that only send
-  `Authorization: Bearer` aren't broken by it.
-- `api-credentials.service.ts` / `api-credentials.repository.ts`: issue, list, revoke, rotate.
-  The raw key is returned exactly once, on issue/rotate; only its SHA-256 hash is persisted.
+  `signed-request.decorator.ts`'s `@RequireSignedRequest()` is opt-in per route. **No route
+  requires a signed request today**: the only one that did, `/v1/api-credentials`, was removed in
+  OCT-70. The decorator and the guard's unit tests stay for the next route that needs it.
+- `api-credentials.service.ts` / `api-credentials.repository.ts`: issue, rename, revoke, each taking
+  an optional `tx` so the console's access check commits with the write.
+  The raw key is returned exactly once, on issue; only its SHA-256 hash is persisted. An
+  organization holds at most 25 ACTIVE keys, script-issued ones included: the count and the insert
+  run under a `FOR UPDATE` lock on the organization row, and the 26th gets a 409 with
+  `code: "API_CREDENTIAL_LIMIT_REACHED"`. `api-credentials.module.ts` provides the service without
+  the global guard, for the console (`IdentityModule`).
 - `public.decorator.ts`: `@Public()` opts a route or controller out of the guard entirely. Only
   for customer-device endpoints whose caller never holds a merchant credential and where
   something else proves authorization: `IdentityController` (Google id_token, validated by Enoki)

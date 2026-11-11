@@ -1,4 +1,6 @@
 import type {
+  ConsoleCredentialInput,
+  ConsoleCredentialPatch,
   ConsoleGoogleLoginInput,
   ConsoleInvitationInput,
   ConsoleStaffAccessPatch,
@@ -29,6 +31,8 @@ export type OrganizationApplicationBodyDto = Wire<OrganizationApplicationInput>;
 export type OrganizationProfileBodyDto = Wire<OrganizationProfileInput>;
 export type ConsoleStaffAccessBodyDto = Wire<ConsoleStaffAccessPatch>;
 export type ConsoleInvitationBodyDto = Wire<ConsoleInvitationInput>;
+export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;
+export type ConsoleCredentialPatchBodyDto = Wire<ConsoleCredentialPatch>;
 export type MemberDirectoryQueryDto = Wire<MemberDirectoryQuery>;
 export type MemberProfilePatchBodyDto = Wire<MemberProfilePatch>;
 export type PlatformOrganizationListQueryDto = Wire<PlatformOrganizationListQuery>;

@@ -1,8 +1,22 @@
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleOrganizationsService } from '#domain/identity/console-organizations.service.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
 import type {
+  ConsoleCredentialBodyDto,
+  ConsoleCredentialPatchBodyDto,
   ConsoleInvitationBodyDto,
   ConsoleStaffAccessBodyDto,
   OrganizationApplicationBodyDto,
@@ -57,6 +71,35 @@ export class ConsoleOrganizationsController {
   @Header('Cache-Control', 'no-store')
   credentials(@Req() request: ConsoleRequest, @Param('organizationId', ParseUUIDPipe) orgId: string) {
     return this.organizations.credentials(request.consoleIdentity.user.id, orgId);
+  }
+  /** The response is the only time the raw key is ever shown. */
+  @Post('organizations/:organizationId/api-credentials')
+  @Header('Cache-Control', 'no-store')
+  issueCredential(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Body() body: ConsoleCredentialBodyDto,
+  ) {
+    return this.organizations.issueCredential(request.consoleIdentity.user.id, orgId, body);
+  }
+  @Patch('organizations/:organizationId/api-credentials/:id')
+  @Header('Cache-Control', 'no-store')
+  renameCredential(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ConsoleCredentialPatchBodyDto,
+  ) {
+    return this.organizations.renameCredential(request.consoleIdentity.user.id, orgId, id, body);
+  }
+  @Delete('organizations/:organizationId/api-credentials/:id')
+  @Header('Cache-Control', 'no-store')
+  revokeCredential(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.organizations.revokeCredential(request.consoleIdentity.user.id, orgId, id);
   }
   @Post('organizations/:organizationId/invitations')
   @Header('Cache-Control', 'no-store')

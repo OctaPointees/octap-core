@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
-import { createTestApp, signedHeaders } from '../support/app.js';
+import { createTestApp } from '../support/app.js';
 import { resetDb, seedCredential, seedOrganization } from '../support/db.js';
 import { RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/rate-limit.util.js';
 
@@ -72,26 +72,5 @@ describe('ApiKeyGuard over HTTP (real Postgres + Redis)', () => {
     } finally {
       redis.disconnect();
     }
-  });
-
-  it('signed routes verify the exact raw body and refuse a replayed nonce', async () => {
-    const { rawKey } = await seedCredential(ctx.db, orgId, { scopes: ['admin'] });
-    const body = { name: 'pos-terminal', scopes: ['read'] };
-    const headers = signedHeaders(rawKey, 'POST', '/v1/api-credentials', body);
-
-    // Sent unsigned: refused.
-    await ctx.http().post('/v1/api-credentials').set('authorization', `Bearer ${rawKey}`).send(body).expect(401);
-    // Sent with a body that differs from what was signed: refused.
-    await ctx
-      .http()
-      .post('/v1/api-credentials')
-      .set(headers)
-      .send({ ...body, scopes: ['admin'] })
-      .expect(401);
-
-    const fresh = signedHeaders(rawKey, 'POST', '/v1/api-credentials', body);
-    await ctx.http().post('/v1/api-credentials').set(fresh).send(body).expect(201);
-    const replay = await ctx.http().post('/v1/api-credentials').set(fresh).send(body).expect(401);
-    expect(replay.body.message).toMatch(/nonce was already used/);
   });
 });

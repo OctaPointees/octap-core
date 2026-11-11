@@ -1,50 +1,66 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ApiCredentialsRepository } from '../db/repositories/api-credentials.repository.js';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import type { DrizzleDb } from '../db/postgres.provider.js';
+import { ApiCredentialsRepository, type ApiCredential } from '../db/repositories/api-credentials.repository.js';
 import { generateApiKey } from './api-key-hash.util.js';
 
 export const DEFAULT_SCOPES = ['read', 'write'];
 
+/** ACTIVE keys an organization may hold at once, script-issued ones included. */
+export const MAX_ACTIVE_API_CREDENTIALS = 25;
+export const API_CREDENTIAL_LIMIT_REACHED = 'API_CREDENTIAL_LIMIT_REACHED';
+
+/**
+ * Pass `tx` to join the caller's transaction, e.g. so the console's access check and the write
+ * commit together. Without it, each call runs in its own transaction.
+ */
 @Injectable()
 export class ApiCredentialsService {
   constructor(private readonly repo: ApiCredentialsRepository) {}
 
   /** Returns the raw key exactly once; only its hash is ever persisted. */
-  async issue(organizationId: string, name: string, scopes: string[] = DEFAULT_SCOPES) {
+  async issue(organizationId: string, name: string, scopes: string[] = DEFAULT_SCOPES, tx?: DrizzleDb) {
     const { raw, prefix, hash } = generateApiKey();
-    const credential = await this.repo.create({
-      organizationId,
-      name,
-      keyPrefix: prefix,
-      keyHash: hash,
-      scopes,
-    });
+    const credential = await this.repo.createWithinLimit(
+      { organizationId, name, keyPrefix: prefix, keyHash: hash, scopes },
+      MAX_ACTIVE_API_CREDENTIALS,
+      tx,
+    );
+    if (!credential) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        code: API_CREDENTIAL_LIMIT_REACHED,
+        message: `An organization can hold at most ${MAX_ACTIVE_API_CREDENTIALS} active API keys; revoke one first`,
+      });
+    }
     return { credential, rawKey: raw };
   }
 
-  async list(organizationId: string) {
-    return this.repo.listByOrganization(organizationId);
+  /** Revoking a key that is already revoked changes nothing. */
+  async revoke(organizationId: string, credentialId: string, tx?: DrizzleDb): Promise<ApiCredential> {
+    return this.repo.inTransaction(tx, async (db) => {
+      const existing = await this.findOwned(db, organizationId, credentialId);
+      return existing.status === 'REVOKED' ? existing : this.repo.revoke(db, credentialId);
+    });
   }
 
-  async revoke(organizationId: string, credentialId: string) {
-    const existing = await this.assertOwned(organizationId, credentialId);
-    if (existing.status === 'REVOKED') {
-      return existing;
-    }
-    return this.repo.revoke(credentialId);
+  /** A revoked key is gone from the console, so it cannot be renamed either. */
+  async rename(organizationId: string, credentialId: string, name: string, tx?: DrizzleDb): Promise<ApiCredential> {
+    return this.repo.inTransaction(tx, async (db) => {
+      const existing = await this.findOwned(db, organizationId, credentialId);
+      if (existing.status !== 'ACTIVE') throw this.notFound(credentialId);
+      return this.repo.rename(db, credentialId, name);
+    });
   }
 
-  /** Revokes the old credential and issues a fresh one with the same name/scopes. */
-  async rotate(organizationId: string, credentialId: string) {
-    const existing = await this.assertOwned(organizationId, credentialId);
-    await this.repo.revoke(existing.id);
-    return this.issue(organizationId, existing.name, existing.scopes as string[]);
-  }
-
-  private async assertOwned(organizationId: string, credentialId: string) {
-    const existing = await this.repo.findById(credentialId);
-    if (!existing || existing.organizationId !== organizationId) {
-      throw new NotFoundException(`API credential ${credentialId} was not found for this organization`);
-    }
+  /** The credential, locked for update, if it belongs to `organizationId`; a 404 otherwise. */
+  async findOwned(tx: DrizzleDb, organizationId: string, credentialId: string): Promise<ApiCredential> {
+    const existing = await this.repo.findForUpdate(tx, credentialId);
+    if (!existing || existing.organizationId !== organizationId) throw this.notFound(credentialId);
     return existing;
+  }
+
+  private notFound(credentialId: string) {
+    return new NotFoundException(`API credential ${credentialId} was not found for this organization`);
   }
 }
