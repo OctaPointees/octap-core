@@ -143,9 +143,6 @@ export class ConsoleOrganizationsService {
       return { created: true };
     });
   }
-  credentials(userId: string, orgId: string) {
-    return this.run(() => this.organizations.credentials(userId, orgId));
-  }
   invite(userId: string, orgId: string, input: Record<string, unknown>) {
     if (
       typeof input?.email !== 'string' ||

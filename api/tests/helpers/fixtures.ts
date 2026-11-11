@@ -123,7 +123,6 @@ export interface FakeHttpRequest {
   method: string;
   url: string;
   originalUrl?: string;
-  rawBody?: Buffer;
   tenant?: unknown;
 }
 
@@ -132,18 +131,16 @@ export function executionContext({
   headers = {},
   method = 'GET',
   url = '/v1/test',
-  rawBody = Buffer.from(''),
   handler = () => {},
   klass = class {},
 }: {
   headers?: Record<string, string | undefined>;
   method?: string;
   url?: string;
-  rawBody?: Buffer;
   handler?: () => void;
   klass?: new () => unknown;
 } = {}): ExecutionContext & { request: FakeHttpRequest } {
-  const request: FakeHttpRequest = { headers, method, url, rawBody };
+  const request: FakeHttpRequest = { headers, method, url };
   return {
     switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({ setHeader: () => {} }) }),
     getHandler: () => handler,

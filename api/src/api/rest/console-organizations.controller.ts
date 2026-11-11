@@ -53,11 +53,6 @@ export class ConsoleOrganizationsController {
   ) {
     return this.organizations.staffAccess(request.consoleIdentity.user.id, orgId, userId, body);
   }
-  @Get('organizations/:organizationId/api-credentials')
-  @Header('Cache-Control', 'no-store')
-  credentials(@Req() request: ConsoleRequest, @Param('organizationId', ParseUUIDPipe) orgId: string) {
-    return this.organizations.credentials(request.consoleIdentity.user.id, orgId);
-  }
   @Post('organizations/:organizationId/invitations')
   @Header('Cache-Control', 'no-store')
   invite(

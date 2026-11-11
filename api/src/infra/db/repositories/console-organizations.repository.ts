@@ -113,6 +113,21 @@ export class ConsoleOrganizationsRepository {
       return action(tx);
     });
   }
+  /**
+   * Owner or Business Developer, locking the organization and membership rows for update, so `action`
+   * commits only while the caller still has access (unlike `withAccess`, whose writes are Owner-only).
+   * `action` gets the caller's role, for rules that differ between the two.
+   */
+  async withDeveloperAccess<T>(
+    userId: string,
+    organizationId: string,
+    action: (tx: Tx, role: 'OWNER' | 'BUSINESS_DEVELOPER') => Promise<T>,
+  ) {
+    return this.db.transaction(async (tx) => {
+      const { membership } = await this.member(tx, userId, organizationId, false, true);
+      return action(tx, membership.role as 'OWNER' | 'BUSINESS_DEVELOPER');
+    });
+  }
   async applications(userId: string, platform = false) {
     return this.db.transaction(async (tx) => {
       if (platform) await this.admin(tx, userId);
@@ -365,9 +380,11 @@ export class ConsoleOrganizationsRepository {
           keyPrefix: apiCredentials.keyPrefix,
           scopes: apiCredentials.scopes,
           status: apiCredentials.status,
+          createdAt: apiCredentials.createdAt,
+          lastUsedAt: apiCredentials.lastUsedAt,
         })
         .from(apiCredentials)
-        .where(eq(apiCredentials.organizationId, organizationId))
+        .where(and(eq(apiCredentials.organizationId, organizationId), eq(apiCredentials.status, 'ACTIVE')))
         .orderBy(apiCredentials.createdAt)
         .limit(100);
     });

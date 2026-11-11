@@ -5,10 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { parseTrustedProxyHops } from '#infra/auth/public-rate-limit.guard.js';
 import { OPENAPI_DOCS_PATH, setupOpenApi } from '#api/openapi/openapi.document.js';
-// rawBody: true preserves the exact request bytes on request.rawBody — request signature
-// verification (infra/auth/request-signing.util.ts) must hash what was actually sent, not a
-// re-serialized JSON.stringify(request.body), which can differ in key order/whitespace.
-const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+const app = await NestFactory.create<NestExpressApplication>(AppModule);
 // Decides what `request.ip` is, and so which client public-route rate limits count against.
 app.set('trust proxy', parseTrustedProxyHops(process.env.TRUSTED_PROXY_HOPS));
 app.enableShutdownHooks();

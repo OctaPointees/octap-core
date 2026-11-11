@@ -4,7 +4,7 @@ jobs:
   typescript:
     runs-on: ubuntu-latest
     services:
-      # api-key.guard.ts needs this for rate limiting/nonce checks even in check:bootstrap
+      # api-key.guard.ts needs this for rate limiting even in check:bootstrap
       # (it only has to be reachable, not populated with any data).
       redis:
         image: redis:7-alpine

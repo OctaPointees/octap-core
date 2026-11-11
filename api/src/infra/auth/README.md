@@ -5,21 +5,24 @@ Server-to-server authentication and tenant resolution for the REST API.
 - `api-key.guard.ts`: registered as the global `APP_GUARD`. Validates `Authorization: Bearer
   <api key>` against `api_credentials`, resolves `request.tenant` strictly from the matched
   credential (a client-supplied `x-organization-id` is only ever checked, never trusted),
-  enforces any `@Scopes(...)` on the route, applies a per-credential rate limit (always), and —
-  on routes marked `@RequireSignedRequest()` — verifies HMAC request signing with replay
-  protection. Both the rate limiter and the replay check fail closed (reject) if Redis is
-  unreachable; they never silently let a request through unprotected.
-- `request-signing.util.ts` / `nonce-store.util.ts` / `rate-limit.util.ts`: the pure logic the
-  guard calls. The HMAC signing key is the credential's already-stored `keyHash` — a client
-  derives the same value locally by hashing the raw key it already holds, so no separate
-  signing secret needs to be issued or stored. Canonical request = method + path + timestamp +
-  nonce + sha256(raw body); `main.ts`'s `{ rawBody: true }` is what makes the real request
-  bytes available to hash, instead of a re-serialized `JSON.stringify(request.body)`.
-  `signed-request.decorator.ts`'s `@RequireSignedRequest()` is opt-in per route (applied today
-  to `ApiCredentialsController`'s mutating routes) — existing clients that only send
-  `Authorization: Bearer` aren't broken by it.
-- `api-credentials.service.ts` / `api-credentials.repository.ts`: issue, list, revoke, rotate.
-  The raw key is returned exactly once, on issue/rotate; only its SHA-256 hash is persisted.
+  enforces any `@Scopes(...)` on the route and applies a per-credential rate limit (always). The
+  rate limiter fails closed (rejects) if Redis is unreachable; it never silently lets a request
+  through unprotected. It records the key's `lastUsedAt` without waiting for the write; a failed
+  write is logged and the request still goes through.
+  A route on this guard authorizes by the key's scopes only: the role of whoever created the key
+  plays no part.
+- `rate-limit.util.ts`: the pure rate-limit logic the guard calls.
+- No request signing. HMAC request signing was removed in OCT-70: no route used it, and it was
+  keyed by the stored `keyHash`, so it added no secret beyond the key itself. If key management
+  through the SDK or MCP comes back, it gets a new design: an Ed25519 keypair held by the client
+  and a scope ceiling.
+- `api-credentials.service.ts` / `api-credentials.repository.ts`: issue, rename, revoke, each taking
+  an optional `tx` so the console's access check commits with the write.
+  The raw key is returned exactly once, on issue; only its SHA-256 hash is persisted. An
+  organization holds at most 25 ACTIVE keys, script-issued ones included: the count and the insert
+  run under a `FOR UPDATE` lock on the organization row, and the 26th gets a 409 with
+  `code: "API_CREDENTIAL_LIMIT_REACHED"`. `api-credentials.module.ts` provides the service without
+  the global guard, for the console (`IdentityModule`).
 - `public.decorator.ts`: `@Public()` opts a route or controller out of the guard entirely. Only
   for customer-device endpoints whose caller never holds a merchant credential and where
   something else proves authorization: `IdentityController` (Google id_token, validated by Enoki)

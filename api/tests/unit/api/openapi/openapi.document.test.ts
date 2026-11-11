@@ -82,13 +82,17 @@ describe('OpenAPI document', () => {
     expect(operation('post', '/v1/credits/earn')['x-octap-auth']).toEqual({
       kind: 'apiKey',
       scopes: ['write'],
-      signedRequest: false,
     });
     expect(operation('post', '/v1/credits/earn').security).toEqual([{ apiKey: [] }]);
 
-    const create = operation('post', '/v1/api-credentials');
-    expect(create['x-octap-auth']).toEqual({ kind: 'apiKey', scopes: ['admin'], signedRequest: true });
-    expect(create.security).toEqual([{ apiKey: [], signedTimestamp: [], signedNonce: [], signedSignature: [] }]);
+    expect(operation('put', '/v1/rewards/refund-policy')['x-octap-auth']).toEqual({
+      kind: 'apiKey',
+      scopes: ['admin'],
+    });
+    expect(operation('post', '/v1/console/organizations/{organizationId}/api-credentials')['x-octap-auth']).toEqual({
+      kind: 'console',
+      platformAdminOnly: false,
+    });
 
     expect(operation('get', '/v1/console/organizations/{organizationId}/members')['x-octap-auth']).toEqual({
       kind: 'console',

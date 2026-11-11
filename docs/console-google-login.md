@@ -42,8 +42,14 @@ administrator receives no implicit tenant membership.
   are terminal (409 on replay), including concurrent decisions.
 - GET `/v1/console/organizations/:id`: active Owner/Developer organization detail.
 - PATCH `/:id/profile`, GET `/:id/staff`: Owner-only profile/staff operations.
-- GET `/:id/api-credentials`: Owner/Developer metadata listing; never returns raw keys
-  or key hashes. Lists are bounded to 100 rows.
+- GET `/:id/api-credentials`: Owner/Developer listing of ACTIVE keys, with `createdAt` and
+  `lastUsedAt`; never returns raw keys or key hashes. Lists are bounded to 100 rows.
+- POST `/:id/api-credentials` (`{ name, scope?: 'read' | 'write' }`), PATCH `/:id/api-credentials/:keyId`
+  (`{ name }`), DELETE `/:id/api-credentials/:keyId`: Owner/Developer. `scope` defaults to `read`;
+  only the Owner creates `write` keys, and a Developer revokes or renames read keys only (403
+  otherwise). A key's scopes are its access whoever holds it. The raw key is in the POST
+  response only. DELETE marks the key REVOKED (the row stays) and is idempotent. At most 25 ACTIVE
+  keys per organization (OCT-70).
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
 Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.

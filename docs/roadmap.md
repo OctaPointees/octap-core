@@ -23,12 +23,13 @@ then move the row to **Implemented** in the same pull request.
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 | OpenAPI document for every REST route (paths, params, auth per route read from the guards' metadata), Swagger UI at `/docs` behind `OPENAPI_ENABLED`, request/response/query schemas generated from each handler's TypeScript types, committed `docs/openapi.json` (3.1) checked in CI (OCT-285) | api/src/api/openapi; scripts/openapi*.mjs; docs/openapi.json |
-| Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke/rotate | api/src/infra/auth; api/src/api/rest/api-credentials.controller.ts |
+| Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke | api/src/infra/auth |
+| Console API keys: an Owner or Business Developer issues (`read` by default; only the Owner issues `write`; never `admin`), renames and revokes the organization's keys from the Google session (a Business Developer only read keys), at most 25 ACTIVE per organization (409 `API_CREDENTIAL_LIMIT_REACHED`); `/v1/api-credentials` and rotation are removed, `admin` keys come only from `scripts/seed-dev-credential.mjs` (OCT-70) | api/src/api/rest/console-api-credentials.controller.ts; api/src/domain/identity/console-api-credentials.service.ts; api/src/infra/auth/api-credentials.service.ts |
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
-| Authorization hardening: per-credential and per-IP public-route rate limiting, opt-in HMAC request signing with replay/nonce protection, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
+| Authorization hardening: per-credential and per-IP public-route rate limiting, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
@@ -176,8 +177,11 @@ then move the row to **Implemented** in the same pull request.
   inside the Node process would be guessing at a deployment shape that doesn't exist. mTLS
   belongs at a proxy (nginx/Envoy/load balancer) forwarding a verified-identity header, when one
   gets introduced.
-- HMAC request signing (`@RequireSignedRequest()`) is opt-in per route, applied so far only to
-  `ApiCredentialsController`'s mutating routes — not every write route requires it yet.
+- No request signing: HMAC signing was removed in OCT-70 (no route used it, and its key was the
+  stored `keyHash`, so it added no secret). Key management through the SDK or MCP, if it comes
+  back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
+- Console API keys record no creator or revoker, and survive the member who issued them leaving:
+  an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the
   API-key model entirely.
 - RLS is enforced (`withRls()`, real `authenticated`/`service_role` roles and grants — see

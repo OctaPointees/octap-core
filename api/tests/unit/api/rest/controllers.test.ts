@@ -3,7 +3,6 @@ import { CreditsController } from '#api/rest/credits.controller.js';
 import { RewardsController } from '#api/rest/rewards.controller.js';
 import { CustomerVerificationController, IdentityController } from '#api/rest/identity.controller.js';
 import { WebhooksController } from '#api/rest/webhooks.controller.js';
-import { ApiCredentialsController } from '#api/rest/api-credentials.controller.js';
 import type { CreditsService } from '#domain/credits/credits.service.js';
 import type { EarnService } from '#domain/credits/earn.service.js';
 import type { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
@@ -15,7 +14,6 @@ import type { RefundPolicyService } from '#domain/rewards/refund-policy.service.
 import type { IdentityService } from '#domain/identity/identity.service.js';
 import type { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
 import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
-import type { ApiCredentialsService } from '#infra/auth/api-credentials.service.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import { stub } from '../../../helpers/stub.js';
 import { POS_BENEFIT } from '../../../helpers/fixtures.js';
@@ -257,29 +255,5 @@ describe('WebhooksController', () => {
     expect(deliveries.list).toHaveBeenCalledWith('org-1');
     expect(deliveries.replay).toHaveBeenCalledWith('org-1', 'dlv-1');
     await bad(c.registerEndpoint(tenant, { url: '' }), /url is required/);
-  });
-});
-
-describe('ApiCredentialsController', () => {
-  it('returns the raw key only on issue/rotate, alongside the stored credential', async () => {
-    const service = {
-      list: ok([{ id: 'c1' }]),
-      issue: ok({ credential: { id: 'c2', keyHash: 'h' }, rawKey: 'octap_live_raw' }),
-      revoke: ok({ id: 'c1', status: 'REVOKED' }),
-      rotate: ok({ credential: { id: 'c3' }, rawKey: 'octap_live_new' }),
-    };
-    const c = new ApiCredentialsController(stub<ApiCredentialsService>(service));
-
-    expect(await c.list(tenant)).toEqual([{ id: 'c1' }]);
-    expect(await c.issue(tenant, { name: 'pos', scopes: ['read'] })).toEqual({
-      id: 'c2',
-      keyHash: 'h',
-      rawKey: 'octap_live_raw',
-    });
-    expect(await c.revoke(tenant, 'c1')).toEqual({ id: 'c1', status: 'REVOKED' });
-    expect(await c.rotate(tenant, 'c1')).toEqual({ id: 'c3', rawKey: 'octap_live_new' });
-    expect(service.issue).toHaveBeenCalledWith('org-1', 'pos', ['read']);
-    expect(service.revoke).toHaveBeenCalledWith('org-1', 'c1');
-    expect(service.rotate).toHaveBeenCalledWith('org-1', 'c1');
   });
 });

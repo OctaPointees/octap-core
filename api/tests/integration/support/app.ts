@@ -7,8 +7,6 @@ import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
 import { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { DRIZZLE_DB, type DrizzleDb } from '#infra/db/postgres.provider.js';
-import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
-import { buildCanonicalRequest, signCanonicalRequest } from '#infra/auth/request-signing.util.js';
 
 /** Stand-ins for the two external services the HTTP process talks to; everything else is real. */
 export function fakeChainAdapters() {
@@ -49,9 +47,8 @@ export function fakeChainAdapters() {
 export type ChainAdapters = ReturnType<typeof fakeChainAdapters>;
 
 /**
- * Boots the real `AppModule` exactly as `main.ts` does (`rawBody: true`, so request signing hashes
- * the bytes actually sent), against the integration Postgres/Redis, with only the chain adapters
- * replaced.
+ * Boots the real `AppModule` exactly as `main.ts` does, against the integration Postgres/Redis, with
+ * only the chain adapters replaced.
  */
 export async function createTestApp(
   adapters: ChainAdapters = fakeChainAdapters(),
@@ -65,7 +62,7 @@ export async function createTestApp(
     .useValue(adapters.suiBuilder);
   if (google) builder.overrideProvider(GoogleIdentityClient).useValue(google);
   const moduleRef = await builder.compile();
-  const app: INestApplication = moduleRef.createNestApplication({ rawBody: true, logger: false });
+  const app: INestApplication = moduleRef.createNestApplication({ logger: false });
   beforeInit?.(app);
   await app.init();
   return {
@@ -74,21 +71,5 @@ export async function createTestApp(
     db: app.get<DrizzleDb>(DRIZZLE_DB),
     http: () => request(app.getHttpServer()),
     close: () => app.close(),
-  };
-}
-
-let nonceSeq = 0;
-
-/** Headers for a `@RequireSignedRequest()` route, signed the way an SDK client would sign them. */
-export function signedHeaders(rawKey: string, method: string, path: string, body: unknown = undefined) {
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const nonce = `nonce-${Date.now()}-${++nonceSeq}`;
-  const rawBody = body === undefined ? '' : JSON.stringify(body);
-  const canonical = buildCanonicalRequest({ method, path, timestamp, nonce, rawBody });
-  return {
-    authorization: `Bearer ${rawKey}`,
-    'x-octap-timestamp': timestamp,
-    'x-octap-nonce': nonce,
-    'x-octap-signature': signCanonicalRequest(canonical, hashApiKey(rawKey)),
   };
 }

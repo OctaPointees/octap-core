@@ -84,7 +84,7 @@ try {
       waitForTransaction: async (digest) => ({ digest, status: 'success', events: [] }),
     })
     .compile();
-  app = moduleRef.createNestApplication({ rawBody: true, logger: false });
+  app = moduleRef.createNestApplication({ logger: false });
   apiDatabase = app.get(POSTGRES_CLIENT);
   await app.listen(0, '127.0.0.1');
   const client = createOctaPointClient({

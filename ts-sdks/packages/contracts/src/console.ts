@@ -62,12 +62,33 @@ export interface ConsoleInvitation {
 export interface CreatedConsoleInvitation extends ConsoleInvitation {
   token: string;
 }
+/** An organization's API key as the console lists it: never the raw key or its hash. */
 export interface ConsoleCredential {
   id: string;
   name: string;
   keyPrefix: string;
-  scopes: unknown;
+  scopes: string[];
   status: string;
+  createdAt: string;
+  /** Approximate: recorded after each authenticated request, not inside it. */
+  lastUsedAt: string | null;
+}
+/** Returned once, when the key is created: store `rawKey` now, it cannot be read again. */
+export interface CreatedConsoleCredential extends ConsoleCredential {
+  rawKey: string;
+}
+export interface ConsoleCredentialInput {
+  /** 1–100 characters. */
+  name: string;
+  /**
+   * `read` (the default) grants `['read']`; `write` grants `['read', 'write']` and only the Owner may
+   * ask for it. A Business Developer revokes and renames read keys only.
+   */
+  scope?: 'read' | 'write';
+}
+export interface ConsoleCredentialPatch {
+  /** 1–100 characters. */
+  name: string;
 }
 export interface ConsoleGoogleLoginInput {
   /** Google ID token from the console sign-in. */

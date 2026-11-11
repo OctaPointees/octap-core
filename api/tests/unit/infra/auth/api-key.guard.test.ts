@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Redis } from 'ioredis';
 import { ApiKeyGuard } from '#infra/auth/api-key.guard.js';
 import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
 import { Scopes, SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
-import { RequireSignedRequest, REQUIRE_SIGNED_REQUEST_KEY } from '#infra/auth/signed-request.decorator.js';
 import { IS_PUBLIC_KEY, Public } from '#infra/auth/public.decorator.js';
 import { IdentityController } from '#api/rest/identity.controller.js';
 import { CreditsController } from '#api/rest/credits.controller.js';
-import { buildCanonicalRequest, signCanonicalRequest } from '#infra/auth/request-signing.util.js';
 import { RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/rate-limit.util.js';
 import type { ApiCredentialsRepository } from '#infra/db/repositories/api-credentials.repository.js';
 import { stub } from '../../../helpers/stub.js';
@@ -37,50 +36,6 @@ function route(...decorators: MethodDecorator[]) {
     decorate(handler, 'handler', { value: handler });
   }
   return handler;
-}
-
-const SIGNED_PATH = '/v1/api-credentials';
-
-function signedContext({
-  rawKey = 'octap_live_signed',
-  signingKey = hashApiKey(rawKey),
-  body = '{}',
-  nonce = 'nonce-1',
-  timestamp = Math.floor(Date.now() / 1000),
-  signature,
-  originalUrl,
-}: {
-  rawKey?: string;
-  signingKey?: string;
-  body?: string;
-  nonce?: string;
-  timestamp?: number | string;
-  signature?: string;
-  originalUrl?: string;
-} = {}) {
-  const canonical = buildCanonicalRequest({
-    method: 'POST',
-    path: SIGNED_PATH,
-    timestamp: String(timestamp),
-    nonce,
-    rawBody: body,
-  });
-  const ctx = executionContext({
-    method: 'POST',
-    url: originalUrl ? '/rewritten' : SIGNED_PATH,
-    rawBody: Buffer.from(body),
-    headers: {
-      authorization: `Bearer ${rawKey}`,
-      'x-octap-timestamp': String(timestamp),
-      'x-octap-nonce': nonce,
-      'x-octap-signature': signature ?? signCanonicalRequest(canonical, signingKey),
-    },
-    handler: route(RequireSignedRequest()),
-  });
-  if (originalUrl) {
-    ctx.request.originalUrl = originalUrl;
-  }
-  return ctx;
 }
 
 describe('ApiKeyGuard: authentication', () => {
@@ -231,94 +186,26 @@ describe('ApiKeyGuard: rate limiting', () => {
   });
 });
 
-describe('ApiKeyGuard: signed requests', () => {
-  const admin = activeCredential({ scopes: ['admin'] });
+describe('ApiKeyGuard: lastUsedAt', () => {
+  it('a failing lastUsedAt write is logged, never rejected, and the request still passes', async () => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const touchLastUsed = vi.fn(async () => {
+        throw new Error('connection terminated');
+      });
+      const ctx = executionContext({ headers: { authorization: 'Bearer k' } });
 
-  it('the decorator marks the route', () => {
-    expect(Reflect.getMetadata(REQUIRE_SIGNED_REQUEST_KEY, route(RequireSignedRequest()))).toBe(true);
-  });
+      expect(await guard(activeCredential(), fakeRedis(), touchLastUsed).canActivate(ctx)).toBe(true);
+      await new Promise((resolve) => setImmediate(resolve));
 
-  it('a correctly signed request on a @RequireSignedRequest() route passes', async () => {
-    expect(await guard(admin).canActivate(signedContext())).toBe(true);
-  });
-
-  it('signs over originalUrl when a router rewrote url', async () => {
-    expect(await guard(admin).canActivate(signedContext({ originalUrl: SIGNED_PATH }))).toBe(true);
-  });
-
-  it('verifies an empty body when the request carries no rawBody', async () => {
-    const ctx = signedContext({ body: '' });
-    ctx.request.rawBody = undefined;
-    expect(await guard(admin).canActivate(ctx)).toBe(true);
-  });
-
-  it.each(['x-octap-timestamp', 'x-octap-nonce', 'x-octap-signature'])(
-    'rejects a request missing %s',
-    async (header) => {
-      const ctx = signedContext();
-      delete ctx.request.headers[header];
-      await expect(guard(admin).canActivate(ctx)).rejects.toThrow(/requires a signed request/);
-    },
-  );
-
-  it('rejects a tampered signature', async () => {
-    await expect(guard(admin).canActivate(signedContext({ signature: 'a'.repeat(64) }))).rejects.toThrow(
-      /Invalid request signature/,
-    );
-  });
-
-  it('rejects a body changed after signing', async () => {
-    const ctx = signedContext();
-    ctx.request.rawBody = Buffer.from('{"scopes":["admin"]}');
-    await expect(guard(admin).canActivate(ctx)).rejects.toThrow(/Invalid request signature/);
-  });
-
-  it.each([
-    ['stale', Math.floor(Date.now() / 1000) - 10_000],
-    ['from the future', Math.floor(Date.now() / 1000) + 10_000],
-    ['malformed', 'yesterday'],
-  ])('rejects a %s timestamp (outside the replay window)', async (_label, timestamp) => {
-    await expect(guard(admin).canActivate(signedContext({ timestamp }))).rejects.toThrow(/outside the replay window/);
-  });
-
-  it('rejects a replayed (already-used) nonce', async () => {
-    const g = guard(admin);
-    expect(await g.canActivate(signedContext({ nonce: 'reused-nonce' }))).toBe(true);
-    await expect(g.canActivate(signedContext({ nonce: 'reused-nonce' }))).rejects.toThrow(
-      /already used, or replay protection is unavailable/,
-    );
-  });
-
-  it('a forged request cannot burn someone else’s nonce', async () => {
-    const g = guard(admin);
-    await expect(g.canActivate(signedContext({ nonce: 'victim-nonce', signature: 'b'.repeat(64) }))).rejects.toThrow(
-      /Invalid/,
-    );
-    expect(await g.canActivate(signedContext({ nonce: 'victim-nonce' }))).toBe(true);
-  });
-
-  it('fails closed when Redis is unreachable for nonce claims', async () => {
-    const brokenNonceRedis = stub<Redis>({
-      incr: async () => 1,
-      expire: async () => 1,
-      set: async () => {
-        throw new Error('ECONNREFUSED');
-      },
-    });
-    await expect(guard(admin, brokenNonceRedis).canActivate(signedContext())).rejects.toThrow(
-      /replay protection is unavailable/,
-    );
-  });
-
-  it('rotating a credential invalidates signatures made with the old signing key', async () => {
-    // After rotation the old raw key no longer resolves an ACTIVE credential at all, so the request
-    // is rejected at the bearer-auth step, before signature verification even runs.
-    await expect(guard(undefined).canActivate(signedContext({ rawKey: 'octap_live_before_rotation' }))).rejects.toThrow(
-      /invalid or has been revoked/,
-    );
-  });
-
-  it('does not require signing on an unmarked route', async () => {
-    expect(await guard(admin).canActivate(executionContext({ headers: { authorization: 'Bearer k' } }))).toBe(true);
+      expect(touchLastUsed).toHaveBeenCalledWith('cred-1');
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/lastUsedAt.*cred-1.*connection terminated/));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+      error.mockRestore();
+    }
   });
 });
