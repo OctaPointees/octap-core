@@ -22,6 +22,11 @@ export class IndexerRepository {
     return this.db.query.indexerCursors.findFirst({ where: eq(indexerCursors.streamName, streamName) });
   }
 
+  /** Clears a stream's cursor row so the next `getCursor` reads it as a genuinely fresh stream. */
+  async deleteCursor(streamName: string) {
+    await this.db.delete(indexerCursors).where(eq(indexerCursors.streamName, streamName));
+  }
+
   /**
    * Creates the stream's cursor row on first run. `onConflictDoNothing` + re-read so two
    * instances bootstrapping at once both end up on whichever row won, instead of one failing.
