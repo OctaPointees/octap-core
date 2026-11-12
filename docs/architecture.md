@@ -6,7 +6,7 @@
 - [Product scope](https://github.com/OctaPointees/OctaP-Designing/blob/main/brainstorming/outputs/02-product-and-scope.md): SDK/identity/approval boundaries and non-transferable points.
 - [Conceptual ERD](https://github.com/OctaPointees/OctaP-Designing/blob/main/reports/report-1/erd/report-explanation.md) and [use-case model](https://github.com/OctaPointees/OctaP-Designing/blob/main/reports/report-1/usecase.drawio.xml): entity vocabulary and functional boundaries, not a physical schema.
 - Report 3 remains a continuously edited template, not a scaffold baseline.
-- Team direction: OctaP_Core owns contracts, api and ts-sdks; OctaP_Web owns frontend; workers stay inside API; MCP stays in a separate repo.
+- Team direction: OctaP_Core owns contracts, api, ts-sdks and the MCP adapter; OctaP_Web owns frontend; workers stay inside API. MCP lives in its own `ts-sdks/packages/mcp` (`@octap/mcp`) package and process within OctaP_Core.
 
 ## What was borrowed from Harbor
 
@@ -37,9 +37,11 @@ Domain code never imports controllers or vendor SDKs. Infrastructure owns vendor
 HTTP and worker share one build/package but run as separate processes. AppModule does not
 import WorkerModule. WorkerModule alone registers worker/processor providers.
 
-MCP has no package, dependencies, startup script or server code in this repo. A future separate
-MCP adapter calls the same authorized API use cases through an API/SDK boundary; it must not
-copy business logic, bypass tenant/role/scope/object checks, or implement its own point authority.
+The MCP adapter lives in `ts-sdks/packages/mcp` (`@octap/mcp`) and runs as a separate stdio process from the
+NestJS API and workers. Its initial read-only pilot calls Core through the authorized API/SDK
+boundary; it must not copy business logic, bypass tenant/role/scope/object checks, query the database
+directly, or implement its own point authority. Keep its dependencies, configuration and startup
+command isolated from the API package. The pilot is for local/staging use, not production access.
 
 ## Sources of truth and deferred work
 

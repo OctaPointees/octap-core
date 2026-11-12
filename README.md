@@ -1,7 +1,8 @@
 # OctaP Core
 
 Core scaffold based on the [OctaP design knowledge base](https://github.com/OctaPointees/OctaP-Designing).
-The frontend lives in [OctaP_Web](https://github.com/OctaPointees/OctaP_Web). MCP belongs to a separate repository.
+The frontend lives in [OctaP_Web](https://github.com/OctaPointees/OctaP_Web). A local, read-only MCP
+pilot lives in `ts-sdks/packages/mcp` (`@octap/mcp`) and runs as a separate process; it is not production-ready.
 
 ## Repository ownership
 
@@ -20,6 +21,7 @@ ts-sdks/packages/
   chain/                  Backend-only: @mysten/codegen bindings + chain client (not published)
   node/                   Merchant Node SDK (REST)
   browser/                Browser-safe client
+  mcp/                    Read-only MCP server (stdio; @octap/mcp)
 docs/                     Architecture, implementation guide, roadmap
 scripts/                  Ordered builds, unit tests, Nest bootstrap check
 ```

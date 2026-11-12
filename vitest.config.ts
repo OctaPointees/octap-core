@@ -16,6 +16,7 @@ export default defineConfig({
       { find: '@octap/contracts', replacement: fromRoot('./ts-sdks/packages/contracts/src/index.ts') },
       { find: '@octap/chain', replacement: fromRoot('./ts-sdks/packages/chain/src/index.ts') },
       { find: '@octap/sdk', replacement: fromRoot('./ts-sdks/packages/node/src/index.ts') },
+      { find: '@octap/mcp', replacement: fromRoot('./ts-sdks/packages/mcp/src/index.ts') },
       { find: '@octap/browser-sdk', replacement: fromRoot('./ts-sdks/packages/browser/src/index.ts') },
       // api/package.json's `imports` map #api/#domain/#infra to dist/ for Node; tests want src/.
       { find: /^#(api|domain|infra)\//, replacement: `${fromRoot('./api/src/')}$1/` },
