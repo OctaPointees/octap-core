@@ -21,6 +21,9 @@ function fakeIndexerStore(initial: CursorRow | undefined) {
   const store = { row: initial, committedWrites: [] as string[] };
   const repo = {
     getCursor: async () => store.row,
+    deleteCursor: async () => {
+      store.row = undefined;
+    },
     initCursor: async (streamName: string, cursor: string | null, lastCheckpoint: string | null) => {
       store.row ??= { streamName, cursor, lastCheckpoint };
       return store.row;
@@ -112,7 +115,14 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       page([earnedEvent({ checkpoint: '900' })], { hasNextPage: true, startCursor: 'HEAD', endCursor: 'HEAD' }),
     );
 
-    expect(await processor(store.repo, {}, {}, { listCreditAccountEvents }).processNextPage()).toBe(true);
+    expect(
+      await processor(
+        store.repo,
+        { hasAnyLoyaltyTransactions: async () => false },
+        {},
+        { listCreditAccountEvents },
+      ).processNextPage(),
+    ).toBe(true);
 
     expect(listCreditAccountEvents).toHaveBeenCalledWith({ order: 'descending', limit: 1 });
     expect(store.row).toEqual({ streamName: 'octap::credit_account', cursor: 'HEAD', lastCheckpoint: '900' });
@@ -123,12 +133,52 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
 
     await processor(
       store.repo,
-      {},
+      { hasAnyLoyaltyTransactions: async () => false },
       {},
       { listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }) },
     ).processNextPage();
 
     expect(store.row).toEqual({ streamName: 'octap::credit_account', cursor: null, lastCheckpoint: null });
+  });
+
+  it('refuses to start at head when the cursor is unset but loyalty_transactions already has rows', async () => {
+    const store = fakeIndexerStore(undefined);
+    const listCreditAccountEvents = vi.fn();
+
+    await expect(
+      processor(
+        store.repo,
+        { hasAnyLoyaltyTransactions: async () => true },
+        {},
+        { listCreditAccountEvents },
+      ).processNextPage(),
+    ).rejects.toThrow(/refusing to start at the chain head/);
+
+    expect(listCreditAccountEvents).not.toHaveBeenCalled();
+    expect(store.row).toBeUndefined();
+  });
+
+  it('a cursor reset to the resume-at-head sentinel by hand starts fresh at the chain head', async () => {
+    const store = fakeIndexerStore({
+      streamName: 'octap::credit_account',
+      cursor: 'RESUME_AT_HEAD',
+      lastCheckpoint: 'old',
+    });
+    const listCreditAccountEvents = vi.fn(async () =>
+      page([earnedEvent({ checkpoint: '900' })], { hasNextPage: true, startCursor: 'HEAD', endCursor: 'HEAD' }),
+    );
+
+    expect(
+      await processor(
+        store.repo,
+        { hasAnyLoyaltyTransactions: async () => true },
+        {},
+        { listCreditAccountEvents },
+      ).processNextPage(),
+    ).toBe(true);
+
+    expect(listCreditAccountEvents).toHaveBeenCalledWith({ order: 'descending', limit: 1 });
+    expect(store.row).toEqual({ streamName: 'octap::credit_account', cursor: 'HEAD', lastCheckpoint: '900' });
   });
 
   it('a PENDING earn (operation UNKNOWN) is confirmed by the indexer alone', async () => {

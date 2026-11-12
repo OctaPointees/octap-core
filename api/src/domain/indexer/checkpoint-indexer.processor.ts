@@ -14,6 +14,14 @@ import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-
 const PAGE_SIZE = Number(process.env.INDEXER_PAGE_SIZE ?? 50);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Written to `indexer_cursors.cursor` by hand to mean "a human confirmed it is fine to skip
+ * ahead" — the only thing that makes `bootstrapOrRefuse` resume at the chain head once
+ * `loyalty_transactions` already has rows. Deliberately not a real opaque cursor value (those are
+ * base64-ish and never equal a plain word), so it can't collide with one by accident.
+ */
+const RESUME_AT_HEAD_SENTINEL = 'RESUME_AT_HEAD';
+
 export type EventOutcome = 'confirmed' | 'skipped';
 
 /**
@@ -68,6 +76,12 @@ export class CheckpointIndexerProcessor {
   async processNextPage(): Promise<boolean> {
     const state = await this.indexerRepo.getCursor(CREDIT_ACCOUNT_STREAM);
     if (!state) {
+      await this.bootstrapOrRefuse();
+      return true;
+    }
+    if (state.cursor === RESUME_AT_HEAD_SENTINEL) {
+      this.logger.warn(`${CREDIT_ACCOUNT_STREAM} cursor was reset by hand; resuming at the current chain head`);
+      await this.indexerRepo.deleteCursor(CREDIT_ACCOUNT_STREAM);
       await this.bootstrap();
       return true;
     }
@@ -101,10 +115,35 @@ export class CheckpointIndexerProcessor {
   }
 
   /**
+   * A missing cursor is ambiguous: a genuinely fresh environment (nothing to catch up on, safe to
+   * start at the chain head), or a cursor that was deleted/lost sitting next to loyalty
+   * transactions this stream already confirmed (not safe — jumping to head would silently skip
+   * every on-chain event between the lost cursor and now, the exact failure class a stale/pruned
+   * cursor used to cause here: it threw "invalid cursor" forever until someone deleted the row by
+   * hand, which happened to be safe only because this environment had no data worth losing yet).
+   * Mirrors the ACL indexer's bootstrap guard in Harbor/Walrus Console
+   * (`acl-indexer.service.ts`'s `resolveStartingCheckpoint`): only degrade to "start at head" when
+   * local state proves nothing has run here before.
+   */
+  private async bootstrapOrRefuse(): Promise<void> {
+    if (await this.creditsRepo.hasAnyLoyaltyTransactions()) {
+      throw new Error(
+        `${CREDIT_ACCOUNT_STREAM} cursor is unset but loyalty_transactions already has rows — refusing to ` +
+          'start at the chain head, which would silently skip every on-chain event between the lost cursor ' +
+          'and now. If the old cursor is gone for a legitimate reason (pruned by the node, testnet reset) ' +
+          'and skipping ahead is acceptable here, confirm it by hand (works whether the row exists or not): ' +
+          `insert into indexer_cursors (stream_name, cursor) values ('${CREDIT_ACCOUNT_STREAM}', '${RESUME_AT_HEAD_SENTINEL}') ` +
+          `on conflict (stream_name) do update set cursor = '${RESUME_AT_HEAD_SENTINEL}'; ` +
+          '— the next poll reads that value as an explicit instruction to resume at the current chain head.',
+      );
+    }
+    await this.bootstrap();
+  }
+
+  /**
    * First run starts at the stream's current head, not its first event: this demo has no
    * historical backlog worth replaying, and anything before the head was already resolved (or
-   * left UNKNOWN for a human) by the synchronous path. A deliberate choice — delete the cursor
-   * row and set it to null by hand to replay from the beginning instead.
+   * left UNKNOWN for a human) by the synchronous path.
    */
   private async bootstrap(): Promise<void> {
     const head = await this.sui.listCreditAccountEvents({ order: 'descending', limit: 1 });
