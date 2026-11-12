@@ -27,14 +27,14 @@ The model can suggest a tool call; the adapter validates its inputs and Core dec
 
 | Candidate | User need and benefit | Data/actions and API readiness | Main constraints |
 |---|---|---|---|
-| **Member support lookup** | Merchant support staff need to answer “did this earn land?” or “what is this member's current voucher status?” without manually joining several screens. | Read a tenant member's balance, recent transactions and vouchers. Core already exposes balance/history and member-voucher reads. A useful operation-level diagnostic may need a narrowly scoped API if current member endpoints omit the error/status detail. | Customer data is tenant-sensitive. Require an authenticated staff identity and read scopes; derive the tenant from that identity, audit access, and avoid broad member searches by default. |
+| **Member support lookup** | Merchant operators, BD and support staff need to answer “did this earn land?” or “what is this member's current voucher status?” without manually joining several screens. | Read a member's balance, recent transactions and vouchers through the merchant's shared organization API key. | The key grants organization-wide access. Hosts must protect it and restrict who can use the MCP server. Any end-user assistant must bind the validated request identity to a member and restrict tools itself; a shared organization key alone is not per-customer authentication. |
 | **Owner operations summary** | An owner wants a concise view of recent activity, pending operations and program budget warnings. | Aggregate existing transaction/balance and budget information. Some source reads exist; a safe, bounded summary endpoint may be needed to avoid many calls and to define what staff may see. | Keep summaries tenant-scoped and time-bounded. Do not expose signer material or internal database records. |
 | **Campaign draft and preview** | A marketing manager wants to describe a promotion in natural language and see its audience and estimated cost before approval. | Create a draft and deterministic preview; later, a different authorized member approves a content-bound manifest; execution references that approval. Campaign APIs and the campaign domain are not implemented yet. | The AI must not approve its own draft, change the approved manifest, exceed budget, issue arbitrary points or bypass campaign limits. Execution is a later phase, never a raw `mint_points` tool. |
 | **Developer integration help** | A developer wants examples or help interpreting SDK/API errors. | Search published API/SDK documentation and return relevant examples. Existing docs and SDKs provide a source; this could be a documentation-only MCP capability. | It must distinguish published facts from suggestions and must not imply access to a merchant's live tenant data. For basic lookups, the docs site may already be simpler. |
 
 ## Recommendation
 
-Start with **read-only member support lookup in a local/staging pilot**. It has a concrete Octap business problem, uses Core reads that already exist, and tests the most important MCP-specific boundary: each tool call must act with the authenticated merchant staff member's tenant and scopes. It avoids introducing point-changing behavior before the authorization and audit path is proven.
+Start with **read-only member support lookup in a local/staging pilot**. It has a concrete Octap business problem and uses Core reads that already exist. The CLI uses the merchant's shared organization API key; customer data remains tenant-scoped by Core. It avoids introducing point-changing behavior.
 
 Keep the first tool set narrow: get one member's balance, list that member's recent transactions, and list that member's vouchers. Only add transaction failure diagnostics after Core has a supported endpoint for the specific fields. Compare the result with the existing portal/API flow to show whether the assistant reduces time to answer a support question without leaking another tenant's data.
 
@@ -42,9 +42,9 @@ Campaign drafting and preview remain the stronger strategic extension, but depen
 
 ## Location and boundaries
 
-The adapter lives in **`ts-sdks/packages/mcp`** (`@octap/mcp`) in `octap-core`, and runs/deploys as its own process. Its dependencies, configuration and startup command remain isolated from the NestJS API and workers. It calls Core through the authorized API/SDK boundary (`@octap/node`); it does not import domain or infrastructure internals, access PostgreSQL directly, or contain its own source of truth.
+The adapter lives in **`ts-sdks/packages/mcp`** (`@octap/mcp`) in `octap-core`, and runs/deploys as its own process. Its dependencies, configuration and startup command remain isolated from the NestJS API and workers. It calls Core through the authorized API/SDK boundary (`@octap/sdk`); it does not import domain or infrastructure internals, access PostgreSQL directly, or contain its own source of truth.
 
-For this staging/developer pilot, stdio is the connection mechanism. The pilot is scoped to **merchant operators, business development (BD), and support staff** operating under an organization-level API credential. It is not configured for customer-facing multi-user chat without programmatic session binding (`resolveMemberId`). A shared remote server can use Streamable HTTP, but requires a token exchange/delegation design and caller-level audit logging before deployment.
+For this staging/developer pilot, stdio is the connection mechanism. The pilot is scoped to **merchant operators, business development (BD), and support staff** operating under an organization-level API credential. That credential grants organization-wide access. Do not embed it in end-user systems unless the host binds each validated HTTP request identity to a member with `resolveMemberId` and restricts the exposed tools. A shared remote server requires a token verification/delegation design and caller-level audit logging before deployment.
 
 ## Security and consent rules
 
@@ -64,30 +64,30 @@ For this staging/developer pilot, stdio is the connection mechanism. The pilot i
 ### Implemented in pilot (OCT-286)
 
 1. **Package structure:** Co-located in `ts-sdks/packages/mcp` (`@octap/mcp`) as a private TypeScript package with clean separation between library (`.` -> `./dist/index.js`) and CLI (`bin["octap-mcp"]` -> `./dist/cli.js`).
-2. **Three read tools:** Implemented `get_member_balance`, `list_member_transactions`, and `list_member_vouchers` using `@octap/node` REST client.
+2. **Three read tools:** Implemented `get_member_balance`, `list_member_transactions`, and `list_member_vouchers` using the `@octap/sdk` REST client.
 3. **Input validation:** Strict Zod schemas enforcing regex patterns, non-empty IDs, and bounded pagination limits (max 50, default 20).
-4. **Safe operations & error mapping:** Redacts internal error details; returns LLM-friendly messages preventing infinite retry loops; maps 404 to generic not-found messages to avoid cross-tenant member existence oracles; enforces 15-second timeouts via `AbortSignal.any`.
-5. **Programmatic factory:** `createServer({ client, tools?, resolveMemberId?, project? })` allows embedding hosts to omit `memberId` from client schemas and bind session-authenticated users.
-6. **Protocol-level test suite:** 23 tests exercising the MCP `Client` over `InMemoryTransport` without private SDK reflection.
+4. **Safe operations & error mapping:** Redacts internal error details; returns LLM-friendly messages preventing infinite retry loops; maps 404 to generic not-found messages to avoid cross-tenant member existence oracles; enforces 12-second timeouts and combines them with host cancellation via `AbortSignal.any`.
+5. **Programmatic factory:** `createServer({ client, tools?, resolveMemberId?, project? })` allows embedding hosts to omit `memberId` from client schemas and bind users from validated HTTP `authInfo`. MCP session IDs are never authentication.
+6. **Protocol-level test suite:** 24 tests exercising the MCP `Client` over `InMemoryTransport` without private SDK reflection, including host cancellation and `http.authInfo` member binding.
+7. **Stdio end-to-end check:** CI runs the built CLI against disposable Postgres, Redis and Core services, including valid/invalid credentials, missing configuration, and cross-tenant reads returning a generic 404.
 
 ### Deferred to future tickets
 
 1. **Durable audit trail:** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
-2. **Tenant-isolation integration tests against live DB:** Running automated multi-tenant cross-org assertions against a live Core instance in CI.
-3. **Remote Streamable HTTP transport:** Multi-user SSE/HTTP transport with bearer token auth.
-4. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
-5. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
+2. **Remote Streamable HTTP transport:** Multi-user SSE/HTTP transport with bearer token auth.
+3. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
+4. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 
 ## Proposed test plan and acceptance checks
 
 - **Tool-schema tests:** valid calls are accepted; malformed IDs, invalid limits, oversized input, and unknown arguments are rejected before Core is called.
 - **Core adapter tests:** success responses are mapped correctly; unauthorized responses, timeouts, and Core errors return safe, useful MCP errors without leaking credentials or stack traces.
-- **Tenant-isolation integration tests:** an authenticated caller can read an allowed member in their own organization; cross-tenant and out-of-scope reads are denied. Changing a model-supplied tenant argument must not change authorization.
+- **Tenant-isolation integration tests:** the stdio E2E verifies the merchant key reads its own member and receives the same generic not-found message for another organization's member.
 - **Read-only guarantee:** tool discovery exposes no mutation tool; tool handlers make no write calls to Core.
 - **MCP Inspector check:** connect over stdio, list capabilities, invoke each tool with valid and invalid inputs, and inspect the returned content.
 - **Host smoke check:** connect one supported host to the local stdio command and complete one balance/history/voucher lookup using test data.
 
-The work is ready for a future implementation review when all checks pass, the host setup is repeatable without committed secrets, and the behavior matches Core's authorization. No production or real customer data is needed for the pilot.
+The implemented pilot remains private and is not a production customer-facing identity service. Its CI checks use disposable services and generated credentials; no production or real customer data is needed.
 
 ## References
 

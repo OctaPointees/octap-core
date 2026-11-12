@@ -1,18 +1,17 @@
-import { coreClient, createServer, type CoreClientLike } from '@octap/mcp';
-import type { Transport } from '@modelcontextprotocol/server';
+import { createServer, type CoreClientLike } from '@octap/mcp';
+import type { ServerContext, Transport } from '@modelcontextprotocol/server';
 
 type AuthenticatedSessions = {
-  getMemberId(sessionId: string): string | undefined | Promise<string | undefined>;
+  getMemberId(
+    authInfo: NonNullable<ServerContext['http']>['authInfo'],
+  ): string | undefined | Promise<string | undefined>;
 };
 
-export function createCustomerMcpServer(
-  authenticatedSessions: AuthenticatedSessions,
-  client: CoreClientLike = coreClient(),
-) {
+export function createCustomerMcpServer(authenticatedSessions: AuthenticatedSessions, client?: CoreClientLike) {
   return createServer({
-    client,
+    ...(client ? { client } : {}),
     tools: ['get_member_balance', 'list_member_transactions'],
-    resolveMemberId: ({ sessionId }) => (sessionId ? authenticatedSessions.getMemberId(sessionId) : undefined),
+    resolveMemberId: ({ http }) => (http?.authInfo ? authenticatedSessions.getMemberId(http.authInfo) : undefined),
     project: (toolName, data) => data,
   });
 }

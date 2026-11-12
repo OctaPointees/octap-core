@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/client';
-import { InMemoryTransport } from '@modelcontextprotocol/server';
+import { InMemoryTransport, type AuthInfo } from '@modelcontextprotocol/server';
 import { OctaApiError } from '@octap/sdk';
 import {
   createServer,
@@ -22,9 +22,12 @@ describe('Octap MCP Server', () => {
     process.env = { ...originalEnv };
   });
 
-  async function createTestHarness(options: CreateServerOptions = {}) {
+  async function createTestHarness(options: CreateServerOptions = {}, authInfo?: AuthInfo) {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    serverTransport.sessionId = 'test-authenticated-session';
+    if (authInfo) {
+      const send = clientTransport.send.bind(clientTransport);
+      clientTransport.send = (message, sendOptions) => send(message, { ...sendOptions, authInfo });
+    }
     const server = createServer(options);
     const client = new Client({ name: 'test-mcp-client', version: '1.0.0' }, { capabilities: {} });
 
@@ -44,7 +47,6 @@ describe('Octap MCP Server', () => {
   describe('coreClient configuration', () => {
     it('throws when OCTAP_API_KEY is missing or empty', () => {
       delete process.env.OCTAP_API_KEY;
-      delete process.env.OCTAP_CORE_API_KEY;
       expect(() => coreClient()).toThrow('OCTAP_API_KEY is required');
 
       process.env.OCTAP_API_KEY = '   ';
@@ -54,7 +56,6 @@ describe('Octap MCP Server', () => {
     it('throws when OCTAP_API_URL is missing or invalid', () => {
       process.env.OCTAP_API_KEY = 'test-key';
       delete process.env.OCTAP_API_URL;
-      delete process.env.OCTAP_CORE_API_URL;
       expect(() => coreClient()).toThrow('OCTAP_API_URL is required');
 
       process.env.OCTAP_API_URL = 'not-a-valid-url';
@@ -71,13 +72,12 @@ describe('Octap MCP Server', () => {
       expect(client).toBeDefined();
     });
 
-    it('falls back to legacy OCTAP_CORE_* env vars when standard ones are unset', () => {
+    it('ignores legacy OCTAP_CORE_* env vars', () => {
       delete process.env.OCTAP_API_KEY;
       delete process.env.OCTAP_API_URL;
       process.env.OCTAP_CORE_API_KEY = 'legacy-key';
       process.env.OCTAP_CORE_API_URL = 'http://127.0.0.1:3000';
-      const client = coreClient();
-      expect(client).toBeDefined();
+      expect(() => coreClient()).toThrow('OCTAP_API_KEY is required');
     });
   });
 
@@ -456,11 +456,20 @@ describe('Octap MCP Server', () => {
         listMemberVouchers: vi.fn(),
       };
 
-      const resolveMemberId = vi.fn(() => boundMemberId);
-      const harness = await createTestHarness({
-        client: mockClient,
-        resolveMemberId,
-      });
+      const resolveMemberId = vi.fn((context) => context.http?.authInfo?.extra?.memberId as string);
+      const authInfo: AuthInfo = {
+        token: 'validated-test-token',
+        clientId: 'customer-chat-host',
+        scopes: ['member:read'],
+        extra: { memberId: boundMemberId },
+      };
+      const harness = await createTestHarness(
+        {
+          client: mockClient,
+          resolveMemberId,
+        },
+        authInfo,
+      );
       try {
         const res = await harness.client.callTool({
           name: 'get_member_balance',
@@ -469,9 +478,37 @@ describe('Octap MCP Server', () => {
 
         expect(mockClient.getBalance).toHaveBeenCalledWith(boundMemberId, expect.any(Object));
         expect(resolveMemberId).toHaveBeenCalledWith(
-          expect.objectContaining({ sessionId: 'test-authenticated-session' }),
+          expect.objectContaining({ http: expect.objectContaining({ authInfo }) }),
         );
         expect(res.isError).toBeFalsy();
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it('aborts the Core request when the MCP client cancels a tool call', async () => {
+      let coreSignal: AbortSignal | undefined;
+      const mockClient: CoreClientLike = {
+        getBalance: vi.fn((_memberId, options) => {
+          coreSignal = options?.signal;
+          return new Promise<never>((_resolve, reject) => {
+            coreSignal?.addEventListener('abort', () => reject(new Error('Core request aborted')), { once: true });
+          });
+        }),
+        listTransactions: vi.fn(),
+        listMemberVouchers: vi.fn(),
+      };
+      const harness = await createTestHarness({ client: mockClient });
+      const controller = new AbortController();
+      try {
+        const call = harness.client.callTool(
+          { name: 'get_member_balance', arguments: { memberId } },
+          { signal: controller.signal },
+        );
+        await vi.waitFor(() => expect(mockClient.getBalance).toHaveBeenCalledOnce());
+        controller.abort(new Error('host cancelled request'));
+        await expect(call).rejects.toThrow();
+        expect(coreSignal?.aborted).toBe(true);
       } finally {
         await harness.close();
       }

@@ -72,6 +72,9 @@ try {
   const organizationId = randomUUID();
   const endUserId = randomUUID();
   const memberId = randomUUID();
+  const otherOrganizationId = randomUUID();
+  const otherEndUserId = randomUUID();
+  const otherMemberId = randomUUID();
   const { raw: validKey, prefix, hash } = generateApiKey();
   await database.begin(async (tx) => {
     await tx`insert into organizations (id, slug, name) values (${organizationId}, 'mcp-e2e', 'MCP E2E')`;
@@ -80,6 +83,10 @@ try {
     await tx`insert into credit_ownerships (organization_end_user_id, confirmed_balance, sui_credit_account_id) values (${memberId}, 120, '0xmcpaccount')`;
     await tx`insert into loyalty_transactions (organization_id, organization_end_user_id, transaction_type, points_amount, idempotency_key, status, metadata)
       values (${organizationId}, ${memberId}, 'ADJUSTMENT', 120, 'mcp-e2e-seed', 'CONFIRMED', '{"demo":true}')`;
+    await tx`insert into organizations (id, slug, name) values (${otherOrganizationId}, 'mcp-e2e-other', 'MCP E2E Other')`;
+    await tx`insert into end_users (id, display_name, sui_address) values (${otherEndUserId}, 'Other organization member', '0xmcpdemoother')`;
+    await tx`insert into organization_end_users (id, organization_id, end_user_id) values (${otherMemberId}, ${otherOrganizationId}, ${otherEndUserId})`;
+    await tx`insert into credit_ownerships (organization_end_user_id, confirmed_balance, sui_credit_account_id) values (${otherMemberId}, 999, '0xmcpaccountother')`;
     await tx`insert into api_credentials (organization_id, name, key_prefix, key_hash, scopes)
       values (${organizationId}, 'disposable-mcp-e2e', ${prefix}, ${hash}, '["read"]')`;
   });
@@ -142,6 +149,19 @@ try {
   }
   console.log('Invalid key: all three tools failed with the safe permission error.');
 
+  const { client: crossTenantClient } = await connectStdioClient(apiUrl, validKey);
+  try {
+    for (const name of ['get_member_balance', 'list_member_transactions', 'list_member_vouchers']) {
+      const response = await crossTenantClient.callTool({ name, arguments: { memberId: otherMemberId } });
+      assert.equal(response.isError, true, `${name} should reject a member from another organization`);
+      assert.match(response.content[0].text, /No matching member or resource was found/);
+      assert.doesNotMatch(response.content[0].text, new RegExp(otherMemberId));
+    }
+  } finally {
+    await crossTenantClient.close();
+  }
+  console.log('Cross-tenant member lookup: all tools returned the generic 404 response.');
+
   const missingKey = spawnSync(process.execPath, [cliPath], {
     cwd: repoRoot,
     env: { ...getDefaultEnvironment(), OCTAP_API_URL: apiUrl },
@@ -151,6 +171,7 @@ try {
   });
   assert.notEqual(missingKey.status, 0, 'CLI should exit when OCTAP_API_KEY is missing');
   assert.match(missingKey.stderr, /OCTAP_API_KEY is required/);
+  assert.doesNotMatch(missingKey.stderr, /\n\s+at /, 'CLI startup errors should not print a stack trace');
   console.log('Missing key: CLI exited immediately with the required-configuration error.');
 } catch (error) {
   console.error(`MCP CLI E2E failed: ${error instanceof Error ? error.message : 'unknown error'}`);

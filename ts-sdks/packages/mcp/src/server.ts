@@ -1,6 +1,11 @@
-import { McpServer, type BaseContext } from '@modelcontextprotocol/server';
+import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
 import { OctaPointClient, OctaApiError } from '@octap/sdk';
+import { readFileSync } from 'node:fs';
 import * as z from 'zod/v4';
+
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
 
 export const REQUEST_TIMEOUT_MS = 12_000;
 export const DEFAULT_LIMIT = 20;
@@ -20,7 +25,7 @@ export const ALL_TOOLS: ToolName[] = ['get_member_balance', 'list_member_transac
 
 export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransactions' | 'listMemberVouchers'>;
 
-export type ResolveMemberIdContext = Pick<BaseContext, 'sessionId'>;
+export type ResolveMemberIdContext = Pick<ServerContext, 'http'>;
 export type MemberIdResolver = (
   context: ResolveMemberIdContext,
 ) => string | null | undefined | Promise<string | null | undefined>;
@@ -50,10 +55,10 @@ export function isOctaApiError(err: unknown): err is OctaApiError {
 }
 
 export function coreClient(): OctaPointClient {
-  const apiKey = (process.env.OCTAP_API_KEY ?? process.env.OCTAP_CORE_API_KEY)?.trim();
+  const apiKey = process.env.OCTAP_API_KEY?.trim();
   if (!apiKey) throw new Error('OCTAP_API_KEY is required');
 
-  const rawUrl = (process.env.OCTAP_API_URL ?? process.env.OCTAP_CORE_API_URL)?.trim();
+  const rawUrl = process.env.OCTAP_API_URL?.trim();
   if (!rawUrl) throw new Error('OCTAP_API_URL is required');
 
   let parsed: URL;
@@ -98,7 +103,7 @@ export function result(tool: string, value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 
-type ToolExtra = Pick<BaseContext, 'sessionId' | 'mcpReq'> & { signal?: AbortSignal };
+type ToolExtra = ServerContext & { signal?: AbortSignal };
 
 function combineSignal(extra?: Pick<ToolExtra, 'signal' | 'mcpReq'>): AbortSignal {
   const hostSignal = extra?.signal ?? extra?.mcpReq?.signal;
@@ -107,7 +112,7 @@ function combineSignal(extra?: Pick<ToolExtra, 'signal' | 'mcpReq'>): AbortSigna
 }
 
 export function createServer(options: CreateServerOptions = {}) {
-  const server = new McpServer({ name: 'octap', version: '0.0.0' });
+  const server = new McpServer({ name: 'octap', version: packageJson.version });
   const core = options.client ?? coreClient();
   const allowedTools = options.tools ? new Set(options.tools) : new Set(ALL_TOOLS);
   const resolveMemberId = options.resolveMemberId;

@@ -2,7 +2,7 @@
 
 Read-only Model Context Protocol (MCP) server for Octap Core loyalty points, transactions, and vouchers.
 
-It translates MCP tool calls from LLM hosts into authorized REST calls via `@octap/node`. It never touches PostgreSQL directly, does not hold Sui private keys, and enforces tenant boundaries through the Core API credential.
+It translates MCP tool calls from LLM hosts into authorized REST calls via `@octap/sdk`. It never touches PostgreSQL directly, does not hold Sui private keys, and enforces tenant boundaries through the Core API credential.
 
 ## Scope & Security Boundary
 
@@ -13,7 +13,7 @@ It translates MCP tool calls from LLM hosts into authorized REST calls via `@oct
 > This default setup is intended for **merchant operators, business development (BD), and support agents**.
 >
 > If you are embedding this adapter into an **end-user / customer-facing assistant** (such as a loyalty chat widget for customers), **do NOT** expose the CLI directly with a shared organization key. Instead, use the programmatic factory `createServer()`:
-> 1. Pass a `resolveMemberId(context)` callback that maps the authenticated MCP session to a member ID. It automatically omits `memberId` from the tool parameters exposed to the LLM. Return `undefined` when the session is not authenticated; the request fails closed without calling Core.
+> 1. Pass a `resolveMemberId(context)` callback that maps the validated request's `http.authInfo` to a member ID. It automatically omits `memberId` from the tool parameters exposed to the LLM. Return `undefined` when validated auth info is absent or cannot be mapped; the request fails closed without calling Core. Never treat the MCP session ID as authentication.
 > 2. Pass `tools: ['get_member_balance', ...]` to restrict available tools to only safe end-user operations.
 > 3. Pass `project` to redact any fields before returning data to the model.
 
@@ -47,7 +47,7 @@ Add the server to your MCP configuration file (e.g., `mcp_config.json` or `claud
 ```json
 {
   "mcpServers": {
-    "octap-core": {
+    "octap": {
       "command": "node",
       "args": ["<path-to-octap-core>/ts-sdks/packages/mcp/dist/cli.js"],
       "env": {
@@ -68,21 +68,20 @@ Add the server to your MCP configuration file (e.g., `mcp_config.json` or `claud
 For applications that embed MCP within their own server or session lifecycle:
 
 ```typescript
-import { coreClient, createServer, type CoreClientLike } from '@octap/mcp';
-import type { Transport } from '@modelcontextprotocol/server';
+import { createServer, type CoreClientLike } from '@octap/mcp';
+import type { ServerContext, Transport } from '@modelcontextprotocol/server';
 
 type AuthenticatedSessions = {
-  getMemberId(sessionId: string): string | undefined | Promise<string | undefined>;
+  getMemberId(
+    authInfo: NonNullable<ServerContext['http']>['authInfo'],
+  ): string | undefined | Promise<string | undefined>;
 };
 
-export function createCustomerMcpServer(
-  authenticatedSessions: AuthenticatedSessions,
-  client: CoreClientLike = coreClient(),
-) {
+export function createCustomerMcpServer(authenticatedSessions: AuthenticatedSessions, client?: CoreClientLike) {
   return createServer({
-    client,
+    ...(client ? { client } : {}),
     tools: ['get_member_balance', 'list_member_transactions'],
-    resolveMemberId: ({ sessionId }) => (sessionId ? authenticatedSessions.getMemberId(sessionId) : undefined),
+    resolveMemberId: ({ http }) => (http?.authInfo ? authenticatedSessions.getMemberId(http.authInfo) : undefined),
     project: (toolName, data) => data,
   });
 }
@@ -94,7 +93,7 @@ export async function connectCustomerMcp(authenticatedSessions: AuthenticatedSes
 }
 ```
 
-The repository's `examples/customer-embed.ts` mirrors this snippet; a protocol test checks that they stay identical and executes the example through an MCP client. `authenticatedSessions` must be the host application's trusted authentication/session store; never take the member ID from MCP tool arguments or model-generated text. The host must ensure that the transport's `sessionId` maps to an authenticated application user. If the host cannot resolve a valid member UUID, the tool returns an error without making a Core API request.
+The repository's `examples/customer-embed.ts` mirrors this snippet; a protocol test checks that they stay identical and executes the example through an MCP client. The host's configured token verifier must populate `http.authInfo`; `authenticatedSessions` maps that validated request identity to the member. Never use the MCP session ID or model-supplied arguments as authentication. If validated auth info is absent or cannot resolve a valid member UUID, the tool returns an error without making a Core API request.
 
 ## Available Tools
 
@@ -102,7 +101,7 @@ All tools are strictly read-only:
 
 - **`get_member_balance`**: Returns confirmed and pending point balances, plus the observation checkpoint/time for a member.
 - **`list_member_transactions`**: Returns up to 50 recent transactions (default 20), including earn, redeem, adjust, and refund records.
-- **`list_member_vouchers`**: Returns up to 50 assigned vouchers (default 20) with campaign details and redemption status. Serial codes and sensitive secrets are omitted.
+- **`list_member_vouchers`**: Returns up to 50 assigned vouchers (default 20) with voucher titles and redemption status. Serial codes and sensitive secrets are omitted.
 
 ## Error Handling & Tenant Isolation
 
@@ -112,4 +111,4 @@ All tools are strictly read-only:
 
 ## Verification
 
-After `npm run build` from the repository root, run `npm run test:mcp:e2e`. This starts disposable PostgreSQL and Redis containers plus a local Core API, seeds a read-only API key and member, then connects an MCP client to the compiled stdio CLI. It checks all three tools with a valid key, safe permission errors with an invalid key, and eager startup failure when `OCTAP_API_KEY` is missing. Docker is required; the disposable services are stopped when the script exits.
+After `npm run build` from the repository root, run `npm run test:mcp:e2e`. This starts disposable PostgreSQL and Redis containers plus a local Core API, seeds two organizations and members plus a read-only API key for one organization, then connects an MCP client to the compiled stdio CLI. It checks all three tools with a valid key, generic 404 responses for cross-tenant reads, safe permission errors with an invalid key, and eager startup failure when `OCTAP_API_KEY` is missing. Docker is required; the disposable services are stopped when the script exits.
