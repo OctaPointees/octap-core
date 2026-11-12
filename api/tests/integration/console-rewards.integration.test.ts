@@ -259,6 +259,41 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
     expect(response.body.totalSupply).toBe(5);
   });
 
+  it('answers 409, not 500, to a create racing another one with the same code', async () => {
+    // Another create holds the code, uncommitted, while the console create arrives: the console's
+    // own lookup sees nothing, and its insert has to wait on the unique index.
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    let markInserted!: () => void;
+    const inserted = new Promise<void>((resolve) => (markInserted = resolve));
+    const other = ctx.db.transaction(async (tx) => {
+      await tx.insert(schema.vouchers).values({ organizationId: orgId, code: reward.code, title: 'First' });
+      markInserted();
+      await gate;
+    });
+    await inserted;
+
+    const racing = create('owner').then((response) => response);
+    let waiting = 0;
+    for (let i = 0; i < 100 && waiting === 0; i += 1) {
+      const [row] = await ctx.db.execute<{ waiting: number }>(
+        sql`select count(*)::int as waiting from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock'`,
+      );
+      waiting = row.waiting;
+      if (waiting === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(waiting).toBe(1);
+
+    // Once the other create commits, ON CONFLICT DO NOTHING inserts nothing: a CONFLICT, so a 409.
+    openGate();
+    await other;
+    const response = await racing;
+    expect(response.status).toBe(409);
+    expect(response.body.message).toMatch(/already exists/);
+    expect(await ctx.db.select().from(schema.vouchers)).toEqual([expect.objectContaining({ title: 'First' })]);
+  });
+
   it('runs PATCH and a real claim on the same voucher at once without errors', async () => {
     const { id } = (await create('owner').expect(201)).body as { id: string };
     await activate(id);

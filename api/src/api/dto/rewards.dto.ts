@@ -1,5 +1,4 @@
 import type {
-  ConsoleVoucherInput,
   CreateVoucherRequest,
   UpdateVoucherRequest,
   GrantVoucherRequest,
@@ -9,7 +8,6 @@ import type {
 
 export type CreateVoucherBodyDto = CreateVoucherRequest;
 export type UpdateVoucherBodyDto = UpdateVoucherRequest;
-export type ConsoleVoucherBodyDto = ConsoleVoucherInput;
 
 export interface ClaimVoucherBodyDto {
   organizationEndUserId: string;

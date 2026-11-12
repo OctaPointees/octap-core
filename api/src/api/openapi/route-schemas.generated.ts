@@ -875,7 +875,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     }
   },
   "ConsoleRewardsController_create_Body": {
-    "description": "Creating a voucher from the console session, which is stricter than `CreateVoucherRequest`: it is\nalways a `DRAFT`, activated afterwards with `PATCH { status: 'ACTIVE' }`, and `pointsCost` must be\nsent (0 for a free reward). Only the Owner may create one.",
     "type": "object",
     "properties": {
       "pointsCost": {

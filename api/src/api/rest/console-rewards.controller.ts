@@ -3,7 +3,8 @@ import type { VoucherDto } from '@octap/contracts';
 import { ConsoleRewardsService } from '#domain/rewards/console-rewards.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
-import type { ConsoleVoucherBodyDto, UpdateVoucherBodyDto } from '../dto/rewards.dto.js';
+import type { ConsoleVoucherBodyDto } from '../dto/console.dto.js';
+import type { UpdateVoucherBodyDto } from '../dto/rewards.dto.js';
 
 /** Owner or Business Developer reads; only the Owner writes. See `ConsoleRewardsService`. */
 @Public()
