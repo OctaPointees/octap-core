@@ -18,6 +18,8 @@ const voucher = await client.createVoucher({
 
 `pointsCost` mặc định là 0, tức voucher miễn phí. `status` mặc định là `ACTIVE`, và cũng nhận `DRAFT` hoặc `PAUSED`. `code` phải là duy nhất trong tổ chức của bạn, nếu không bạn nhận 409.
 
+Nếu lệnh tạo bị timeout hoặc mất response, voucher có thể vẫn đã được tạo, và gọi lại sẽ nhận 409 vì trùng `code`. Khi đó, hãy gọi `listVouchers` và tìm voucher theo `code`, thay vì tạo lại.
+
 ### Publish
 
 Yêu cầu `ACTIVE` sẽ publish điều khoản của voucher lên chain, nơi không ai đổi được nữa. Trước khi chain xác nhận, voucher ở `DRAFT` với `publishStatus: 'PUBLISHING'` và chưa claim được. Hãy đọc cho đến khi `publishStatus` là `PUBLISHED`. Nếu là `FAILED`, bạn có thể sửa và kích hoạt lại. Tổ chức của bạn cần có program đã provision, nếu không bạn nhận 422.

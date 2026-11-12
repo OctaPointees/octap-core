@@ -1,3 +1,4 @@
+import type { CreateVoucherRequest } from './rewards.js';
 import type { OrganizationPersona } from './system-users.js';
 
 export type OrganizationType = 'INDIVIDUAL_HOUSEHOLD' | 'COMPANY';
@@ -101,4 +102,15 @@ export interface ConsoleInvitationInput {
   /** @format email */
   email: string;
   persona?: 'BUSINESS_DEVELOPER';
+}
+
+/**
+ * Creating a voucher from the console session, which is stricter than `CreateVoucherRequest`: it is
+ * always a `DRAFT`, activated afterwards with `PATCH { status: 'ACTIVE' }`, and `pointsCost` must be
+ * sent (0 for a free reward). Only the Owner may create one.
+ */
+export interface ConsoleVoucherInput extends Omit<CreateVoucherRequest, 'status'> {
+  pointsCost: number;
+  /** Only `DRAFT`, which is also the default; any other status is a 400. */
+  status?: 'DRAFT';
 }

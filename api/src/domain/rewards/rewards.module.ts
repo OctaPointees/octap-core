@@ -7,10 +7,11 @@ import { CreditsModule } from '../credits/credits.module.js';
 import { RewardsService } from './rewards.service.js';
 import { RefundPolicyService } from './refund-policy.service.js';
 import { VoucherUseService } from './voucher-use.service.js';
+import { ConsoleRewardsService } from './console-rewards.service.js';
 
 @Module({
   imports: [PostgresModule, CreditsModule, CacheModule, SuiTransactionBuilderModule, IdentityModule],
-  providers: [RewardsService, RefundPolicyService, VoucherUseService],
-  exports: [RewardsService, RefundPolicyService, VoucherUseService],
+  providers: [RewardsService, RefundPolicyService, VoucherUseService, ConsoleRewardsService],
+  exports: [RewardsService, RefundPolicyService, VoucherUseService, ConsoleRewardsService],
 })
 export class RewardsModule {}

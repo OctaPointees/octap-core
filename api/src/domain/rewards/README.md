@@ -4,13 +4,14 @@ Merchant vouchers: create, publish, list, edit, claim with points, grant, and us
 
 A voucher is a merchant's promise recorded for one customer. OctaP does not define what a voucher looks like: the form and the channel are the merchant's. The chain holds what was promised, who holds it, and whether it was used.
 
-- `rewards.service.ts`: voucher use cases.
+- `rewards.service.ts`: voucher use cases. `createVoucher`/`updateVoucher` take an optional `tx` to join a caller's transaction.
+- `console-rewards.service.ts`: the catalog from the console session (OCT-236). Owner or Business Developer reads, Owner-only writes, checked in the same transaction as the write. A console create is always a `DRAFT`, activated with a separate PATCH, and requires `pointsCost`. The Owner check holds the organization FOR SHARE, because a claim locks the voucher first and the organization second.
 - `voucher-use.service.ts`: customer-signed use: prepare with an API key, finalize with the customer's signature.
 - `voucher-terms.ts`: the canonical bytes frozen on-chain as a voucher's promise.
 - `voucher-validation.ts`: runtime create/edit validation; merged edits are validated while the voucher row is locked.
 - `rewards.module.ts`: Nest provider composition.
 
-Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts`.
+Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` (API key) and `api/rest/console-rewards.controller.ts` (console session).
 
 ## What lives where
 

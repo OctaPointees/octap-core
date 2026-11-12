@@ -279,7 +279,11 @@ export class OctaPointClient {
     });
   }
 
-  /** Create a new voucher definition. */
+  /**
+   * Create a new voucher definition. A `code` already used in your organization is a 409: if a create
+   * timed out or its response was lost, the voucher may exist anyway, so find it with `listVouchers`
+   * instead of creating it again.
+   */
   async createVoucher(request: CreateVoucherRequest, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>('/v1/rewards/vouchers', 'POST', request, options);
   }

@@ -59,6 +59,8 @@ describe('RewardsService.createVoucher', () => {
         startsAt: new Date('2026-11-01T00:00:00Z'),
         expiresAt: new Date('2026-12-01T00:00:00Z'),
       }),
+      // No transaction of the caller's: the repository opens its own.
+      undefined,
     );
     expect(dto).toMatchObject({
       id: 'v-1',
@@ -82,6 +84,7 @@ describe('RewardsService.createVoucher', () => {
 
     expect(createVoucher).toHaveBeenCalledWith(
       expect.objectContaining({ pointsCost: 25, startsAt: undefined, expiresAt: undefined }),
+      undefined,
     );
     expect(dto.startsAt).toBeNull();
     expect(dto.expiresAt).toBeNull();
@@ -96,6 +99,31 @@ describe('RewardsService.createVoucher', () => {
     });
 
     await expect(create).rejects.toThrow(/already exists for this organization/);
+  });
+
+  it('requires code, title, and either discountType or terms, for every route that creates one', async () => {
+    const createVoucher = vi.fn();
+    const svc = service({ findVoucherByCode: async () => undefined, createVoucher });
+    const voucher = { code: 'C', title: 'T', discountType: 'FREE_ITEM' as const };
+    for (const missing of ['code', 'title', 'discountType'] as const) {
+      await expect(svc.createVoucher('org-1', { ...voucher, [missing]: '' })).rejects.toThrow(
+        /code, title, and either discountType or terms are required/,
+      );
+    }
+    await expect(svc.createVoucher('org-1', undefined as never)).rejects.toThrow(/are required/);
+    expect(createVoucher).not.toHaveBeenCalled();
+  });
+
+  it('passes the caller transaction to the repository on create and update', async () => {
+    const tx = { tx: true } as never;
+    const createVoucher = vi.fn(async () => buildVoucher());
+    const updateVoucher = vi.fn(async () => buildVoucher());
+    const svc = service({ findVoucherByCode: async () => undefined, createVoucher, updateVoucher });
+
+    await svc.createVoucher('org-1', { code: 'C', title: 'T', discountType: 'FREE_ITEM', status: 'DRAFT' }, tx);
+    expect(createVoucher).toHaveBeenCalledWith(expect.objectContaining({ code: 'C' }), tx);
+    await svc.updateVoucher('org-1', 'v-1', { title: 'New' }, tx);
+    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx);
   });
 });
 

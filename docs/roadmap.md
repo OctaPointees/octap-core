@@ -14,6 +14,7 @@ then move the row to **Implemented** in the same pull request.
 | PostgreSQL (Supabase) connection, Drizzle schema, first migration, RLS helper | api/src/infra/db; api/db/postgres/migrations |
 | Earn from purchase amounts, customer-signed POS redeem, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
 | Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
+| Console reward catalog: Owner/Business Developer list and detail, Owner-only create (DRAFT by default, `pointsCost` required), edit, pause and activate, from the Google session, checked in the write's transaction (OCT-236) | api/src/api/rest/console-rewards.controller.ts; api/src/domain/rewards/console-rewards.service.ts |
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for credits, vouchers, webhook management, structured errors and cancellation | ts-sdks/packages/node |
 | Browser auth SDK for merchant websites: Firebase-style Google sign-in, enrollment, session restore, zkLogin transaction signing and finalize, over Core's proxy routes. Live Testnet signing is verified by hand (`ts-sdks/examples/README.md`) | ts-sdks/packages/browser; ts-sdks/examples/browser-auth |
@@ -180,6 +181,10 @@ then move the row to **Implemented** in the same pull request.
 - No request signing: HMAC signing was removed in OCT-70 (no route used it, and its key was the
   stored `keyHash`, so it added no secret). Key management through the SDK or MCP, if it comes
   back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
+- Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
+  and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
+  or the same `code` and content returning the existing voucher. No webhook fires when a voucher is
+  created, activated or paused either; only `voucher.granted` and `voucher.redeemed` exist.
 - Console API keys record no creator or revoker, and survive the member who issued them leaving:
   an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the

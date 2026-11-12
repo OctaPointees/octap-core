@@ -4,6 +4,7 @@ import type {
   ConsoleGoogleLoginInput,
   ConsoleInvitationInput,
   ConsoleStaffAccessPatch,
+  ConsoleVoucherInput,
   GovernanceProposal,
   GovernanceRequestListQuery,
   MemberDirectoryQuery,
@@ -24,6 +25,7 @@ import type {
 export type Wire<T> = { [K in keyof T]: T[K] };
 
 export type ConsoleGoogleLoginBodyDto = Wire<ConsoleGoogleLoginInput>;
+export type ConsoleVoucherBodyDto = Wire<ConsoleVoucherInput>;
 export type ReviewDecisionBodyDto = Wire<ReviewDecisionInput>;
 export type GovernanceProposalBodyDto = Wire<GovernanceProposal>;
 export type GovernanceRequestListQueryDto = Wire<GovernanceRequestListQuery>;

@@ -41,6 +41,12 @@ since calling one would itself need a key): `npm run seed:dev-credential -- <org
 That key carries the `admin` scope, which webhooks and the refund policy need; only the script
 issues `admin` keys. An Owner or Business Developer issues, renames and revokes keys from the
 console session (`read` by default; only the Owner issues or manages `write` keys): `/v1/console/organizations/:organizationId/api-credentials`.
+An API-key route authorizes by the key's scopes only, never by the role of whoever created the key.
+
+The console session also manages the reward catalog at
+`/v1/console/organizations/:organizationId/vouchers`: the Owner or a Business Developer lists and
+reads it; only the Owner creates, edits, pauses and activates. A console create is always a `DRAFT`
+(activated afterwards with a PATCH) and must send `pointsCost`; `/v1/rewards/vouchers` keeps its own defaults.
 
 ## API docs
 

@@ -114,6 +114,18 @@ export class ConsoleOrganizationsRepository {
     });
   }
   /**
+   * Active Owner of an ACTIVE organization, holding the organization and membership rows FOR SHARE
+   * until `action` commits: the Owner cannot be removed, nor the organization suspended, in between.
+   * FOR SHARE, not FOR UPDATE, so `action` may lock a voucher afterwards. A claim locks the voucher
+   * first and the organization FOR SHARE second; an update lock here would deadlock with it.
+   */
+  async withOwnerAccess<T>(userId: string, organizationId: string, action: (tx: Tx) => Promise<T>) {
+    return this.db.transaction(async (tx) => {
+      await this.member(tx, userId, organizationId, true, false);
+      return action(tx);
+    });
+  }
+  /**
    * Owner or Business Developer, locking the organization and membership rows for update, so `action`
    * commits only while the caller still has access (unlike `withAccess`, whose writes are Owner-only).
    * `action` gets the caller's role, for rules that differ between the two.

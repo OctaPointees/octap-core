@@ -70,9 +70,6 @@ export class RewardsController {
   @Post('vouchers')
   @Scopes('write')
   async createVoucher(@Tenant() tenant: TenantContext, @Body() body: CreateVoucherBodyDto): Promise<VoucherDto> {
-    if (!body?.code || !body.title || (!body.discountType && !body.terms)) {
-      throw new BadRequestException('code, title, and either discountType or terms are required');
-    }
     return this.rewardsService.createVoucher(tenant.organizationId, body);
   }
 
