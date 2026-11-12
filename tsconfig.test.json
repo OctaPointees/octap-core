@@ -7,8 +7,9 @@
       "@octap/contracts": ["./ts-sdks/packages/contracts/src/index.ts"],
       "@octap/chain": ["./ts-sdks/packages/chain/src/index.ts"],
       "@octap/sdk": ["./ts-sdks/packages/node/src/index.ts"],
+      "@octap/mcp": ["./ts-sdks/packages/mcp/src/index.ts"],
       "@octap/browser-sdk": ["./ts-sdks/packages/browser/src/index.ts"]
     }
   },
-  "include": ["vitest.config.ts", "api/tests/**/*.ts", "ts-sdks/packages/*/tests/**/*.ts", "mcp/tests/**/*.ts"]
+  "include": ["vitest.config.ts", "api/tests/**/*.ts", "ts-sdks/packages/*/tests/**/*.ts"]
 }

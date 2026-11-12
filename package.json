@@ -10,12 +10,11 @@
     "ts-sdks/packages/contracts",
     "ts-sdks/packages/chain",
     "ts-sdks/packages/node",
+    "ts-sdks/packages/mcp",
     "ts-sdks/packages/browser",
-    "api",
-    "mcp"
+    "api"
   ],
   "scripts": {
-    "demo:mcp": "node scripts/demo-mcp.mjs",
     "demo:sdk": "node scripts/sdk-voucher-demo.mjs",
     "demo:sdk:local": "npm run build && node scripts/sdk-demo-local.mjs",
     "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs scripts/tests/browser-auth-example.test.mjs",

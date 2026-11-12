@@ -42,35 +42,41 @@ Campaign drafting and preview remain the stronger strategic extension, but depen
 
 ## Location and boundaries
 
-If implementation is approved, place the adapter in the root-level **`mcp/`** package in `octap-core`, and run/deploy it as its own process. Keep its dependencies, configuration and startup command isolated from the NestJS API and workers. It calls Core through the authorized API/SDK boundary; it does not import domain or infrastructure internals, access PostgreSQL directly, or contain its own source of truth.
+The adapter lives in **`ts-sdks/packages/mcp`** (`@octap/mcp`) in `octap-core`, and runs/deploys as its own process. Its dependencies, configuration and startup command remain isolated from the NestJS API and workers. It calls Core through the authorized API/SDK boundary (`@octap/node`); it does not import domain or infrastructure internals, access PostgreSQL directly, or contain its own source of truth.
 
-For a developer-only local pilot, stdio is the simplest connection. A shared remote server can use Streamable HTTP, but needs a user authentication design and tenant/role mapping before deployment. Transport authentication alone does not replace Core's object-level and tenant authorization.
+For this staging/developer pilot, stdio is the connection mechanism. The pilot is scoped to **merchant operators, business development (BD), and support staff** operating under an organization-level API credential. It is not configured for customer-facing multi-user chat without programmatic session binding (`resolveMemberId`). A shared remote server can use Streamable HTTP, but requires a token exchange/delegation design and caller-level audit logging before deployment.
 
 ## Security and consent rules
 
 - Derive tenant, user and role from verified server-side credentials, never from model-generated arguments.
 - Keep merchant/API credentials on the server side, scoped to the minimum Core reads required; never return credentials or signer keys to the model.
 - Treat tool input, retrieved member data and user-provided content as untrusted. Validate inputs and restrict lookup scope.
-- For this local stdio pilot, log tool names and outcomes to stderr without member IDs or secrets. A shared remote deployment must add verified caller/tenant attribution and a durable audit trail first.
-- The first pilot is read-only. Any later write tool creates a bounded draft and records an audit trail; an authorized human approves the exact action before execution.
+- For this local stdio pilot, log tool names and outcomes to stderr without member IDs or secrets. Centralized durable audit logging and caller attribution are deferred to a later remote deployment ticket.
+- The first pilot is strictly read-only. Any later write tool must create a bounded draft and record an audit trail; an authorized human must approve the exact action before execution.
 - MCP cannot spend a customer's points on their behalf. Customer redemption and voucher use continue to require the customer's own signature.
 
 ## Decision and prerequisites
 
-**Location decision:** keep this plan in `docs/` and co-locate the isolated adapter at `mcp/` in this repository. This updates the earlier separate-repository direction in `README.md` and `docs/architecture.md`. The adapter is a local/staging pilot only and is not approved for production.
+**Location decision:** keep this plan in `docs/` and co-locate the isolated adapter at `ts-sdks/packages/mcp` (`@octap/mcp`) in this repository. The adapter is a developer/staging pilot only and is not approved for production.
 
-Before implementation, agree on the pilot actor and host, choose how local/remote callers authenticate, map identity to Core tenant and scopes, confirm the required read endpoints, and define the audit fields and negative cross-tenant tests. The research task itself does not build or deploy the server.
+## Implementation status and work breakdown
 
-## Proposed work breakdown (future implementation)
+### Implemented in pilot (OCT-286)
 
-The first five items are represented by this local/staging pilot; campaign write workflows remain future work.
+1. **Package structure:** Co-located in `ts-sdks/packages/mcp` (`@octap/mcp`) as a private TypeScript package with clean separation between library (`.` -> `./dist/index.js`) and CLI (`bin["octap-mcp"]` -> `./dist/cli.js`).
+2. **Three read tools:** Implemented `get_member_balance`, `list_member_transactions`, and `list_member_vouchers` using `@octap/node` REST client.
+3. **Input validation:** Strict Zod schemas enforcing regex patterns, non-empty IDs, and bounded pagination limits (max 50, default 20).
+4. **Safe operations & error mapping:** Redacts internal error details; returns LLM-friendly messages preventing infinite retry loops; maps 404 to generic not-found messages to avoid cross-tenant member existence oracles; enforces 15-second timeouts via `AbortSignal.any`.
+5. **Programmatic factory:** `createServer({ client, tools?, resolveMemberId?, project? })` allows embedding hosts to omit `memberId` from client schemas and bind session-authenticated users.
+6. **Protocol-level test suite:** 23 tests exercising the MCP `Client` over `InMemoryTransport` without private SDK reflection.
 
-1. **Define the caller boundary.** Select the pilot host and identity flow. Specify how the authenticated caller maps to a Core credential, organization, and read scopes. Reject caller-supplied tenant IDs as authorization.
-2. **Create the isolated adapter.** Add `mcp/` with its own package manifest, configuration, startup command, and stdio transport. Keep Core business rules in Core; the adapter calls only supported API/SDK operations.
-3. **Add three read tools.** Implement `get_member_balance`, `list_member_transactions`, and `list_member_vouchers`. Give each tool a narrow schema, bounded result count, clear errors, and descriptions that state its scope.
-4. **Add safe operations.** Redact credentials and unnecessary personal data from logs and tool results; set request timeouts; record the authenticated caller, tenant, tool, target, and outcome.
-5. **Document local setup.** Explain prerequisites, environment variables without values, how to launch the stdio process, and how to connect an MCP host. Do not commit credentials.
-6. **Review later write workflows separately.** Campaign draft/preview/approval/execution requires the Campaign domain, immutable previews, a different authorized approver, budget enforcement, and audit records. Do not add write tools to the read-only pilot.
+### Deferred to future tickets
+
+1. **Durable audit trail:** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
+2. **Tenant-isolation integration tests against live DB:** Running automated multi-tenant cross-org assertions against a live Core instance in CI.
+3. **Remote Streamable HTTP transport:** Multi-user SSE/HTTP transport with bearer token auth.
+4. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
+5. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 
 ## Proposed test plan and acceptance checks
 
