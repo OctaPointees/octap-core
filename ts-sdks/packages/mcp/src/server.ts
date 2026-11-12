@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/server';
+import { McpServer, type BaseContext } from '@modelcontextprotocol/server';
 import { OctaPointClient, OctaApiError } from '@octap/sdk';
 import * as z from 'zod/v4';
 
@@ -20,11 +20,24 @@ export const ALL_TOOLS: ToolName[] = ['get_member_balance', 'list_member_transac
 
 export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransactions' | 'listMemberVouchers'>;
 
+export type ResolveMemberIdContext = Pick<BaseContext, 'sessionId'>;
+export type MemberIdResolver = (
+  context: ResolveMemberIdContext,
+) => string | null | undefined | Promise<string | null | undefined>;
+
 export interface CreateServerOptions {
   client?: CoreClientLike;
   tools?: ToolName[];
-  resolveMemberId?: () => string | Promise<string>;
+  resolveMemberId?: MemberIdResolver;
   project?: (tool: ToolName, value: unknown) => unknown;
+}
+
+function memberBindingError() {
+  console.error(JSON.stringify({ event: 'mcp_member_binding_failed' }));
+  return {
+    isError: true as const,
+    content: [{ type: 'text' as const, text: 'No authenticated member is bound to this request.' }],
+  };
 }
 
 export function isOctaApiError(err: unknown): err is OctaApiError {
@@ -85,13 +98,13 @@ export function result(tool: string, value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 
-function combineSignal(extra?: { signal?: AbortSignal; mcpReq?: { signal?: AbortSignal } }): AbortSignal {
+type ToolExtra = Pick<BaseContext, 'sessionId' | 'mcpReq'> & { signal?: AbortSignal };
+
+function combineSignal(extra?: Pick<ToolExtra, 'signal' | 'mcpReq'>): AbortSignal {
   const hostSignal = extra?.signal ?? extra?.mcpReq?.signal;
   const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   return hostSignal ? AbortSignal.any([hostSignal, timeoutSignal]) : timeoutSignal;
 }
-
-type ToolExtra = { signal?: AbortSignal; mcpReq?: { signal?: AbortSignal } };
 
 export function createServer(options: CreateServerOptions = {}) {
   const server = new McpServer({ name: 'octap', version: '0.0.0' });
@@ -115,8 +128,10 @@ export function createServer(options: CreateServerOptions = {}) {
       },
       async (args: { memberId?: string }, extra: ToolExtra) => {
         try {
-          const memberId = resolveMemberId ? await resolveMemberId() : (args.memberId as string);
-          const balance = await core.getBalance(memberId, { signal: combineSignal(extra) });
+          const memberId = resolveMemberId ? await resolveMemberId(extra) : args.memberId;
+          const parsedMemberId = MEMBER_ID.safeParse(memberId);
+          if (!parsedMemberId.success) return memberBindingError();
+          const balance = await core.getBalance(parsedMemberId.data, { signal: combineSignal(extra) });
           const rawPayload = {
             memberId: balance.organizationEndUserId,
             confirmedBalance: balance.confirmedBalance,
@@ -152,9 +167,11 @@ export function createServer(options: CreateServerOptions = {}) {
       },
       async (args: { memberId?: string; limit?: number }, extra: ToolExtra) => {
         try {
-          const memberId = resolveMemberId ? await resolveMemberId() : (args.memberId as string);
+          const memberId = resolveMemberId ? await resolveMemberId(extra) : args.memberId;
+          const parsedMemberId = MEMBER_ID.safeParse(memberId);
+          if (!parsedMemberId.success) return memberBindingError();
           const limit = args.limit ?? DEFAULT_LIMIT;
-          const rows = await core.listTransactions(memberId, {
+          const rows = await core.listTransactions(parsedMemberId.data, {
             limit,
             signal: combineSignal(extra),
           });
@@ -193,10 +210,12 @@ export function createServer(options: CreateServerOptions = {}) {
       },
       async (args: { memberId?: string; limit?: number }, extra: ToolExtra) => {
         try {
-          const memberId = resolveMemberId ? await resolveMemberId() : (args.memberId as string);
+          const memberId = resolveMemberId ? await resolveMemberId(extra) : args.memberId;
+          const parsedMemberId = MEMBER_ID.safeParse(memberId);
+          if (!parsedMemberId.success) return memberBindingError();
           const limit = args.limit ?? DEFAULT_LIMIT;
           // Note: Core endpoint does not support limit parameter currently; fetched and sliced client-side.
-          const rows = await core.listMemberVouchers(memberId, { signal: combineSignal(extra) });
+          const rows = await core.listMemberVouchers(parsedMemberId.data, { signal: combineSignal(extra) });
           const rawPayload = rows.slice(0, limit).map((voucher) => ({
             ownershipId: voucher.id,
             voucherId: voucher.voucherId,

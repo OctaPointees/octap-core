@@ -24,6 +24,7 @@ describe('Octap MCP Server', () => {
 
   async function createTestHarness(options: CreateServerOptions = {}) {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    serverTransport.sessionId = 'test-authenticated-session';
     const server = createServer(options);
     const client = new Client({ name: 'test-mcp-client', version: '1.0.0' }, { capabilities: {} });
 
@@ -455,9 +456,10 @@ describe('Octap MCP Server', () => {
         listMemberVouchers: vi.fn(),
       };
 
+      const resolveMemberId = vi.fn(() => boundMemberId);
       const harness = await createTestHarness({
         client: mockClient,
-        resolveMemberId: () => boundMemberId,
+        resolveMemberId,
       });
       try {
         const res = await harness.client.callTool({
@@ -466,7 +468,36 @@ describe('Octap MCP Server', () => {
         });
 
         expect(mockClient.getBalance).toHaveBeenCalledWith(boundMemberId, expect.any(Object));
+        expect(resolveMemberId).toHaveBeenCalledWith(
+          expect.objectContaining({ sessionId: 'test-authenticated-session' }),
+        );
         expect(res.isError).toBeFalsy();
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it.each([undefined, 'not-a-uuid'])('fails closed when resolveMemberId returns %s', async (resolvedMemberId) => {
+      const mockClient: CoreClientLike = {
+        getBalance: vi.fn(),
+        listTransactions: vi.fn(),
+        listMemberVouchers: vi.fn(),
+      };
+
+      const harness = await createTestHarness({
+        client: mockClient,
+        resolveMemberId: () => resolvedMemberId,
+      });
+      try {
+        const res = await harness.client.callTool({
+          name: 'get_member_balance',
+          arguments: {},
+        });
+
+        expect(res.isError).toBe(true);
+        const content = res.content as Array<{ type: string; text: string }>;
+        expect(content[0].text).toBe('No authenticated member is bound to this request.');
+        expect(mockClient.getBalance).not.toHaveBeenCalled();
       } finally {
         await harness.close();
       }

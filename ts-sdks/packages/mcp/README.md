@@ -13,7 +13,7 @@ It translates MCP tool calls from LLM hosts into authorized REST calls via `@oct
 > This default setup is intended for **merchant operators, business development (BD), and support agents**.
 >
 > If you are embedding this adapter into an **end-user / customer-facing assistant** (such as a loyalty chat widget for customers), **do NOT** expose the CLI directly with a shared organization key. Instead, use the programmatic factory `createServer()`:
-> 1. Pass `resolveMemberId: (extra) => authenticatedUserId`: this automatically omits `memberId` from the tool parameters exposed to the LLM and injects the verified session user, preventing prompt-injection attacks from querying other members' data.
+> 1. Pass a `resolveMemberId(context)` callback that maps the authenticated MCP session to a member ID. It automatically omits `memberId` from the tool parameters exposed to the LLM. Return `undefined` when the session is not authenticated; the request fails closed without calling Core.
 > 2. Pass `tools: ['get_member_balance', ...]` to restrict available tools to only safe end-user operations.
 > 3. Pass `project` to redact any fields before returning data to the model.
 
@@ -68,25 +68,33 @@ Add the server to your MCP configuration file (e.g., `mcp_config.json` or `claud
 For applications that embed MCP within their own server or session lifecycle:
 
 ```typescript
-import { createServer } from '@octap/mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { coreClient, createServer, type CoreClientLike } from '@octap/mcp';
+import type { Transport } from '@modelcontextprotocol/server';
 
-// Customer-facing example with member isolation:
-const { server } = createServer({
-  resolveMemberId: (extra) => {
-    // Extract authenticated user ID from context/session
-    return extra?.sessionId ? getMemberIdForSession(extra.sessionId) : null;
-  },
-  tools: ['get_member_balance', 'list_member_transactions'],
-  project: (toolName, data) => {
-    // Optionally filter or transform output
-    return data;
-  },
-});
+type AuthenticatedSessions = {
+  getMemberId(sessionId: string): string | undefined | Promise<string | undefined>;
+};
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+export function createCustomerMcpServer(
+  authenticatedSessions: AuthenticatedSessions,
+  client: CoreClientLike = coreClient(),
+) {
+  return createServer({
+    client,
+    tools: ['get_member_balance', 'list_member_transactions'],
+    resolveMemberId: ({ sessionId }) => (sessionId ? authenticatedSessions.getMemberId(sessionId) : undefined),
+    project: (toolName, data) => data,
+  });
+}
+
+export async function connectCustomerMcp(authenticatedSessions: AuthenticatedSessions, transport: Transport) {
+  const server = createCustomerMcpServer(authenticatedSessions);
+  await server.connect(transport);
+  return server;
+}
 ```
+
+The repository's `examples/customer-embed.ts` mirrors this snippet; a protocol test checks that they stay identical and executes the example through an MCP client. `authenticatedSessions` must be the host application's trusted authentication/session store; never take the member ID from MCP tool arguments or model-generated text. The host must ensure that the transport's `sessionId` maps to an authenticated application user. If the host cannot resolve a valid member UUID, the tool returns an error without making a Core API request.
 
 ## Available Tools
 
@@ -101,3 +109,7 @@ All tools are strictly read-only:
 - **Non-existent or cross-tenant members**: When looking up a member ID that does not exist or belongs to another organization, Core responds with HTTP 404. The adapter returns `"No matching member or resource was found in the configured organization."` to prevent cross-tenant existence enumeration.
 - **LLM-friendly messaging**: Rate limits and temporary failures advise the model not to loop or retry within the same turn.
 - **Diagnostics**: Operational events and errors are logged strictly to `stderr`, preserving `stdout` for clean JSON-RPC communication.
+
+## Verification
+
+After `npm run build` from the repository root, run `npm run test:mcp:e2e`. This starts disposable PostgreSQL and Redis containers plus a local Core API, seeds a read-only API key and member, then connects an MCP client to the compiled stdio CLI. It checks all three tools with a valid key, safe permission errors with an invalid key, and eager startup failure when `OCTAP_API_KEY` is missing. Docker is required; the disposable services are stopped when the script exits.
