@@ -1,6 +1,70 @@
 {
   "openapi": "3.1.0",
   "paths": {
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": false
+        },
+        "description": "**Auth:** none (public)."
+      }
+    },
+    "/v1/platform/health": {
+      "get": {
+        "operationId": "PlatformHealthController_report",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Health"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
     "/v1/platform/organizations": {
       "get": {
         "operationId": "PlatformOrganizationsController_list",
@@ -4071,6 +4135,9 @@
       "name": "Customer Verification"
     },
     {
+      "name": "Health"
+    },
+    {
       "name": "Identity"
     },
     {
@@ -4081,6 +4148,9 @@
     },
     {
       "name": "Platform Change Requests"
+    },
+    {
+      "name": "Platform Health"
     },
     {
       "name": "Platform Issuance Budget"

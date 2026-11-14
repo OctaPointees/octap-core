@@ -5,8 +5,10 @@
   "type": "module",
   "imports": {
     "#api/*": "./dist/api/*",
+    "#config/*": "./dist/config/*",
     "#domain/*": "./dist/domain/*",
-    "#infra/*": "./dist/infra/*"
+    "#infra/*": "./dist/infra/*",
+    "#observability/*": "./dist/observability/*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

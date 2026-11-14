@@ -1443,6 +1443,34 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "HealthController_check_Response": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "$ref": "#/components/schemas/HealthStatus"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "checks": {
+        "$ref": "#/components/schemas/Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "checks",
+      "status"
+    ]
+  },
+  "HealthStatus": {
+    "description": "`down`: the database or Redis is unreachable, so this process cannot serve requests (every\nauthenticated route needs both) — `/health` answers 503. `degraded`: only the Sui RPC is\nunreachable; reads and accepted commands still work and chain work queues up — still 200, so a\nload balancer does not pull every instance over a flaky public RPC.",
+    "enum": [
+      "degraded",
+      "down",
+      "ok"
+    ],
+    "type": "string"
+  },
   "IdentityController_createNonce_Body": {
     "type": "object",
     "properties": {
@@ -2163,6 +2191,37 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationId"
     ]
   },
+  "PlatformHealthController_report_Response": {
+    "type": "object",
+    "properties": {
+      "workerLag": {
+        "description": "Null when the database is down: every lag figure is read from it.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/WorkerLag"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status": {
+        "$ref": "#/components/schemas/HealthStatus"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "checks": {
+        "$ref": "#/components/schemas/Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "checks",
+      "status",
+      "workerLag"
+    ]
+  },
   "PlatformIssuanceBudgetController_read_Response": {
     "description": "How many more points a program may issue. Points, not money: no payment is involved.",
     "type": "object",
@@ -2809,6 +2868,25 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "operationId",
       "status"
+    ]
+  },
+  "Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck": {
+    "type": "object",
+    "properties": {
+      "database": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "redis": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "sui": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      }
+    },
+    "required": [
+      "database",
+      "redis",
+      "sui"
     ]
   },
   "Record_string_unknown": {
@@ -3872,6 +3950,162 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "status",
       "updatedAt",
       "url"
+    ]
+  },
+  "DependencyCheck": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "enum": [
+          "down",
+          "up"
+        ],
+        "type": "string"
+      },
+      "latencyMs": {
+        "type": "number"
+      },
+      "error": {
+        "description": "Why it is down. Only in the platform report: the public one does not describe internals.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "latencyMs",
+      "status"
+    ]
+  },
+  "IndexerLag": {
+    "type": "object",
+    "properties": {
+      "streamName": {
+        "type": "string"
+      },
+      "lastCheckpoint": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "caughtUpCheckpoint": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "chainCheckpoint": {
+        "description": "The chain's latest checkpoint from this same report's Sui probe; null when the probe failed.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "checkpointsBehind": {
+        "description": "How far the stream's furthest-known position trails the chain; null when either side is unknown.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "sinceUpdateSeconds": {
+        "description": "Since the indexer last wrote this stream's cursor row (a page or a caught-up poll).",
+        "type": "number"
+      }
+    },
+    "required": [
+      "caughtUpCheckpoint",
+      "chainCheckpoint",
+      "checkpointsBehind",
+      "lastCheckpoint",
+      "sinceUpdateSeconds",
+      "streamName"
+    ]
+  },
+  "OperationLag": {
+    "type": "object",
+    "properties": {
+      "commandType": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "count": {
+        "type": "number"
+      },
+      "oldestAgeSeconds": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "commandType",
+      "count",
+      "oldestAgeSeconds",
+      "status"
+    ]
+  },
+  "WorkerLag": {
+    "type": "object",
+    "properties": {
+      "operations": {
+        "type": "object",
+        "properties": {
+          "oldestUnsettledAgeSeconds": {
+            "description": "Age of the oldest PENDING, PROCESSING or UNKNOWN command; null when there is none.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "byCommandType": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationLag"
+            }
+          }
+        },
+        "required": [
+          "byCommandType",
+          "oldestUnsettledAgeSeconds"
+        ]
+      },
+      "webhookDeliveries": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number"
+          },
+          "due": {
+            "type": "number"
+          },
+          "oldestDueAgeSeconds": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "deadLettered": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "deadLettered",
+          "due",
+          "oldestDueAgeSeconds",
+          "pending"
+        ]
+      },
+      "indexer": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IndexerLag"
+        }
+      }
+    },
+    "required": [
+      "indexer",
+      "operations",
+      "webhookDeliveries"
     ]
   },
   "ConsoleCredential": {

@@ -18,6 +18,7 @@ import { MembersRepository } from './repositories/members.repository.js';
 
 import { GovernanceRepository } from './repositories/governance.repository.js';
 import { OrganizationsRepository } from './repositories/organizations.repository.js';
+import { OperationalHealthRepository } from './repositories/operational-health.repository.js';
 const repositories = [
   OrganizationsRepository,
   GovernanceRepository,
@@ -34,6 +35,7 @@ const repositories = [
   IdentityRepository,
   IndexerRepository,
   ProgramsRepository,
+  OperationalHealthRepository,
 ];
 
 @Module({

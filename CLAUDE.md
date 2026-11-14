@@ -37,7 +37,7 @@ These apply to every PR. Lint, format, and typecheck enforce what they can; the 
   files go (wire types → schema → repository → domain service → controller → SDK → tests). Not
   repeated here.
 - **Imports inside `api/`**: to reach another top-level area of `api/src`, use the subpath imports
-  `api/package.json` defines — `#api/…`, `#domain/…`, `#infra/…` (e.g.
+  `api/package.json` defines — `#api/…`, `#config/…`, `#domain/…`, `#infra/…`, `#observability/…` (e.g.
   `import { CreditsRepository } from '#infra/db/repositories/credits.repository.js'`). Use a relative
   import only within the same folder (`./x.js`) or one level up (`../dto/x.js`). ESLint
   (`no-restricted-imports`) fails on any `../../` import in `api/src`. Keep the `.js` extension
@@ -60,8 +60,10 @@ These apply to every PR. Lint, format, and typecheck enforce what they can; the 
   domain services throw Nest `HttpException`s (`NotFoundException`, `ConflictException`, …) with a
   message a merchant can act on. Another tenant's resource is a 404, except Google console organization routes: OCT-39/OCT-63 explicitly use 403 for missing membership or an unauthorized persona.
 - **Logging**: Nest `Logger` (`new Logger(Class.name)`), never `console` in `api/src`.
-- **Config**: read an env var where it's used. Secrets are read lazily via `requireEnv` so the app
-  still boots without them. Every variable goes into `.env.example` in the same change.
+- **Config**: read an env var where it's used. Every variable goes into `api/src/config/env.ts`'s
+  `ENV_SCHEMA` and `.env.example` in the same change: `main.ts`/`worker.ts` validate it at boot and
+  refuse to start on a bad value. Feature secrets of the HTTP process (`optionalFeature`) may stay
+  unset — the feature answers 503 and boot logs it — and are read lazily via `requireEnv`.
 - **Crypto**: `node:crypto` only (hashing, HMAC, random ids).
 - **Tests**: Vitest; see [api/tests/README.md](api/tests/README.md) for what goes in unit vs.
   integration.

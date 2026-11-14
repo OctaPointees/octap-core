@@ -23,6 +23,8 @@ then move the row to **Implemented** in the same pull request.
 | Move-generated TS bindings (`@mysten/codegen`) + chain client | ts-sdks/packages/chain |
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
+| Validated configuration: every env var the API and worker read is checked at boot (`ENV_SCHEMA`), all problems reported at once; `DATABASE_URL` and the worker's issuer signer (plus the program admin signer when provisioning is enabled) are required; HTTP feature secrets may stay unset and are logged (OCT-60) | api/src/config; api/src/main.ts; api/src/worker.ts |
+| Observability: a server-generated correlation id per HTTP request (`request.correlationId`, `X-Request-Id` header, access log line); public deep `/health` (database, Redis, Sui RPC; 503 only when the database or Redis is down); platform-admin `/v1/platform/health` with probe errors and worker lag (unsettled command outbox age per command type, webhook backlog, indexer checkpoints behind the chain) (OCT-60) | api/src/observability; api/src/api/rest/health.controller.ts; api/src/infra/db/repositories/operational-health.repository.ts |
 | OpenAPI document for every REST route (paths, params, auth per route read from the guards' metadata), Swagger UI at `/docs` behind `OPENAPI_ENABLED`, request/response/query schemas generated from each handler's TypeScript types, committed `docs/openapi.json` (3.1) checked in CI (OCT-285) | api/src/api/openapi; scripts/openapi*.mjs; docs/openapi.json |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke | api/src/infra/auth |
 | Console API keys: an Owner or Business Developer issues (`read` by default; only the Owner issues `write`; never `admin`), renames and revokes the organization's keys from the Google session (a Business Developer only read keys), at most 25 ACTIVE per organization (409 `API_CREDENTIAL_LIMIT_REACHED`); `/v1/api-credentials` and rotation are removed, `admin` keys come only from `scripts/seed-dev-credential.mjs` (OCT-70) | api/src/api/rest/console-api-credentials.controller.ts; api/src/domain/identity/console-api-credentials.service.ts; api/src/infra/auth/api-credentials.service.ts |
@@ -246,8 +248,6 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 
 | Feature | Suggested location |
 | --- | --- |
-| Validated configuration loading | api/src/config |
-| Logs, tracing, metrics, worker lag | api/src/observability |
 | Request validation pipes, error filters, interceptors | api/src/common or api/src/api |
 | Redis cache and realtime push | infra/cache; infra/realtime |
 | gRPC transport (server and Node SDK) | api/src/api/grpc; ts-sdks/packages/node/src/transports |
