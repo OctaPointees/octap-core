@@ -76,7 +76,9 @@ transaction digest on-chain (an explorer or `sui client tx-block <digest>`), aft
 Only the pruned gap is skipped. Replaying the rest is harmless (see **Dedup**):
 
 ```sql
-update indexer_cursors set cursor = null where stream_name = 'octap::credit_account';
+-- An upsert, so it also works when the row is already gone.
+insert into indexer_cursors (stream_name, cursor) values ('octap::credit_account', null)
+on conflict (stream_name) do update set cursor = null;
 ```
 
 No restart is needed; the next poll picks it up. It is healthy when the error stops and the row
