@@ -101,4 +101,52 @@ describe('IndexerRepository', () => {
     );
     expect(await repo.getCursor(CREDIT_ACCOUNT_STREAM)).toMatchObject({ cursor: 'C1', lastCheckpoint: '1' });
   });
+
+  it('markCaughtUp only raises the mark, numerically, and only for the cursor it saw', async () => {
+    await repo.initCursor(CREDIT_ACCOUNT_STREAM, 'C0', '100');
+
+    await repo.markCaughtUp(CREDIT_ACCOUNT_STREAM, 'C0', 9_000n);
+    await repo.markCaughtUp(CREDIT_ACCOUNT_STREAM, 'C0', 10_000n);
+    // As text, '9999' > '10000'; the mark must compare as a number.
+    await repo.markCaughtUp(CREDIT_ACCOUNT_STREAM, 'C0', 9_999n);
+    await repo.markCaughtUp(CREDIT_ACCOUNT_STREAM, 'C-other', 50_000n);
+
+    expect(await repo.getCursor(CREDIT_ACCOUNT_STREAM)).toMatchObject({ cursor: 'C0', caughtUpCheckpoint: '10000' });
+  });
+
+  it('commitPage raises the mark with the cursor, and never lowers it', async () => {
+    await repo.initCursor(CREDIT_ACCOUNT_STREAM, 'C0', '100', 500n);
+
+    await repo.commitPage(
+      CREDIT_ACCOUNT_STREAM,
+      { expectedCursor: 'C0', nextCursor: 'C1', lastCheckpoint: '150', caughtUpCheckpoint: 400n },
+      async () => {},
+    );
+    expect(await repo.getCursor(CREDIT_ACCOUNT_STREAM)).toMatchObject({ cursor: 'C1', caughtUpCheckpoint: '500' });
+
+    await repo.commitPage(
+      CREDIT_ACCOUNT_STREAM,
+      { expectedCursor: 'C1', nextCursor: 'C2', lastCheckpoint: '160', caughtUpCheckpoint: 900n },
+      async () => {},
+    );
+    expect(await repo.getCursor(CREDIT_ACCOUNT_STREAM)).toMatchObject({ cursor: 'C2', caughtUpCheckpoint: '900' });
+  });
+
+  it('replaceCursor swaps the cursor in place, and loses to an instance that moved it first', async () => {
+    await repo.initCursor(CREDIT_ACCOUNT_STREAM, 'RESUME_AT_HEAD', 'old');
+    const before = await repo.getCursor(CREDIT_ACCOUNT_STREAM);
+
+    await repo.replaceCursor(CREDIT_ACCOUNT_STREAM, {
+      expectedCursor: 'RESUME_AT_HEAD',
+      cursor: null,
+      lastCheckpoint: null,
+    });
+    const after = await repo.getCursor(CREDIT_ACCOUNT_STREAM);
+    expect(after).toMatchObject({ id: before!.id, cursor: null, lastCheckpoint: null });
+
+    await expect(
+      repo.replaceCursor(CREDIT_ACCOUNT_STREAM, { expectedCursor: 'RESUME_AT_HEAD', cursor: 'X' }),
+    ).rejects.toThrow(IndexerCursorMovedError);
+    expect((await repo.getCursor(CREDIT_ACCOUNT_STREAM))?.cursor).toBeNull();
+  });
 });

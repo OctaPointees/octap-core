@@ -162,6 +162,13 @@
       "when": 1793889588687,
       "tag": "0022_voucher_onchain_record",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794658910417,
+      "tag": "0023_indexer_caught_up_checkpoint",
+      "breakpoints": true
     }
   ]
 }

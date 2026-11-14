@@ -5,24 +5,48 @@ import type { CreditsRepository } from '#infra/db/repositories/credits.repositor
 import type { IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import type { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
-import type { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import {
+  ChainHistoryPrunedError,
+  type SuiTransactionBuilderClient,
+} from '#infra/clients/sui/sui-transaction-builder.client.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { stub } from '../../../helpers/stub.js';
 import { b64, buildLoyaltyTransaction, earnedEvent } from '../../../helpers/fixtures.js';
 
-type CursorRow = { streamName: string; cursor: string | null; lastCheckpoint: string | null };
+type CursorRow = {
+  streamName: string;
+  cursor: string | null;
+  lastCheckpoint: string | null;
+  caughtUpCheckpoint?: string | null;
+};
 type FakeTx = { writes: string[] };
 
 /**
  * In-memory stand-in for IndexerRepository with commitPage's real contract: `work`'s writes and the
  * cursor advance become visible together, or (if `work` throws) neither does.
  */
+/** `caught_up_checkpoint` only grows, as in the repository's `greatest(...)`. */
+const raise = (current: string | null | undefined, next: bigint) =>
+  (current != null && BigInt(current) > next ? BigInt(current) : next).toString();
+
 function fakeIndexerStore(initial: CursorRow | undefined) {
   const store = { row: initial, committedWrites: [] as string[] };
   const repo = {
     getCursor: async () => store.row,
-    deleteCursor: async () => {
-      store.row = undefined;
+    replaceCursor: async (
+      _streamName: string,
+      change: { expectedCursor: string | null; cursor: string | null; lastCheckpoint?: string | null },
+    ) => {
+      expect(change.expectedCursor).toBe(store.row!.cursor);
+      store.row = {
+        ...store.row!,
+        cursor: change.cursor,
+        ...(change.lastCheckpoint !== undefined ? { lastCheckpoint: change.lastCheckpoint } : {}),
+      };
+    },
+    markCaughtUp: async (_streamName: string, expectedCursor: string | null, checkpoint: bigint) => {
+      if (store.row?.cursor !== expectedCursor) return;
+      store.row = { ...store.row, caughtUpCheckpoint: raise(store.row.caughtUpCheckpoint, checkpoint) };
     },
     initCursor: async (streamName: string, cursor: string | null, lastCheckpoint: string | null) => {
       store.row ??= { streamName, cursor, lastCheckpoint };
@@ -30,7 +54,12 @@ function fakeIndexerStore(initial: CursorRow | undefined) {
     },
     commitPage: async (
       _streamName: string,
-      page: { expectedCursor: string | null; nextCursor: string; lastCheckpoint: string | null },
+      page: {
+        expectedCursor: string | null;
+        nextCursor: string;
+        lastCheckpoint: string | null;
+        caughtUpCheckpoint?: bigint | null;
+      },
       work: (tx: FakeTx) => Promise<unknown>,
     ) => {
       expect(page.expectedCursor).toBe(store.row!.cursor);
@@ -41,6 +70,9 @@ function fakeIndexerStore(initial: CursorRow | undefined) {
         ...store.row!,
         cursor: page.nextCursor,
         lastCheckpoint: page.lastCheckpoint ?? store.row!.lastCheckpoint,
+        ...(page.caughtUpCheckpoint != null
+          ? { caughtUpCheckpoint: raise(store.row!.caughtUpCheckpoint, page.caughtUpCheckpoint) }
+          : {}),
       };
       return result;
     },
@@ -56,6 +88,11 @@ const pendingEarnRow = (overrides: Parameters<typeof buildLoyaltyTransaction>[0]
     idempotencyKey: 'idem-earn-1',
     ...overrides,
   });
+
+/** Chain height every test's stub reports unless it overrides `latestCheckpoint`. */
+const HEIGHT = 10_000n;
+/** HEIGHT less the processor's margin for lagging nodes. */
+const CAUGHT_UP = '9000';
 
 const page = (
   events: CreditAccountEvent[],
@@ -79,7 +116,7 @@ function processor(
     indexerRepo as IndexerRepository,
     stub<CreditsRepository>(creditsRepo),
     stub<OperationsRepository>(operationsRepo),
-    stub<SuiTransactionBuilderClient>(sui),
+    stub<SuiTransactionBuilderClient>({ latestCheckpoint: async () => HEIGHT, ...sui }),
     stub<RewardsRepository>(rewardsRepo),
   );
 }
@@ -497,6 +534,206 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       expect.objectContaining({ bucketExpiresAtMs: 1794560999999 }),
       expect.anything(),
     );
+  });
+});
+
+const pruned = (lowest: bigint | null = 5_000n) =>
+  new ChainHistoryPrunedError(
+    `requested data below earliest available; lowest available checkpoint is ${lowest ?? '?'}`,
+    lowest,
+  );
+const stream = (row: Partial<CursorRow>): CursorRow => ({
+  streamName: 'octap::credit_account',
+  cursor: 'C5',
+  lastCheckpoint: '800',
+  ...row,
+});
+
+describe('CheckpointIndexerProcessor caught-up mark', () => {
+  it('a terminal empty page records the height, less the margin, as caught up', async () => {
+    const store = fakeIndexerStore(stream({}));
+
+    await processor(
+      store.repo,
+      {},
+      {},
+      { listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }) },
+    ).processNextPage();
+
+    expect(store.row).toMatchObject({ cursor: 'C5', caughtUpCheckpoint: CAUGHT_UP });
+  });
+
+  it('never lowers the mark when a lagging node reports a smaller height', async () => {
+    const store = fakeIndexerStore(stream({ caughtUpCheckpoint: '20000' }));
+
+    await processor(
+      store.repo,
+      {},
+      {},
+      { listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }) },
+    ).processNextPage();
+
+    expect(store.row?.caughtUpCheckpoint).toBe('20000');
+  });
+
+  it('the last page of a backlog records the mark; a page with more behind it does not', async () => {
+    const store = fakeIndexerStore(stream({}));
+    const pages = [page([], { hasNextPage: true, endCursor: 'C6' }), page([], { hasNextPage: false, endCursor: 'C7' })];
+    const run = () =>
+      processor(store.repo, {}, {}, { listCreditAccountEvents: async () => pages.shift()! }).processNextPage();
+
+    await run();
+    expect(store.row).toMatchObject({ cursor: 'C6' });
+    expect(store.row?.caughtUpCheckpoint).toBeUndefined();
+    await run();
+    expect(store.row).toMatchObject({ cursor: 'C7', caughtUpCheckpoint: CAUGHT_UP });
+  });
+
+  it('an unreadable height still polls, and records nothing', async () => {
+    const store = fakeIndexerStore(stream({}));
+
+    const more = await processor(
+      store.repo,
+      {},
+      {},
+      {
+        latestCheckpoint: async () => {
+          throw new Error('unavailable');
+        },
+        listCreditAccountEvents: async () => page([], { startCursor: null, endCursor: null }),
+      },
+    ).processNextPage();
+
+    expect(more).toBe(false);
+    expect(store.row?.caughtUpCheckpoint).toBeUndefined();
+  });
+});
+
+describe('CheckpointIndexerProcessor pruned cursor', () => {
+  it('resumes from the node’s oldest checkpoint when the mark proves the gap empty', async () => {
+    const store = fakeIndexerStore(stream({ caughtUpCheckpoint: '4999' }));
+    const listCreditAccountEvents = vi.fn(async () => {
+      throw pruned(5_000n);
+    });
+
+    expect(await processor(store.repo, {}, {}, { listCreditAccountEvents }).processNextPage()).toBe(true);
+
+    expect(store.row).toMatchObject({ cursor: null, lastCheckpoint: '800', caughtUpCheckpoint: '4999' });
+  });
+
+  it('refuses when the mark stops short of the node’s oldest checkpoint, leaving the row as it was', async () => {
+    const store = fakeIndexerStore(stream({ caughtUpCheckpoint: '4998' }));
+
+    await expect(
+      processor(
+        store.repo,
+        {},
+        {},
+        {
+          listCreditAccountEvents: async () => {
+            throw pruned(5_000n);
+          },
+        },
+      ).processNextPage(),
+    ).rejects.toThrow(/may hold events the indexer can no longer read[\s\S]*cursor = null/);
+
+    expect(store.row).toEqual(stream({ caughtUpCheckpoint: '4998' }));
+  });
+
+  it('refuses with no mark at all, or when the node does not say where it starts', async () => {
+    for (const [row, lowest] of [
+      [stream({}), 5_000n],
+      [stream({ caughtUpCheckpoint: '9999' }), null],
+    ] as const) {
+      const store = fakeIndexerStore(row);
+      await expect(
+        processor(
+          store.repo,
+          {},
+          {},
+          {
+            listCreditAccountEvents: async () => {
+              throw pruned(lowest);
+            },
+          },
+        ).processNextPage(),
+      ).rejects.toThrow(/may hold events/);
+      expect(store.row?.cursor).toBe('C5');
+    }
+  });
+
+  it('rethrows any other chain error unchanged', async () => {
+    const store = fakeIndexerStore(stream({ caughtUpCheckpoint: '9999' }));
+    const boom = new Error('UNAVAILABLE');
+
+    await expect(
+      processor(
+        store.repo,
+        {},
+        {},
+        {
+          listCreditAccountEvents: async () => {
+            throw boom;
+          },
+        },
+      ).processNextPage(),
+    ).rejects.toBe(boom);
+    expect(store.row?.cursor).toBe('C5');
+  });
+});
+
+describe('CheckpointIndexerProcessor head lookup on a pruned window', () => {
+  it('a first run whose head scan hits the pruned range starts from a null cursor', async () => {
+    const store = fakeIndexerStore(undefined);
+
+    await processor(
+      store.repo,
+      { hasAnyLoyaltyTransactions: async () => false },
+      {},
+      {
+        listCreditAccountEvents: async () => {
+          throw pruned();
+        },
+      },
+    ).processNextPage();
+
+    expect(store.row).toEqual({ streamName: 'octap::credit_account', cursor: null, lastCheckpoint: null });
+  });
+
+  it('the resume-at-head sentinel replaces the row in place, even when the head scan hits the pruned range', async () => {
+    const store = fakeIndexerStore(stream({ cursor: 'RESUME_AT_HEAD', lastCheckpoint: 'old' }));
+
+    await processor(
+      store.repo,
+      { hasAnyLoyaltyTransactions: async () => true },
+      {},
+      {
+        listCreditAccountEvents: async () => {
+          throw pruned();
+        },
+      },
+    ).processNextPage();
+
+    expect(store.row).toEqual(stream({ cursor: null, lastCheckpoint: null }));
+  });
+
+  it('a failed head lookup keeps the sentinel row, so the next poll retries instead of refusing', async () => {
+    const store = fakeIndexerStore(stream({ cursor: 'RESUME_AT_HEAD' }));
+
+    await expect(
+      processor(
+        store.repo,
+        { hasAnyLoyaltyTransactions: async () => true },
+        {},
+        {
+          listCreditAccountEvents: async () => {
+            throw new Error('UNAVAILABLE');
+          },
+        },
+      ).processNextPage(),
+    ).rejects.toThrow('UNAVAILABLE');
+
+    expect(store.row?.cursor).toBe('RESUME_AT_HEAD');
   });
 });
 
