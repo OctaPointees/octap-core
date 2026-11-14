@@ -36,3 +36,54 @@ per member). `stale` is simply "any pending amount is nonzero"; comparing agains
 future work.
 
 Env: `INDEXER_POLL_INTERVAL_MS` (5000), `INDEXER_PAGE_SIZE` (50), `INDEXER_MAX_PAGES_PER_POLL` (20).
+
+## Runbook: the stored cursor was pruned
+
+**Symptom.** Every poll logs:
+
+```
+ERROR [CheckpointIndexerWorker] poll failed: requested data below earliest available; lowest available checkpoint is <N>
+```
+
+The fullnode keeps only recent checkpoints, and testnet prunes fast, so this shows up when the
+worker was stopped for a few days. Restarting changes nothing: the worker resumes from the cursor
+in `indexer_cursors`, which now points below checkpoint `<N>`.
+
+**What skipping costs.** The chain stays the source of truth; nothing is lost on-chain. The
+synchronous path has already recorded every transaction it finished, so the only rows at risk are
+ones it did not finish, which the indexer would have repaired from the skipped events:
+
+- an earn or redemption left `PENDING` (pending points never become available, or stay held);
+- an operation left `UNKNOWN`;
+- a voucher claim left `RESERVED`, or a voucher used on-chain still shown `AVAILABLE`;
+- an earn's missing expiry bucket (OCT-49) that is never backfilled.
+
+`CreditExpired` needs nothing: balance reads already expire buckets by clock.
+
+**1. Check for stuck rows** (read-only):
+
+```sql
+select transaction_type, status, count(*) from loyalty_transactions group by 1, 2;
+select status, count(*) from operations group by 1;
+select status, count(*) from voucher_ownerships group by 1;
+```
+
+If nothing is `PENDING`, `UNKNOWN` or `RESERVED`, or it is only test data, go to step 2. Otherwise,
+note those rows first: the pruned events can't be replayed, so fix each one by hand from its
+transaction digest on-chain (an explorer or `sui client tx-block <digest>`), after step 2.
+
+**2. Reset the cursor to null**, which replays from the earliest checkpoint the node still has.
+Only the pruned gap is skipped. Replaying the rest is harmless (see **Dedup**):
+
+```sql
+update indexer_cursors set cursor = null where stream_name = 'octap::credit_account';
+```
+
+No restart is needed; the next poll picks it up. It is healthy when the error stops and the row
+stays in place with `cursor` null until the first new event, then a real cursor.
+
+**Avoid `RESUME_AT_HEAD` here.** That sentinel deletes the row and then looks up the stream head
+with a descending scan. When the package has no event inside the node's retained window, that scan
+hits the same pruned-data error. The row is then gone, and the next poll refuses to start because
+`loyalty_transactions` has rows. The worker is stuck until the row is put back, as in step 2.
+Deleting the row yourself ends in the same refusal.
