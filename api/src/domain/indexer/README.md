@@ -22,7 +22,13 @@ of "an UNKNOWN operation stays UNKNOWN until someone checks the chain by hand" (
   so a crash mid-page replays the whole page instead of skipping or double-applying it. The
   advance is conditional on the cursor not having moved, so a second instance loses cleanly.
 - **First run starts at the stream head**, not genesis — deliberate: there is no historical backlog
-  worth replaying in this demo. To replay from the beginning, set the row's `cursor` to null.
+  worth replaying in this demo. A null `cursor` reads forward from the oldest checkpoint the node
+  still holds. If the node's retained window has no event of this package, the head lookup fails
+  as pruned and is treated as an empty stream (null cursor).
+- **Caught-up mark**: the cursor only moves when an event arrives, so on a quiet stream it ages.
+  After every poll that finds nothing more, `caught_up_checkpoint` records the chain height read
+  just before that poll, less a 1000-checkpoint margin for nodes lagging behind the load balancer.
+  It means "no unprojected event at or below this checkpoint", and only grows. See "Pruned cursor".
 - **Dedup**: every `confirm*/fail*OnChain` row-locks the loyalty transaction and acts only if it's
   still PENDING, so the indexer and the synchronous path can race and exactly one wins.
   `blockchain_transactions.digest` being unique is the backstop; the processor treats that
@@ -37,17 +43,37 @@ future work.
 
 Env: `INDEXER_POLL_INTERVAL_MS` (5000), `INDEXER_PAGE_SIZE` (50), `INDEXER_MAX_PAGES_PER_POLL` (20).
 
-## Runbook: the stored cursor was pruned
+## Pruned cursor
 
-**Symptom.** Every poll logs:
+The fullnode keeps only a recent window of checkpoints, and testnet prunes fast. A stored cursor
+older than that window makes `listEvents` fail with gRPC `OUT_OF_RANGE`, "requested data below
+earliest available; lowest available checkpoint is N" (`ChainHistoryPrunedError`). The lower
+bound N differs between the nodes behind the public endpoint, so it is read from the refusing
+node's own error.
+
+**What the worker does on its own.** Any event after the cursor sits above
+`caught_up_checkpoint`, since an empty poll saw none up to there.
+
+- Mark ≥ N − 1: every such event is still retained, so the worker sets `cursor` to null and reads
+  on from N. It logs a warning and skips nothing. This is the usual case: the worker was running
+  and the stream was just quiet.
+- Otherwise (no mark, the mark is below N − 1, or the error has no N): the worker was down longer
+  than the window. The gap may hold events the indexer can no longer read, so every poll fails
+  with "the gap may hold events the indexer can no longer read". That needs the runbook below.
+
+The resume-at-head sentinel (`RESUME_AT_HEAD`) is replaced in place, never deleted first, and a
+failed head lookup leaves it for the next poll.
+
+### Runbook: the worker refuses a pruned or lost cursor
+
+**Symptom.** Every poll logs one of these:
 
 ```
-ERROR [CheckpointIndexerWorker] poll failed: requested data below earliest available; lowest available checkpoint is <N>
+ERROR [CheckpointIndexerWorker] poll failed: octap::credit_account cursor was pruned by the node (...) the gap may hold events the indexer can no longer read. ...
+ERROR [CheckpointIndexerWorker] poll failed: octap::credit_account cursor is unset but loyalty_transactions already has rows — refusing to start at the chain head ...
 ```
 
-The fullnode keeps only recent checkpoints, and testnet prunes fast, so this shows up when the
-worker was stopped for a few days. Restarting changes nothing: the worker resumes from the cursor
-in `indexer_cursors`, which now points below checkpoint `<N>`.
+Restarting changes nothing: the worker reads the same row from `indexer_cursors`.
 
 **What skipping costs.** The chain stays the source of truth; nothing is lost on-chain. The
 synchronous path has already recorded every transaction it finished, so the only rows at risk are
@@ -72,7 +98,7 @@ If nothing is `PENDING`, `UNKNOWN` or `RESERVED`, or it is only test data, go to
 note those rows first: the pruned events can't be replayed, so fix each one by hand from its
 transaction digest on-chain (an explorer or `sui client tx-block <digest>`), after step 2.
 
-**2. Reset the cursor to null**, which replays from the earliest checkpoint the node still has.
+**2. Reset the cursor to null**, which reads on from the oldest checkpoint the node still has.
 Only the pruned gap is skipped. Replaying the rest is harmless (see **Dedup**):
 
 ```sql
@@ -81,11 +107,41 @@ insert into indexer_cursors (stream_name, cursor) values ('octap::credit_account
 on conflict (stream_name) do update set cursor = null;
 ```
 
-No restart is needed; the next poll picks it up. It is healthy when the error stops and the row
-stays in place with `cursor` null until the first new event, then a real cursor.
+No restart is needed; the next poll picks it up. It is healthy when the error stops, the row stays
+in place with `cursor` null until the first new event, and `caught_up_checkpoint` starts rising.
+Prefer this to `RESUME_AT_HEAD`, which also skips events the node still holds.
 
-**Avoid `RESUME_AT_HEAD` here.** That sentinel deletes the row and then looks up the stream head
-with a descending scan. When the package has no event inside the node's retained window, that scan
-hits the same pruned-data error. The row is then gone, and the next poll refuses to start because
-`loyalty_transactions` has rows. The worker is stuck until the row is put back, as in step 2.
-Deleting the row yourself ends in the same refusal.
+### Alternative: wipe and reseed a demo deployment
+
+A demo deployment holds no data worth keeping, so instead of step 1 and step 2 it may be wiped and
+seeded again by hand. Wipe for a testnet reset or a newly published package too, since every
+object the old database points at is gone. Never wipe a database whose data must be kept.
+
+What a wipe costs: every organization, member, API key, voucher and transaction in Postgres. The
+chain keeps its `CreditAccount`s, balances and vouchers, but nothing maps them to members any
+more. The indexer skips events for accounts this database did not open, and customers get new
+accounts when they sign in again. Plan it before a demo, not during one.
+
+1. Stop the API and the worker.
+2. Recreate the database, connected to another database such as `postgres`:
+   ```sql
+   drop database octap_dev with (force);
+   create database octap_dev;
+   ```
+   Use the name from `DATABASE_URL`.
+3. Apply the schema: `npm run db:migrate`.
+4. Start the API, and create the first System Admin with a fresh Google ID token:
+   `scripts/console-operator.mjs --action bootstrap-admin` (see `docs/console-google-login.md`,
+   "Operator commands and audit"; never pass the token as an argument).
+5. The Owner signs in to the Console and applies for the organization; the System Admin approves it.
+6. Provision it on-chain and issue its admin key (`docs/console-google-login.md`, "After
+   organization approval"):
+   ```text
+   node --env-file=.env scripts/provision-program.mjs ORGANIZATION_UUID EARN_BPS EXPIRY_DAYS TOTAL_BUDGET SHARD_COUNT
+   node --env-file=.env scripts/seed-dev-credential.mjs ORGANIZATION_UUID CREDENTIAL_NAME
+   ```
+   Provisioning spends gas from the program-admin and issuer signers, so fund them first.
+7. Start the worker. With no `loyalty_transactions` and no cursor row, it starts at the stream
+   head on its own.
+8. Recreate the demo data through the product: the Owner creates vouchers in the Console, and
+   customers sign in again to become members.
