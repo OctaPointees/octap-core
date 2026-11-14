@@ -19,7 +19,8 @@ import {
 } from './operations.repository.js';
 import { enqueueWebhookEvent } from './webhooks.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
-import { withRls } from '../rls.js';
+import { asOwnRole, withRls, withTenant } from '../rls.js';
+import { inTenantOf, tenantOf } from './tenant-lookup.js';
 import { withActiveMember } from './member-eligibility.js';
 
 /**
@@ -399,11 +400,19 @@ export async function releaseAbandonedPosHolds(
   return total;
 }
 
+/**
+ * Every method runs under the member's organization's RLS context, except the three marked as RLS
+ * exceptions. Methods that start from an id alone (the chain worker, the indexer) first read that
+ * row's organization (`tenantOf`).
+ */
 @Injectable()
 export class CreditsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
-  /** Looks up which organization a member belongs to, for tenant-ownership checks. */
+  /**
+   * Looks up which organization a member belongs to, for tenant-ownership checks.
+   * RLS exception: this is the lookup that finds the organization in the first place.
+   */
   async findMemberOrganizationId(organizationEndUserId: string): Promise<string | null> {
     const row = await this.db.query.organizationEndUsers.findFirst({
       where: eq(organizationEndUsers.id, organizationEndUserId),
@@ -420,24 +429,41 @@ export class CreditsRepository {
    * A null here is a data integrity problem, not a normal pending state.
    */
   async findBeneficiaryAddress(organizationEndUserId: string): Promise<string | null> {
-    const rows = await this.db
-      .select({ suiAddress: endUsers.suiAddress })
-      .from(organizationEndUsers)
-      .innerJoin(endUsers, eq(organizationEndUsers.endUserId, endUsers.id))
-      .where(eq(organizationEndUsers.id, organizationEndUserId))
-      .limit(1);
-    return rows[0]?.suiAddress ?? null;
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.member(db, organizationEndUserId),
+      async (tx) => {
+        const [member] = await tx
+          .select({ endUserId: organizationEndUsers.endUserId })
+          .from(organizationEndUsers)
+          .where(eq(organizationEndUsers.id, organizationEndUserId));
+        if (!member) return null;
+        // The member's global user has no tenant policy: read it as the connection's own role.
+        const [user] = await asOwnRole(tx, () =>
+          tx.select({ suiAddress: endUsers.suiAddress }).from(endUsers).where(eq(endUsers.id, member.endUserId)),
+        );
+        return user?.suiAddress ?? null;
+      },
+    );
   }
 
   async getOrCreateCreditOwnership(organizationEndUserId: string) {
-    const existing = await this.db.query.creditOwnerships.findFirst({
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.member(db, organizationEndUserId),
+      (tx) => this.ownershipFor(tx, organizationEndUserId),
+    );
+  }
+
+  private async ownershipFor(tx: DrizzleDb, organizationEndUserId: string) {
+    const existing = await tx.query.creditOwnerships.findFirst({
       where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
     });
     if (existing) {
       return existing;
     }
 
-    const [created] = await this.db
+    const [created] = await tx
       .insert(creditOwnerships)
       .values({
         organizationEndUserId,
@@ -452,29 +478,38 @@ export class CreditsRepository {
 
     return (
       created ??
-      (await this.db.query.creditOwnerships.findFirst({
+      (await tx.query.creditOwnerships.findFirst({
         where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
       }))!
     );
   }
 
   async findTransactionByIdempotency(organizationId: string, idempotencyKey: string) {
-    return this.db.query.loyaltyTransactions.findFirst({
-      where: (t, { and, eq }) => and(eq(t.organizationId, organizationId), eq(t.idempotencyKey, idempotencyKey)),
-    });
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.loyaltyTransactions.findFirst({
+        where: (t, { and, eq }) => and(eq(t.organizationId, organizationId), eq(t.idempotencyKey, idempotencyKey)),
+      }),
+    );
   }
 
   async findTransactionByIdForOrganization(organizationId: string, transactionId: string) {
-    return this.db.query.loyaltyTransactions.findFirst({
-      where: (t, { and, eq }) => and(eq(t.id, transactionId), eq(t.organizationId, organizationId)),
-    });
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.loyaltyTransactions.findFirst({
+        where: (t, { and, eq }) => and(eq(t.id, transactionId), eq(t.organizationId, organizationId)),
+      }),
+    );
   }
 
   /** Finds the REVERSAL row (if any) that already reverses the given transaction. */
   async findReversalOf(transactionId: string) {
-    return this.db.query.loyaltyTransactions.findFirst({
-      where: eq(loyaltyTransactions.reversesTransactionId, transactionId),
-    });
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.loyaltyTransaction(db, transactionId),
+      (tx) =>
+        tx.query.loyaltyTransactions.findFirst({
+          where: eq(loyaltyTransactions.reversesTransactionId, transactionId),
+        }),
+    );
   }
 
   /**
@@ -594,16 +629,29 @@ export class CreditsRepository {
   }
 
   async getLoyaltyTransactionById(id: string) {
-    return this.db.query.loyaltyTransactions.findFirst({ where: eq(loyaltyTransactions.id, id) });
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.loyaltyTransaction(db, id),
+      (tx) => tx.query.loyaltyTransactions.findFirst({ where: eq(loyaltyTransactions.id, id) }),
+    );
   }
 
   async getCreditOwnershipByEndUserId(organizationEndUserId: string) {
-    return this.db.query.creditOwnerships.findFirst({
-      where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
-    });
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.member(db, organizationEndUserId),
+      (tx) =>
+        tx.query.creditOwnerships.findFirst({
+          where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
+        }),
+    );
   }
 
-  /** Maps an on-chain `CreditAccount` id (from an event's `account_id`) back to its member. */
+  /**
+   * Maps an on-chain `CreditAccount` id (from an event's `account_id`) back to its member.
+   * RLS exception: the indexer only has the chain account, which is what finds the member and so the
+   * organization.
+   */
   async findCreditOwnershipBySuiAccountId(suiCreditAccountId: string) {
     return this.db.query.creditOwnerships.findFirst({
       where: eq(creditOwnerships.suiCreditAccountId, suiCreditAccountId),
@@ -615,6 +663,7 @@ export class CreditsRepository {
    * `checkpoint-indexer.processor.ts` uses to tell a genuinely fresh environment (safe to start
    * indexing at the chain head) from a wiped/deleted cursor sitting next to data this stream
    * already produced (not safe: jumping to head would silently skip every event in between).
+   * RLS exception: a question about the whole environment, not about any one organization.
    */
   async hasAnyLoyaltyTransactions(): Promise<boolean> {
     const row = await this.db.query.loyaltyTransactions.findFirst({ columns: { id: true } });
@@ -626,12 +675,17 @@ export class CreditsRepository {
    * one organization) is at least as narrow, and is what a chain event identifies via its account.
    */
   async findTransactionByMemberAndIdempotency(organizationEndUserId: string, idempotencyKey: string) {
-    return this.db.query.loyaltyTransactions.findFirst({
-      where: and(
-        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
-        eq(loyaltyTransactions.idempotencyKey, idempotencyKey),
-      ),
-    });
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.member(db, organizationEndUserId),
+      (tx) =>
+        tx.query.loyaltyTransactions.findFirst({
+          where: and(
+            eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+            eq(loyaltyTransactions.idempotencyKey, idempotencyKey),
+          ),
+        }),
+    );
   }
 
   /** `releaseAbandonedPosHolds` in its own transaction, for a balance read. */
@@ -649,7 +703,7 @@ export class CreditsRepository {
     member: { organizationId: string; organizationEndUserId: string },
     db: DrizzleDb = this.db,
   ): Promise<number> {
-    return db.transaction(async (tx) => expireDueBuckets(tx, member));
+    return withTenant(db, member.organizationId, (tx) => expireDueBuckets(tx, member));
   }
 
   /**
@@ -660,28 +714,37 @@ export class CreditsRepository {
     params: { organizationEndUserId: string; earnTransactionId: string; amount: number; expiresAtMs: number },
     db: DrizzleDb = this.db,
   ): Promise<void> {
-    await db.transaction(async (tx) => {
-      const ownership = await lockOwnership(tx, params.organizationEndUserId);
-      if (!ownership) {
-        return;
-      }
-      const inserted = await insertEarnBucket(tx, {
-        creditOwnershipId: ownership.id,
-        earnTransactionId: params.earnTransactionId,
-        amount: params.amount,
-        expiresAtMs: params.expiresAtMs,
-      });
-      if (inserted) {
-        await trimBucketsToBalance(tx, ownership);
-      }
-    });
+    await inTenantOf(
+      db,
+      (lookup) => tenantOf.member(lookup, params.organizationEndUserId),
+      async (tx) => {
+        const ownership = await lockOwnership(tx, params.organizationEndUserId);
+        if (!ownership) {
+          return;
+        }
+        const inserted = await insertEarnBucket(tx, {
+          creditOwnershipId: ownership.id,
+          earnTransactionId: params.earnTransactionId,
+          amount: params.amount,
+          expiresAtMs: params.expiresAtMs,
+        });
+        if (inserted) {
+          await trimBucketsToBalance(tx, ownership);
+        }
+      },
+    );
   }
 
   async setSuiCreditAccountId(ownershipId: string, suiCreditAccountId: string) {
-    await this.db
-      .update(creditOwnerships)
-      .set({ suiCreditAccountId, updatedAt: new Date() })
-      .where(eq(creditOwnerships.id, ownershipId));
+    await inTenantOf(
+      this.db,
+      (db) => tenantOf.creditOwnership(db, ownershipId),
+      (tx) =>
+        tx
+          .update(creditOwnerships)
+          .set({ suiCreditAccountId, updatedAt: new Date() })
+          .where(eq(creditOwnerships.id, ownershipId)),
+    );
   }
 
   /**
@@ -707,64 +770,68 @@ export class CreditsRepository {
     },
     db: DrizzleDb = this.db,
   ) {
-    return db.transaction(async (tx) => {
-      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
-      if (!pending) {
-        return null;
-      }
+    return inTenantOf(
+      db,
+      (lookup) => tenantOf.loyaltyTransaction(lookup, params.loyaltyTransactionId),
+      async (tx) => {
+        const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+        if (!pending) {
+          return null;
+        }
 
-      const [blockchainTx] = await tx
-        .insert(blockchainTransactions)
-        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
-        .returning();
+        const [blockchainTx] = await tx
+          .insert(blockchainTransactions)
+          .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+          .returning();
 
-      await tx
-        .update(loyaltyTransactions)
-        .set({
-          status: 'CONFIRMED',
-          pointsAmount: params.confirmedPointsAmount,
-          blockchainTransactionId: blockchainTx.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
-
-      const ownership = await lockOwnership(tx, params.organizationEndUserId);
-      if (ownership) {
-        const newBalance = Number(ownership.confirmedBalance) + params.confirmedPointsAmount;
         await tx
-          .update(creditOwnerships)
+          .update(loyaltyTransactions)
           .set({
-            confirmedBalance: newBalance,
-            pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount),
-            lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
+            status: 'CONFIRMED',
+            pointsAmount: params.confirmedPointsAmount,
+            blockchainTransactionId: blockchainTx.id,
             updatedAt: new Date(),
           })
-          .where(eq(creditOwnerships.id, ownership.id));
-        if (params.bucketExpiresAtMs !== null) {
-          await insertEarnBucket(tx, {
-            creditOwnershipId: ownership.id,
-            earnTransactionId: params.loyaltyTransactionId,
-            amount: params.confirmedPointsAmount,
-            expiresAtMs: params.bucketExpiresAtMs,
+          .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+
+        const ownership = await lockOwnership(tx, params.organizationEndUserId);
+        if (ownership) {
+          const newBalance = Number(ownership.confirmedBalance) + params.confirmedPointsAmount;
+          await tx
+            .update(creditOwnerships)
+            .set({
+              confirmedBalance: newBalance,
+              pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount),
+              lifetimeEarned: Number(ownership.lifetimeEarned) + params.confirmedPointsAmount,
+              updatedAt: new Date(),
+            })
+            .where(eq(creditOwnerships.id, ownership.id));
+          if (params.bucketExpiresAtMs !== null) {
+            await insertEarnBucket(tx, {
+              creditOwnershipId: ownership.id,
+              earnTransactionId: params.loyaltyTransactionId,
+              amount: params.confirmedPointsAmount,
+              expiresAtMs: params.bucketExpiresAtMs,
+            });
+          }
+          // Outbox (OCT-209): commits or rolls back with the confirm itself, and only the one caller
+          // that got past the PENDING guard above ever reaches it.
+          await enqueueWebhookEvent(tx, {
+            organizationId: pending.organizationId,
+            eventType: 'credits.earn.confirmed',
+            payload: {
+              transactionId: params.loyaltyTransactionId,
+              organizationEndUserId: params.organizationEndUserId,
+              pointsAmount: params.confirmedPointsAmount,
+              newBalance,
+              blockchainDigest: params.digest,
+            },
           });
         }
-        // Outbox (OCT-209): commits or rolls back with the confirm itself, and only the one caller
-        // that got past the PENDING guard above ever reaches it.
-        await enqueueWebhookEvent(tx, {
-          organizationId: pending.organizationId,
-          eventType: 'credits.earn.confirmed',
-          payload: {
-            transactionId: params.loyaltyTransactionId,
-            organizationEndUserId: params.organizationEndUserId,
-            pointsAmount: params.confirmedPointsAmount,
-            newBalance,
-            blockchainDigest: params.digest,
-          },
-        });
-      }
 
-      return blockchainTx;
-    });
+        return blockchainTx;
+      },
+    );
   }
 
   /** Reverts the optimistic `pendingEarn` bump, marks the command FAILED and queues `credits.earn.failed`. */
@@ -773,48 +840,63 @@ export class CreditsRepository {
     organizationEndUserId: string;
     failureCode: EarnFailureCode;
   }) {
-    return this.db.transaction(async (tx) => {
-      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
-      if (!pending) {
-        return;
-      }
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.loyaltyTransaction(db, params.loyaltyTransactionId),
+      async (tx) => {
+        const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+        if (!pending) {
+          return;
+        }
 
-      await tx
-        .update(loyaltyTransactions)
-        .set({ status: 'FAILED', updatedAt: new Date() })
-        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
-
-      const ownership = await lockOwnership(tx, params.organizationEndUserId);
-      if (ownership) {
         await tx
-          .update(creditOwnerships)
-          .set({ pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount), updatedAt: new Date() })
-          .where(eq(creditOwnerships.id, ownership.id));
-      }
+          .update(loyaltyTransactions)
+          .set({ status: 'FAILED', updatedAt: new Date() })
+          .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      await enqueueWebhookEvent(tx, {
-        organizationId: pending.organizationId,
-        eventType: 'credits.earn.failed',
-        payload: {
-          transactionId: params.loyaltyTransactionId,
-          organizationEndUserId: params.organizationEndUserId,
-          purchaseAmount: pending.purchaseAmount,
-          estimatedPoints: Number(pending.pointsAmount),
-          failureCode: params.failureCode,
-        },
-      });
-    });
+        const ownership = await lockOwnership(tx, params.organizationEndUserId);
+        if (ownership) {
+          await tx
+            .update(creditOwnerships)
+            .set({ pendingEarn: Number(ownership.pendingEarn) - Number(pending.pointsAmount), updatedAt: new Date() })
+            .where(eq(creditOwnerships.id, ownership.id));
+        }
+
+        await enqueueWebhookEvent(tx, {
+          organizationId: pending.organizationId,
+          eventType: 'credits.earn.failed',
+          payload: {
+            transactionId: params.loyaltyTransactionId,
+            organizationEndUserId: params.organizationEndUserId,
+            purchaseAmount: pending.purchaseAmount,
+            estimatedPoints: Number(pending.pointsAmount),
+            failureCode: params.failureCode,
+          },
+        });
+      },
+    );
   }
 
   async findOperationForClaim(organizationId: string, idempotencyKey: string) {
-    return this.db.query.operations.findFirst({
-      where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
-    });
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.operations.findFirst({
+        where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
+      }),
+    );
   }
 
   async findVoucherClaimTransaction(ownershipId: string) {
-    const claim = await this.db.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.id, ownershipId) });
-    return claim?.loyaltyTransactionId ? this.getLoyaltyTransactionById(claim.loyaltyTransactionId) : undefined;
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.voucherOwnership(db, ownershipId),
+      async (tx) => {
+        const claim = await tx.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.id, ownershipId) });
+        if (!claim?.loyaltyTransactionId) return undefined;
+        return tx.query.loyaltyTransactions.findFirst({
+          where: eq(loyaltyTransactions.id, claim.loyaltyTransactionId),
+        });
+      },
+    );
   }
 
   /**
@@ -822,7 +904,11 @@ export class CreditsRepository {
    * takes: its REDEEM row, the member's on-chain account and any digest finalize already pinned.
    */
   async findVoucherClaimHold(organizationId: string, idempotencyKey: string) {
-    const [hold] = await this.db
+    return withTenant(this.db, organizationId, (tx) => this.readVoucherClaimHold(tx, organizationId, idempotencyKey));
+  }
+
+  private async readVoucherClaimHold(tx: DrizzleDb, organizationId: string, idempotencyKey: string) {
+    const [hold] = await tx
       .select({
         transaction: loyaltyTransactions,
         accountId: creditOwnerships.suiCreditAccountId,
@@ -987,52 +1073,56 @@ export class CreditsRepository {
     },
     db: DrizzleDb = this.db,
   ) {
-    return db.transaction(async (tx) => {
-      const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
-      if (!pending) {
-        return null;
-      }
+    return inTenantOf(
+      db,
+      (lookup) => tenantOf.loyaltyTransaction(lookup, params.loyaltyTransactionId),
+      async (tx) => {
+        const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+        if (!pending) {
+          return null;
+        }
 
-      await settleVoucherClaim(tx, params.loyaltyTransactionId, true);
-      const [blockchainTx] = await tx
-        .insert(blockchainTransactions)
-        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
-        .returning();
+        await settleVoucherClaim(tx, params.loyaltyTransactionId, true);
+        const [blockchainTx] = await tx
+          .insert(blockchainTransactions)
+          .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+          .returning();
 
-      await tx
-        .update(loyaltyTransactions)
-        .set({ status: 'CONFIRMED', blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
-        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
-
-      const ownership = await lockOwnership(tx, params.organizationEndUserId);
-      if (ownership) {
-        const newBalance = Number(ownership.confirmedBalance) - params.pointsAmount;
         await tx
-          .update(creditOwnerships)
-          .set({
-            confirmedBalance: newBalance,
-            pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount,
-            lifetimeRedeemed: Number(ownership.lifetimeRedeemed) + params.pointsAmount,
-            updatedAt: new Date(),
-          })
-          .where(eq(creditOwnerships.id, ownership.id));
-        await consumeBuckets(tx, ownership.id, params.pointsAmount);
-        // Same outbox contract as `confirmEarnOnChain`.
-        await enqueueWebhookEvent(tx, {
-          organizationId: pending.organizationId,
-          eventType: 'credits.redemption.confirmed',
-          payload: {
-            transactionId: params.loyaltyTransactionId,
-            organizationEndUserId: params.organizationEndUserId,
-            pointsAmount: params.pointsAmount,
-            newBalance,
-            blockchainDigest: params.digest,
-          },
-        });
-      }
+          .update(loyaltyTransactions)
+          .set({ status: 'CONFIRMED', blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
+          .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      return blockchainTx;
-    });
+        const ownership = await lockOwnership(tx, params.organizationEndUserId);
+        if (ownership) {
+          const newBalance = Number(ownership.confirmedBalance) - params.pointsAmount;
+          await tx
+            .update(creditOwnerships)
+            .set({
+              confirmedBalance: newBalance,
+              pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount,
+              lifetimeRedeemed: Number(ownership.lifetimeRedeemed) + params.pointsAmount,
+              updatedAt: new Date(),
+            })
+            .where(eq(creditOwnerships.id, ownership.id));
+          await consumeBuckets(tx, ownership.id, params.pointsAmount);
+          // Same outbox contract as `confirmEarnOnChain`.
+          await enqueueWebhookEvent(tx, {
+            organizationId: pending.organizationId,
+            eventType: 'credits.redemption.confirmed',
+            payload: {
+              transactionId: params.loyaltyTransactionId,
+              organizationEndUserId: params.organizationEndUserId,
+              pointsAmount: params.pointsAmount,
+              newBalance,
+              blockchainDigest: params.digest,
+            },
+          });
+        }
+
+        return blockchainTx;
+      },
+    );
   }
 
   /**
@@ -1045,54 +1135,61 @@ export class CreditsRepository {
     pointsAmount: number;
     onlyIfUnsubmitted?: boolean;
   }) {
-    return this.db.transaction(async (tx) => {
-      let abandonedCommandId: string | undefined;
-      if (params.onlyIfUnsubmitted) {
-        const hold = await tx.query.loyaltyTransactions.findFirst({
-          columns: { organizationId: true, idempotencyKey: true },
-          where: eq(loyaltyTransactions.id, params.loyaltyTransactionId),
-        });
-        const [command] = hold
-          ? await tx
-              .select()
-              .from(operations)
-              .where(
-                and(
-                  eq(operations.tenantId, hold.organizationId),
-                  eq(operations.idempotencyKey, hold.idempotencyKey),
-                  eq(operations.commandType, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE),
-                ),
-              )
-              .for('update')
-          : [];
-        if (!command || command.suiTxDigest) return false;
-        abandonedCommandId = command.id;
-      }
-      if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
-        return 'already-settled' as const;
-      }
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.loyaltyTransaction(db, params.loyaltyTransactionId),
+      async (tx) => {
+        let abandonedCommandId: string | undefined;
+        if (params.onlyIfUnsubmitted) {
+          const hold = await tx.query.loyaltyTransactions.findFirst({
+            columns: { organizationId: true, idempotencyKey: true },
+            where: eq(loyaltyTransactions.id, params.loyaltyTransactionId),
+          });
+          const [command] = hold
+            ? await tx
+                .select()
+                .from(operations)
+                .where(
+                  and(
+                    eq(operations.tenantId, hold.organizationId),
+                    eq(operations.idempotencyKey, hold.idempotencyKey),
+                    eq(operations.commandType, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE),
+                  ),
+                )
+                .for('update')
+            : [];
+          if (!command || command.suiTxDigest) return false;
+          abandonedCommandId = command.id;
+        }
+        if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+          return 'already-settled' as const;
+        }
 
-      if (abandonedCommandId) {
+        if (abandonedCommandId) {
+          await tx
+            .update(operations)
+            .set({ status: 'FAILED', errorMessage: 'Unsigned voucher claim expired', updatedAt: new Date() })
+            .where(eq(operations.id, abandonedCommandId));
+        }
+        await settleVoucherClaim(tx, params.loyaltyTransactionId, false);
         await tx
-          .update(operations)
-          .set({ status: 'FAILED', errorMessage: 'Unsigned voucher claim expired', updatedAt: new Date() })
-          .where(eq(operations.id, abandonedCommandId));
-      }
-      await settleVoucherClaim(tx, params.loyaltyTransactionId, false);
-      await tx
-        .update(loyaltyTransactions)
-        .set({ status: 'FAILED', updatedAt: new Date() })
-        .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+          .update(loyaltyTransactions)
+          .set({ status: 'FAILED', updatedAt: new Date() })
+          .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
 
-      const ownership = await lockOwnership(tx, params.organizationEndUserId);
-      if (ownership) {
-        await tx
-          .update(creditOwnerships)
-          .set({ pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount, updatedAt: new Date() })
-          .where(eq(creditOwnerships.id, ownership.id));
-      }
-      return true;
-    });
+        const ownership = await lockOwnership(tx, params.organizationEndUserId);
+        if (ownership) {
+          await tx
+            .update(creditOwnerships)
+            .set({
+              pendingRedemption: Number(ownership.pendingRedemption) - params.pointsAmount,
+              updatedAt: new Date(),
+            })
+            .where(eq(creditOwnerships.id, ownership.id));
+        }
+        return true;
+      },
+    );
   }
 
   /**
@@ -1250,36 +1347,42 @@ export class CreditsRepository {
    * `ChainOutcomeReconciler` can both get here for the same command.
    */
   async recordReversalOnChain(params: { reversalTransactionId: string; digest: string; sender: string }) {
-    return this.db.transaction(async (tx) => {
-      const [reversal] = await tx
-        .select()
-        .from(loyaltyTransactions)
-        .where(eq(loyaltyTransactions.id, params.reversalTransactionId))
-        .for('update');
-      if (!reversal || reversal.blockchainTransactionId) {
-        return null;
-      }
-      const [blockchainTx] = await tx
-        .insert(blockchainTransactions)
-        .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
-        .returning();
-      await tx
-        .update(loyaltyTransactions)
-        .set({ blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
-        .where(eq(loyaltyTransactions.id, reversal.id));
-      return blockchainTx;
-    });
+    return inTenantOf(
+      this.db,
+      (db) => tenantOf.loyaltyTransaction(db, params.reversalTransactionId),
+      async (tx) => {
+        const [reversal] = await tx
+          .select()
+          .from(loyaltyTransactions)
+          .where(eq(loyaltyTransactions.id, params.reversalTransactionId))
+          .for('update');
+        if (!reversal || reversal.blockchainTransactionId) {
+          return null;
+        }
+        const [blockchainTx] = await tx
+          .insert(blockchainTransactions)
+          .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
+          .returning();
+        await tx
+          .update(loyaltyTransactions)
+          .set({ blockchainTransactionId: blockchainTx.id, updatedAt: new Date() })
+          .where(eq(loyaltyTransactions.id, reversal.id));
+        return blockchainTx;
+      },
+    );
   }
 
   async listTransactionsByMember(organizationId: string, organizationEndUserId: string, limit = 50) {
-    return this.db.query.loyaltyTransactions.findMany({
-      where: and(
-        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
-        eq(loyaltyTransactions.organizationId, organizationId),
-      ),
-      orderBy: [desc(loyaltyTransactions.createdAt)],
-      limit,
-      with: { blockchainTransaction: true },
-    });
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.loyaltyTransactions.findMany({
+        where: and(
+          eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+          eq(loyaltyTransactions.organizationId, organizationId),
+        ),
+        orderBy: [desc(loyaltyTransactions.createdAt)],
+        limit,
+        with: { blockchainTransaction: true },
+      }),
+    );
   }
 }

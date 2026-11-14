@@ -30,7 +30,7 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: endpoint registration, signed delivery, retry/dead-letter/replay, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
-| Authorization hardening: per-credential and per-IP public-route rate limiting, RLS actually enforced on the earn/redeem/reversal write path | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/repositories/credits.repository.ts |
+| Authorization hardening: per-credential and per-IP public-route rate limiting, RLS enforced on every tenant-scoped read and write of the credits, rewards, webhooks and API-key repositories, including worker and indexer callbacks (OCT-289) | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/rls.ts; api/src/infra/db/repositories/tenant-lookup.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
@@ -189,19 +189,20 @@ then move the row to **Implemented** in the same pull request.
   an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the
   API-key model entirely.
-- RLS is enforced (`withRls()`, real `authenticated`/`service_role` roles and grants — see
-  `docker/postgres-init`) only on `CreditsRepository`'s three REST-triggered write transactions
-  (`recordEarnTransaction`/`reservePosRedemption`/`recordReversalTransaction`). The worker-only
-  `confirmEarnOnChain`/`failEarnOnChain` callbacks (chain-submit path) still run on the plain
-  pooled connection too — same gap, just not in scope here since this pass targeted the API's
-  write path specifically. Every read path and all of
-  `RewardsRepository`/`WebhooksRepository`/`ApiCredentialsRepository` still run on the plain
-  pooled connection — RLS policies exist on their tables too, but nothing sets the session's
-  tenant context for them, so they're protected only by application-code checks, not yet by the
-  database as a second line of defense. Converting them is the same pattern, left for a follow-up
-  to keep this change reviewable. `creditOwnerships` itself has no RLS policy at all (it's keyed
-  by member, not by organization directly), so it relies on application code regardless of
-  role/session context.
+- RLS (`withTenant()`/`withRls()`, real `authenticated`/`service_role` roles and grants — see
+  `docker/postgres-init`) covers every tenant-scoped method of `CreditsRepository`,
+  `RewardsRepository`, `WebhooksRepository` and `ApiCredentialsRepository` (OCT-289), with a policy
+  on `credit_ownerships`, `voucher_ownerships` and `credit_buckets` that resolves the organization
+  through the member. Five methods stay on the plain pooled connection, by design, each marked
+  `RLS exception` in the code: `ApiCredentialsRepository.findByKeyHash` (finds the organization),
+  `WebhooksRepository.claimDueDeliveries`' scan (every organization's due deliveries; each claim
+  then runs under its organization), `CreditsRepository.findMemberOrganizationId` (finds the
+  organization), `findCreditOwnershipBySuiAccountId` (the indexer only has the chain account) and
+  `hasAnyLoyaltyTransactions` (environment-wide). Reads that start from an id first read that
+  row's organization (`tenantOf` in `tenant-lookup.ts`). Checks on `organizations` and `end_users`,
+  which the tenant role cannot read, run as the connection's own role (`asOwnRole`).
+  `recordEarnTransaction` still accepts its command before entering `withActiveMember`, as before.
+  Other repositories (identity, members, programs, operations, organizations…) are not converted.
 
 ## Not started
 

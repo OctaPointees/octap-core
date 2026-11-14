@@ -162,6 +162,13 @@
       "when": 1793889588687,
       "tag": "0022_voucher_onchain_record",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794639885998,
+      "tag": "0023_rls_member_scoped_tables",
+      "breakpoints": true
     }
   ]
 }

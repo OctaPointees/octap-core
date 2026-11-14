@@ -88,7 +88,7 @@ export class ApiKeyGuard implements CanActivate {
 
     // Not awaited, so the request doesn't wait on it; caught, so a failed write is logged instead
     // of becoming an unhandled rejection, which would stop the process.
-    void this.credentials.touchLastUsed(credential.id).catch((error: unknown) => {
+    void this.credentials.touchLastUsed(credential.organizationId, credential.id).catch((error: unknown) => {
       this.logger.error(
         `Could not record lastUsedAt for API credential ${credential.id}: ${error instanceof Error ? error.message : String(error)}`,
       );

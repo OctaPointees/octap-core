@@ -50,7 +50,7 @@ export class ApiCredentialsService {
     return this.repo.inTransaction(tx, async (db) => {
       const existing = await this.findOwned(db, organizationId, credentialId);
       authorize?.(existing);
-      return existing.status === 'REVOKED' ? existing : this.repo.revoke(db, credentialId);
+      return existing.status === 'REVOKED' ? existing : this.repo.revoke(db, organizationId, credentialId);
     });
   }
 
@@ -65,13 +65,13 @@ export class ApiCredentialsService {
       const existing = await this.findOwned(db, organizationId, credentialId);
       if (existing.status !== 'ACTIVE') throw this.notFound(credentialId);
       authorize?.(existing);
-      return this.repo.rename(db, credentialId, name);
+      return this.repo.rename(db, organizationId, credentialId, name);
     });
   }
 
   /** The credential, locked for update, if it belongs to `organizationId`; a 404 otherwise. */
   private async findOwned(tx: DrizzleDb, organizationId: string, credentialId: string): Promise<ApiCredential> {
-    const existing = await this.repo.findForUpdate(tx, credentialId);
+    const existing = await this.repo.findForUpdate(tx, organizationId, credentialId);
     if (!existing || existing.organizationId !== organizationId) throw this.notFound(credentialId);
     return existing;
   }

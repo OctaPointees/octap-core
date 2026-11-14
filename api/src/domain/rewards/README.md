@@ -12,6 +12,7 @@ A voucher is a merchant's promise recorded for one customer. OctaP does not defi
 - `rewards.module.ts`: Nest provider composition.
 
 Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` (API key) and `api/rest/console-rewards.controller.ts` (console session).
+Every repository method runs under the voucher's organization's RLS context (`withTenant`), so Postgres hides other organizations' `vouchers` and `voucher_ownerships`; callbacks that start from an id read that row's organization first. The organization and member check of a claim or use runs as the connection's own role at its usual point (`asOwnRole`), since the tenant role cannot read `organizations` (OCT-289).
 
 ## What lives where
 
