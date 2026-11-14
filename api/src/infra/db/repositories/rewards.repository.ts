@@ -30,6 +30,8 @@ import {
   OperationPayloadConflictError,
 } from './operations.repository.js';
 import { MemberEligibilityError } from './member-eligibility.js';
+import { asOwnRole, withTenant } from '../rls.js';
+import { tenantOf, withTenantOf } from './tenant-lookup.js';
 
 type Voucher = typeof vouchers.$inferSelect;
 
@@ -92,6 +94,11 @@ const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message)
 const conflict = (message: string) => new RewardsRuleError('CONFLICT', message);
 const invalid = (message: string) => new RewardsRuleError('INVALID', message);
 
+/**
+ * Every method runs under the voucher's organization's RLS context (`withTenant`), so Postgres itself
+ * hides other organizations' vouchers and the vouchers members hold. Methods that start from an id
+ * alone (the chain worker, the indexer) first read that row's organization (`tenantOf`).
+ */
 @Injectable()
 export class RewardsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
@@ -109,7 +116,7 @@ export class RewardsRepository {
     db: DrizzleDb = this.db,
   ) {
     const status = data.status ?? 'ACTIVE';
-    return db.transaction(async (tx) => {
+    return withTenant(db, data.organizationId, async (tx) => {
       const [voucher] = await tx
         .insert(vouchers)
         // A voucher becomes ACTIVE only once the chain holds its terms.
@@ -154,7 +161,16 @@ export class RewardsRepository {
 
   /** The chain holds the terms: an activation in progress takes effect. */
   async markVoucherPublished(voucherId: string, suiTermsId: string) {
-    await this.db
+    await withTenantOf(
+      this.db,
+      (db) => tenantOf.voucher(db, voucherId),
+      (tx) => this.setPublished(tx, voucherId, suiTermsId),
+      () => undefined,
+    );
+  }
+
+  private async setPublished(tx: DrizzleDb, voucherId: string, suiTermsId: string) {
+    await tx
       .update(vouchers)
       .set({
         publishStatus: 'PUBLISHED',
@@ -168,27 +184,42 @@ export class RewardsRepository {
 
   /** The terms never reached the chain, so the voucher can be edited and activated again. */
   async failVoucherPublish(voucherId: string) {
-    await this.db
-      .update(vouchers)
-      .set({ publishStatus: 'FAILED', updatedAt: new Date() })
-      .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING')));
+    await withTenantOf(
+      this.db,
+      (db) => tenantOf.voucher(db, voucherId),
+      (tx) =>
+        tx
+          .update(vouchers)
+          .set({ publishStatus: 'FAILED', updatedAt: new Date() })
+          .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING'))),
+      () => undefined,
+    );
   }
 
   async findVoucherById(id: string) {
-    return this.db.query.vouchers.findFirst({ where: eq(vouchers.id, id) });
+    return withTenantOf(
+      this.db,
+      (db) => tenantOf.voucher(db, id),
+      (tx) => tx.query.vouchers.findFirst({ where: eq(vouchers.id, id) }),
+      () => undefined,
+    );
   }
 
   async findVoucherByCode(organizationId: string, code: string, db: DrizzleDb = this.db) {
-    return db.query.vouchers.findFirst({
-      where: and(eq(vouchers.organizationId, organizationId), eq(vouchers.code, code)),
-    });
+    return withTenant(db, organizationId, (tx) =>
+      tx.query.vouchers.findFirst({
+        where: and(eq(vouchers.organizationId, organizationId), eq(vouchers.code, code)),
+      }),
+    );
   }
 
   async listVouchersByOrganization(organizationId: string) {
-    return this.db.query.vouchers.findMany({
-      where: eq(vouchers.organizationId, organizationId),
-      orderBy: [desc(vouchers.createdAt)],
-    });
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.vouchers.findMany({
+        where: eq(vouchers.organizationId, organizationId),
+        orderBy: [desc(vouchers.createdAt)],
+      }),
+    );
   }
 
   /**
@@ -203,7 +234,7 @@ export class RewardsRepository {
     validate: (merged: Voucher) => void,
     db: DrizzleDb = this.db,
   ) {
-    return db.transaction(async (tx) => {
+    return withTenant(db, organizationId, async (tx) => {
       const [current] = await tx
         .select()
         .from(vouchers)
@@ -249,7 +280,16 @@ export class RewardsRepository {
     });
   }
 
+  /**
+   * Runs as the connection's own role (`asOwnRole`): the tenant role can neither read nor lock
+   * `organizations` or a member's global user. Called where it is, after the voucher lock, so the
+   * lock order (voucher, then organization) and the rule (settling accepted work stays allowed) hold.
+   */
   private async requireActiveMember(tx: DrizzleDb, organizationId: string, memberId: string) {
+    await asOwnRole(tx, () => this.checkActiveMember(tx, organizationId, memberId));
+  }
+
+  private async checkActiveMember(tx: DrizzleDb, organizationId: string, memberId: string) {
     const [org] = await tx
       .select({ status: organizations.status })
       .from(organizations)
@@ -279,12 +319,12 @@ export class RewardsRepository {
     options: { grant?: boolean } = {},
   ): Promise<ClaimVoucherResponse> {
     // Commit cleanup even if the subsequent claim fails its stock/balance checks.
-    await this.db.transaction((tx) =>
+    await withTenant(this.db, organizationId, (tx) =>
       releaseAbandonedPosHolds(tx, { organizationId, organizationEndUserId: memberId }, ABANDONED_POS_HOLD_GRACE_MS, {
         exceptIdempotencyKey: idempotencyKey,
       }),
     );
-    return this.db.transaction(async (tx) => {
+    return withTenant(this.db, organizationId, async (tx) => {
       await lockIdempotencyKey(tx, organizationId, idempotencyKey);
       const previous = await tx.query.operations.findFirst({
         where: and(eq(operations.tenantId, organizationId), eq(operations.idempotencyKey, idempotencyKey)),
@@ -487,6 +527,10 @@ export class RewardsRepository {
 
   /** Tenant-scoped persisted state, also used after recovery/indexer settlement. */
   async getClaim(organizationId: string, ownershipId: string, db: DrizzleDb = this.db): Promise<ClaimVoucherResponse> {
+    return withTenant(db, organizationId, (tx) => this.readClaim(tx, organizationId, ownershipId));
+  }
+
+  private async readClaim(db: DrizzleDb, organizationId: string, ownershipId: string): Promise<ClaimVoucherResponse> {
     const [row] = await db
       .select({
         ownership: voucherOwnerships,
@@ -518,10 +562,16 @@ export class RewardsRepository {
 
   /** A voucher with its catalog row, for the chain worker and the indexer. */
   async findOwnershipWithVoucher(voucherOwnershipId: string) {
-    return this.db.query.voucherOwnerships.findFirst({
-      where: eq(voucherOwnerships.id, voucherOwnershipId),
-      with: { voucher: true },
-    });
+    return withTenantOf(
+      this.db,
+      (db) => tenantOf.voucherOwnership(db, voucherOwnershipId),
+      (tx) =>
+        tx.query.voucherOwnerships.findFirst({
+          where: eq(voucherOwnerships.id, voucherOwnershipId),
+          with: { voucher: true },
+        }),
+      () => undefined,
+    );
   }
 
   private async operationKey(tx: DrizzleDb, operationId: string | null) {
@@ -535,49 +585,63 @@ export class RewardsRepository {
    * is not waiting for this.
    */
   async confirmVoucherGrant(params: { voucherOwnershipId: string; digest: string }, db: DrizzleDb = this.db) {
-    return db.transaction(async (tx) => {
-      const [ownership] = await tx
-        .select()
-        .from(voucherOwnerships)
-        .where(eq(voucherOwnerships.id, params.voucherOwnershipId))
-        .for('update');
-      if (!ownership || ownership.status !== 'RESERVED' || ownership.loyaltyTransactionId) return null;
-      const key = await this.operationKey(tx, ownership.pendingOperationId);
-      const [updated] = await tx
-        .update(voucherOwnerships)
-        .set({ status: 'AVAILABLE', pendingOperationId: null, updatedAt: new Date() })
-        .where(eq(voucherOwnerships.id, ownership.id))
-        .returning();
-      const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
-      await enqueueWebhookEvent(tx, {
-        organizationId: voucher!.organizationId,
-        eventType: 'voucher.granted',
-        payload: {
-          voucherOwnershipId: updated.id,
-          voucherId: updated.voucherId,
-          organizationEndUserId: updated.organizationEndUserId,
-          serialCode: updated.serialCode,
-          status: updated.status,
-          blockchainDigest: params.digest,
-        },
-      });
-      return { key };
+    return withTenantOf(
+      db,
+      (lookup) => tenantOf.voucherOwnership(lookup, params.voucherOwnershipId),
+      (tx) => this.settleGrant(tx, params),
+      () => null,
+    );
+  }
+
+  private async settleGrant(tx: DrizzleDb, params: { voucherOwnershipId: string; digest: string }) {
+    const [ownership] = await tx
+      .select()
+      .from(voucherOwnerships)
+      .where(eq(voucherOwnerships.id, params.voucherOwnershipId))
+      .for('update');
+    if (!ownership || ownership.status !== 'RESERVED' || ownership.loyaltyTransactionId) return null;
+    const key = await this.operationKey(tx, ownership.pendingOperationId);
+    const [updated] = await tx
+      .update(voucherOwnerships)
+      .set({ status: 'AVAILABLE', pendingOperationId: null, updatedAt: new Date() })
+      .where(eq(voucherOwnerships.id, ownership.id))
+      .returning();
+    const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
+    await enqueueWebhookEvent(tx, {
+      organizationId: voucher!.organizationId,
+      eventType: 'voucher.granted',
+      payload: {
+        voucherOwnershipId: updated.id,
+        voucherId: updated.voucherId,
+        organizationEndUserId: updated.organizationEndUserId,
+        serialCode: updated.serialCode,
+        status: updated.status,
+        blockchainDigest: params.digest,
+      },
     });
+    return { key };
   }
 
   /** A grant definitively failed on-chain: the voucher is cancelled and its unit returns to the catalog. */
   async failVoucherGrant(voucherOwnershipId: string) {
-    await this.db.transaction(async (tx) => {
-      const found = await tx.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.id, voucherOwnershipId) });
-      if (!found) return;
-      await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, found.voucherId)).for('update');
-      const [cancelled] = await tx
-        .update(voucherOwnerships)
-        .set({ status: 'CANCELLED', pendingOperationId: null, updatedAt: new Date() })
-        .where(and(eq(voucherOwnerships.id, voucherOwnershipId), eq(voucherOwnerships.status, 'RESERVED')))
-        .returning();
-      if (cancelled) await returnVoucherUnit(tx, found.voucherId);
-    });
+    await withTenantOf(
+      this.db,
+      (db) => tenantOf.voucherOwnership(db, voucherOwnershipId),
+      (tx) => this.cancelGrant(tx, voucherOwnershipId),
+      () => undefined,
+    );
+  }
+
+  private async cancelGrant(tx: DrizzleDb, voucherOwnershipId: string) {
+    const found = await tx.query.voucherOwnerships.findFirst({ where: eq(voucherOwnerships.id, voucherOwnershipId) });
+    if (!found) return;
+    await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, found.voucherId)).for('update');
+    const [cancelled] = await tx
+      .update(voucherOwnerships)
+      .set({ status: 'CANCELLED', pendingOperationId: null, updatedAt: new Date() })
+      .where(and(eq(voucherOwnerships.id, voucherOwnershipId), eq(voucherOwnerships.status, 'RESERVED')))
+      .returning();
+    if (cancelled) await returnVoucherUnit(tx, found.voucherId);
   }
 
   /**
@@ -585,7 +649,7 @@ export class RewardsRepository {
    * here: only the customer's signature can do that. A retry under the same key reports the same use.
    */
   async reserveVoucherUse(params: { organizationId: string; serialCode: string; idempotencyKey: string }) {
-    return this.db.transaction(async (tx) => {
+    return withTenant(this.db, params.organizationId, async (tx) => {
       await lockIdempotencyKey(tx, params.organizationId, params.idempotencyKey);
       const found = await tx.query.voucherOwnerships.findFirst({
         where: eq(voucherOwnerships.serialCode, params.serialCode),
@@ -653,43 +717,50 @@ export class RewardsRepository {
    * was already taken back here, which `ChainOutcomeReconciler`'s logs surface for a human.
    */
   async confirmVoucherUse(params: { voucherOwnershipId: string; digest: string }, db: DrizzleDb = this.db) {
-    return db.transaction(async (tx) => {
-      const found = await tx.query.voucherOwnerships.findFirst({
-        where: eq(voucherOwnerships.id, params.voucherOwnershipId),
-      });
-      if (!found) return null;
-      const [voucher] = await tx.select().from(vouchers).where(eq(vouchers.id, found.voucherId)).for('share');
-      const [ownership] = await tx
-        .select()
-        .from(voucherOwnerships)
-        .where(eq(voucherOwnerships.id, found.id))
-        .for('update');
-      const key = await this.operationKey(tx, ownership.pendingOperationId);
-      if (ownership.status === 'REDEEMED') return { ownership, voucher, key, applied: false };
-      if (ownership.status !== 'AVAILABLE') return null;
-      const [updated] = await tx
-        .update(voucherOwnerships)
-        .set({ status: 'REDEEMED', redeemedAt: new Date(), pendingOperationId: null, updatedAt: new Date() })
-        .where(eq(voucherOwnerships.id, ownership.id))
-        .returning();
-      await enqueueWebhookEvent(tx, {
-        organizationId: voucher.organizationId,
-        eventType: 'voucher.redeemed',
-        payload: {
-          voucherOwnershipId: updated.id,
-          voucherId: updated.voucherId,
-          organizationEndUserId: updated.organizationEndUserId,
-          serialCode: updated.serialCode,
-          status: updated.status,
-          redeemedAt: updated.redeemedAt!.toISOString(),
-          voucherTitle: voucher.title,
-          discountType: voucher.discountType,
-          discountValue: voucher.discountValue,
-          blockchainDigest: params.digest,
-        },
-      });
-      return { ownership: updated, voucher, key, applied: true };
+    return withTenantOf(
+      db,
+      (lookup) => tenantOf.voucherOwnership(lookup, params.voucherOwnershipId),
+      (tx) => this.settleUse(tx, params),
+      () => null,
+    );
+  }
+
+  private async settleUse(tx: DrizzleDb, params: { voucherOwnershipId: string; digest: string }) {
+    const found = await tx.query.voucherOwnerships.findFirst({
+      where: eq(voucherOwnerships.id, params.voucherOwnershipId),
     });
+    if (!found) return null;
+    const [voucher] = await tx.select().from(vouchers).where(eq(vouchers.id, found.voucherId)).for('share');
+    const [ownership] = await tx
+      .select()
+      .from(voucherOwnerships)
+      .where(eq(voucherOwnerships.id, found.id))
+      .for('update');
+    const key = await this.operationKey(tx, ownership.pendingOperationId);
+    if (ownership.status === 'REDEEMED') return { ownership, voucher, key, applied: false };
+    if (ownership.status !== 'AVAILABLE') return null;
+    const [updated] = await tx
+      .update(voucherOwnerships)
+      .set({ status: 'REDEEMED', redeemedAt: new Date(), pendingOperationId: null, updatedAt: new Date() })
+      .where(eq(voucherOwnerships.id, ownership.id))
+      .returning();
+    await enqueueWebhookEvent(tx, {
+      organizationId: voucher.organizationId,
+      eventType: 'voucher.redeemed',
+      payload: {
+        voucherOwnershipId: updated.id,
+        voucherId: updated.voucherId,
+        organizationEndUserId: updated.organizationEndUserId,
+        serialCode: updated.serialCode,
+        status: updated.status,
+        redeemedAt: updated.redeemedAt!.toISOString(),
+        voucherTitle: voucher.title,
+        discountType: voucher.discountType,
+        discountValue: voucher.discountValue,
+        blockchainDigest: params.digest,
+      },
+    });
+    return { ownership: updated, voucher, key, applied: true };
   }
 
   /**
@@ -697,28 +768,44 @@ export class RewardsRepository {
    * With `onlyIfUnsubmitted` it yields to a finalize that already pinned a digest, and returns false.
    */
   async failVoucherUse(params: { operationId: string; voucherOwnershipId: string; onlyIfUnsubmitted?: boolean }) {
-    return this.db.transaction(async (tx) => {
-      const [command] = await tx.select().from(operations).where(eq(operations.id, params.operationId)).for('update');
-      if (!command) return false;
-      if (params.onlyIfUnsubmitted && command.suiTxDigest) return false;
-      await tx
-        .update(voucherOwnerships)
-        .set({ pendingOperationId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(voucherOwnerships.id, params.voucherOwnershipId),
-            eq(voucherOwnerships.pendingOperationId, params.operationId),
-          ),
-        );
-      return true;
-    });
+    return withTenantOf(
+      this.db,
+      (db) => tenantOf.operation(db, params.operationId),
+      (tx) => this.releaseUse(tx, params),
+      () => false,
+    );
+  }
+
+  private async releaseUse(
+    tx: DrizzleDb,
+    params: { operationId: string; voucherOwnershipId: string; onlyIfUnsubmitted?: boolean },
+  ) {
+    const [command] = await tx.select().from(operations).where(eq(operations.id, params.operationId)).for('update');
+    if (!command) return false;
+    if (params.onlyIfUnsubmitted && command.suiTxDigest) return false;
+    await tx
+      .update(voucherOwnerships)
+      .set({ pendingOperationId: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(voucherOwnerships.id, params.voucherOwnershipId),
+          eq(voucherOwnerships.pendingOperationId, params.operationId),
+        ),
+      );
+    return true;
   }
 
   async listOwnershipsByMember(organizationEndUserId: string) {
-    return this.db.query.voucherOwnerships.findMany({
-      where: eq(voucherOwnerships.organizationEndUserId, organizationEndUserId),
-      with: { voucher: true },
-      orderBy: [desc(voucherOwnerships.claimedAt)],
-    });
+    return withTenantOf(
+      this.db,
+      (db) => tenantOf.member(db, organizationEndUserId),
+      (tx) =>
+        tx.query.voucherOwnerships.findMany({
+          where: eq(voucherOwnerships.organizationEndUserId, organizationEndUserId),
+          with: { voucher: true },
+          orderBy: [desc(voucherOwnerships.claimedAt)],
+        }),
+      () => [],
+    );
   }
 }

@@ -53,7 +53,7 @@ describe('ApiKeyGuard: authentication', () => {
 
     expect(await g.canActivate(ctx)).toBe(true);
     expect(ctx.request.tenant).toEqual({ organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write'] });
-    expect(touchLastUsed).toHaveBeenCalledWith('cred-1');
+    expect(touchLastUsed).toHaveBeenCalledWith('org-1', 'cred-1');
   });
 
   it('accepts a matching x-organization-id header', async () => {
@@ -200,7 +200,7 @@ describe('ApiKeyGuard: lastUsedAt', () => {
       expect(await guard(activeCredential(), fakeRedis(), touchLastUsed).canActivate(ctx)).toBe(true);
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(touchLastUsed).toHaveBeenCalledWith('cred-1');
+      expect(touchLastUsed).toHaveBeenCalledWith('org-1', 'cred-1');
       expect(error).toHaveBeenCalledWith(expect.stringMatching(/lastUsedAt.*cred-1.*connection terminated/));
       expect(unhandled).not.toHaveBeenCalled();
     } finally {

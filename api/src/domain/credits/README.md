@@ -22,11 +22,14 @@ Unsigned POS/voucher holds are released after 30 minutes on the next balance rea
 - `credits.module.ts`: Nest provider composition.
 
 Persistence is `infra/db/repositories/credits.repository.ts`; HTTP is `api/rest/credits.controller.ts`.
-The write transactions (`recordEarnTransaction`/`reservePosRedemption`/
-`recordReversalTransaction`) run through `infra/db/rls.ts`'s `withRls()`, so Postgres RLS is a
-real second line of defense on `loyalty_transactions` here, not just the app-code tenant checks
-in `credits.service.ts`/`earn.service.ts`/etc. Read paths don't go through `withRls()` yet (see
-the roadmap's known gaps). `reservePosRedemption` also runs through `withRls()`; `confirmPosRedemptionOnChain`/`failPosRedemptionOnChain` don't — same known gap as `confirmEarnOnChain`/`failEarnOnChain`, worker/callback-only paths not yet converted.
+Every repository method runs under the member's organization's RLS context (`infra/db/rls.ts`'s
+`withTenant()`, or `withRls()` for the original write transactions), so Postgres RLS is a real
+second line of defense on `loyalty_transactions`, `credit_ownerships` and `credit_buckets`, not
+just the app-code tenant checks in `credits.service.ts`/`earn.service.ts`/etc. Worker and indexer
+callbacks (`confirmEarnOnChain`, `failPosRedemptionOnChain`, …) start from an id, read that row's
+organization, then run under it (OCT-289). Three lookups stay on the plain connection, marked
+`RLS exception`: `findMemberOrganizationId`, `findCreditOwnershipBySuiAccountId`,
+`hasAnyLoyaltyTransactions`.
 Expiry mirrors `credit_account.move`'s buckets (OCT-49): each confirmed earn writes a
 `credit_buckets` row with the chain's `bucket_expires_at_ms`; voucher and POS redemptions consume
 buckets nearest-expiry first; `expireDueBuckets` forfeits due ones (one EXPIRY transaction per

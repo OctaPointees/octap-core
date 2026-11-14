@@ -48,21 +48,32 @@ export const blockchainTransactions = pgTable('blockchain_transactions', {
 /**
  * CREDIT OWNERSHIP: Represents point balance, tier counters, and on-chain credit account reference.
  */
-export const creditOwnerships = pgTable('credit_ownerships', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  organizationEndUserId: uuid('organization_end_user_id')
-    .notNull()
-    .unique()
-    .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
-  suiCreditAccountId: text('sui_credit_account_id'),
-  confirmedBalance: bigint('confirmed_balance', { mode: 'number' }).default(0).notNull(),
-  pendingEarn: bigint('pending_earn', { mode: 'number' }).default(0).notNull(),
-  pendingRedemption: bigint('pending_redemption', { mode: 'number' }).default(0).notNull(),
-  lifetimeEarned: bigint('lifetime_earned', { mode: 'number' }).default(0).notNull(),
-  lifetimeRedeemed: bigint('lifetime_redeemed', { mode: 'number' }).default(0).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const creditOwnerships = pgTable(
+  'credit_ownerships',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationEndUserId: uuid('organization_end_user_id')
+      .notNull()
+      .unique()
+      .references(() => organizationEndUsers.id, { onDelete: 'cascade' }),
+    suiCreditAccountId: text('sui_credit_account_id'),
+    confirmedBalance: bigint('confirmed_balance', { mode: 'number' }).default(0).notNull(),
+    pendingEarn: bigint('pending_earn', { mode: 'number' }).default(0).notNull(),
+    pendingRedemption: bigint('pending_redemption', { mode: 'number' }).default(0).notNull(),
+    lifetimeEarned: bigint('lifetime_earned', { mode: 'number' }).default(0).notNull(),
+    lifetimeRedeemed: bigint('lifetime_redeemed', { mode: 'number' }).default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  // No organization column: a member's ownership belongs to the member's organization.
+  (t) => [
+    pgPolicy('tenant_isolation_credit_ownerships', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`exists (select 1 from ${organizationEndUsers} where ${organizationEndUsers.id} = ${t.organizationEndUserId} and ${organizationEndUsers.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')))`,
+    }),
+  ],
+);
 
 /**
  * LOYALTY TRANSACTION: Point operations (earn/redeem/reversal) created by organization members
@@ -137,5 +148,13 @@ export const creditBuckets = pgTable(
     expiresAtMs: bigint('expires_at_ms', { mode: 'number' }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('credit_buckets_ownership_expiry_idx').on(t.creditOwnershipId, t.expiresAtMs)],
+  (t) => [
+    index('credit_buckets_ownership_expiry_idx').on(t.creditOwnershipId, t.expiresAtMs),
+    // Through the ownership: visible only when its member belongs to the tenant.
+    pgPolicy('tenant_isolation_credit_buckets', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`exists (select 1 from ${creditOwnerships} join ${organizationEndUsers} on ${organizationEndUsers.id} = ${creditOwnerships.organizationEndUserId} where ${creditOwnerships.id} = ${t.creditOwnershipId} and ${organizationEndUsers.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')))`,
+    }),
+  ],
 );

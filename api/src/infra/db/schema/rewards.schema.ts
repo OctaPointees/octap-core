@@ -121,5 +121,11 @@ export const voucherOwnerships = pgTable(
     uniqueIndex('voucher_ownership_voucher_member_idx')
       .on(t.voucherId, t.organizationEndUserId)
       .where(sql`${t.status} <> 'CANCELLED'`),
+    // No organization column: a voucher a member holds belongs to the member's organization.
+    pgPolicy('tenant_isolation_voucher_ownerships', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`exists (select 1 from ${organizationEndUsers} where ${organizationEndUsers.id} = ${t.organizationEndUserId} and ${organizationEndUsers.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')))`,
+    }),
   ],
 );
