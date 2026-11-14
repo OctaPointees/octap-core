@@ -1,0 +1,1 @@
+ALTER TABLE "indexer_cursors" ADD COLUMN "caught_up_checkpoint" text;

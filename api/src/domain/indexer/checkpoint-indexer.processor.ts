@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CreditAccountEvent } from '@octap/chain';
+import type { CreditAccountEvent, CreditAccountEventPage } from '@octap/chain';
 import {
   CreditsRepository,
   parsePosRedemptionReference,
@@ -9,9 +9,19 @@ import { OperationsRepository } from '#infra/db/repositories/operations.reposito
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
-import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import {
+  ChainHistoryPrunedError,
+  SuiTransactionBuilderClient,
+} from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 const PAGE_SIZE = Number(process.env.INDEXER_PAGE_SIZE ?? 50);
+/**
+ * Subtracted from the chain height before it counts as caught up. The public endpoint balances
+ * across nodes that lag each other, so the node answering the next `listEvents` may be a little
+ * behind the one that reported the height. 1000 checkpoints is minutes on testnet, and the
+ * retained window is days.
+ */
+const CAUGHT_UP_MARGIN = 1000n;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -21,6 +31,13 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * base64-ish and never equal a plain word), so it can't collide with one by accident.
  */
 const RESUME_AT_HEAD_SENTINEL = 'RESUME_AT_HEAD';
+
+/** The fix the refusals point a human to, once they have checked nothing is stuck. */
+const MANUAL_RESUME_HINT =
+  'Check for stuck rows first (runbook: api/src/domain/indexer/README.md, "Pruned cursor"). Then, to read ' +
+  "on from the node's oldest checkpoint (skipping only what the node pruned), run: " +
+  `insert into indexer_cursors (stream_name, cursor) values ('${CREDIT_ACCOUNT_STREAM}', null) ` +
+  'on conflict (stream_name) do update set cursor = null;';
 
 export type EventOutcome = 'confirmed' | 'skipped';
 
@@ -81,21 +98,45 @@ export class CheckpointIndexerProcessor {
     }
     if (state.cursor === RESUME_AT_HEAD_SENTINEL) {
       this.logger.warn(`${CREDIT_ACCOUNT_STREAM} cursor was reset by hand; resuming at the current chain head`);
-      await this.indexerRepo.deleteCursor(CREDIT_ACCOUNT_STREAM);
-      await this.bootstrap();
+      const head = await this.streamHead();
+      // Replaced in place: deleting first would leave no row if the head lookup failed, and a
+      // missing row next to loyalty data makes the next poll refuse.
+      await this.indexerRepo.replaceCursor(CREDIT_ACCOUNT_STREAM, {
+        expectedCursor: RESUME_AT_HEAD_SENTINEL,
+        cursor: head.cursor,
+        lastCheckpoint: head.checkpoint,
+      });
       return true;
     }
 
-    const page = await this.sui.listCreditAccountEvents({ after: state.cursor, limit: PAGE_SIZE });
+    // Read before listing, so an empty page proves "nothing up to here" (see `caughtUpMark`).
+    const caughtUp = await this.caughtUpMark();
+    let page: CreditAccountEventPage;
+    try {
+      page = await this.sui.listCreditAccountEvents({ after: state.cursor, limit: PAGE_SIZE });
+    } catch (err: unknown) {
+      if (!(err instanceof ChainHistoryPrunedError) || state.cursor === null) {
+        throw err;
+      }
+      await this.resumePrunedCursor(state, err);
+      return true;
+    }
     if (!page.endCursor) {
-      // Terminal page with nothing new: the stored cursor is still the right place to resume.
+      // Terminal page with nothing new: the stored cursor is still the right place to resume. The
+      // cursor can't move without an event, so record how far the stream is known to be empty.
+      if (caughtUp !== null) await this.indexerRepo.markCaughtUp(CREDIT_ACCOUNT_STREAM, state.cursor, caughtUp);
       return false;
     }
 
     const lastCheckpoint = [...page.events].reverse().find((e) => e.checkpoint !== null)?.checkpoint ?? null;
     const outcomes = await this.indexerRepo.commitPage(
       CREDIT_ACCOUNT_STREAM,
-      { expectedCursor: state.cursor, nextCursor: page.endCursor, lastCheckpoint },
+      {
+        expectedCursor: state.cursor,
+        nextCursor: page.endCursor,
+        lastCheckpoint,
+        caughtUpCheckpoint: page.hasNextPage ? null : caughtUp,
+      },
       async (tx) => {
         const results: EventOutcome[] = [];
         for (const event of page.events) {
@@ -130,11 +171,8 @@ export class CheckpointIndexerProcessor {
       throw new Error(
         `${CREDIT_ACCOUNT_STREAM} cursor is unset but loyalty_transactions already has rows — refusing to ` +
           'start at the chain head, which would silently skip every on-chain event between the lost cursor ' +
-          'and now. If the old cursor is gone for a legitimate reason (pruned by the node, testnet reset) ' +
-          'and skipping ahead is acceptable here, confirm it by hand (works whether the row exists or not): ' +
-          `insert into indexer_cursors (stream_name, cursor) values ('${CREDIT_ACCOUNT_STREAM}', '${RESUME_AT_HEAD_SENTINEL}') ` +
-          `on conflict (stream_name) do update set cursor = '${RESUME_AT_HEAD_SENTINEL}'; ` +
-          '— the next poll reads that value as an explicit instruction to resume at the current chain head.',
+          'and now. ' +
+          MANUAL_RESUME_HINT,
       );
     }
     await this.bootstrap();
@@ -146,15 +184,70 @@ export class CheckpointIndexerProcessor {
    * left UNKNOWN for a human) by the synchronous path.
    */
   private async bootstrap(): Promise<void> {
-    const head = await this.sui.listCreditAccountEvents({ order: 'descending', limit: 1 });
-    const latest = head.events[0];
-    await this.indexerRepo.initCursor(
-      CREDIT_ACCOUNT_STREAM,
-      latest ? head.startCursor : null,
-      latest?.checkpoint ?? null,
-    );
-    this.logger.log(
-      `initialized ${CREDIT_ACCOUNT_STREAM} cursor at checkpoint ${latest?.checkpoint ?? '(empty stream)'}`,
+    const head = await this.streamHead();
+    await this.indexerRepo.initCursor(CREDIT_ACCOUNT_STREAM, head.cursor, head.checkpoint);
+    this.logger.log(`initialized ${CREDIT_ACCOUNT_STREAM} cursor at checkpoint ${head.checkpoint ?? '(empty stream)'}`);
+  }
+
+  /**
+   * The newest event's position, or null for none. The node finds it by scanning back from its
+   * tip; with no event of this package in its retained window, that scan runs into the pruned range
+   * and fails as `ChainHistoryPrunedError`. That means the same as an empty stream here: a null
+   * cursor reads forward from the node's oldest checkpoint, where there is nothing yet either.
+   */
+  private async streamHead(): Promise<{ cursor: string | null; checkpoint: string | null }> {
+    try {
+      const head = await this.sui.listCreditAccountEvents({ order: 'descending', limit: 1 });
+      const latest = head.events[0];
+      return { cursor: latest ? head.startCursor : null, checkpoint: latest?.checkpoint ?? null };
+    } catch (err: unknown) {
+      if (!(err instanceof ChainHistoryPrunedError)) throw err;
+      return { cursor: null, checkpoint: null };
+    }
+  }
+
+  /**
+   * The checkpoint an empty poll now proves clean: the chain height read just before listing, less
+   * `CAUGHT_UP_MARGIN`, since the next request may reach a node lagging behind the one that answered
+   * this. Null when the height can't be read; then this poll proves nothing and records nothing.
+   */
+  private async caughtUpMark(): Promise<bigint | null> {
+    try {
+      const height = await this.sui.latestCheckpoint();
+      return height > CAUGHT_UP_MARGIN ? height - CAUGHT_UP_MARGIN : null;
+    } catch (err: unknown) {
+      this.logger.warn(`could not read the chain height: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * The stored cursor is older than the node's retained window, so `listEvents` can't continue from
+   * it. Events after the cursor sit above `caughtUpCheckpoint` (an empty poll saw none up to there).
+   * When that mark reaches the node's lowest checkpoint, every one of them is still retained, and
+   * a null cursor (read forward from that lowest checkpoint) skips none: resume, no human needed.
+   * Otherwise the worker was down for longer than the window, the gap may hold events the indexer
+   * will never see, and it refuses, as for a lost cursor.
+   */
+  private async resumePrunedCursor(
+    state: { cursor: string | null; lastCheckpoint: string | null; caughtUpCheckpoint: string | null },
+    err: ChainHistoryPrunedError,
+  ): Promise<void> {
+    const lowest = err.lowestAvailableCheckpoint;
+    const caughtUp = state.caughtUpCheckpoint == null ? null : BigInt(state.caughtUpCheckpoint);
+    if (lowest !== null && caughtUp !== null && caughtUp >= lowest - 1n) {
+      this.logger.warn(
+        `${CREDIT_ACCOUNT_STREAM} cursor was pruned (node keeps checkpoints from ${lowest}); no event is ` +
+          `missing below ${caughtUp + 1n}, so reading on from the node's oldest checkpoint`,
+      );
+      await this.indexerRepo.replaceCursor(CREDIT_ACCOUNT_STREAM, { expectedCursor: state.cursor, cursor: null });
+      return;
+    }
+    throw new Error(
+      `${CREDIT_ACCOUNT_STREAM} cursor was pruned by the node (it keeps checkpoints from ${lowest ?? 'an unknown point'}), ` +
+        `and events after the cursor (last at checkpoint ${state.lastCheckpoint ?? 'unknown'}) are only known to be ` +
+        `absent up to ${caughtUp ?? 'nowhere'}: the gap may hold events the indexer can no longer read. ` +
+        MANUAL_RESUME_HINT,
     );
   }
 

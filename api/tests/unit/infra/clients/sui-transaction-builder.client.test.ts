@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TESTNET_OCTAP_PACKAGE_CONFIG, type OctapChainClient } from '@octap/chain';
-import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
+import {
+  ChainHistoryPrunedError,
+  SuiTransactionBuilderClient,
+} from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { configForNetwork } from '#infra/clients/sui/network-config.js';
 import { requireEnv } from '#infra/clients/require-env.js';
 
@@ -91,5 +94,40 @@ describe('requireEnv', () => {
     await expect(builder.findTransaction('D1')).resolves.toBe(outcome);
     await expect(builder.currentEpoch()).resolves.toBe(1261n);
     expect(findTransaction).toHaveBeenCalledWith('D1');
+  });
+
+  it('turns the node’s OUT_OF_RANGE pruned-history error into ChainHistoryPrunedError, with its lower bound', async () => {
+    // The shape @mysten/sui's gRPC client throws, as seen live on testnet.
+    const rpcError = Object.assign(
+      new Error('requested data below earliest available; lowest available checkpoint is 404332001'),
+      { name: 'RpcError', code: 'OUT_OF_RANGE' },
+    );
+    const builder = withChainClient(new SuiTransactionBuilderClient(), {
+      listCreditAccountEvents: async () => {
+        throw rpcError;
+      },
+    });
+
+    const err = await builder.listCreditAccountEvents({ after: 'C1' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChainHistoryPrunedError);
+    expect((err as ChainHistoryPrunedError).lowestAvailableCheckpoint).toBe(404332001n);
+  });
+
+  it('passes any other chain error through unchanged', async () => {
+    const other = Object.assign(new Error('requested data below earliest available'), { code: 'UNAVAILABLE' });
+    const builder = withChainClient(new SuiTransactionBuilderClient(), {
+      listCreditAccountEvents: async () => {
+        throw other;
+      },
+    });
+
+    await expect(builder.listCreditAccountEvents({})).rejects.toBe(other);
+  });
+
+  it('latestCheckpoint reads the node’s checkpoint height', async () => {
+    const getServiceInfo = vi.fn(async () => ({ response: { checkpointHeight: 406404430n } }));
+    const builder = withChainClient(new SuiTransactionBuilderClient(), { rpc: { ledgerService: { getServiceInfo } } });
+
+    await expect(builder.latestCheckpoint()).resolves.toBe(406404430n);
   });
 });

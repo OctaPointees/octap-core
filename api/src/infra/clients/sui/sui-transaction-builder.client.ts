@@ -109,12 +109,52 @@ export class SuiTransactionBuilderClient {
     return this.client.currentEpoch();
   }
 
-  /** Read-only event stream for `domain/indexer` — no signer, same reasoning as the rest of this class. */
+  /**
+   * Read-only event stream for `domain/indexer` — no signer, same reasoning as the rest of this class.
+   * Throws `ChainHistoryPrunedError` when the node no longer holds the checkpoints the request needs.
+   */
   async listCreditAccountEvents(options: {
     after?: string | null;
     limit?: number;
     order?: 'ascending' | 'descending';
   }): Promise<CreditAccountEventPage> {
-    return this.client.listCreditAccountEvents(options);
+    try {
+      return await this.client.listCreditAccountEvents(options);
+    } catch (err: unknown) {
+      throw toChainHistoryPrunedError(err) ?? err;
+    }
   }
+
+  /** The node's latest checkpoint sequence number. Read-only. */
+  async latestCheckpoint(): Promise<bigint> {
+    const { response } = await this.client.rpc.ledgerService.getServiceInfo({});
+    if (response.checkpointHeight === undefined) throw new Error('Sui node reported no checkpoint height');
+    return BigInt(response.checkpointHeight);
+  }
+}
+
+/**
+ * The node pruned the checkpoints a request needed, e.g. a stored `listEvents` cursor older than its
+ * retained window. `lowestAvailableCheckpoint` is that node's lower bound, read from its own error:
+ * the public endpoint balances across nodes whose bounds differ, so another call's
+ * `getServiceInfo` would not describe the node that refused.
+ */
+export class ChainHistoryPrunedError extends Error {
+  constructor(
+    message: string,
+    readonly lowestAvailableCheckpoint: bigint | null,
+  ) {
+    super(message);
+    this.name = 'ChainHistoryPrunedError';
+  }
+}
+
+/** gRPC answers OUT_OF_RANGE: "requested data below earliest available; lowest available checkpoint is N". */
+function toChainHistoryPrunedError(err: unknown): ChainHistoryPrunedError | null {
+  const { code, message } = (err ?? {}) as { code?: unknown; message?: unknown };
+  if (code !== 'OUT_OF_RANGE' || typeof message !== 'string' || !/below earliest available/i.test(message)) {
+    return null;
+  }
+  const lowest = /lowest available checkpoint is (\d+)/i.exec(message)?.[1];
+  return new ChainHistoryPrunedError(message, lowest === undefined ? null : BigInt(lowest));
 }
