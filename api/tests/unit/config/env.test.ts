@@ -20,7 +20,7 @@ describe('validateEnv', () => {
 
   it('requires DATABASE_URL in both processes, treating an empty value as unset', () => {
     expect(validateEnv('api', {}).errors).toEqual(['DATABASE_URL is required']);
-    expect(validateEnv('worker', { DATABASE_URL: '  ', SUI_ISSUER_PRIVATE_KEY: 'k' }).errors).toEqual([
+    expect(validateEnv('worker', { DATABASE_URL: '', SUI_ISSUER_PRIVATE_KEY: 'k' }).errors).toEqual([
       'DATABASE_URL is required',
     ]);
   });
@@ -36,7 +36,7 @@ describe('validateEnv', () => {
       ORGANIZATION_IDENTITY_ENCRYPTION_KEY: 'c2hvcnQ=',
     });
     expect(errors).toEqual([
-      'API_PORT must be an integer of at least 0, got "30x0"',
+      'API_PORT must be an integer from 0 to 65535, got "30x0"',
       'RATE_LIMIT_MAX_REQUESTS must be an integer of at least 1, got "0"',
       'OPENAPI_ENABLED must be "true" or "false", got "yes"',
       'DATABASE_URL must be a postgres: or postgresql: URL, got "mysql:"',
@@ -45,6 +45,46 @@ describe('validateEnv', () => {
       'ORGANIZATION_IDENTITY_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
     ]);
     expect(errors.join()).not.toContain('c2hvcnQ');
+  });
+
+  it('rejects a number, flag, enum or URL the modules would read differently: empty or padded', () => {
+    expect(
+      validateEnv('worker', {
+        ...DB,
+        SUI_ISSUER_PRIVATE_KEY: 'k',
+        SUI_NETWORK: ' mainnet',
+        ORG_PROVISION_WORKER_ENABLED: 'true ',
+        CHAIN_SUBMIT_BATCH_SIZE: '',
+      }).errors,
+    ).toEqual([
+      'SUI_NETWORK has leading or trailing whitespace, which the code would read as-is',
+      'CHAIN_SUBMIT_BATCH_SIZE is set but empty: remove it to use the default',
+      'ORG_PROVISION_WORKER_ENABLED has leading or trailing whitespace, which the code would read as-is',
+    ]);
+  });
+
+  it('requires the program admin signer only for the exact value provisioning.worker.ts runs on', () => {
+    // 'true ' is already an error above; with it, provisioning stays off, so no admin signer is demanded.
+    const { errors } = validateEnv('worker', {
+      ...DB,
+      SUI_ISSUER_PRIVATE_KEY: 'k',
+      ORG_PROVISION_WORKER_ENABLED: 'true ',
+    });
+    expect(errors.some((e) => e.includes('program admin signer'))).toBe(false);
+  });
+
+  it('treats a blank text value as unset, the way its readers do', () => {
+    expect(validateEnv('api', { ...DB, ENOKI_API_KEY: '  ' }).disabledFeatures).toContain(
+      'zkLogin and sponsored transactions (ENOKI_API_KEY)',
+    );
+    expect(validateEnv('api', { DATABASE_URL: '' }).errors).toEqual(['DATABASE_URL is required']);
+  });
+
+  it('bounds API_PORT to a real port', () => {
+    expect(validateEnv('api', { ...DB, API_PORT: '65536' }).errors).toEqual([
+      'API_PORT must be an integer from 0 to 65535, got "65536"',
+    ]);
+    expect(validateEnv('api', { ...DB, API_PORT: '65535' }).errors).toEqual([]);
   });
 
   it('accepts well-formed values, including a 32-byte identity key', () => {

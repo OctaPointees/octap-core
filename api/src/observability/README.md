@@ -32,8 +32,10 @@ load balancer should not pull every instance over a flaky public RPC.
 visible, when no worker is running:
 
 - `operations`: unsettled commands (PENDING, PROCESSING, UNKNOWN) per command type and status, with
-  the age of the oldest. Customer-signed commands (redeem, voucher claim/use) sit PENDING until the
-  customer signs, so read their age next to the reconciler's abandonment window, not as worker lag.
+  the age of the oldest. Customer-signed commands (POS redeem, voucher claim and use) sit PENDING
+  until the customer signs: those groups are marked `awaitingCustomer` and left out of
+  `oldestWorkerOwedAgeSeconds`, the headline figure to alert on, so one abandoned signature does not
+  dominate it. Once UNKNOWN they are the reconciler's and count again.
 - `webhookDeliveries`: pending, due now, the oldest due delivery's wait past its `nextAttemptAt`
   (one backing off until later is not lag), and dead-lettered.
 - `indexer`: each stream's checkpoints, how far its furthest-known position trails the chain

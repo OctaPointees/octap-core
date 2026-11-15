@@ -88,7 +88,7 @@ describe('health and request tracing', () => {
     const ok = await ctx.http().get('/v1/platform/health').set('Authorization', auth).expect(200);
     expect(ok.body.status).toBe('ok');
     expect(ok.body.workerLag).toMatchObject({
-      operations: { oldestUnsettledAgeSeconds: null, byCommandType: [] },
+      operations: { oldestWorkerOwedAgeSeconds: null, byCommandType: [] },
       webhookDeliveries: { pending: 0, due: 0, oldestDueAgeSeconds: null, deadLettered: 0 },
       indexer: [expect.objectContaining({ chainCheckpoint: '1000', checkpointsBehind: '100' })],
     });

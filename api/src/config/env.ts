@@ -14,7 +14,7 @@ export type ProcessKind = 'api' | 'worker';
 type Kind =
   | { type: 'string' }
   | { type: 'url'; protocols: string[] }
-  | { type: 'int'; min: number }
+  | { type: 'int'; min: number; max?: number }
   | { type: 'bool' }
   | { type: 'enum'; values: readonly string[] }
   | { type: 'base64Key32' };
@@ -43,7 +43,7 @@ export const SUI_NETWORKS = ['testnet', 'mainnet'] as const;
 export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   // HTTP server
   { name: 'API_HOST', kind: text, readBy: API },
-  { name: 'API_PORT', kind: { type: 'int', min: 0 }, readBy: API },
+  { name: 'API_PORT', kind: { type: 'int', min: 0, max: 65535 }, readBy: API },
   { name: 'TRUSTED_PROXY_HOPS', kind: { type: 'int', min: 0 }, readBy: API },
   { name: 'RATE_LIMIT_MAX_REQUESTS', kind: positive, readBy: API },
   { name: 'PUBLIC_RATE_LIMIT_MAX_REQUESTS', kind: positive, readBy: API },
@@ -93,10 +93,24 @@ export interface EnvValidation {
   disabledFeatures: string[];
 }
 
-/** The value as the modules will see it: unset and empty both mean "use the default". */
-function valueOf(env: NodeJS.ProcessEnv, name: string): string | undefined {
+/**
+ * A text value (key, key id, client id) the way its readers treat it: they trim it, and blank means
+ * unset (`requireEnv`, `loadSigner`, the Google client). Every other kind is checked raw, below.
+ */
+function textValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
   const value = env[name]?.trim();
   return value ? value : undefined;
+}
+
+/**
+ * A number, flag, enum or URL exactly as the modules will read it — they compare `process.env.X`
+ * as-is (`=== 'true'`, `Number(...)`, `as OctapNetwork`), so what passes here must be that exact
+ * string: an empty value or one with surrounding whitespace is an error, not quietly fixed.
+ */
+function rawValueError(name: string, value: string): string | undefined {
+  if (value === '') return `${name} is set but empty: remove it to use the default`;
+  if (value !== value.trim()) return `${name} has leading or trailing whitespace, which the code would read as-is`;
+  return undefined;
 }
 
 function checkKind(name: string, value: string, kind: Kind): string | undefined {
@@ -115,8 +129,9 @@ function checkKind(name: string, value: string, kind: Kind): string | undefined 
         : `${name} must be a ${kind.protocols.join(' or ')} URL, got "${protocol}"`;
     }
     case 'int': {
-      if (!/^\d+$/.test(value) || Number(value) < kind.min) {
-        return `${name} must be an integer of at least ${kind.min}, got "${value}"`;
+      if (!/^\d+$/.test(value) || Number(value) < kind.min || Number(value) > (kind.max ?? Infinity)) {
+        const range = kind.max === undefined ? `of at least ${kind.min}` : `from ${kind.min} to ${kind.max}`;
+        return `${name} must be an integer ${range}, got "${value}"`;
       }
       return undefined;
     }
@@ -145,19 +160,19 @@ function checkSigner(
   privateKeyEnv: string,
   role: string,
 ): string | undefined {
-  const kmsKeyId = valueOf(env, kmsKeyIdEnv);
+  const kmsKeyId = textValue(env, kmsKeyIdEnv);
   if (kmsKeyId) {
-    if (!/^arn:aws[\w-]*:kms:[a-z0-9-]+:/.test(kmsKeyId) && !valueOf(env, 'AWS_REGION')) {
+    if (!/^arn:aws[\w-]*:kms:[a-z0-9-]+:/.test(kmsKeyId) && !textValue(env, 'AWS_REGION')) {
       return `AWS_REGION is required for ${kmsKeyIdEnv}: only a key ARN carries its own region`;
     }
     return undefined;
   }
   if (network === 'mainnet') {
-    return valueOf(env, privateKeyEnv)
+    return textValue(env, privateKeyEnv)
       ? `${privateKeyEnv} is refused on mainnet: set ${kmsKeyIdEnv} to an AWS KMS key for the ${role}`
       : `${kmsKeyIdEnv} is required on mainnet for the ${role}`;
   }
-  return valueOf(env, privateKeyEnv)
+  return textValue(env, privateKeyEnv)
     ? undefined
     : `The ${role} needs ${kmsKeyIdEnv} (an AWS KMS key) or, off mainnet, ${privateKeyEnv}`;
 }
@@ -168,24 +183,28 @@ export function validateEnv(process: ProcessKind, env: NodeJS.ProcessEnv): EnvVa
 
   for (const spec of ENV_SCHEMA) {
     if (!spec.readBy.includes(process)) continue;
-    const value = valueOf(env, spec.name);
-    if (value === undefined) {
+    const value = spec.kind.type === 'string' ? textValue(env, spec.name) : env[spec.name];
+    // postgres.provider.ts reads an empty DATABASE_URL as unset (`||`); it is reported as required below.
+    if (value === undefined || (spec.name === 'DATABASE_URL' && value === '')) {
       if (spec.optionalFeature) disabledFeatures.push(`${spec.optionalFeature} (${spec.name})`);
       continue;
     }
-    const error = checkKind(spec.name, value, spec.kind);
+    const error =
+      (spec.kind.type === 'string' ? undefined : rawValueError(spec.name, value)) ??
+      checkKind(spec.name, value, spec.kind);
     if (error) errors.push(error);
   }
 
   // Without it postgres.provider.ts falls back to a local database, which a deployed process
   // must never silently use.
-  if (!valueOf(env, 'DATABASE_URL')) errors.push('DATABASE_URL is required');
+  if (!env.DATABASE_URL) errors.push('DATABASE_URL is required');
 
   if (process === 'worker') {
-    const network = valueOf(env, 'SUI_NETWORK') ?? 'testnet';
+    const network = env.SUI_NETWORK ?? 'testnet';
     const issuer = checkSigner(env, network, 'SUI_ISSUER_KMS_KEY_ID', 'SUI_ISSUER_PRIVATE_KEY', 'issuer signer');
     if (issuer) errors.push(issuer);
-    if (valueOf(env, 'ORG_PROVISION_WORKER_ENABLED') === 'true') {
+    // The same comparison provisioning.worker.ts makes, so the signer is required exactly when it runs.
+    if (env.ORG_PROVISION_WORKER_ENABLED === 'true') {
       const admin = checkSigner(
         env,
         network,

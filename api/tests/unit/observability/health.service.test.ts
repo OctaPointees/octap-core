@@ -64,10 +64,22 @@ describe('HealthService.platformReport', () => {
     expect(report.checks.database).toEqual({ status: 'up', latencyMs: expect.any(Number) });
     expect(report.workerLag).toEqual({
       operations: {
-        oldestUnsettledAgeSeconds: 120,
+        oldestWorkerOwedAgeSeconds: 120,
         byCommandType: [
-          { commandType: 'CREDIT_EARN_CHAIN_SUBMIT', status: 'PENDING', count: 3, oldestAgeSeconds: 120 },
-          { commandType: 'CREDIT_EARN_CHAIN_SUBMIT', status: 'UNKNOWN', count: 1, oldestAgeSeconds: 40 },
+          {
+            commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+            status: 'PENDING',
+            count: 3,
+            oldestAgeSeconds: 120,
+            awaitingCustomer: false,
+          },
+          {
+            commandType: 'CREDIT_EARN_CHAIN_SUBMIT',
+            status: 'UNKNOWN',
+            count: 1,
+            oldestAgeSeconds: 40,
+            awaitingCustomer: false,
+          },
         ],
       },
       webhookDeliveries: { pending: 5, due: 2, oldestDueAgeSeconds: 30, deadLettered: 1 },
@@ -87,9 +99,40 @@ describe('HealthService.platformReport', () => {
   it('reports an empty system as null ages and zero counts', async () => {
     const { service } = build({ webhookBacklog: async () => undefined as never });
     expect((await service.platformReport()).workerLag).toEqual({
-      operations: { oldestUnsettledAgeSeconds: null, byCommandType: [] },
+      operations: { oldestWorkerOwedAgeSeconds: null, byCommandType: [] },
       webhookDeliveries: { pending: 0, due: 0, oldestDueAgeSeconds: null, deadLettered: 0 },
       indexer: [],
+    });
+  });
+
+  it('leaves PENDING customer-signed commands out of the headline age, but not once they are UNKNOWN', async () => {
+    const { service } = build({
+      unsettledOperations: async () => [
+        { commandType: 'CREDIT_POS_REDEEM_RESERVE', status: 'PENDING', count: 1, oldestAgeSeconds: 9000 },
+        { commandType: 'VOUCHER_CLAIM_RESERVE', status: 'PENDING', count: 1, oldestAgeSeconds: 8000 },
+        { commandType: 'VOUCHER_USE_RESERVE', status: 'PENDING', count: 1, oldestAgeSeconds: 7000 },
+        { commandType: 'CREDIT_EARN_CHAIN_SUBMIT', status: 'PENDING', count: 2, oldestAgeSeconds: 60 },
+      ],
+    });
+    const operations = (await service.platformReport()).workerLag?.operations;
+    expect(operations?.oldestWorkerOwedAgeSeconds).toBe(60);
+    expect(operations?.byCommandType.map((g) => g.awaitingCustomer)).toEqual([true, true, true, false]);
+
+    const onlyCustomer = build({
+      unsettledOperations: async () => [
+        { commandType: 'VOUCHER_USE_RESERVE', status: 'PENDING', count: 1, oldestAgeSeconds: 7000 },
+      ],
+    });
+    expect((await onlyCustomer.service.platformReport()).workerLag?.operations.oldestWorkerOwedAgeSeconds).toBeNull();
+
+    const unknown = build({
+      unsettledOperations: async () => [
+        { commandType: 'CREDIT_POS_REDEEM_RESERVE', status: 'UNKNOWN', count: 1, oldestAgeSeconds: 500 },
+      ],
+    });
+    expect((await unknown.service.platformReport()).workerLag?.operations).toMatchObject({
+      oldestWorkerOwedAgeSeconds: 500,
+      byCommandType: [{ awaitingCustomer: false }],
     });
   });
 

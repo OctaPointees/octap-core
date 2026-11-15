@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
+import { CUSTOMER_REDEEM_COMMAND_TYPES } from '#infra/db/repositories/credits.repository.js';
+import { VOUCHER_USE_COMMAND_TYPE } from '#infra/db/repositories/rewards.repository.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { OperationalHealthRepository } from '#infra/db/repositories/operational-health.repository.js';
 
@@ -9,7 +11,12 @@ export const HEALTH_CHECK_TIMEOUT_MS = 3_000;
 /** How long the public report is reused: `/health` is unauthenticated and each probe reaches the Sui RPC. */
 export const PUBLIC_HEALTH_CACHE_MS = 5_000;
 
-export type DependencyName = 'database' | 'redis' | 'sui';
+/**
+ * Commands that sit PENDING until the end customer signs (POS redeem, voucher claim and use): no
+ * worker owes them anything yet, and an abandoned signature waits for the reconciler's window, so
+ * their PENDING age is not worker lag. Once UNKNOWN they are the reconciler's, and count again.
+ */
+const AWAITING_CUSTOMER_COMMAND_TYPES: readonly string[] = [...CUSTOMER_REDEEM_COMMAND_TYPES, VOUCHER_USE_COMMAND_TYPE];
 
 export interface DependencyCheck {
   status: 'up' | 'down';
@@ -29,7 +36,14 @@ export type HealthStatus = 'ok' | 'degraded' | 'down';
 export interface HealthReport {
   status: HealthStatus;
   checkedAt: string;
-  checks: Record<DependencyName, DependencyCheck>;
+  checks: HealthChecks;
+}
+
+/** Spelled out rather than a `Record<…>`: the OpenAPI schema generator names a `Record` after its source path. */
+export interface HealthChecks {
+  database: DependencyCheck;
+  redis: DependencyCheck;
+  sui: DependencyCheck;
 }
 
 export interface OperationLag {
@@ -37,6 +51,8 @@ export interface OperationLag {
   status: string;
   count: number;
   oldestAgeSeconds: number;
+  /** PENDING and waiting on the customer's signature, not on a worker: left out of `oldestWorkerOwedAgeSeconds`. */
+  awaitingCustomer: boolean;
 }
 
 export interface IndexerLag {
@@ -53,8 +69,11 @@ export interface IndexerLag {
 
 export interface WorkerLag {
   operations: {
-    /** Age of the oldest PENDING, PROCESSING or UNKNOWN command; null when there is none. */
-    oldestUnsettledAgeSeconds: number | null;
+    /**
+     * Age of the oldest PENDING, PROCESSING or UNKNOWN command a worker owes something to (every
+     * group without `awaitingCustomer`) — the figure to alert on. Null when there is none.
+     */
+    oldestWorkerOwedAgeSeconds: number | null;
     byCommandType: OperationLag[];
   };
   webhookDeliveries: {
@@ -96,7 +115,7 @@ async function probe<T>(run: () => Promise<T>, timeoutMs: number): Promise<Probe
   }
 }
 
-function overallStatus(checks: Record<DependencyName, DependencyCheck>): HealthStatus {
+function overallStatus(checks: HealthChecks): HealthStatus {
   if (checks.database.status === 'down' || checks.redis.status === 'down') return 'down';
   return checks.sui.status === 'down' ? 'degraded' : 'ok';
 }
@@ -172,11 +191,15 @@ export class HealthService {
       this.repository.webhookBacklog(),
       this.repository.indexerStreams(),
     ]);
+    const byCommandType = operations.map((group) => ({
+      ...group,
+      awaitingCustomer: group.status === 'PENDING' && AWAITING_CUSTOMER_COMMAND_TYPES.includes(group.commandType),
+    }));
+    const workerOwed = byCommandType.filter((group) => !group.awaitingCustomer).map((g) => g.oldestAgeSeconds);
     return {
       operations: {
-        oldestUnsettledAgeSeconds:
-          operations.length === 0 ? null : Math.max(...operations.map((o) => o.oldestAgeSeconds)),
-        byCommandType: operations,
+        oldestWorkerOwedAgeSeconds: workerOwed.length === 0 ? null : Math.max(...workerOwed),
+        byCommandType,
       },
       webhookDeliveries: {
         pending: webhooks?.pending ?? 0,

@@ -1453,7 +1453,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "checks": {
-        "$ref": "#/components/schemas/Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck"
+        "$ref": "#/components/schemas/HealthChecks"
       }
     },
     "required": [
@@ -2212,7 +2212,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "checks": {
-        "$ref": "#/components/schemas/Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck"
+        "$ref": "#/components/schemas/HealthChecks"
       }
     },
     "required": [
@@ -2868,25 +2868,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "operationId",
       "status"
-    ]
-  },
-  "Record_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyName_import_D_FPTU_Document_Fall25_OctaP_Core_oct_60_api_dist_observability_health_service_with_resolution_mode_import_DependencyCheck": {
-    "type": "object",
-    "properties": {
-      "database": {
-        "$ref": "#/components/schemas/DependencyCheck"
-      },
-      "redis": {
-        "$ref": "#/components/schemas/DependencyCheck"
-      },
-      "sui": {
-        "$ref": "#/components/schemas/DependencyCheck"
-      }
-    },
-    "required": [
-      "database",
-      "redis",
-      "sui"
     ]
   },
   "Record_string_unknown": {
@@ -3975,6 +3956,26 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "status"
     ]
   },
+  "HealthChecks": {
+    "description": "Spelled out rather than a `Record<…>`: the OpenAPI schema generator names a `Record` after its source path.",
+    "type": "object",
+    "properties": {
+      "database": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "redis": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "sui": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      }
+    },
+    "required": [
+      "database",
+      "redis",
+      "sui"
+    ]
+  },
   "IndexerLag": {
     "type": "object",
     "properties": {
@@ -4035,9 +4036,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       },
       "oldestAgeSeconds": {
         "type": "number"
+      },
+      "awaitingCustomer": {
+        "description": "PENDING and waiting on the customer's signature, not on a worker: left out of `oldestWorkerOwedAgeSeconds`.",
+        "type": "boolean"
       }
     },
     "required": [
+      "awaitingCustomer",
       "commandType",
       "count",
       "oldestAgeSeconds",
@@ -4050,8 +4056,8 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "operations": {
         "type": "object",
         "properties": {
-          "oldestUnsettledAgeSeconds": {
-            "description": "Age of the oldest PENDING, PROCESSING or UNKNOWN command; null when there is none.",
+          "oldestWorkerOwedAgeSeconds": {
+            "description": "Age of the oldest PENDING, PROCESSING or UNKNOWN command a worker owes something to (every\ngroup without `awaitingCustomer`) — the figure to alert on. Null when there is none.",
             "type": [
               "null",
               "number"
@@ -4066,7 +4072,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         },
         "required": [
           "byCommandType",
-          "oldestUnsettledAgeSeconds"
+          "oldestWorkerOwedAgeSeconds"
         ]
       },
       "webhookDeliveries": {

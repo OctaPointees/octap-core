@@ -66,9 +66,12 @@ npm run start:worker
 
 Build order is shared contracts, the chain package, Node/browser SDKs, then API. API binds to
 localhost:3000 and needs `DATABASE_URL` (see [.env.example](.env.example)); apply migrations with
-`npm run db:migrate`. Only WorkerModule registers worker providers; it now runs
-`ChainSubmitWorker`, which needs the `SUI_*` variables in `.env.example` to actually dispatch (it
-still boots and polls harmlessly without them — only a claimed operation's chain call fails).
+`npm run db:migrate`. Only WorkerModule registers worker providers (chain submit, outcome
+reconciler, webhook delivery, indexer, provisioning). Both processes validate their environment at
+boot (`api/src/config/env.ts`) and refuse to start on a bad or missing value: the worker needs
+`DATABASE_URL` and an issuer signer (`SUI_ISSUER_KMS_KEY_ID`, or off mainnet
+`SUI_ISSUER_PRIVATE_KEY`), plus the program admin signer when `ORG_PROVISION_WORKER_ENABLED=true`.
+`GET /health` reports database, Redis and Sui reachability (`api/src/observability`).
 Supply environment variables through your shell, a root `.env`, or Node's --env-file option.
 
 ## Public package handoff
