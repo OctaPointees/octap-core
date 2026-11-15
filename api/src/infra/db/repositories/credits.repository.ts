@@ -428,31 +428,26 @@ export class CreditsRepository {
    * from their id_token first — there is no "enrolled without an address" path in this codebase.
    * A null here is a data integrity problem, not a normal pending state.
    */
-  async findBeneficiaryAddress(organizationEndUserId: string): Promise<string | null> {
-    return inTenantOf(
-      this.db,
-      (db) => tenantOf.member(db, organizationEndUserId),
-      async (tx) => {
-        const [member] = await tx
-          .select({ endUserId: organizationEndUsers.endUserId })
-          .from(organizationEndUsers)
-          .where(eq(organizationEndUsers.id, organizationEndUserId));
-        if (!member) return null;
-        // The member's global user has no tenant policy: read it as the connection's own role.
-        const [user] = await asOwnRole(tx, () =>
-          tx.select({ suiAddress: endUsers.suiAddress }).from(endUsers).where(eq(endUsers.id, member.endUserId)),
-        );
-        return user?.suiAddress ?? null;
-      },
-    );
+  /** Null for a member of another organization: RLS hides its membership row. */
+  async findBeneficiaryAddress(organizationId: string, organizationEndUserId: string): Promise<string | null> {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const [member] = await tx
+        .select({ endUserId: organizationEndUsers.endUserId })
+        .from(organizationEndUsers)
+        .where(eq(organizationEndUsers.id, organizationEndUserId));
+      if (!member) return null;
+      // The member's global user has no tenant policy: read it as the connection's own role, now
+      // that the tenant-scoped read above proved the member belongs to this organization.
+      const [user] = await asOwnRole(tx, (own) =>
+        own.select({ suiAddress: endUsers.suiAddress }).from(endUsers).where(eq(endUsers.id, member.endUserId)),
+      );
+      return user?.suiAddress ?? null;
+    });
   }
 
-  async getOrCreateCreditOwnership(organizationEndUserId: string) {
-    return inTenantOf(
-      this.db,
-      (db) => tenantOf.member(db, organizationEndUserId),
-      (tx) => this.ownershipFor(tx, organizationEndUserId),
-    );
+  /** Under the caller's organization: creating one for another organization's member is refused. */
+  async getOrCreateCreditOwnership(organizationId: string, organizationEndUserId: string) {
+    return withTenant(this.db, organizationId, (tx) => this.ownershipFor(tx, organizationEndUserId));
   }
 
   private async ownershipFor(tx: DrizzleDb, organizationEndUserId: string) {
@@ -636,14 +631,11 @@ export class CreditsRepository {
     );
   }
 
-  async getCreditOwnershipByEndUserId(organizationEndUserId: string) {
-    return inTenantOf(
-      this.db,
-      (db) => tenantOf.member(db, organizationEndUserId),
-      (tx) =>
-        tx.query.creditOwnerships.findFirst({
-          where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
-        }),
+  async getCreditOwnershipByEndUserId(organizationId: string, organizationEndUserId: string) {
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.creditOwnerships.findFirst({
+        where: eq(creditOwnerships.organizationEndUserId, organizationEndUserId),
+      }),
     );
   }
 

@@ -236,7 +236,7 @@ export class ChainOutcomeReconciler {
   private async confirmPosRedeem(operation: Operation, outcome: SubmittedChainTransaction): Promise<ReconcileOutcome> {
     const payload = operation.payload as unknown as PosRedeemPayload;
     const loyaltyTx = await this.creditsRepo.findTransactionByIdempotency(operation.tenantId, operation.idempotencyKey);
-    const sender = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
+    const sender = await this.creditsRepo.findBeneficiaryAddress(operation.tenantId, payload.organizationEndUserId);
     if (!loyaltyTx || !sender) {
       this.logger.error(`operation ${operation.id} has no loyalty transaction or beneficiary; left for a human`);
       await this.operationsRepo.touch(operation.id);

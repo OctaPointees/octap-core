@@ -124,7 +124,7 @@ export class ChainSubmitProcessor {
     await this.submitVoucherCommand(operation, {
       label: `voucher ${payload.voucherId} publish`,
       sign: async () => {
-        const voucher = await this.rewardsRepo.findVoucherById(payload.voucherId);
+        const voucher = await this.rewardsRepo.findVoucherById(operation.tenantId, payload.voucherId);
         if (!voucher) throw new Error(`Voucher ${payload.voucherId} no longer exists`);
         const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
         return this.suiClient.signPublishVoucherTerms(program, {
@@ -155,9 +155,13 @@ export class ChainSubmitProcessor {
         const claim = await this.rewardsRepo.findOwnershipWithVoucher(payload.voucherOwnershipId);
         if (!claim?.voucher.suiTermsId) throw new Error('This voucher has no published terms to grant under');
         const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
-        const ownership = await this.creditsRepo.getOrCreateCreditOwnership(payload.organizationEndUserId);
+        const ownership = await this.creditsRepo.getOrCreateCreditOwnership(
+          operation.tenantId,
+          payload.organizationEndUserId,
+        );
         const accountId =
-          ownership.suiCreditAccountId ?? (await this.openCreditAccount(program, ownership.id, payload));
+          ownership.suiCreditAccountId ??
+          (await this.openCreditAccount(program, operation.tenantId, ownership.id, payload));
         return this.suiClient.signGrantVoucher(program, {
           accountId,
           termsId: claim.voucher.suiTermsId,
@@ -241,7 +245,10 @@ export class ChainSubmitProcessor {
   ): Promise<void> {
     try {
       const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
-      const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(payload.organizationEndUserId);
+      const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(
+        operation.tenantId,
+        payload.organizationEndUserId,
+      );
       const accountId = ownership?.suiCreditAccountId;
       if (!accountId) {
         throw new Error(`No on-chain credit account for end user ${payload.organizationEndUserId}`);
@@ -298,10 +305,14 @@ export class ChainSubmitProcessor {
    */
   private async openCreditAccount(
     program: OctapProgramConfig,
+    organizationId: string,
     ownershipId: string,
     payload: { organizationEndUserId: string },
   ): Promise<string> {
-    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(payload.organizationEndUserId);
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(
+      organizationId,
+      payload.organizationEndUserId,
+    );
     if (!beneficiaryAddress) {
       throw new Error(`No real Sui address on file for end user ${payload.organizationEndUserId}`);
     }
@@ -368,6 +379,7 @@ export class ChainSubmitProcessor {
    */
   private async reopenIfStale(
     program: OctapProgramConfig,
+    organizationId: string,
     ownershipId: string,
     staleAccountId: string,
     payload: EarnChainSubmitPayload,
@@ -396,7 +408,7 @@ export class ChainSubmitProcessor {
       `account ${staleAccountId} belongs to program ${accountProgramId}, not the organization's current ` +
         `${program.programControlId} (re-provisioned); reopening it for end user ${payload.organizationEndUserId}`,
     );
-    return this.openCreditAccount(program, ownershipId, payload);
+    return this.openCreditAccount(program, organizationId, ownershipId, payload);
   }
 
   private async processEarn(operation: typeof operations.$inferSelect, payload: EarnChainSubmitPayload): Promise<void> {
@@ -405,19 +417,24 @@ export class ChainSubmitProcessor {
       // program fails here, before anything is sent on-chain.
       const program = await resolveProgramConfig(this.programsRepo, operation.tenantId);
 
-      const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(payload.organizationEndUserId);
+      const ownership = await this.creditsRepo.getCreditOwnershipByEndUserId(
+        operation.tenantId,
+        payload.organizationEndUserId,
+      );
       if (!ownership) {
         throw new Error(`No credit ownership for end user ${payload.organizationEndUserId}`);
       }
 
-      const accountId = ownership.suiCreditAccountId ?? (await this.openCreditAccount(program, ownership.id, payload));
+      const accountId =
+        ownership.suiCreditAccountId ??
+        (await this.openCreditAccount(program, operation.tenantId, ownership.id, payload));
 
       let result: ChainCallResult;
       try {
         result = await this.submitEarn(operation, program, accountId, payload);
       } catch (err: unknown) {
         const reopenedId = isWrongProgramEarnAbort(err)
-          ? await this.reopenIfStale(program, ownership.id, accountId, payload)
+          ? await this.reopenIfStale(program, operation.tenantId, ownership.id, accountId, payload)
           : null;
         if (!reopenedId) {
           throw err;

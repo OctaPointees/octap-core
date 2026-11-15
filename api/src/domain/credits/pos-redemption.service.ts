@@ -193,7 +193,10 @@ export class PosRedemptionService {
     if (!accountId) {
       throw new BadRequestException(`Member ${request.organizationEndUserId} has no on-chain CreditAccount yet`);
     }
-    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(request.organizationEndUserId);
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(
+      organizationId,
+      request.organizationEndUserId,
+    );
     if (!beneficiaryAddress) {
       throw new BadRequestException(`Member ${request.organizationEndUserId} has no linked Sui address yet`);
     }
@@ -241,7 +244,10 @@ export class PosRedemptionService {
     const cached = JSON.parse(raw) as CachedReserve;
     // Same precondition reserve() enforced; checked before executing so a missing address fails
     // loudly with no chain effect, instead of being papered over in the receipt.
-    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(cached.organizationEndUserId);
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(
+      cached.organizationId,
+      cached.organizationEndUserId,
+    );
     if (!beneficiaryAddress) {
       throw new BadRequestException(`No real Sui address on file for member ${cached.organizationEndUserId}`);
     }
@@ -319,7 +325,10 @@ export class PosRedemptionService {
       }
       // A concurrent finalize of this same digest (client retry) recorded it first: same
       // outcome, so answer the retry the same way instead of a 500.
-      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);
+      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(
+        cached.organizationId,
+        cached.organizationEndUserId,
+      );
       return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
     }
 
@@ -328,7 +337,10 @@ export class PosRedemptionService {
     }
     await this.redis.del(reserveKey(request.digest));
 
-    const ownership = await this.creditsRepo.getOrCreateCreditOwnership(cached.organizationEndUserId);
+    const ownership = await this.creditsRepo.getOrCreateCreditOwnership(
+      cached.organizationId,
+      cached.organizationEndUserId,
+    );
     return this.confirmedResponse(cached, Number(ownership.confirmedBalance), result.digest);
   }
 

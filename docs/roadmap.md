@@ -200,8 +200,11 @@ then move the row to **Implemented** in the same pull request.
   `WebhooksRepository.claimDueDeliveries`' scan (every organization's due deliveries; each claim
   then runs under its organization), `CreditsRepository.findMemberOrganizationId` (finds the
   organization), `findCreditOwnershipBySuiAccountId` (the indexer only has the chain account) and
-  `hasAnyLoyaltyTransactions` (environment-wide). Reads that start from an id first read that
-  row's organization (`tenantOf` in `tenant-lookup.ts`). Checks on `organizations` and `end_users`,
+  `hasAnyLoyaltyTransactions` (environment-wide). Request paths pass the authenticated
+  organization, so RLS refuses another organization's row. Only worker and indexer callbacks,
+  which start from an id, first read that row's organization (`tenantOf` in `tenant-lookup.ts`);
+  the console and POS finalize steps share two of them (`confirmPosRedemptionOnChain`,
+  `confirmVoucherUse` and their `fail…`), keyed by a digest cached at the authenticated reserve. Checks on `organizations` and `end_users`,
   which the tenant role cannot read, run as the connection's own role (`asOwnRole`).
   `recordEarnTransaction` still accepts its command before entering `withActiveMember`, as before.
   Other repositories (identity, members, programs, operations, organizations…) are not converted.

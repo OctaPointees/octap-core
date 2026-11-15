@@ -103,7 +103,7 @@ export class RewardsService {
   }
 
   async getVoucher(organizationId: string, voucherId: string): Promise<VoucherDto> {
-    const voucher = await this.rewardsRepo.findVoucherById(voucherId);
+    const voucher = await this.rewardsRepo.findVoucherById(organizationId, voucherId);
     if (!voucher || voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with id ${voucherId} not found`);
     }
@@ -220,7 +220,7 @@ export class RewardsService {
     if (memberOrgId !== organizationId) {
       throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
     }
-    const ownerships = await this.rewardsRepo.listOwnershipsByMember(organizationEndUserId);
+    const ownerships = await this.rewardsRepo.listOwnershipsByMember(organizationId, organizationEndUserId);
     return ownerships
       .filter((o) => o.voucher.organizationId === organizationId)
       .map((o) => ({
@@ -239,7 +239,7 @@ export class RewardsService {
 
   private async requireChainMember(organizationId: string, organizationEndUserId: string): Promise<void> {
     await requireProgramConfig(this.programsRepo, organizationId);
-    if (!(await this.creditsRepo.findBeneficiaryAddress(organizationEndUserId))) {
+    if (!(await this.creditsRepo.findBeneficiaryAddress(organizationId, organizationEndUserId))) {
       throw new BadRequestException('Member has no linked Sui address');
     }
   }

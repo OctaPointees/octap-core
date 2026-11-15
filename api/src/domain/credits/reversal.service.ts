@@ -27,7 +27,10 @@ export class ReversalService {
       if (existingByIdempotency.transactionType !== 'REVERSAL' || !existingByIdempotency.reversesTransactionId) {
         throw new ConflictException('This idempotency key was already used for a different operation');
       }
-      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(existingByIdempotency.organizationEndUserId);
+      const ownership = await this.creditsRepo.getOrCreateCreditOwnership(
+        organizationId,
+        existingByIdempotency.organizationEndUserId,
+      );
       const newBalance = Number(ownership.confirmedBalance);
       return {
         reversalTransactionId: existingByIdempotency.id,

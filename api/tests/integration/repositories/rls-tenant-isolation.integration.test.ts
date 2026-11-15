@@ -192,26 +192,72 @@ describe('withTenant inside a caller transaction', () => {
 
   it('asOwnRole steps out for one check and back into the tenant', async () => {
     await withTenant(db, a.orgId, async (tx) => {
-      const organizations = await asOwnRole(tx, () => visibleIds(tx, schema.organizations as never));
+      const organizations = await asOwnRole(tx, (own) => visibleIds(own, schema.organizations as never));
       expect(organizations).toHaveLength(2);
+      expect(await currentUser(tx)).toBe('authenticated');
+      expect(await visibleIds(tx, schema.vouchers)).toEqual([a.ids.vouchers]);
+    });
+  });
+
+  it('a failed asOwnRole check leaves the block in the tenant role', async () => {
+    await withTenant(db, a.orgId, async (tx) => {
+      await expect(
+        asOwnRole(tx, async () => {
+          throw new Error('inactive');
+        }),
+      ).rejects.toThrow('inactive');
       expect(await currentUser(tx)).toBe('authenticated');
       expect(await visibleIds(tx, schema.vouchers)).toEqual([a.ids.vouchers]);
     });
   });
 });
 
-describe('repositories that start from an id run under that row’s organization', () => {
-  it('reads by id still find the row, and only rows of its own organization', async () => {
-    const rewards = new RewardsRepository(db);
+describe('worker callbacks that start from an id run under that row’s own organization', () => {
+  it('still find their row, and a missing id keeps its old answer', async () => {
     const credits = new CreditsRepository(db);
     const webhooks = new WebhooksRepository(db);
-    expect((await rewards.findVoucherById(b.ids.vouchers))?.id).toBe(b.ids.vouchers);
-    expect((await rewards.listOwnershipsByMember(b.memberId)).map((o) => o.id)).toEqual([b.ids.voucherOwnerships]);
-    expect((await credits.getLoyaltyTransactionById(a.ids.loyaltyTransactions))?.id).toBe(a.ids.loyaltyTransactions);
-    expect((await credits.getCreditOwnershipByEndUserId(a.memberId))?.id).toBe(a.ids.creditOwnerships);
+    expect((await credits.getLoyaltyTransactionById(b.ids.loyaltyTransactions))?.id).toBe(b.ids.loyaltyTransactions);
     expect((await webhooks.findEndpointById(a.ids.webhookEndpoints))?.id).toBe(a.ids.webhookEndpoints);
-    // An id that does not exist keeps its old answer.
-    expect(await rewards.findVoucherById('00000000-0000-0000-0000-000000000000')).toBeUndefined();
+    expect(await webhooks.findEndpointById('00000000-0000-0000-0000-000000000000')).toBeUndefined();
+  });
+});
+
+describe('request paths pass the authenticated organization, so RLS refuses another organization’s row', () => {
+  it('reads with the right organization find the row', async () => {
+    const rewards = new RewardsRepository(db);
+    const credits = new CreditsRepository(db);
+    expect((await rewards.findVoucherById(b.orgId, b.ids.vouchers))?.id).toBe(b.ids.vouchers);
+    expect((await rewards.listOwnershipsByMember(b.orgId, b.memberId)).map((o) => o.id)).toEqual([
+      b.ids.voucherOwnerships,
+    ]);
+    expect((await credits.getCreditOwnershipByEndUserId(a.orgId, a.memberId))?.id).toBe(a.ids.creditOwnerships);
+    expect((await credits.getOrCreateCreditOwnership(a.orgId, a.memberId)).id).toBe(a.ids.creditOwnerships);
+    expect(await credits.findBeneficiaryAddress(a.orgId, a.memberId)).not.toBeNull();
+  });
+
+  it('reads with another organization see nothing', async () => {
+    const rewards = new RewardsRepository(db);
+    const credits = new CreditsRepository(db);
+    expect(await rewards.findVoucherById(a.orgId, b.ids.vouchers)).toBeUndefined();
+    expect(await rewards.listOwnershipsByMember(a.orgId, b.memberId)).toEqual([]);
+    expect(await credits.getCreditOwnershipByEndUserId(a.orgId, b.memberId)).toBeUndefined();
+    expect(await credits.findBeneficiaryAddress(a.orgId, b.memberId)).toBeNull();
+  });
+
+  it('writes with another organization change nothing, or are refused', async () => {
+    const credits = new CreditsRepository(db);
+    const webhooks = new WebhooksRepository(db);
+    expect(await webhooks.rotateEndpointSecret(a.orgId, b.ids.webhookEndpoints, 'stolen')).toBeUndefined();
+    expect(await webhooks.setEndpointStatus(a.orgId, b.ids.webhookEndpoints, 'DISABLED')).toBeUndefined();
+    expect(await webhooks.resetForReplay(a.orgId, b.ids.webhookDeliveries)).toBeUndefined();
+    const [endpoint] = await db
+      .select()
+      .from(schema.webhookEndpoints)
+      .where(sql`${schema.webhookEndpoints.id} = ${b.ids.webhookEndpoints}`);
+    expect(endpoint).toMatchObject({ secret: 'secret', status: 'ACTIVE' });
+
+    // B's member has a credit account already, which A cannot see: creating a second one is refused.
+    await expect(credits.getOrCreateCreditOwnership(a.orgId, b.memberId)).rejects.toMatchObject(RLS_REJECTED);
   });
 
   it('an organization-scoped read cannot reach another organization’s row', async () => {

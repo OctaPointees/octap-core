@@ -196,13 +196,9 @@ export class RewardsRepository {
     );
   }
 
-  async findVoucherById(id: string) {
-    return withTenantOf(
-      this.db,
-      (db) => tenantOf.voucher(db, id),
-      (tx) => tx.query.vouchers.findFirst({ where: eq(vouchers.id, id) }),
-      () => undefined,
-    );
+  /** Under the caller's organization: another organization's voucher is not found. */
+  async findVoucherById(organizationId: string, id: string) {
+    return withTenant(this.db, organizationId, (tx) => tx.query.vouchers.findFirst({ where: eq(vouchers.id, id) }));
   }
 
   async findVoucherByCode(organizationId: string, code: string, db: DrizzleDb = this.db) {
@@ -286,7 +282,7 @@ export class RewardsRepository {
    * lock order (voucher, then organization) and the rule (settling accepted work stays allowed) hold.
    */
   private async requireActiveMember(tx: DrizzleDb, organizationId: string, memberId: string) {
-    await asOwnRole(tx, () => this.checkActiveMember(tx, organizationId, memberId));
+    await asOwnRole(tx, (own) => this.checkActiveMember(own, organizationId, memberId));
   }
 
   private async checkActiveMember(tx: DrizzleDb, organizationId: string, memberId: string) {
@@ -795,17 +791,13 @@ export class RewardsRepository {
     return true;
   }
 
-  async listOwnershipsByMember(organizationEndUserId: string) {
-    return withTenantOf(
-      this.db,
-      (db) => tenantOf.member(db, organizationEndUserId),
-      (tx) =>
-        tx.query.voucherOwnerships.findMany({
-          where: eq(voucherOwnerships.organizationEndUserId, organizationEndUserId),
-          with: { voucher: true },
-          orderBy: [desc(voucherOwnerships.claimedAt)],
-        }),
-      () => [],
+  async listOwnershipsByMember(organizationId: string, organizationEndUserId: string) {
+    return withTenant(this.db, organizationId, (tx) =>
+      tx.query.voucherOwnerships.findMany({
+        where: eq(voucherOwnerships.organizationEndUserId, organizationEndUserId),
+        with: { voucher: true },
+        orderBy: [desc(voucherOwnerships.claimedAt)],
+      }),
     );
   }
 }

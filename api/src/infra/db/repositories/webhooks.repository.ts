@@ -40,8 +40,11 @@ export async function enqueueWebhookEvent(
 }
 
 /**
- * Every method runs under the endpoint's organization's RLS context (`withTenant`), except the
- * worker's scan for due deliveries across organizations (`claimDueDeliveries`).
+ * Every method runs under an organization's RLS context (`withTenant`), except the worker's scan for
+ * due deliveries across organizations (`claimDueDeliveries`). Request paths pass the authenticated
+ * organization, so RLS refuses another organization's endpoint or delivery. Only the delivery
+ * worker's callbacks (`findEndpointById`, `markDelivered`, `scheduleRetry`, `markDeadLetter`) start
+ * from an id and run under that row's own organization.
  */
 @Injectable()
 export class WebhooksRepository {
@@ -97,8 +100,8 @@ export class WebhooksRepository {
     );
   }
 
-  async setEndpointStatus(endpointId: string, status: 'ACTIVE' | 'DISABLED') {
-    return this.ofEndpoint(endpointId, async (tx) => {
+  async setEndpointStatus(organizationId: string, endpointId: string, status: 'ACTIVE' | 'DISABLED') {
+    return withTenant(this.db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookEndpoints)
         .set({ status, updatedAt: new Date() })
@@ -108,8 +111,8 @@ export class WebhooksRepository {
     });
   }
 
-  async rotateEndpointSecret(endpointId: string, secret: string) {
-    return this.ofEndpoint(endpointId, async (tx) => {
+  async rotateEndpointSecret(organizationId: string, endpointId: string, secret: string) {
+    return withTenant(this.db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookEndpoints)
         .set({ secret, updatedAt: new Date() })
@@ -235,8 +238,8 @@ export class WebhooksRepository {
   }
 
   /** Resets a FAILED/DEAD_LETTER delivery back to PENDING for immediate redelivery, same id. */
-  async resetForReplay(id: string) {
-    return this.ofDelivery(id, async (tx) => {
+  async resetForReplay(organizationId: string, id: string) {
+    return withTenant(this.db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookDeliveries)
         .set({

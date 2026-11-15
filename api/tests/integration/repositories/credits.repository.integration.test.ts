@@ -69,7 +69,7 @@ async function confirmedPosRedeem(params: {
   pointsAmount: number;
   idempotencyKey: string;
 }) {
-  const ownership = await repo.getOrCreateCreditOwnership(params.organizationEndUserId);
+  const ownership = await repo.getOrCreateCreditOwnership(params.organizationId, params.organizationEndUserId);
   await repo.setSuiCreditAccountId(ownership.id, '0xacc');
   const hold = await repo.reservePosRedemption({ ...params, benefit: POS_BENEFIT });
   await repo.confirmPosRedemptionOnChain({
@@ -97,21 +97,21 @@ async function bucketsOf(member = memberId) {
 describe('membership lookups', () => {
   it('resolves a member’s organization and zkLogin address, and null for unknown/addressless members', async () => {
     expect(await repo.findMemberOrganizationId(memberId)).toBe(orgId);
-    expect(await repo.findBeneficiaryAddress(memberId)).toBe('0xbeneficiary');
+    expect(await repo.findBeneficiaryAddress(orgId, memberId)).toBe('0xbeneficiary');
 
     const ghost = '00000000-0000-0000-0000-000000000000';
     expect(await repo.findMemberOrganizationId(ghost)).toBeNull();
-    expect(await repo.findBeneficiaryAddress(ghost)).toBeNull();
+    expect(await repo.findBeneficiaryAddress(orgId, ghost)).toBeNull();
 
     const { memberId: noAddress } = await seedMember(db, orgId, { withAddress: false });
-    expect(await repo.findBeneficiaryAddress(noAddress)).toBeNull();
+    expect(await repo.findBeneficiaryAddress(orgId, noAddress)).toBeNull();
   });
 
   it('getOrCreateCreditOwnership creates a zeroed row once', async () => {
-    const created = await repo.getOrCreateCreditOwnership(memberId);
+    const created = await repo.getOrCreateCreditOwnership(orgId, memberId);
     expect(created).toMatchObject({ confirmedBalance: 0, pendingEarn: 0, pendingRedemption: 0 });
-    expect((await repo.getOrCreateCreditOwnership(memberId)).id).toBe(created.id);
-    expect((await repo.getCreditOwnershipByEndUserId(memberId))?.id).toBe(created.id);
+    expect((await repo.getOrCreateCreditOwnership(orgId, memberId)).id).toBe(created.id);
+    expect((await repo.getCreditOwnershipByEndUserId(orgId, memberId))?.id).toBe(created.id);
   });
 });
 
@@ -387,7 +387,7 @@ describe('earn', () => {
   });
 
   it('stores and resolves the on-chain account id', async () => {
-    const ownership = await repo.getOrCreateCreditOwnership(memberId);
+    const ownership = await repo.getOrCreateCreditOwnership(orgId, memberId);
     await repo.setSuiCreditAccountId(ownership.id, '0xacc');
     expect((await repo.findCreditOwnershipBySuiAccountId('0xacc'))?.organizationEndUserId).toBe(memberId);
   });

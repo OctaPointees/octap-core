@@ -45,12 +45,12 @@ describe('endpoints', () => {
     expect(await repo.findEndpointForOrganization(other.id, endpointId)).toBeUndefined();
     expect((await repo.findEndpointById(endpointId))?.secret).toBe('whsec_1');
 
-    expect((await repo.setEndpointStatus(endpointId, 'DISABLED')).status).toBe('DISABLED');
+    expect((await repo.setEndpointStatus(orgId, endpointId, 'DISABLED')).status).toBe('DISABLED');
     expect(await repo.listActiveEndpoints(orgId)).toEqual([]);
-    await repo.setEndpointStatus(endpointId, 'ACTIVE');
+    await repo.setEndpointStatus(orgId, endpointId, 'ACTIVE');
     expect((await repo.listActiveEndpoints(orgId)).map((e) => e.id)).toEqual([endpointId]);
 
-    expect((await repo.rotateEndpointSecret(endpointId, 'whsec_2')).secret).toBe('whsec_2');
+    expect((await repo.rotateEndpointSecret(orgId, endpointId, 'whsec_2')).secret).toBe('whsec_2');
   });
 });
 
@@ -125,7 +125,7 @@ describe('deliveries', () => {
       lastError: 'HTTP 500',
     });
 
-    const replayed = await repo.resetForReplay(d.id);
+    const replayed = await repo.resetForReplay(orgId, d.id);
     expect(replayed).toMatchObject({ id: d.id, status: 'PENDING', attemptCount: 0, lastError: null });
 
     await repo.markDelivered(d.id, 204);
@@ -145,7 +145,7 @@ describe('enqueueWebhookEvent (OCT-209 outbox)', () => {
       url: 'https://merchant.example/c',
       secret: 'whsec_3',
     });
-    await repo.setEndpointStatus(disabled.id, 'DISABLED');
+    await repo.setEndpointStatus(orgId, disabled.id, 'DISABLED');
     const other = await seedOrganization(db);
     await repo.createEndpoint({ organizationId: other.id, url: 'https://other.example', secret: 'whsec_4' });
 

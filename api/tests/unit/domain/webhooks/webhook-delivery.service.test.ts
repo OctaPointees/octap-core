@@ -62,7 +62,7 @@ describe('WebhookDeliveryService.list / replay', () => {
       stub<WebhooksRepository>({
         findDeliveryForOrganization: async (orgId: string, id: string) =>
           orgId === 'org-1' && id === 'dlv-1' ? deadLetter : undefined,
-        resetForReplay: async (id: string) => ({ id, status: 'PENDING', attemptCount: 0 }),
+        resetForReplay: async (_organizationId: string, id: string) => ({ id, status: 'PENDING', attemptCount: 0 }),
       }),
     );
 

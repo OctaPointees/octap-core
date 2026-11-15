@@ -9,7 +9,8 @@ import { webhookDeliveries, webhookEndpoints } from '../schema/webhooks.schema.j
 
 /**
  * Which organization a row belongs to, for repository methods that start from an id alone (worker
- * and indexer callbacks). These are the only reads that run before the RLS context exists: each
+ * and indexer callbacks). Never for a request path: there the caller passes the authenticated
+ * organization, so RLS can refuse a row of another one; deriving it from the row could not. These are the only reads that run before the RLS context exists: each
  * reads the one organization column, and the method's real work then runs under `withTenant` for
  * that organization.
  */

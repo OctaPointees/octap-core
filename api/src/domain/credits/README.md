@@ -25,9 +25,10 @@ Persistence is `infra/db/repositories/credits.repository.ts`; HTTP is `api/rest/
 Every repository method runs under the member's organization's RLS context (`infra/db/rls.ts`'s
 `withTenant()`, or `withRls()` for the original write transactions), so Postgres RLS is a real
 second line of defense on `loyalty_transactions`, `credit_ownerships` and `credit_buckets`, not
-just the app-code tenant checks in `credits.service.ts`/`earn.service.ts`/etc. Worker and indexer
-callbacks (`confirmEarnOnChain`, `failPosRedemptionOnChain`, …) start from an id, read that row's
-organization, then run under it (OCT-289). Three lookups stay on the plain connection, marked
+just the app-code tenant checks in `credits.service.ts`/`earn.service.ts`/etc. Request paths pass the
+authenticated organization (`getOrCreateCreditOwnership(organizationId, …)`, …); only worker and
+indexer callbacks (`confirmEarnOnChain`, `failPosRedemptionOnChain`, …) start from an id, read that
+row's organization, then run under it (OCT-289). Three lookups stay on the plain connection, marked
 `RLS exception`: `findMemberOrganizationId`, `findCreditOwnershipBySuiAccountId`,
 `hasAnyLoyaltyTransactions`.
 Expiry mirrors `credit_account.move`'s buckets (OCT-49): each confirmed earn writes a

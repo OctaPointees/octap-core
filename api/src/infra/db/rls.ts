@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { PgTransaction } from 'drizzle-orm/pg-core';
 import type { DrizzleDb } from './postgres.provider.js';
 
 export interface RlsContext {
@@ -17,19 +18,24 @@ type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
  * transaction as it found it. `SET LOCAL` outlives a released savepoint, so without restoring, the
  * rest of the caller's transaction would keep the tenant role, and could no longer see or lock rows
  * only the connection's own role may (`organizations`, for one). A savepoint that rolls back
- * reverts the settings by itself.
+ * reverts the settings by itself. Called on the pool, the block is its own transaction and its
+ * settings end with it, so there is nothing to read or restore.
  *
  * Checks on tables the tenant role cannot read (an organization's status, a member's global user)
  * belong before this call, on the caller's connection.
  */
 export async function withTenant<T>(db: DrizzleDb, organizationId: string, work: (tx: Tx) => Promise<T>): Promise<T> {
+  const nested = db instanceof PgTransaction;
   return db.transaction(async (tx) => {
+    const enter = sql`select set_config('role', 'authenticated', true), set_config('app.current_tenant_id', ${organizationId}, true)`;
+    if (!nested) {
+      await tx.execute(enter);
+      return work(tx);
+    }
     const [previous] = await tx.execute<{ role: string; tenant: string | null }>(
       sql`select current_setting('role') as role, current_setting('app.current_tenant_id', true) as tenant`,
     );
-    await tx.execute(
-      sql`select set_config('role', 'authenticated', true), set_config('app.current_tenant_id', ${organizationId}, true)`,
-    );
+    await tx.execute(enter);
     const result = await work(tx);
     await tx.execute(
       sql`select set_config('role', ${previous.role}, true), set_config('app.current_tenant_id', ${previous.tenant ?? ''}, true)`,
@@ -43,13 +49,18 @@ export async function withTenant<T>(db: DrizzleDb, organizationId: string, work:
  * checks on tables the tenant role cannot read or lock (an organization's status, a member's global
  * user) that must happen at that point of the block, after locks the block already holds. Moving
  * such a check before the block would change both the lock order and the business rule.
+ *
+ * `work` runs in a savepoint: if it throws, rolling the savepoint back also restores the tenant
+ * role, so a caller that catches the error never carries on with the connection's own role.
  */
-export async function asOwnRole<T>(tx: DrizzleDb, work: () => Promise<T>): Promise<T> {
-  const [previous] = await tx.execute<{ role: string }>(sql`select current_setting('role') as role`);
-  await tx.execute(sql`select set_config('role', 'none', true)`);
-  const result = await work();
-  await tx.execute(sql`select set_config('role', ${previous.role}, true)`);
-  return result;
+export async function asOwnRole<T>(tx: DrizzleDb, work: (tx: Tx) => Promise<T>): Promise<T> {
+  return tx.transaction(async (inner) => {
+    const [previous] = await inner.execute<{ role: string }>(sql`select current_setting('role') as role`);
+    await inner.execute(sql`select set_config('role', 'none', true)`);
+    const result = await work(inner);
+    await inner.execute(sql`select set_config('role', ${previous.role}, true)`);
+    return result;
+  });
 }
 
 /**

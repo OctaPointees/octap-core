@@ -100,8 +100,14 @@ export class VoucherUseService {
       }
     }
 
-    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(ownership.organizationEndUserId);
-    const account = await this.creditsRepo.getCreditOwnershipByEndUserId(ownership.organizationEndUserId);
+    const beneficiaryAddress = await this.creditsRepo.findBeneficiaryAddress(
+      organizationId,
+      ownership.organizationEndUserId,
+    );
+    const account = await this.creditsRepo.getCreditOwnershipByEndUserId(
+      organizationId,
+      ownership.organizationEndUserId,
+    );
     if (!beneficiaryAddress || !account?.suiCreditAccountId || !voucher.suiTermsId) {
       throw new BadRequestException('This voucher has no on-chain record to use');
     }
