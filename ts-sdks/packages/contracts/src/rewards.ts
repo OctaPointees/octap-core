@@ -28,7 +28,8 @@ export interface CreateVoucherRequest {
   totalSupply?: number | null;
   /**
    * How many vouchers of this kind one member may hold, counting used and expired ones but not
-   * cancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.
+   * cancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,
+   * like supply; lowering it never takes back vouchers already issued.
    */
   perMemberLimit?: number | null;
   startsAt?: string | null;
