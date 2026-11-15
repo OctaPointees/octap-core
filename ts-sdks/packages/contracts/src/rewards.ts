@@ -26,6 +26,11 @@ export interface CreateVoucherRequest {
    */
   terms?: Record<string, unknown>;
   totalSupply?: number | null;
+  /**
+   * How many vouchers of this kind one member may hold, counting used and expired ones but not
+   * cancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.
+   */
+  perMemberLimit?: number | null;
   startsAt?: string | null;
   /** At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated. */
   expiresAt?: string | null;
@@ -51,6 +56,8 @@ export interface VoucherDto {
   /** The refund policy published with the terms. */
   refundPolicy?: VoucherRefundPolicySnapshot | null;
   totalSupply?: number | null;
+  /** `null` is no limit. */
+  perMemberLimit: number | null;
   claimedCount: number;
   status: VoucherStatus;
   startsAt?: string | null;

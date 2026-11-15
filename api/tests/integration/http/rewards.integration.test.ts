@@ -186,8 +186,15 @@ describe('rewards over HTTP', () => {
       discountType: 'FREE_ITEM',
       pointsCost: 60,
       totalSupply: 2,
+      perMemberLimit: 1,
     }).expect(201);
-    expect(created.body).toMatchObject({ code: 'coffee', pointsCost: 60, status: 'ACTIVE', claimedCount: 0 });
+    expect(created.body).toMatchObject({
+      code: 'coffee',
+      pointsCost: 60,
+      status: 'ACTIVE',
+      claimedCount: 0,
+      perMemberLimit: 1,
+    });
     await createVoucher({ code: 'coffee', title: 'dup', discountType: 'FREE_ITEM' }).expect(409);
 
     expect((await ctx.http().get('/v1/rewards/vouchers').set(auth).expect(200)).body).toHaveLength(1);
@@ -226,13 +233,14 @@ describe('rewards over HTTP', () => {
       (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(auth).expect(200)).body.confirmedBalance,
     ).toBe(40);
 
-    // Same member again: refused by the per-member uniqueness rule.
-    await ctx
+    // Same member again: refused by the voucher's per-member limit.
+    const again = await ctx
       .http()
       .post(`/v1/rewards/vouchers/${created.body.id}/claim`)
       .set(auth)
       .send({ organizationEndUserId: memberId, idempotencyKey: 'claim-2' })
-      .expect(400);
+      .expect(409);
+    expect(again.body.message).toMatch(/per-member limit \(1\)/);
 
     const prepared = await ctx
       .http()

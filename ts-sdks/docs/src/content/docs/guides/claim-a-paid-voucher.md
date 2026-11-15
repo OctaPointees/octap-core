@@ -91,4 +91,4 @@ Whatever your interface looks like, follow these:
 - Resume with the same key. Use a new key only after `CANCELLED`.
 - An unsigned claim is released after 30 minutes, which returns its points and stock.
 
-A member can hold only one non-cancelled claim per voucher.
+How many claims of one voucher a member can hold is the voucher's `perMemberLimit` (no limit when `null`). Used and expired vouchers count toward it, cancelled ones don't. A claim past it is a 409; retrying the same key never counts twice.

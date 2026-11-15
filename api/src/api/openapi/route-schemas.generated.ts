@@ -919,6 +919,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "number"
         ]
       },
+      "perMemberLimit": {
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
       "startsAt": {
         "type": [
           "null",
@@ -983,6 +990,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "perMemberLimit": {
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
         "type": [
           "null",
           "number"
@@ -2992,6 +3006,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "number"
         ]
       },
+      "perMemberLimit": {
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
       "startsAt": {
         "type": [
           "null",
@@ -3472,6 +3493,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "perMemberLimit": {
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
         "type": [
           "null",
           "number"
@@ -4412,6 +4440,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "number"
         ]
       },
+      "perMemberLimit": {
+        "description": "`null` is no limit.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
       "claimedCount": {
         "type": "number"
       },
@@ -4453,6 +4488,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "id",
       "organizationId",
+      "perMemberLimit",
       "pointsCost",
       "publishStatus",
       "status",

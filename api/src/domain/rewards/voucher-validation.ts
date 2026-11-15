@@ -41,6 +41,7 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     'discountValue',
     'terms',
     'totalSupply',
+    'perMemberLimit',
     'startsAt',
     'expiresAt',
     'metadata',
@@ -73,6 +74,13 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     (!Number.isInteger(input.totalSupply) || input.totalSupply < 1 || input.totalSupply > 2147483647)
   ) {
     throw new BadRequestException('totalSupply must be a positive 32-bit integer or null');
+  }
+  if (
+    input.perMemberLimit !== undefined &&
+    input.perMemberLimit !== null &&
+    (!Number.isInteger(input.perMemberLimit) || input.perMemberLimit < 1 || input.perMemberLimit > 2147483647)
+  ) {
+    throw new BadRequestException('perMemberLimit must be a positive 32-bit integer or null');
   }
   if (input.terms !== undefined && (!input.terms || typeof input.terms !== 'object' || Array.isArray(input.terms))) {
     throw new BadRequestException('terms must be an object');

@@ -5121,6 +5121,13 @@
               "number"
             ]
           },
+          "perMemberLimit": {
+            "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
           "startsAt": {
             "type": [
               "null",
@@ -5185,6 +5192,13 @@
             "$ref": "#/components/schemas/Record_string_unknown"
           },
           "totalSupply": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "perMemberLimit": {
+            "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
             "type": [
               "null",
               "number"
@@ -7194,6 +7208,13 @@
               "number"
             ]
           },
+          "perMemberLimit": {
+            "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
           "startsAt": {
             "type": [
               "null",
@@ -7674,6 +7695,13 @@
             "$ref": "#/components/schemas/Record_string_unknown"
           },
           "totalSupply": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "perMemberLimit": {
+            "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
             "type": [
               "null",
               "number"
@@ -8614,6 +8642,13 @@
               "number"
             ]
           },
+          "perMemberLimit": {
+            "description": "`null` is no limit.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
           "claimedCount": {
             "type": "number"
           },
@@ -8655,6 +8690,7 @@
           "createdAt",
           "id",
           "organizationId",
+          "perMemberLimit",
           "pointsCost",
           "publishStatus",
           "status",

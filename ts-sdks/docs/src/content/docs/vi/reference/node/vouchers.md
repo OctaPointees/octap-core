@@ -21,6 +21,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `pointsCost` | `number` | Mặc định là 0, tức voucher miễn phí. |
 | `discountValue` | `string` | |
 | `totalSupply` | `number \| null` | |
+| `perMemberLimit` | `number \| null` | Số voucher loại này một thành viên được giữ, tính cả voucher đã dùng hoặc hết hạn, không tính voucher đã hủy. `null` là không giới hạn. Claim hoặc grant vượt giới hạn trả 409. |
 | `startsAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `expiresAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `metadata` | `object` | |
@@ -30,7 +31,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 
 ## updateVoucher
 
-Nhận bất kỳ field nào của `createVoucher`. Từ khi bắt đầu publish, mọi thứ trong điều khoản được cố định; metadata, số lượng và trạng thái thì không. [Hướng dẫn](/vi/guides/manage-vouchers/)
+Nhận bất kỳ field nào của `createVoucher`. Từ khi bắt đầu publish, mọi thứ trong điều khoản được cố định; metadata, số lượng, `perMemberLimit` và trạng thái thì không. [Hướng dẫn](/vi/guides/manage-vouchers/)
 
 `PATCH /v1/rewards/vouchers/:id` · Scope: `write`
 
