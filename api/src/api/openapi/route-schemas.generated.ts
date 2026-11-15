@@ -920,7 +920,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
           "null",
           "number"
@@ -996,7 +996,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
           "null",
           "number"
@@ -3007,7 +3007,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
           "null",
           "number"
@@ -3499,7 +3499,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. Omit or `null` for no limit. Stays editable after publishing, like supply.",
+        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
           "null",
           "number"
