@@ -113,7 +113,11 @@ describe('rewards over HTTP', () => {
       totalSupply: 2,
       status: 'DRAFT',
     }).expect(201);
+    expect(created.body).toMatchObject({ validForDays: null, perMemberLimit: null });
     const path = `/v1/rewards/vouchers/${created.body.id}`;
+    // A draft's validity is still editable; it is part of the promise once publishing starts.
+    expect((await ctx.http().patch(path).set(auth).send({ validForDays: 30 }).expect(200)).body.validForDays).toBe(30);
+    await ctx.http().patch(path).set(auth).send({ validForDays: 0 }).expect(400);
     await ctx
       .http()
       .post(`${path}/claim`)
@@ -128,6 +132,7 @@ describe('rewards over HTTP', () => {
       publishStatus: 'PUBLISHING',
     });
     await ctx.http().patch(path).set(auth).send({ title: 'Too late' }).expect(409);
+    await ctx.http().patch(path).set(auth).send({ validForDays: 7 }).expect(409);
     await ctx.app.get(RewardsRepository).markVoucherPublished(created.body.id, '0xterms');
     expect((await ctx.http().get(path).set(auth).expect(200)).body).toMatchObject({
       status: 'ACTIVE',

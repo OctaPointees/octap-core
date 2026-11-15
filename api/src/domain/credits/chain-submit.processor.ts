@@ -133,6 +133,7 @@ export class ChainSubmitProcessor {
           pointsCost: Number(voucher.pointsCost),
           startsAtMs: voucher.startsAt?.getTime() ?? 0,
           expiresAtMs: voucher.expiresAt?.getTime() ?? 0,
+          useDurationMs: (voucher.validForDays ?? 0) * 86_400_000,
         });
       },
       confirm: async (result) => {

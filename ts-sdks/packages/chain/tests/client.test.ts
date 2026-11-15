@@ -72,6 +72,7 @@ describe('OctapChainClient transaction builders', () => {
           pointsCost: 5,
           startsAtMs: 0,
           expiresAtMs: 0,
+          useDurationMs: 7 * 86_400_000,
         }),
       ),
     ).toEqual([`${PKG}::voucher_terms::publish_terms`]);

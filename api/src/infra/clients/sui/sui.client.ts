@@ -140,7 +140,14 @@ export class SuiClientService {
   /** Builds and signs a `publish_terms`, without sending it. */
   async signPublishVoucherTerms(
     program: OctapProgramConfig,
-    params: { voucherId: string; terms: Uint8Array; pointsCost: number; startsAtMs: number; expiresAtMs: number },
+    params: {
+      voucherId: string;
+      terms: Uint8Array;
+      pointsCost: number;
+      startsAtMs: number;
+      expiresAtMs: number;
+      useDurationMs: number;
+    },
   ): Promise<SignedChainTransaction> {
     const tx = this.client.buildPublishVoucherTermsTransaction({
       issuerCapId: program.issuerCapId,
@@ -150,6 +157,7 @@ export class SuiClientService {
       pointsCost: params.pointsCost,
       startsAtMs: params.startsAtMs,
       expiresAtMs: params.expiresAtMs,
+      useDurationMs: params.useDurationMs,
     });
     // Up to 8 KB of terms is stored on-chain, which costs more than the other calls here.
     tx.setGasBudget(100_000_000);

@@ -4,6 +4,7 @@ import { eq, desc, and, sql, ne, isNull, count } from 'drizzle-orm';
 import {
   DEFAULT_VOUCHER_REFUND_POLICY,
   VOUCHER_MIN_USE_WINDOW_MS,
+  voucherUseDeadline,
   type ClaimVoucherResponse,
   type CreateVoucherRequest,
 } from '@octap/contracts';
@@ -66,6 +67,7 @@ const PUBLISHED_FIELDS = [
   'terms',
   'startsAt',
   'expiresAt',
+  'validForDays',
 ] as const;
 
 /** A voucher rule a request broke. `RewardsService` maps `kind` to the HTTP status. */
@@ -518,7 +520,8 @@ export class RewardsRepository {
         pendingOperationId: params.pendingOperationId,
         serialCode: `${voucher.code.toUpperCase()}-${randomBytes(8).toString('hex').toUpperCase()}`,
         loyaltyTransactionId: params.loyaltyTransactionId,
-        expiresAt: voucher.expiresAt,
+        // Provisional: fixed again when it becomes AVAILABLE, which is when the chain issues it.
+        expiresAt: voucherUseDeadline(voucher, new Date()),
       })
       .returning();
     const claimedCount = voucher.claimedCount + 1;
@@ -609,12 +612,19 @@ export class RewardsRepository {
       .for('update');
     if (!ownership || ownership.status !== 'RESERVED' || ownership.loyaltyTransactionId) return null;
     const key = await this.operationKey(tx, ownership.pendingOperationId);
+    const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
+    const now = new Date();
     const [updated] = await tx
       .update(voucherOwnerships)
-      .set({ status: 'AVAILABLE', pendingOperationId: null, updatedAt: new Date() })
+      // The chain issued it now: its own deadline starts here.
+      .set({
+        status: 'AVAILABLE',
+        pendingOperationId: null,
+        expiresAt: voucherUseDeadline(voucher!, now),
+        updatedAt: now,
+      })
       .where(eq(voucherOwnerships.id, ownership.id))
       .returning();
-    const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
     await enqueueWebhookEvent(tx, {
       organizationId: voucher!.organizationId,
       eventType: 'voucher.granted',

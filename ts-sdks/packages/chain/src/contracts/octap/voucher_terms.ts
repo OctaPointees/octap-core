@@ -23,8 +23,16 @@ export const VoucherTerms = new MoveStruct({ name: `${$moduleName}::VoucherTerms
         points_cost: bcs.u64(),
         /** Zero means no start limit. */
         starts_at_ms: bcs.u64(),
-        /** Zero means it never expires. */
-        expires_at_ms: bcs.u64()
+        /**
+         * Zero means it never expires. With a use duration, it is the claim window's close
+         * and the cap on every customer's deadline.
+         */
+        expires_at_ms: bcs.u64(),
+        /**
+         * How long each customer's voucher stays usable from when it was issued to them,
+         * capped by `expires_at_ms`. Zero means every voucher expires at `expires_at_ms`.
+         */
+        use_duration_ms: bcs.u64()
     } });
 export const VoucherTermsPublished = new MoveStruct({ name: `${$moduleName}::VoucherTermsPublished`, fields: {
         terms_id: bcs.Address,
@@ -33,7 +41,8 @@ export const VoucherTermsPublished = new MoveStruct({ name: `${$moduleName}::Vou
         reference: bcs.vector(bcs.u8()),
         points_cost: bcs.u64(),
         starts_at_ms: bcs.u64(),
-        expires_at_ms: bcs.u64()
+        expires_at_ms: bcs.u64(),
+        use_duration_ms: bcs.u64()
     } });
 export interface PublishTermsArguments {
     issuer: RawTransactionArgument<string>;
@@ -43,6 +52,7 @@ export interface PublishTermsArguments {
     pointsCost: RawTransactionArgument<number | bigint>;
     startsAtMs: RawTransactionArgument<number | bigint>;
     expiresAtMs: RawTransactionArgument<number | bigint>;
+    useDurationMs: RawTransactionArgument<number | bigint>;
 }
 export interface PublishTermsOptions {
     package?: string;
@@ -53,11 +63,12 @@ export interface PublishTermsOptions {
         terms: RawTransactionArgument<Array<number>>,
         pointsCost: RawTransactionArgument<number | bigint>,
         startsAtMs: RawTransactionArgument<number | bigint>,
-        expiresAtMs: RawTransactionArgument<number | bigint>
+        expiresAtMs: RawTransactionArgument<number | bigint>,
+        useDurationMs: RawTransactionArgument<number | bigint>
     ];
 }
 export function publishTerms(options: PublishTermsOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null,
         null,
@@ -65,9 +76,10 @@ export function publishTerms(options: PublishTermsOptions) {
         'vector<u8>',
         'u64',
         'u64',
+        'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["issuer", "program", "reference", "terms", "pointsCost", "startsAtMs", "expiresAtMs"];
+    const parameterNames = ["issuer", "program", "reference", "terms", "pointsCost", "startsAtMs", "expiresAtMs", "useDurationMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'voucher_terms',
@@ -85,7 +97,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -107,7 +119,7 @@ export interface PointsCostOptions {
     ];
 }
 export function pointsCost(options: PointsCostOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -129,7 +141,7 @@ export interface TermsOptions {
     ];
 }
 export function terms(options: TermsOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -141,28 +153,83 @@ export function terms(options: TermsOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface IsUnexpiredArguments {
+export interface UseDurationMsArguments {
     terms: RawTransactionArgument<string>;
-    nowMs: RawTransactionArgument<number | bigint>;
 }
-export interface IsUnexpiredOptions {
+export interface UseDurationMsOptions {
     package?: string;
-    arguments: IsUnexpiredArguments | [
-        terms: RawTransactionArgument<string>,
-        nowMs: RawTransactionArgument<number | bigint>
+    arguments: UseDurationMsArguments | [
+        terms: RawTransactionArgument<string>
     ];
 }
-export function isUnexpired(options: IsUnexpiredOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+export function useDurationMs(options: UseDurationMsOptions) {
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["terms"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'voucher_terms',
+        function: 'use_duration_ms',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface UseDeadlineMsArguments {
+    terms: RawTransactionArgument<string>;
+    issuedAtMs: RawTransactionArgument<number | bigint>;
+}
+export interface UseDeadlineMsOptions {
+    package?: string;
+    arguments: UseDeadlineMsArguments | [
+        terms: RawTransactionArgument<string>,
+        issuedAtMs: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * When a voucher issued at `issued_at_ms` stops being usable: the earlier of
+ * `issued_at_ms + use_duration_ms` and `expires_at_ms`. Zero means never.
+ */
+export function useDeadlineMs(options: UseDeadlineMsOptions) {
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["terms", "nowMs"];
+    const parameterNames = ["terms", "issuedAtMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'voucher_terms',
-        function: 'is_unexpired',
+        function: 'use_deadline_ms',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface IsUsableArguments {
+    terms: RawTransactionArgument<string>;
+    issuedAtMs: RawTransactionArgument<number | bigint>;
+    nowMs: RawTransactionArgument<number | bigint>;
+}
+export interface IsUsableOptions {
+    package?: string;
+    arguments: IsUsableArguments | [
+        terms: RawTransactionArgument<string>,
+        issuedAtMs: RawTransactionArgument<number | bigint>,
+        nowMs: RawTransactionArgument<number | bigint>
+    ];
+}
+/** Whether a voucher issued at `issued_at_ms` can still be used at `now_ms`. */
+export function isUsable(options: IsUsableOptions) {
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const argumentsTypes = [
+        null,
+        'u64',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["terms", "issuedAtMs", "nowMs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'voucher_terms',
+        function: 'is_usable',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -177,9 +244,12 @@ export interface IsIssuableOptions {
         nowMs: RawTransactionArgument<number | bigint>
     ];
 }
-/** Started, and usable for at least `MIN_USE_WINDOW_MS` more. */
+/**
+ * Started, and a voucher issued now stays usable for at least `MIN_USE_WINDOW_MS`:
+ * `min(now + use_duration, expires_at) - now`.
+ */
 export function isIssuable(options: IsIssuableOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
     const argumentsTypes = [
         null,
         'u64'

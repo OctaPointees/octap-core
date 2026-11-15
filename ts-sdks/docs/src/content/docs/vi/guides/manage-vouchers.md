@@ -47,7 +47,7 @@ Ngày giờ theo định dạng ISO có giây và múi giờ, ví dụ `2030-01-
 await client.updateVoucher(voucher.id, { status: 'PAUSED' });
 ```
 
-Từ khi bắt đầu publish, `code`, `title`, `description`, `pointsCost`, `terms`, loại và giá trị giảm giá, cùng các mốc ngày không đổi được nữa. Muốn ưu đãi khác, hãy tạo voucher mới. Bạn vẫn đổi được metadata, số lượng và trạng thái. Số lượng không thể thấp hơn số đã claim.
+Từ khi bắt đầu publish, `code`, `title`, `description`, `pointsCost`, `terms`, loại và giá trị giảm giá, các mốc ngày và `validForDays` không đổi được nữa. Muốn ưu đãi khác, hãy tạo voucher mới. Bạn vẫn đổi được metadata, số lượng, `perMemberLimit` và trạng thái. Số lượng không thể thấp hơn số đã claim.
 
 ## Tặng voucher
 

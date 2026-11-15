@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { CreateVoucherRequest, UpdateVoucherRequest } from '@octap/contracts';
+import { VOUCHER_MAX_VALID_FOR_DAYS, type CreateVoucherRequest, type UpdateVoucherRequest } from '@octap/contracts';
 import { assertVoucherTermsFit } from './voucher-terms.js';
 
 /** Date.parse normalizes impossible calendar dates, so validate the components first. */
@@ -52,6 +52,7 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     'perMemberLimit',
     'startsAt',
     'expiresAt',
+    'validForDays',
     'metadata',
     'status',
   ];
@@ -107,6 +108,13 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     if (value !== undefined && value !== null && (typeof value !== 'string' || !isIsoDateTime(value))) {
       throw new BadRequestException(`${key} must be an ISO date-time with a timezone or null`);
     }
+  }
+  if (
+    input.validForDays !== undefined &&
+    input.validForDays !== null &&
+    (!Number.isInteger(input.validForDays) || input.validForDays < 1 || input.validForDays > VOUCHER_MAX_VALID_FOR_DAYS)
+  ) {
+    throw new BadRequestException(`validForDays must be an integer from 1 to ${VOUCHER_MAX_VALID_FOR_DAYS}, or null`);
   }
   if (input.startsAt && input.expiresAt && Date.parse(input.startsAt) >= Date.parse(input.expiresAt)) {
     throw new BadRequestException('expiresAt must be later than startsAt');

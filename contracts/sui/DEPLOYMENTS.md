@@ -14,12 +14,18 @@ Move source.
 
 | Object | Id |
 | --- | --- |
-| Package (`published-at` = `original-id`, v1) | `0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23` |
-| `0x2::package::UpgradeCap` | `0x8fee847b4618fedd327f7706bbed03c512d69b499469f416bd90298acb0164bf` |
-| Publish tx | `G2NjYTyY4vnnX1FxFZoZyrycFDy8UmiHKPAmz88NZuMj` |
+| Package (`published-at` = `original-id`, v1) | `0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a` |
+| `0x2::package::UpgradeCap` | `0xe4b331eea86101b61facd9911004b486f59f1dbc4e78501593839ad7b36d48a7` |
+| Publish tx | `FyQrdAQZxdgFScThbGSsmmXVC5ipG711MBLJ5FUti2nF` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
 | Issuer address (issuer signer, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+
+Fresh publish for OCT-291 (`VoucherTerms.use_duration_ms`): each customer's voucher can be usable for
+a duration from its own `issued_at_ms`, capped by `expires_at_ms` (`voucher_terms::use_deadline_ms`,
+`is_usable`; `is_unexpired` is gone). `publish_terms` takes the duration, and the struct and its event
+changed shape, which is not upgrade-compatible. The previous package `0x775796f0...` (OCT-279) is
+abandoned on testnet, not migrated.
 
 Fresh publish for OCT-279 (`voucher_terms`, and `claim_voucher`, `grant_voucher`, `use_voucher`,
 `cancel_voucher` in `credit_account`): `CreditAccount` gained a `vouchers` table, which is not

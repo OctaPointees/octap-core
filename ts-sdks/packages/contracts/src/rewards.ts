@@ -12,6 +12,23 @@ export type VoucherPublishStatus = 'NOT_PUBLISHED' | 'PUBLISHING' | 'PUBLISHED' 
  */
 export const VOUCHER_MIN_USE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/** The longest `validForDays` a voucher can promise; the contract refuses more. */
+export const VOUCHER_MAX_VALID_FOR_DAYS = 3650;
+
+/**
+ * When one customer's voucher stops being usable, as the contract computes it
+ * (`voucher_terms::use_deadline_ms`): `issuedAt + validForDays`, capped by the catalog's
+ * `expiresAt`, or `expiresAt` alone without `validForDays`. `null` means it never expires.
+ */
+export function voucherUseDeadline(
+  voucher: { expiresAt: Date | null; validForDays?: number | null },
+  issuedAt: Date,
+): Date | null {
+  if (!voucher.validForDays) return voucher.expiresAt;
+  const own = issuedAt.getTime() + voucher.validForDays * 86_400_000;
+  return new Date(voucher.expiresAt === null ? own : Math.min(own, voucher.expiresAt.getTime()));
+}
+
 export interface CreateVoucherRequest {
   code: string;
   title: string;
@@ -43,8 +60,18 @@ export interface CreateVoucherRequest {
    */
   perMemberLimit?: number | null;
   startsAt?: string | null;
-  /** At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated. */
+  /**
+   * When claims close. At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.
+   * Without `validForDays` it is also when every customer's voucher expires; with it, the cap on
+   * each customer's own deadline.
+   */
   expiresAt?: string | null;
+  /**
+   * Each customer's voucher stays usable this many days from when it is issued to them, capped by
+   * `expiresAt`. 1 to `VOUCHER_MAX_VALID_FOR_DAYS`, or omit/`null` so every voucher expires at
+   * `expiresAt`. Part of the on-chain promise: it cannot change once publishing starts.
+   */
+  validForDays?: number | null;
   metadata?: Record<string, unknown>;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED';
 }
@@ -73,6 +100,8 @@ export interface VoucherDto {
   status: VoucherStatus;
   startsAt?: string | null;
   expiresAt?: string | null;
+  /** `null`: every customer's voucher expires at `expiresAt`. */
+  validForDays: number | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
@@ -99,6 +128,10 @@ export interface ClaimVoucherResponse {
   digest?: string | null;
   transactionBytes?: string | null;
   claimedAt: string;
+  /**
+   * This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set
+   * again when the chain issues the voucher, so time spent waiting for a signature doesn't count.
+   */
   expiresAt?: string | null;
 }
 
@@ -157,6 +190,10 @@ export interface VoucherOwnershipDto {
   status: VoucherOwnershipStatus;
   claimedAt: string;
   redeemedAt?: string | null;
+  /**
+   * This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set
+   * again when the chain issues the voucher, so time spent waiting for a signature doesn't count.
+   */
   expiresAt?: string | null;
   voucher?: VoucherDto;
 }

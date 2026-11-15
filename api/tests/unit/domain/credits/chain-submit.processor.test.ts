@@ -999,7 +999,7 @@ describe('ChainSubmitProcessor voucher commands', () => {
     payload: { voucherOwnershipId: 'own-1', organizationEndUserId: 'member-1' },
   });
   const signed = { digest: 'DIGEST-V', expirationEpoch: 7n };
-  const voucher = buildVoucher({ pointsCost: 25, expiresAt: new Date(5000), startsAt: null });
+  const voucher = buildVoucher({ pointsCost: 25, expiresAt: new Date(5000), startsAt: null, validForDays: 7 });
   const termsPublished = fakeChainResult({
     events: [{ type: 'pkg::voucher_terms::VoucherTermsPublished', parsedJson: { terms_id: '0xterms' } }],
   });
@@ -1023,7 +1023,13 @@ describe('ChainSubmitProcessor voucher commands', () => {
     }).process(publishOp);
     expect(signPublishVoucherTerms).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ voucherId: 'v-1', pointsCost: 25, startsAtMs: 0, expiresAtMs: 5000 }),
+      expect.objectContaining({
+        voucherId: 'v-1',
+        pointsCost: 25,
+        startsAtMs: 0,
+        expiresAtMs: 5000,
+        useDurationMs: 7 * 86_400_000,
+      }),
     );
     expect(operations.recordSubmitDigest).toHaveBeenCalledWith('op-p', 'DIGEST-V', 7n);
     expect(markVoucherPublished).toHaveBeenCalledWith('v-1', '0xterms');

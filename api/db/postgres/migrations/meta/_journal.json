@@ -183,6 +183,13 @@
       "when": 1794847514129,
       "tag": "0025_voucher_per_member_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794848034704,
+      "tag": "0026_voucher_valid_for_days",
+      "breakpoints": true
     }
   ]
 }

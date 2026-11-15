@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import type { EarnFailureCode, PosRedemptionBenefit, VoucherRefundPolicySnapshot } from '@octap/contracts';
+import {
+  voucherUseDeadline,
+  type EarnFailureCode,
+  type PosRedemptionBenefit,
+  type VoucherRefundPolicySnapshot,
+} from '@octap/contracts';
 import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
@@ -209,10 +214,20 @@ async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, c
     where: eq(voucherOwnerships.loyaltyTransactionId, loyaltyTransactionId),
   });
   if (!claim || claim.status !== 'RESERVED') return;
-  await tx.select({ id: vouchers.id }).from(vouchers).where(eq(vouchers.id, claim.voucherId)).for('update');
+  const [voucher] = await tx
+    .select({ expiresAt: vouchers.expiresAt, validForDays: vouchers.validForDays })
+    .from(vouchers)
+    .where(eq(vouchers.id, claim.voucherId))
+    .for('update');
+  const now = new Date();
   const [changed] = await tx
     .update(voucherOwnerships)
-    .set({ status: confirmed ? 'AVAILABLE' : 'CANCELLED', updatedAt: new Date() })
+    // A confirmed claim was issued on-chain now, so its own deadline starts here.
+    .set(
+      confirmed
+        ? { status: 'AVAILABLE', expiresAt: voucherUseDeadline(voucher, now), updatedAt: now }
+        : { status: 'CANCELLED', updatedAt: now },
+    )
     .where(and(eq(voucherOwnerships.id, claim.id), eq(voucherOwnerships.status, 'RESERVED')))
     .returning();
   if (changed && !confirmed) await returnVoucherUnit(tx, claim.voucherId);

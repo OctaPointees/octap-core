@@ -655,6 +655,7 @@ describe('voucher terms publishing', () => {
     ['pointsCost', { pointsCost: 99 }],
     ['terms', { terms: { fine: 'print' } }],
     ['expiresAt', { expiresAt: new Date('2099-01-01T00:00:00Z') }],
+    ['validForDays', { validForDays: 30 }],
   ] as const)('freezes %s from the moment publishing starts', async (field, patch) => {
     const voucher = await draft();
     await expect(repo.updateVoucher(orgId, voucher.id, patch, () => {})).rejects.toThrow(
@@ -761,6 +762,72 @@ describe('granted vouchers', () => {
     const granted = await grant((await create()).id);
     await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'grant-digest' });
     expect((await repo.getClaim(orgId, granted.voucherOwnershipId)).transactionId).toBeNull();
+  });
+});
+
+describe('validity from the issue date (OCT-291)', () => {
+  const DAY = 86_400_000;
+  const grant = (voucherId: string, key = 'grant-1') =>
+    repo.claimVoucher(orgId, voucherId, memberId, key, { grant: true });
+  const ownershipRow = async (id: string) =>
+    (await db.select().from(schema.voucherOwnerships).where(eq(schema.voucherOwnerships.id, id)))[0];
+  /** Within a minute of `expected`: the clock moves between the call and the assertion. */
+  const near = (actual: Date | null, expected: number) =>
+    expect(Math.abs(actual!.getTime() - expected)).toBeLessThan(60_000);
+
+  it('without validForDays every voucher keeps the catalog expiry, as before', async () => {
+    const expiresAt = new Date(Date.now() + 30 * DAY);
+    const voucher = await create({ expiresAt });
+    expect(voucher.validForDays).toBeNull();
+    const granted = await grant(voucher.id);
+    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(expiresAt);
+  });
+
+  it('a grant is usable validForDays from when the chain issued it, with no catalog expiry', async () => {
+    const voucher = await create({ validForDays: 14 });
+    const granted = await grant(voucher.id);
+    near(new Date(granted.expiresAt!), Date.now() + 14 * DAY);
+    // Pretend the chain took a day: the deadline restarts at the confirmation.
+    await db
+      .update(schema.voucherOwnerships)
+      .set({ expiresAt: new Date(Date.now() - DAY) })
+      .where(eq(schema.voucherOwnerships.id, granted.voucherOwnershipId));
+    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    near((await ownershipRow(granted.voucherOwnershipId)).expiresAt, Date.now() + 14 * DAY);
+  });
+
+  it('the catalog expiry caps each voucher’s own deadline', async () => {
+    const expiresAt = new Date(Date.now() + 10 * DAY);
+    const voucher = await create({ validForDays: 14, expiresAt });
+    const granted = await grant(voucher.id);
+    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(expiresAt);
+  });
+
+  it('a paid claim’s deadline starts when the chain confirms it, not when it was reserved', async () => {
+    const voucher = await create({ validForDays: 7, pointsCost: 10 });
+    const claimed = await claim(voucher.id);
+    await db
+      .update(schema.voucherOwnerships)
+      .set({ expiresAt: new Date(Date.now() - DAY) })
+      .where(eq(schema.voucherOwnerships.id, claimed.voucherOwnershipId));
+    const confirmed = await confirm(claimed);
+    expect(confirmed.status).toBe('AVAILABLE');
+    near(new Date(confirmed.expiresAt!), Date.now() + 7 * DAY);
+  });
+
+  it('a voucher past its own deadline cannot be used while the catalog is still open', async () => {
+    const voucher = await create({ validForDays: 7, expiresAt: new Date(Date.now() + 30 * DAY) });
+    const granted = await grant(voucher.id);
+    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    await db
+      .update(schema.voucherOwnerships)
+      .set({ expiresAt: new Date(Date.now() - 1) })
+      .where(eq(schema.voucherOwnerships.id, granted.voucherOwnershipId));
+    await expect(
+      repo.reserveVoucherUse({ organizationId: orgId, serialCode: granted.serialCode, idempotencyKey: 'late-use' }),
+    ).rejects.toThrow(/expired/);
   });
 });
 

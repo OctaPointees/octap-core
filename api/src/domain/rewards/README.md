@@ -27,7 +27,7 @@ Every repository method runs under an organization's RLS context (`withTenant`),
 
 OctaP runs the whole voucher lifecycle: catalog, stock, claims, grants and use all go through its API, so a merchant needs no voucher database of its own. The merchant decides the offer, shows the catalog in its own channels and layout, and applies the benefit at checkout from `discountType`, `discountValue` and the conditions in `terms`.
 
-Every point a customer spends is tied to what it bought, and the customer agrees to that by signing. A voucher claim is tied to its frozen terms. A POS redemption is tied to the order and discount hashed into its reference (`posRedemptionReference`). A voucher also stays usable for at least 24 hours after it is claimed or granted.
+Every point a customer spends is tied to what it bought, and the customer agrees to that by signing. A voucher claim is tied to its frozen terms. A POS redemption is tied to the order and discount hashed into its reference (`posRedemptionReference`). A voucher also stays usable for at least 24 hours after it is claimed or granted, counted from its own deadline (see Validity).
 
 The chain can't make a merchant deliver an off-chain benefit. If a merchant refuses a valid voucher, or gets the customer's signature on `use_voucher` and then withholds the discount, the chain is the evidence for the dispute. Resolving it is OctaP policy; cancelling an unused voucher refunds its points. Core also holds each program's `IssuerCap`, so customers trust OctaP not to grant, cancel or reverse on its own. Each of those is a public on-chain event.
 
@@ -35,9 +35,15 @@ The chain can't make a merchant deliver an off-chain benefit. If a merchant refu
 
 A voucher is `ACTIVE` only once the chain holds its terms. Asking for `ACTIVE` sets `publishStatus: PUBLISHING`, snapshots the current refund policy into the voucher, and queues `VOUCHER_TERMS_PUBLISH` for the worker. On success the voucher becomes `PUBLISHED` and `ACTIVE`; a voucher paused meanwhile stays paused. On failure it becomes `FAILED`, can be edited, and can be activated again.
 
-From `PUBLISHING` on, `code`, `title`, `description`, `pointsCost`, `discountType`, `discountValue`, `terms`, `startsAt` and `expiresAt` cannot change, because they are the promise. A different offer is a new voucher. Supply, `perMemberLimit`, metadata and pausing stay editable.
+From `PUBLISHING` on, `code`, `title`, `description`, `pointsCost`, `discountType`, `discountValue`, `terms`, `startsAt`, `expiresAt` and `validForDays` cannot change, because they are the promise. A different offer is a new voucher. Supply, `perMemberLimit`, metadata and pausing stay editable.
 
 `terms` is the merchant's own free-form object, which replaces `discountType` when the benefit fits no OctaP type. `buildVoucherTermsBytes` stores it with the other fields as canonical JSON, at most 8192 bytes. It is public on-chain, so it must hold no personal data.
+
+## Validity
+
+`startsAt`/`expiresAt` are the claim window. Without `validForDays`, `expiresAt` is also when every customer's voucher expires. With `validForDays` (1 to 3650, OCT-291), each customer's voucher is usable that many days from when it was issued to them, capped by `expiresAt`: `min(issued + validForDays, expiresAt)`. A welcome voucher open all year with `validForDays: 14` gives a customer who joins on 3 March until 17 March, and one who joins on 20 August until 3 September.
+
+The chain holds it as `VoucherTerms.use_duration_ms` and checks `use_voucher` against the record's own `issued_at_ms` (`voucher_terms::use_deadline_ms`). In PostgreSQL each customer's deadline is `voucher_ownerships.expires_at`, computed by `voucherUseDeadline` (`@octap/contracts`). It is set provisionally when the voucher is reserved, and set again when the voucher becomes AVAILABLE, which is when the chain issued it. For a paid claim that's the confirmation after the customer signs, up to 30 minutes later, so the signing wait never shortens the customer's time. Core learns of the confirmation shortly after the chain records it, so its deadline can be a few seconds later than the chain's; a use in those seconds fails on-chain and changes nothing. The use check, refunds and member voucher lists all read `voucher_ownerships.expires_at`. Issuing still needs 24 hours of use left: `min(now + validForDays, expiresAt) - now`, which with `validForDays ≥ 1` is the same check on `expiresAt` as before.
 
 ## Issuing
 

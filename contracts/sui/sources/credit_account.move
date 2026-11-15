@@ -348,11 +348,12 @@ entry fun use_voucher(
 ) {
     assert!(tx_context::sender(ctx) == account.beneficiary, ENotBeneficiary);
     assert!(table::contains(&account.vouchers, reference), EUnknownVoucher);
-    assert!(voucher_terms::is_unexpired(terms, clock::timestamp_ms(clock)), EVoucherNotActive);
 
     let terms_id = object::id(terms);
     let record = table::borrow_mut(&mut account.vouchers, reference);
     assert!(record.terms_id == terms_id, EWrongVoucherTerms);
+    // The deadline is this voucher's own: from when it was issued, capped by the terms' expiry.
+    assert!(voucher_terms::is_usable(terms, record.issued_at_ms, clock::timestamp_ms(clock)), EVoucherNotActive);
     assert!(record.status == VOUCHER_AVAILABLE, EVoucherNotAvailable);
     record.status = VOUCHER_USED;
 

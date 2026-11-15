@@ -47,7 +47,7 @@ Dates are ISO date-times with seconds and a timezone, such as `2030-01-01T00:00:
 await client.updateVoucher(voucher.id, { status: 'PAUSED' });
 ```
 
-Once publishing starts, `code`, `title`, `description`, `pointsCost`, `terms`, discount type and value, and dates can't change. To offer something different, create a new voucher. You can still change metadata, supply and status. Supply can't fall below the number already claimed.
+Once publishing starts, `code`, `title`, `description`, `pointsCost`, `terms`, discount type and value, the dates and `validForDays` can't change. To offer something different, create a new voucher. You can still change metadata, supply, `perMemberLimit` and status. Supply can't fall below the number already claimed.
 
 ## Give a voucher
 

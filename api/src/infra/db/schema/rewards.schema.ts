@@ -65,6 +65,11 @@ export const vouchers = pgTable(
      * limit. Checked under the voucher's row lock in the claim/grant transaction.
      */
     perMemberLimit: integer('per_member_limit'),
+    /**
+     * Each customer's voucher is usable this many days from its issue, capped by `expiresAt`
+     * (`VoucherTerms.use_duration_ms` on-chain). Null: every voucher expires at `expiresAt`.
+     */
+    validForDays: integer('valid_for_days'),
     claimedCount: integer('claimed_count').default(0).notNull(),
     status: voucherStatusEnum('status').default('DRAFT').notNull(),
     startsAt: timestamp('starts_at', { withTimezone: true }),
@@ -118,6 +123,10 @@ export const voucherOwnerships = pgTable(
     pendingOperationId: uuid('pending_operation_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
     redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+    /**
+     * This customer's own deadline (`voucherUseDeadline`): set when it is issued and fixed again when
+     * it becomes AVAILABLE, the point the chain records its `issued_at_ms`.
+     */
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
