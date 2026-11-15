@@ -34,6 +34,7 @@ export function fakeChainAdapters() {
     buildUseVoucherTransactionKind: vi.fn(async () => new Uint8Array([7, 8, 9])),
     waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
     budgetShardRemaining: vi.fn<(shardId: string) => Promise<bigint>>(async () => 1_000_000n),
+    latestCheckpoint: vi.fn<() => Promise<bigint>>(async () => 1_000n),
     listCreditAccountEvents: vi.fn(async () => ({
       events: [],
       hasNextPage: false,

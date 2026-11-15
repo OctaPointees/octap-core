@@ -26,7 +26,8 @@ export default tseslint.config(
           patterns: [
             {
               group: ['../../*'],
-              message: 'Use a subpath import (#api/…, #domain/…, #infra/…) instead of a ../../ relative import.',
+              message:
+                'Use a subpath import (#api/…, #config/…, #domain/…, #infra/…, #observability/…) instead of a ../../ relative import.',
             },
           ],
         },

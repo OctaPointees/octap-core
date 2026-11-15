@@ -1,6 +1,84 @@
 {
   "openapi": "3.1.0",
   "paths": {
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthController_check_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "security": [],
+        "x-octap-auth": {
+          "kind": "public",
+          "rateLimited": false
+        },
+        "description": "**Auth:** none (public)."
+      }
+    },
+    "/v1/platform/health": {
+      "get": {
+        "operationId": "PlatformHealthController_report",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformHealthController_report_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Health"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only."
+      }
+    },
     "/v1/platform/organizations": {
       "get": {
         "operationId": "PlatformOrganizationsController_list",
@@ -4071,6 +4149,9 @@
       "name": "Customer Verification"
     },
     {
+      "name": "Health"
+    },
+    {
       "name": "Identity"
     },
     {
@@ -4081,6 +4162,9 @@
     },
     {
       "name": "Platform Change Requests"
+    },
+    {
+      "name": "Platform Health"
     },
     {
       "name": "Platform Issuance Budget"
@@ -5561,6 +5645,34 @@
         ],
         "type": "string"
       },
+      "HealthController_check_Response": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecks"
+          }
+        },
+        "required": [
+          "checkedAt",
+          "checks",
+          "status"
+        ]
+      },
+      "HealthStatus": {
+        "description": "`down`: the database or Redis is unreachable, so this process cannot serve requests (every\nauthenticated route needs both) — `/health` answers 503. `degraded`: only the Sui RPC is\nunreachable; reads and accepted commands still work and chain work queues up — still 200, so a\nload balancer does not pull every instance over a flaky public RPC.",
+        "enum": [
+          "degraded",
+          "down",
+          "ok"
+        ],
+        "type": "string"
+      },
       "IdentityController_createNonce_Body": {
         "type": "object",
         "properties": {
@@ -6279,6 +6391,37 @@
         },
         "required": [
           "organizationId"
+        ]
+      },
+      "PlatformHealthController_report_Response": {
+        "type": "object",
+        "properties": {
+          "workerLag": {
+            "description": "Null when the database is down: every lag figure is read from it.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkerLag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecks"
+          }
+        },
+        "required": [
+          "checkedAt",
+          "checks",
+          "status",
+          "workerLag"
         ]
       },
       "PlatformIssuanceBudgetController_read_Response": {
@@ -7990,6 +8133,187 @@
           "status",
           "updatedAt",
           "url"
+        ]
+      },
+      "DependencyCheck": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "down",
+              "up"
+            ],
+            "type": "string"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "error": {
+            "description": "Why it is down. Only in the platform report: the public one does not describe internals.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latencyMs",
+          "status"
+        ]
+      },
+      "HealthChecks": {
+        "description": "Spelled out rather than a `Record<…>`: the OpenAPI schema generator names a `Record` after its source path.",
+        "type": "object",
+        "properties": {
+          "database": {
+            "$ref": "#/components/schemas/DependencyCheck"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/DependencyCheck"
+          },
+          "sui": {
+            "$ref": "#/components/schemas/DependencyCheck"
+          }
+        },
+        "required": [
+          "database",
+          "redis",
+          "sui"
+        ]
+      },
+      "IndexerLag": {
+        "type": "object",
+        "properties": {
+          "streamName": {
+            "type": "string"
+          },
+          "lastCheckpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "caughtUpCheckpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "chainCheckpoint": {
+            "description": "The chain's latest checkpoint from this same report's Sui probe; null when the probe failed.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "checkpointsBehind": {
+            "description": "How far the stream's furthest-known position trails the chain; null when either side is unknown.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sinceUpdateSeconds": {
+            "description": "Since the indexer last wrote this stream's cursor row (a page or a caught-up poll).",
+            "type": "number"
+          }
+        },
+        "required": [
+          "caughtUpCheckpoint",
+          "chainCheckpoint",
+          "checkpointsBehind",
+          "lastCheckpoint",
+          "sinceUpdateSeconds",
+          "streamName"
+        ]
+      },
+      "OperationLag": {
+        "type": "object",
+        "properties": {
+          "commandType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "oldestAgeSeconds": {
+            "type": "number"
+          },
+          "awaitingCustomer": {
+            "description": "PENDING and waiting on the customer's signature, not on a worker: left out of `oldestWorkerOwedAgeSeconds`.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "awaitingCustomer",
+          "commandType",
+          "count",
+          "oldestAgeSeconds",
+          "status"
+        ]
+      },
+      "WorkerLag": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "object",
+            "properties": {
+              "oldestWorkerOwedAgeSeconds": {
+                "description": "Age of the oldest PENDING, PROCESSING or UNKNOWN command a worker owes something to (every\ngroup without `awaitingCustomer`) — the figure to alert on. Null when there is none.",
+                "type": [
+                  "null",
+                  "number"
+                ]
+              },
+              "byCommandType": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OperationLag"
+                }
+              }
+            },
+            "required": [
+              "byCommandType",
+              "oldestWorkerOwedAgeSeconds"
+            ]
+          },
+          "webhookDeliveries": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "number"
+              },
+              "due": {
+                "type": "number"
+              },
+              "oldestDueAgeSeconds": {
+                "type": [
+                  "null",
+                  "number"
+                ]
+              },
+              "deadLettered": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "deadLettered",
+              "due",
+              "oldestDueAgeSeconds",
+              "pending"
+            ]
+          },
+          "indexer": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexerLag"
+            }
+          }
+        },
+        "required": [
+          "indexer",
+          "operations",
+          "webhookDeliveries"
         ]
       },
       "ConsoleCredential": {

@@ -2,6 +2,9 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker.module.js';
+import { assertValidEnv } from '#config/env.js';
+// Before any worker starts polling: a missing signer or a bad interval fails here, not on the first job.
+assertValidEnv('worker');
 const app = await NestFactory.createApplicationContext(WorkerModule);
 app.enableShutdownHooks();
 Logger.log('Worker running (ChainSubmitWorker); staying alive until SIGINT/SIGTERM.');

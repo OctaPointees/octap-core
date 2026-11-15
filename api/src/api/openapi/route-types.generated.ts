@@ -5,6 +5,7 @@ import type { ConsoleIdentityController } from '../rest/console-identity.control
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
 import type { ConsoleRewardsController } from '../rest/console-rewards.controller.js';
 import type { CreditsController } from '../rest/credits.controller.js';
+import type { HealthController, PlatformHealthController } from '../rest/health.controller.js';
 import type { CustomerVerificationController, IdentityController } from '../rest/identity.controller.js';
 import type { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from '../rest/issuance-budget.controller.js';
 import type { MembersController } from '../rest/members.controller.js';
@@ -71,6 +72,8 @@ export type CreditsController_getBalance_Response = Awaited<ReturnType<CreditsCo
 export type CreditsController_getBalance_Query = { "programId"?: Parameters<CreditsController['getBalance']>[2] };
 export type CreditsController_getTransactions_Response = Awaited<ReturnType<CreditsController['getTransactions']>>;
 export type CreditsController_getTransactions_Query = { "limit"?: Parameters<CreditsController['getTransactions']>[2] };
+export type HealthController_check_Response = Awaited<ReturnType<HealthController['check']>>;
+export type PlatformHealthController_report_Response = Awaited<ReturnType<PlatformHealthController['report']>>;
 export type IdentityController_googleLogin_Response = Awaited<ReturnType<IdentityController['googleLogin']>>;
 export type IdentityController_googleLogin_Body = Parameters<IdentityController['googleLogin']>[0];
 export type IdentityController_enroll_Response = Awaited<ReturnType<IdentityController['enroll']>>;

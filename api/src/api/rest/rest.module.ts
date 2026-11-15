@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DomainModule } from '#domain/domain.module.js';
 import { AuthModule } from '#infra/auth/auth.module.js';
+import { ObservabilityModule } from '#observability/observability.module.js';
 import { CreditsController } from './credits.controller.js';
 import { RewardsController } from './rewards.controller.js';
 import { WebhooksController } from './webhooks.controller.js';
@@ -18,10 +19,13 @@ import { ConsoleApiCredentialsController } from './console-api-credentials.contr
 import { ConsoleChangeRequestsController, PlatformChangeRequestsController } from './administration.controller.js';
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
+import { HealthController, PlatformHealthController } from './health.controller.js';
 @Module({
-  imports: [DomainModule, AuthModule],
+  imports: [DomainModule, AuthModule, ObservabilityModule],
   providers: [ConsoleAccessGuard],
   controllers: [
+    HealthController,
+    PlatformHealthController,
     PlatformOrganizationsController,
     OrganizationResolutionController,
     ConsoleIssuanceBudgetController,
