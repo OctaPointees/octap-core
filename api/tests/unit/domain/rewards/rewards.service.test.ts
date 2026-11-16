@@ -136,7 +136,9 @@ describe('RewardsService.listVouchers / getVoucher', () => {
   });
 
   it('a voucher belonging to another organization is treated as not found', async () => {
-    const rewards = service({ findVoucherById: async (id: string) => (id === 'v-1' ? buildVoucher() : undefined) });
+    const rewards = service({
+      findVoucherById: async (_organizationId: string, id: string) => (id === 'v-1' ? buildVoucher() : undefined),
+    });
 
     expect((await rewards.getVoucher('org-1', 'v-1')).id).toBe('v-1');
     await expect(rewards.getVoucher('org-2', 'v-1')).rejects.toThrow(/not found/);

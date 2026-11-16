@@ -199,7 +199,9 @@ describe('tenant customer member directory', () => {
       .delete(schema.loyaltyTransactions)
       .where(eq(schema.loyaltyTransactions.organizationEndUserId, member.id));
     await ctx.db.delete(schema.creditOwnerships).where(eq(schema.creditOwnerships.organizationEndUserId, member.id));
-    const reads = await Promise.all(Array.from({ length: 4 }, () => credits.getOrCreateCreditOwnership(member.id)));
+    const reads = await Promise.all(
+      Array.from({ length: 4 }, () => credits.getOrCreateCreditOwnership(orgId, member.id)),
+    );
     expect(new Set(reads.map((row) => row.id)).size).toBe(1);
   });
 });

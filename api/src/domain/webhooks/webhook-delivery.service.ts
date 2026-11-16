@@ -40,6 +40,6 @@ export class WebhookDeliveryService {
     if (delivery.status !== 'DEAD_LETTER') {
       throw new BadRequestException(`Only a DEAD_LETTER delivery can be replayed (current status: ${delivery.status})`);
     }
-    return this.repo.resetForReplay(deliveryId);
+    return this.repo.resetForReplay(organizationId, deliveryId);
   }
 }

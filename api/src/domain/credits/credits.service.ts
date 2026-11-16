@@ -34,7 +34,7 @@ export class CreditsService {
     // Same lazy rule for an abandoned POS reserve (OCT-244): its hold must not linger in `pendingRedemption`.
     await this.creditsRepo.releaseAbandonedPosHoldsForMember({ organizationId, organizationEndUserId });
     const [ownership, cursor] = await Promise.all([
-      this.creditsRepo.getOrCreateCreditOwnership(organizationEndUserId),
+      this.creditsRepo.getOrCreateCreditOwnership(organizationId, organizationEndUserId),
       this.indexerRepo.getCursor(CREDIT_ACCOUNT_STREAM),
     ]);
     const pendingEarn = Number(ownership.pendingEarn);

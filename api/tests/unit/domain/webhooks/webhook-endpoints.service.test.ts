@@ -25,8 +25,10 @@ function inMemoryRepo() {
     listEndpoints: async (orgId: string) => [...store.values()].filter((e) => e.organizationId === orgId),
     findEndpointForOrganization: async (orgId: string, id: string) =>
       store.get(id)?.organizationId === orgId ? store.get(id) : undefined,
-    setEndpointStatus: async (id: string, status: string) => Object.assign(store.get(id)!, { status }),
-    rotateEndpointSecret: async (id: string, secret: string) => Object.assign(store.get(id)!, { secret }),
+    setEndpointStatus: async (_organizationId: string, id: string, status: string) =>
+      Object.assign(store.get(id)!, { status }),
+    rotateEndpointSecret: async (_organizationId: string, id: string, secret: string) =>
+      Object.assign(store.get(id)!, { secret }),
   });
 }
 

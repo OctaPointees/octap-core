@@ -25,7 +25,9 @@ const TX = { tx: true } as unknown as DrizzleDb;
 function inMemoryRepo() {
   const store = new Map<string, Row>();
   let nextId = 1;
-  const revoke = vi.fn(async (_tx: DrizzleDb, id: string) => Object.assign(store.get(id)!, { status: 'REVOKED' }));
+  const revoke = vi.fn(async (_tx: DrizzleDb, _organizationId: string, id: string) =>
+    Object.assign(store.get(id)!, { status: 'REVOKED' }),
+  );
   const createWithinLimit = vi.fn(async (data: Omit<Row, 'id' | 'status'>, limit: number) => {
     const active = [...store.values()].filter((r) => r.organizationId === data.organizationId && r.status === 'ACTIVE');
     if (active.length >= limit) return undefined;
@@ -38,9 +40,10 @@ function inMemoryRepo() {
   );
   const repo = stub<ApiCredentialsRepository>({
     createWithinLimit,
-    findForUpdate: async (_tx: DrizzleDb, id: string) => store.get(id),
+    findForUpdate: async (_tx: DrizzleDb, _organizationId: string, id: string) => store.get(id),
     revoke,
-    rename: async (_tx: DrizzleDb, id: string, name: string) => Object.assign(store.get(id)!, { name }),
+    rename: async (_tx: DrizzleDb, _organizationId: string, id: string, name: string) =>
+      Object.assign(store.get(id)!, { name }),
     inTransaction,
   });
   return { store, repo, revoke, createWithinLimit, inTransaction };

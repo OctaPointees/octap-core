@@ -169,6 +169,13 @@
       "when": 1794658910417,
       "tag": "0023_indexer_caught_up_checkpoint",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794820647970,
+      "tag": "0024_rls_member_scoped_tables",
+      "breakpoints": true
     }
   ]
 }

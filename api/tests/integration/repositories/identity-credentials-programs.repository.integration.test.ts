@@ -62,7 +62,7 @@ describe('ApiCredentialsRepository', () => {
     keyHash,
     scopes,
   });
-  const find = (id: string) => db.transaction((tx) => repo.findForUpdate(tx, id));
+  const find = (id: string) => db.transaction((tx) => repo.findForUpdate(tx, orgId, id));
 
   it('creates, finds by hash and id, touches, renames and revokes', async () => {
     const first = (await repo.createWithinLimit(key('a', 'hash-a'), 25))!;
@@ -72,17 +72,17 @@ describe('ApiCredentialsRepository', () => {
     expect((await repo.findByKeyHash('hash-b'))?.id).toBe(second.id);
     expect((await find(first.id))?.name).toBe('a');
 
-    await repo.touchLastUsed(first.id);
+    await repo.touchLastUsed(orgId, first.id);
     expect((await find(first.id))?.lastUsedAt).toBeInstanceOf(Date);
 
-    expect((await db.transaction((tx) => repo.rename(tx, first.id, 'renamed'))).name).toBe('renamed');
-    expect((await db.transaction((tx) => repo.revoke(tx, first.id))).status).toBe('REVOKED');
+    expect((await db.transaction((tx) => repo.rename(tx, orgId, first.id, 'renamed'))).name).toBe('renamed');
+    expect((await db.transaction((tx) => repo.revoke(tx, orgId, first.id))).status).toBe('REVOKED');
     await expect(repo.createWithinLimit(key('dup', 'hash-a'), 25)).rejects.toThrow();
   });
 
   it('stops at the ACTIVE limit, counting only ACTIVE keys', async () => {
     const revoked = (await repo.createWithinLimit(key('a', 'hash-a'), 2))!;
-    await db.transaction((tx) => repo.revoke(tx, revoked.id));
+    await db.transaction((tx) => repo.revoke(tx, orgId, revoked.id));
     expect(await repo.createWithinLimit(key('b', 'hash-b'), 1)).toMatchObject({ status: 'ACTIVE' });
     expect(await repo.createWithinLimit(key('c', 'hash-c'), 1)).toBeUndefined();
     expect((await repo.createWithinLimit(key('d', 'hash-d'), 2))?.status).toBe('ACTIVE');

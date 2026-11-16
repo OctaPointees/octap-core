@@ -31,18 +31,18 @@ export class WebhookEndpointsService {
 
   async disable(organizationId: string, endpointId: string) {
     await this.assertOwned(organizationId, endpointId);
-    return this.repo.setEndpointStatus(endpointId, 'DISABLED');
+    return this.repo.setEndpointStatus(organizationId, endpointId, 'DISABLED');
   }
 
   async enable(organizationId: string, endpointId: string) {
     await this.assertOwned(organizationId, endpointId);
-    return this.repo.setEndpointStatus(endpointId, 'ACTIVE');
+    return this.repo.setEndpointStatus(organizationId, endpointId, 'ACTIVE');
   }
 
   async rotateSecret(organizationId: string, endpointId: string) {
     await this.assertOwned(organizationId, endpointId);
     const secret = generateWebhookSecret();
-    const endpoint = await this.repo.rotateEndpointSecret(endpointId, secret);
+    const endpoint = await this.repo.rotateEndpointSecret(organizationId, endpointId, secret);
     return { ...endpoint, secret };
   }
 
