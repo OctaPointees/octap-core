@@ -81,7 +81,12 @@ try {
       buildRedeemTransactionKind: async () => new Uint8Array([1]),
       buildClaimVoucherTransactionKind: async () => new Uint8Array([2]),
       buildUseVoucherTransactionKind: async () => new Uint8Array([3]),
-      waitForTransaction: async (digest) => ({ digest, status: 'success', events: [] }),
+      // A real claim_voucher emits VoucherClaimed with the issue time Core counts the deadline from.
+      waitForTransaction: async (digest) => ({
+        digest,
+        status: 'success',
+        events: [{ type: '0xpkg::credit_account::VoucherClaimed', parsedJson: { issued_at_ms: String(Date.now()) } }],
+      }),
     })
     .compile();
   app = moduleRef.createNestApplication({ logger: false });
