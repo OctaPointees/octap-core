@@ -37,6 +37,13 @@ export async function withTenant<T>(db: DrizzleDb, organizationId: string, work:
     );
     await tx.execute(enter);
     const result = await work(tx);
+    // With no outer tenant this restores `''`, not "unset": Postgres has no way back to unset. Once a
+    // custom setting has been set on a connection, it reads `''` for the rest of that session, even
+    // after `SET LOCAL … TO DEFAULT` or in its next transaction (checked on Postgres). So on a pooled
+    // connection the policies' `coalesce(current_setting('app.current_tenant_id', true), jwt
+    // tenant_id)` never falls through to the JWT claim anyway. Harmless here: the role goes back to
+    // the owner, which RLS does not apply to. A policy that must fall through would need
+    // `nullif(current_setting('app.current_tenant_id', true), '')`.
     await tx.execute(
       sql`select set_config('role', ${previous.role}, true), set_config('app.current_tenant_id', ${previous.tenant ?? ''}, true)`,
     );

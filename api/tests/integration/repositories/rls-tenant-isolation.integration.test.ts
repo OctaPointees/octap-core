@@ -161,6 +161,16 @@ describe('RLS tenant isolation', () => {
       withTenant(db, a.orgId, (tx) => tx.insert(schema.creditOwnerships).values({ organizationEndUserId: b.memberId })),
     ).rejects.toMatchObject(RLS_REJECTED);
   });
+
+  it('a tenant cannot link its own member to another organization’s voucher', async () => {
+    await expect(
+      withTenant(db, a.orgId, (tx) =>
+        tx
+          .insert(schema.voucherOwnerships)
+          .values({ voucherId: b.ids.vouchers, organizationEndUserId: a.memberId, serialCode: 'CROSS-ORG' }),
+      ),
+    ).rejects.toMatchObject(RLS_REJECTED);
+  });
 });
 
 describe('withTenant inside a caller transaction', () => {
