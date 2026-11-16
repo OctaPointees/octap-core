@@ -159,12 +159,61 @@ describe('atomic voucher conversion', () => {
     await expect(claim(voucher.id, 'claim-1', second)).rejects.toThrow(/different payload/);
   });
 
-  it('does not deduct points for another key after a member already claimed', async () => {
-    const voucher = await create();
+  it('does not deduct points for another key once a member reached the per-member limit', async () => {
+    const voucher = await create({ perMemberLimit: 1 });
     await claim(voucher.id);
-    await expect(claim(voucher.id, 'claim-2')).rejects.toThrow(/already been claimed/);
+    await expect(claim(voucher.id, 'claim-2')).rejects.toMatchObject({
+      kind: 'CONFLICT',
+      message: expect.stringMatching(/per-member limit \(1\)/),
+    });
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     expect(await db.select().from(schema.operations)).toHaveLength(1);
+  });
+
+  it('with no per-member limit, one member claims the same voucher again under a new key', async () => {
+    const voucher = await create();
+    expect(voucher.perMemberLimit).toBeNull();
+    const first = await claim(voucher.id);
+    const second = await claim(voucher.id, 'claim-2');
+    expect(second.voucherOwnershipId).not.toBe(first.voucherOwnershipId);
+    expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 50 });
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 2 });
+  });
+
+  it('counts used vouchers toward the limit, and a retry under the same key never consumes it', async () => {
+    const voucher = await create({ perMemberLimit: 2, pointsCost: 10 });
+    const first = await confirm(await claim(voucher.id));
+    await use(first.serialCode);
+    expect(await claim(voucher.id, 'claim-2')).toEqual(await claim(voucher.id, 'claim-2'));
+    await expect(claim(voucher.id, 'claim-3')).rejects.toMatchObject({ kind: 'CONFLICT' });
+    expect(await row(voucher.id)).toMatchObject({ claimedCount: 2 });
+  });
+
+  it('two concurrent claims by one member under different keys cannot both take the last slot', async () => {
+    const voucher = await create({ perMemberLimit: 1, pointsCost: 10 });
+    const results = await Promise.allSettled([claim(voucher.id, 'race-1'), claim(voucher.id, 'race-2')]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ kind: 'CONFLICT' });
+    expect(await db.select().from(schema.voucherOwnerships)).toHaveLength(1);
+    expect(await getOwnership(db, memberId)).toMatchObject({ pendingRedemption: 10 });
+  });
+
+  it('the limit counts per member: another member still claims', async () => {
+    const voucher = await create({ perMemberLimit: 1 });
+    const second = (await seedMember(db, orgId)).memberId;
+    await setOwnership(db, second, { confirmedBalance: 100, suiCreditAccountId: '0xsecond' });
+    await claim(voucher.id);
+    await expect(claim(voucher.id, 'claim-2', second)).resolves.toMatchObject({ organizationEndUserId: second });
+  });
+
+  it('the limit stays editable after publishing, like supply', async () => {
+    const voucher = await create({ perMemberLimit: 1 });
+    await claim(voucher.id);
+    await repo.updateVoucher(orgId, voucher.id, { perMemberLimit: 2 }, () => undefined);
+    await expect(claim(voucher.id, 'claim-2')).resolves.toMatchObject({ status: 'RESERVED' });
+    await repo.updateVoucher(orgId, voucher.id, { perMemberLimit: null }, () => undefined);
+    await expect(claim(voucher.id, 'claim-3')).resolves.toMatchObject({ status: 'RESERVED' });
   });
 
   it('cannot oversell the final unit to two different members', async () => {
@@ -691,12 +740,21 @@ describe('granted vouchers', () => {
     ).toBeNull();
   });
 
+  it('a cancelled grant does not count toward the per-member limit', async () => {
+    const voucher = await create({ perMemberLimit: 1 });
+    const failed = await grant(voucher.id);
+    await repo.failVoucherGrant(failed.voucherOwnershipId);
+    const regranted = await grant(voucher.id, 'grant-2');
+    expect(regranted.voucherOwnershipId).not.toBe(failed.voucherOwnershipId);
+    await expect(grant(voucher.id, 'grant-3')).rejects.toMatchObject({ kind: 'CONFLICT' });
+  });
+
   it('a retry reports the same grant, and a key cannot switch between a grant and a claim', async () => {
     const voucher = await create();
     const granted = await grant(voucher.id);
     expect(await grant(voucher.id)).toEqual(granted);
     await expect(claim(voucher.id, 'grant-1')).rejects.toThrow(/different payload/);
-    await expect(grant(voucher.id, 'grant-2')).rejects.toThrow(/already been claimed/);
+    await expect(grant(voucher.id, 'grant-2')).resolves.toMatchObject({ status: 'RESERVED' });
   });
 
   it('cannot be refunded: there is no REDEEM transaction, and nothing was paid', async () => {

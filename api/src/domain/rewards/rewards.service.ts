@@ -85,6 +85,7 @@ export class RewardsService {
           discountValue: req.discountValue,
           terms: req.terms,
           totalSupply: req.totalSupply,
+          perMemberLimit: req.perMemberLimit,
           startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
           expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
           metadata: req.metadata,
@@ -202,6 +203,7 @@ export class RewardsService {
             discountValue: merged.discountValue ?? undefined,
             terms: merged.terms ?? undefined,
             totalSupply: merged.totalSupply,
+            perMemberLimit: merged.perMemberLimit,
             startsAt: merged.startsAt?.toISOString(),
             expiresAt: merged.expiresAt?.toISOString(),
           });
@@ -284,6 +286,7 @@ export class RewardsService {
       suiTermsId: voucher.suiTermsId,
       refundPolicy: voucher.refundPolicySnapshot,
       totalSupply: voucher.totalSupply,
+      perMemberLimit: voucher.perMemberLimit,
       claimedCount: voucher.claimedCount,
       status: voucher.status,
       startsAt: voucher.startsAt ? new Date(voucher.startsAt).toISOString() : null,

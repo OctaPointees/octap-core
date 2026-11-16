@@ -91,4 +91,4 @@ Dù giao diện thế nào, hãy tuân theo các quy tắc sau:
 - Tiếp tục với cùng key. Chỉ dùng key mới sau `CANCELLED`.
 - Claim chưa ký sẽ được giải phóng sau 30 phút, trả lại điểm và tồn kho.
 
-Mỗi thành viên chỉ giữ được một claim chưa hủy cho mỗi voucher.
+Số claim một thành viên giữ được cho mỗi voucher là `perMemberLimit` của voucher đó (`null` là không giới hạn). Voucher đã dùng hoặc hết hạn vẫn tính, kể cả khi sau đó được hoàn; voucher đã hủy (gồm voucher chưa dùng đã được hoàn) thì không. Claim vượt giới hạn trả 409; thử lại cùng key không bao giờ bị tính hai lần.

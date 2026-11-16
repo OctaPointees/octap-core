@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
 import {
   bigint,
+  index,
   integer,
   jsonb,
   numeric,
@@ -59,6 +60,11 @@ export const vouchers = pgTable(
     /** Taken when publishing starts, and published as part of the promise. */
     refundPolicySnapshot: jsonb('refund_policy_snapshot').$type<VoucherRefundPolicySnapshot>(),
     totalSupply: integer('total_supply'),
+    /**
+     * How many non-cancelled vouchers of this kind one member may hold, counting used ones. Null is no
+     * limit. Checked under the voucher's row lock in the claim/grant transaction.
+     */
+    perMemberLimit: integer('per_member_limit'),
     claimedCount: integer('claimed_count').default(0).notNull(),
     status: voucherStatusEnum('status').default('DRAFT').notNull(),
     startsAt: timestamp('starts_at', { withTimezone: true }),
@@ -118,9 +124,8 @@ export const voucherOwnerships = pgTable(
   },
   (t) => [
     uniqueIndex('voucher_ownership_serial_idx').on(t.serialCode),
-    uniqueIndex('voucher_ownership_voucher_member_idx')
-      .on(t.voucherId, t.organizationEndUserId)
-      .where(sql`${t.status} <> 'CANCELLED'`),
+    // Serves the per-member count; the limit itself is `vouchers.per_member_limit`.
+    index('voucher_ownership_voucher_member_count_idx').on(t.voucherId, t.organizationEndUserId),
     // No organization column: both sides must be the tenant's, the member and the voucher. Checking
     // the member alone would let a tenant link its own member to another organization's voucher on
     // insert (the foreign key check does not go through RLS, and `WITH CHECK` falls back to `USING`).

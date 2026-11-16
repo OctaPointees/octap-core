@@ -27,6 +27,14 @@ function isIsoDateTime(value: string): boolean {
   return Number.isFinite(Date.parse(value));
 }
 
+/** Both are `integer` columns; undefined means "not sent". */
+function assertPositiveInt32OrNull(name: string, value: unknown): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 2147483647) {
+    throw new BadRequestException(`${name} must be a positive 32-bit integer or null`);
+  }
+}
+
 /** Shared by create and locked updates; reject malformed JSON before PostgreSQL sees it. */
 export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherRequest, partial = false): void {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -41,6 +49,7 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     'discountValue',
     'terms',
     'totalSupply',
+    'perMemberLimit',
     'startsAt',
     'expiresAt',
     'metadata',
@@ -67,13 +76,8 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
   if (input.pointsCost !== undefined && (!Number.isSafeInteger(input.pointsCost) || input.pointsCost < 0)) {
     throw new BadRequestException('pointsCost must be a nonnegative safe integer');
   }
-  if (
-    input.totalSupply !== undefined &&
-    input.totalSupply !== null &&
-    (!Number.isInteger(input.totalSupply) || input.totalSupply < 1 || input.totalSupply > 2147483647)
-  ) {
-    throw new BadRequestException('totalSupply must be a positive 32-bit integer or null');
-  }
+  assertPositiveInt32OrNull('totalSupply', input.totalSupply);
+  assertPositiveInt32OrNull('perMemberLimit', input.perMemberLimit);
   if (input.terms !== undefined && (!input.terms || typeof input.terms !== 'object' || Array.isArray(input.terms))) {
     throw new BadRequestException('terms must be an object');
   }

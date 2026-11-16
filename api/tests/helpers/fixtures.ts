@@ -95,6 +95,7 @@ export function buildVoucher(overrides: Partial<typeof vouchers.$inferSelect> = 
     suiTermsId: '0xterms',
     refundPolicySnapshot: null,
     totalSupply: 100,
+    perMemberLimit: 1,
     claimedCount: 0,
     status: 'ACTIVE',
     startsAt: null,

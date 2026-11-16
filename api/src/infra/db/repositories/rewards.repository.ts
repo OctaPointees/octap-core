@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { eq, desc, and, sql, ne, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, ne, isNull, count } from 'drizzle-orm';
 import {
   DEFAULT_VOUCHER_REFUND_POLICY,
   VOUCHER_MIN_USE_WINDOW_MS,
@@ -422,14 +422,26 @@ export class RewardsRepository {
     if (expiresTooSoon(voucher)) throw invalid('Voucher expires too soon to be issued');
     if (voucher.totalSupply !== null && voucher.claimedCount >= voucher.totalSupply)
       throw invalid('Voucher is completely depleted');
-    const existing = await tx.query.voucherOwnerships.findFirst({
-      where: and(
-        eq(voucherOwnerships.voucherId, voucherId),
-        eq(voucherOwnerships.organizationEndUserId, memberId),
-        ne(voucherOwnerships.status, 'CANCELLED'),
-      ),
-    });
-    if (existing) throw invalid('Voucher has already been claimed by this member');
+    if (voucher.perMemberLimit !== null) {
+      // Under the voucher's row lock taken above, so two claims by one member count one after the other.
+      // No database constraint backs this: any new path that inserts or revives an ownership must go
+      // through this method. Cancelled vouchers (failed, abandoned, or refunded while unused) don't
+      // count; used and expired ones do, even when refunded, since refunds keep REDEEMED/EXPIRED.
+      const [{ held }] = await tx
+        .select({ held: count() })
+        .from(voucherOwnerships)
+        .where(
+          and(
+            eq(voucherOwnerships.voucherId, voucherId),
+            eq(voucherOwnerships.organizationEndUserId, memberId),
+            ne(voucherOwnerships.status, 'CANCELLED'),
+          ),
+        );
+      if (held >= voucher.perMemberLimit)
+        throw conflict(
+          `Member has reached this voucher's per-member limit (${voucher.perMemberLimit}); cancelled vouchers don't count`,
+        );
+    }
     const pointsCost = Number(voucher.pointsCost);
     if (!Number.isSafeInteger(pointsCost) || pointsCost < 0) throw invalid('Voucher points cost is invalid');
     return voucher;
