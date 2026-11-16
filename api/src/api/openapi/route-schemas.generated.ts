@@ -2977,7 +2977,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
-        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain when the chain issues the voucher, so time spent waiting for a signature doesn't count.",
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -3197,7 +3197,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
-        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain when the chain issues the voucher, so time spent waiting for a signature doesn't count.",
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -3358,7 +3358,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
-        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain when the chain issues the voucher, so time spent waiting for a signature doesn't count.",
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -4586,7 +4586,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
-        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain when the chain issues the voucher, so time spent waiting for a signature doesn't count.",
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"

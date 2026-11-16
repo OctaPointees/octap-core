@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { voucherUseDurationMs } from '@octap/contracts';
 import { CreditsRepository, voucherClaimReference } from '#infra/db/repositories/credits.repository.js';
 // Not `import type`: NestJS DI resolves this constructor param by its runtime type (reflect-metadata),
 // which an erased type-only import would turn into a bare `Function` and break resolution.
@@ -10,6 +11,7 @@ import {
   VOUCHER_PUBLISH_COMMAND_TYPE,
 } from '#infra/db/repositories/rewards.repository.js';
 import { buildVoucherTermsBytes } from '#domain/rewards/voucher-terms.js';
+import { voucherIssuedAtIn } from '#domain/rewards/voucher-issued-at.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService, type ChainCallResult } from '#infra/clients/sui/sui.client.js';
 import {
@@ -133,7 +135,7 @@ export class ChainSubmitProcessor {
           pointsCost: Number(voucher.pointsCost),
           startsAtMs: voucher.startsAt?.getTime() ?? 0,
           expiresAtMs: voucher.expiresAt?.getTime() ?? 0,
-          useDurationMs: (voucher.validForDays ?? 0) * 86_400_000,
+          useDurationMs: voucherUseDurationMs(voucher),
         });
       },
       confirm: async (result) => {
@@ -173,6 +175,7 @@ export class ChainSubmitProcessor {
         await this.rewardsRepo.confirmVoucherGrant({
           voucherOwnershipId: payload.voucherOwnershipId,
           digest: result.digest,
+          issuedAt: voucherIssuedAtIn(result, 'VoucherGranted'),
         });
       },
       fail: () => this.rewardsRepo.failVoucherGrant(payload.voucherOwnershipId),

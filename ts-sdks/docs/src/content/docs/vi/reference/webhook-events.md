@@ -60,7 +60,12 @@ Khoản giữ đã được giải phóng và không có gì được cộng. Ke
 
 ## credits.redemption.confirmed
 
-Có cùng các field với `credits.earn.confirmed`, trong đó `pointsAmount` là số điểm bị trừ.
+Có cùng các field với `credits.earn.confirmed`, trong đó `pointsAmount` là số điểm bị trừ. Claim voucher trả phí có thêm `voucher`:
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `voucher.voucherOwnershipId` | `string` | Voucher mà lần trừ điểm này mua, giờ đã `AVAILABLE` |
+| `voucher.expiresAt` | `string \| null` | Hạn dùng cuối cùng, tính từ lúc chain phát voucher. `expiresAt` trong response của claim chỉ là tạm. |
 
 ## credits.reversed
 
@@ -86,6 +91,7 @@ Khách hàng đã giữ voucher. Claim trả phí báo qua `credits.redemption.c
 | `organizationEndUserId` | `string` | |
 | `serialCode` | `string` | |
 | `status` | `string` | `AVAILABLE` |
+| `expiresAt` | `string \| null` | Hạn dùng cuối cùng của khách này, tính từ lúc chain phát voucher. `expiresAt` trong response của grant chỉ là tạm. `null` là không hết hạn. |
 | `blockchainDigest` | `string` | |
 
 ## voucher.redeemed

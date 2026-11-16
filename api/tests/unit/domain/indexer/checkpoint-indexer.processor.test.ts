@@ -400,15 +400,27 @@ describe('CheckpointIndexerProcessor.processNextPage', () => {
       pendingRedeemRow({ receiptReference: `voucher-claim-${LOYALTY_ID}` }),
     );
     const confirmPosRedemptionOnChain = vi.fn(async () => ({ id: 'receipt' }));
+    const event = redeemedEvent(b64(`voucher-claim-${LOYALTY_ID}`));
+    // `VoucherClaimed` follows in the same transaction, maybe on the next page: read from the transaction.
+    const findTransaction = vi.fn(async (digest: string) => ({
+      digest,
+      status: 'success',
+      events: [{ type: 'pkg::credit_account::VoucherClaimed', parsedJson: { issued_at_ms: '1767225600000' } }],
+    }));
     await processor(
       store.repo,
       { findCreditOwnershipBySuiAccountId: ownedAccount, findVoucherClaimTransaction, confirmPosRedemptionOnChain },
       { markSubmittedFromChain: async () => {} },
-      { listCreditAccountEvents: async () => page([redeemedEvent(b64(`voucher-claim-${LOYALTY_ID}`))]) },
+      { listCreditAccountEvents: async () => page([event]), findTransaction },
     ).processNextPage();
     expect(findVoucherClaimTransaction).toHaveBeenCalledWith(LOYALTY_ID);
+    expect(findTransaction).toHaveBeenCalledWith(event.transactionDigest);
     expect(confirmPosRedemptionOnChain).toHaveBeenCalledWith(
-      expect.objectContaining({ loyaltyTransactionId: LOYALTY_ID, pointsAmount: 50 }),
+      expect.objectContaining({
+        loyaltyTransactionId: LOYALTY_ID,
+        pointsAmount: 50,
+        voucherIssuedAt: new Date(1767225600000),
+      }),
       expect.anything(),
     );
   });
@@ -1086,9 +1098,12 @@ describe('CheckpointIndexerProcessor voucher events', () => {
         findOwnershipWithVoucher: found,
         confirmVoucherGrant,
       },
-    ).applyEvent(event('VoucherGranted'), tx);
+    ).applyEvent(event('VoucherGranted', { issued_at_ms: '1767225600000' }), tx);
     expect(outcome).toBe('confirmed');
-    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: voucherId, digest: 'DIGEST-V' }, tx);
+    expect(confirmVoucherGrant).toHaveBeenCalledWith(
+      { voucherOwnershipId: voucherId, digest: 'DIGEST-V', issuedAt: new Date(1767225600000) },
+      tx,
+    );
   });
 
   it.each([

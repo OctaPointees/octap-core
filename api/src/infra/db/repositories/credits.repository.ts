@@ -208,29 +208,42 @@ export async function expireDueBuckets(
   return forfeited;
 }
 
-/** Settle the reserved coupon in the same transaction as the point hold. Lock catalog before balance. */
-async function settleVoucherClaim(tx: DrizzleDb, loyaltyTransactionId: string, confirmed: boolean) {
+/**
+ * Settle the reserved coupon in the same transaction as the point hold. Lock catalog before balance.
+ * Confirming needs `issuedAt`, the chain's `VoucherClaimed.issued_at_ms`: the coupon's own deadline
+ * counts from it. Returns the settled coupon, if this transaction bought one.
+ */
+async function settleVoucherClaim(
+  tx: DrizzleDb,
+  loyaltyTransactionId: string,
+  outcome: { confirmed: true; issuedAt: Date | undefined } | { confirmed: false },
+) {
   const claim = await tx.query.voucherOwnerships.findFirst({
     where: eq(voucherOwnerships.loyaltyTransactionId, loyaltyTransactionId),
   });
-  if (!claim || claim.status !== 'RESERVED') return;
+  if (!claim || claim.status !== 'RESERVED') return null;
   const [voucher] = await tx
     .select({ expiresAt: vouchers.expiresAt, validForDays: vouchers.validForDays })
     .from(vouchers)
     .where(eq(vouchers.id, claim.voucherId))
     .for('update');
+  // The foreign key keeps the catalog row; failing loudly beats a TypeError mid-settlement.
+  if (!voucher) throw new Error(`voucher ${claim.voucherId} of claim ${claim.id} is missing`);
+  if (outcome.confirmed && !outcome.issuedAt) {
+    throw new Error(`claim ${claim.id} confirmed without the chain's VoucherClaimed.issued_at_ms`);
+  }
   const now = new Date();
   const [changed] = await tx
     .update(voucherOwnerships)
-    // A confirmed claim was issued on-chain now, so its own deadline starts here.
     .set(
-      confirmed
-        ? { status: 'AVAILABLE', expiresAt: voucherUseDeadline(voucher, now), updatedAt: now }
+      outcome.confirmed
+        ? { status: 'AVAILABLE', expiresAt: voucherUseDeadline(voucher, outcome.issuedAt!), updatedAt: now }
         : { status: 'CANCELLED', updatedAt: now },
     )
     .where(and(eq(voucherOwnerships.id, claim.id), eq(voucherOwnerships.status, 'RESERVED')))
     .returning();
-  if (changed && !confirmed) await returnVoucherUnit(tx, claim.voucherId);
+  if (changed && !outcome.confirmed) await returnVoucherUnit(tx, claim.voucherId);
+  return changed ?? null;
 }
 
 /** Puts a cancelled coupon's unit back in the catalog; the caller holds the voucher row lock. */
@@ -399,7 +412,7 @@ export async function releaseAbandonedPosHolds(
     )
     .returning({ id: loyaltyTransactions.id, pointsAmount: loyaltyTransactions.pointsAmount });
   // Voucher claims share this command pipeline: release their coupon/stock in the same transaction.
-  for (const row of released) await settleVoucherClaim(tx, row.id, false);
+  for (const row of released) await settleVoucherClaim(tx, row.id, { confirmed: false });
   const total = released.reduce((sum, row) => sum + Number(row.pointsAmount), 0);
   if (total === 0) {
     return 0;
@@ -1077,6 +1090,8 @@ export class CreditsRepository {
       pointsAmount: number;
       digest: string;
       sender: string;
+      /** A paid voucher claim's `VoucherClaimed.issued_at_ms`; required when the debit bought one. */
+      voucherIssuedAt?: Date;
     },
     db: DrizzleDb = this.db,
   ) {
@@ -1089,7 +1104,10 @@ export class CreditsRepository {
           return null;
         }
 
-        await settleVoucherClaim(tx, params.loyaltyTransactionId, true);
+        const coupon = await settleVoucherClaim(tx, params.loyaltyTransactionId, {
+          confirmed: true,
+          issuedAt: params.voucherIssuedAt,
+        });
         const [blockchainTx] = await tx
           .insert(blockchainTransactions)
           .values({ digest: params.digest, sender: params.sender, status: 'CONFIRMED', confirmedAt: new Date() })
@@ -1123,6 +1141,9 @@ export class CreditsRepository {
               pointsAmount: params.pointsAmount,
               newBalance,
               blockchainDigest: params.digest,
+              ...(coupon && {
+                voucher: { voucherOwnershipId: coupon.id, expiresAt: coupon.expiresAt?.toISOString() ?? null },
+              }),
             },
           });
         }
@@ -1178,7 +1199,7 @@ export class CreditsRepository {
             .set({ status: 'FAILED', errorMessage: 'Unsigned voucher claim expired', updatedAt: new Date() })
             .where(eq(operations.id, abandonedCommandId));
         }
-        await settleVoucherClaim(tx, params.loyaltyTransactionId, false);
+        await settleVoucherClaim(tx, params.loyaltyTransactionId, { confirmed: false });
         await tx
           .update(loyaltyTransactions)
           .set({ status: 'FAILED', updatedAt: new Date() })

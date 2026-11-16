@@ -16,16 +16,26 @@ export const VOUCHER_MIN_USE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const VOUCHER_MAX_VALID_FOR_DAYS = 3650;
 
 /**
+ * `validForDays` as the contract's `use_duration_ms`; 0 means unused. The one place days become
+ * milliseconds, so the duration published on-chain and `voucherUseDeadline` can't disagree.
+ */
+export function voucherUseDurationMs(voucher: { validForDays?: number | null }): number {
+  return (voucher.validForDays ?? 0) * 86_400_000;
+}
+
+/**
  * When one customer's voucher stops being usable, as the contract computes it
  * (`voucher_terms::use_deadline_ms`): `issuedAt + validForDays`, capped by the catalog's
  * `expiresAt`, or `expiresAt` alone without `validForDays`. `null` means it never expires.
+ * `issuedAt` should be the chain's `issued_at_ms` (on `VoucherGranted`/`VoucherClaimed`) once known.
  */
 export function voucherUseDeadline(
   voucher: { expiresAt: Date | null; validForDays?: number | null },
   issuedAt: Date,
 ): Date | null {
-  if (!voucher.validForDays) return voucher.expiresAt;
-  const own = issuedAt.getTime() + voucher.validForDays * 86_400_000;
+  const duration = voucherUseDurationMs(voucher);
+  if (!duration) return voucher.expiresAt;
+  const own = issuedAt.getTime() + duration;
   return new Date(voucher.expiresAt === null ? own : Math.min(own, voucher.expiresAt.getTime()));
 }
 
@@ -130,7 +140,8 @@ export interface ClaimVoucherResponse {
   claimedAt: string;
   /**
    * This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set
-   * again when the chain issues the voucher, so time spent waiting for a signature doesn't count.
+   * again from the chain's issue time, so time spent waiting for a signature doesn't count. The
+   * final value arrives on `voucher.granted` or `credits.redemption.confirmed`.
    */
   expiresAt?: string | null;
 }
@@ -192,7 +203,8 @@ export interface VoucherOwnershipDto {
   redeemedAt?: string | null;
   /**
    * This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set
-   * again when the chain issues the voucher, so time spent waiting for a signature doesn't count.
+   * again from the chain's issue time, so time spent waiting for a signature doesn't count. The
+   * final value arrives on `voucher.granted` or `credits.redemption.confirmed`.
    */
   expiresAt?: string | null;
   voucher?: VoucherDto;

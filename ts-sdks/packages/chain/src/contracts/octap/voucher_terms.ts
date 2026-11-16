@@ -68,7 +68,7 @@ export interface PublishTermsOptions {
     ];
 }
 export function publishTerms(options: PublishTermsOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -97,7 +97,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -119,7 +119,7 @@ export interface PointsCostOptions {
     ];
 }
 export function pointsCost(options: PointsCostOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -141,7 +141,7 @@ export interface TermsOptions {
     ];
 }
 export function terms(options: TermsOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -163,7 +163,7 @@ export interface UseDurationMsOptions {
     ];
 }
 export function useDurationMs(options: UseDurationMsOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -191,7 +191,7 @@ export interface UseDeadlineMsOptions {
  * `issued_at_ms + use_duration_ms` and `expires_at_ms`. Zero means never.
  */
 export function useDeadlineMs(options: UseDeadlineMsOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'u64'
@@ -219,7 +219,7 @@ export interface IsUsableOptions {
 }
 /** Whether a voucher issued at `issued_at_ms` can still be used at `now_ms`. */
 export function isUsable(options: IsUsableOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'u64',
@@ -249,7 +249,7 @@ export interface IsIssuableOptions {
  * `min(now + use_duration, expires_at) - now`.
  */
 export function isIssuable(options: IsIssuableOptions) {
-    const packageAddress = options.package ?? '0x98f3f9b5528d94b7404ea06886d32d06616044cf754c0c8b2649e47b2a085d4a';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'u64'

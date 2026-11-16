@@ -66,13 +66,14 @@ const use = async (serialCode: string, organizationId = orgId) => {
 const row = async (id: string) => (await db.select().from(schema.vouchers).where(eq(schema.vouchers.id, id)))[0];
 
 const credits = new CreditsRepository(db);
-const confirm = async (result: Awaited<ReturnType<typeof claim>>) => {
+const confirm = async (result: Awaited<ReturnType<typeof claim>>, voucherIssuedAt = new Date()) => {
   await credits.confirmPosRedemptionOnChain({
     loyaltyTransactionId: result.transactionId!,
     organizationEndUserId: result.organizationEndUserId,
     pointsAmount: result.pointsCost!,
     digest: `chain-${result.transactionId}`,
     sender: '0xmember',
+    voucherIssuedAt,
   });
   return repo.getClaim(orgId, result.voucherOwnershipId);
 };
@@ -717,13 +718,16 @@ describe('granted vouchers', () => {
     ]);
     await expect(use(granted.serialCode)).rejects.toThrow(/RESERVED/);
 
-    const params = { voucherOwnershipId: granted.voucherOwnershipId, digest: 'grant-digest' };
+    const params = { voucherOwnershipId: granted.voucherOwnershipId, digest: 'grant-digest', issuedAt: new Date() };
     expect((await repo.confirmVoucherGrant(params))?.key).toMatchObject({ idempotencyKey: 'grant-1' });
     expect(await repo.confirmVoucherGrant(params)).toBeNull();
     expect(await repo.getClaim(orgId, granted.voucherOwnershipId)).toMatchObject({ status: 'AVAILABLE' });
     const deliveries = await db.select().from(schema.webhookDeliveries);
     expect(deliveries).toMatchObject([
-      { eventType: 'voucher.granted', payload: { status: 'AVAILABLE', blockchainDigest: 'grant-digest' } },
+      {
+        eventType: 'voucher.granted',
+        payload: { status: 'AVAILABLE', expiresAt: null, blockchainDigest: 'grant-digest' },
+      },
     ]);
     expect((await use(granted.serialCode)).ownership.status).toBe('REDEEMED');
   });
@@ -737,7 +741,11 @@ describe('granted vouchers', () => {
     expect(await repo.getClaim(orgId, granted.voucherOwnershipId)).toMatchObject({ status: 'CANCELLED' });
     expect(await row(voucher.id)).toMatchObject({ status: 'ACTIVE', claimedCount: 0 });
     expect(
-      await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'late' }),
+      await repo.confirmVoucherGrant({
+        voucherOwnershipId: granted.voucherOwnershipId,
+        digest: 'late',
+        issuedAt: new Date(),
+      }),
     ).toBeNull();
   });
 
@@ -760,7 +768,11 @@ describe('granted vouchers', () => {
 
   it('cannot be refunded: there is no REDEEM transaction, and nothing was paid', async () => {
     const granted = await grant((await create()).id);
-    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'grant-digest' });
+    await repo.confirmVoucherGrant({
+      voucherOwnershipId: granted.voucherOwnershipId,
+      digest: 'grant-digest',
+      issuedAt: new Date(),
+    });
     expect((await repo.getClaim(orgId, granted.voucherOwnershipId)).transactionId).toBeNull();
   });
 });
@@ -780,47 +792,88 @@ describe('validity from the issue date (OCT-291)', () => {
     const voucher = await create({ expiresAt });
     expect(voucher.validForDays).toBeNull();
     const granted = await grant(voucher.id);
-    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    await repo.confirmVoucherGrant({
+      voucherOwnershipId: granted.voucherOwnershipId,
+      digest: 'g',
+      issuedAt: new Date(),
+    });
     expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(expiresAt);
   });
 
-  it('a grant is usable validForDays from when the chain issued it, with no catalog expiry', async () => {
+  it('a grant is usable validForDays from the chain’s issue time, however late Core confirms it', async () => {
+    await db
+      .insert(schema.webhookEndpoints)
+      .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test-secret' });
     const voucher = await create({ validForDays: 14 });
     const granted = await grant(voucher.id);
     near(new Date(granted.expiresAt!), Date.now() + 14 * DAY);
-    // Pretend the chain took a day: the deadline restarts at the confirmation.
-    await db
-      .update(schema.voucherOwnerships)
-      .set({ expiresAt: new Date(Date.now() - DAY) })
-      .where(eq(schema.voucherOwnerships.id, granted.voucherOwnershipId));
-    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
-    near((await ownershipRow(granted.voucherOwnershipId)).expiresAt, Date.now() + 14 * DAY);
+    // The chain issued it six hours ago and the reconciler only confirms it now: the deadline is the
+    // chain's, not six hours later.
+    const issuedAt = new Date(Date.now() - 6 * 3_600_000);
+    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g', issuedAt });
+    const deadline = new Date(issuedAt.getTime() + 14 * DAY);
+    expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(deadline);
+    expect(await db.select().from(schema.webhookDeliveries)).toMatchObject([
+      { eventType: 'voucher.granted', payload: { expiresAt: deadline.toISOString() } },
+    ]);
   });
 
   it('the catalog expiry caps each voucher’s own deadline', async () => {
     const expiresAt = new Date(Date.now() + 10 * DAY);
     const voucher = await create({ validForDays: 14, expiresAt });
     const granted = await grant(voucher.id);
-    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    await repo.confirmVoucherGrant({
+      voucherOwnershipId: granted.voucherOwnershipId,
+      digest: 'g',
+      issuedAt: new Date(),
+    });
     expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(expiresAt);
   });
 
-  it('a paid claim’s deadline starts when the chain confirms it, not when it was reserved', async () => {
+  it('a paid claim’s deadline counts from the chain’s issue time, not from the reservation', async () => {
+    await db
+      .insert(schema.webhookEndpoints)
+      .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test-secret' });
     const voucher = await create({ validForDays: 7, pointsCost: 10 });
     const claimed = await claim(voucher.id);
     await db
       .update(schema.voucherOwnerships)
       .set({ expiresAt: new Date(Date.now() - DAY) })
       .where(eq(schema.voucherOwnerships.id, claimed.voucherOwnershipId));
-    const confirmed = await confirm(claimed);
-    expect(confirmed.status).toBe('AVAILABLE');
-    near(new Date(confirmed.expiresAt!), Date.now() + 7 * DAY);
+    const issuedAt = new Date(Date.now() - 3_600_000);
+    const confirmed = await confirm(claimed, issuedAt);
+    const deadline = new Date(issuedAt.getTime() + 7 * DAY);
+    expect(confirmed).toMatchObject({ status: 'AVAILABLE', expiresAt: deadline.toISOString() });
+    expect(await db.select().from(schema.webhookDeliveries)).toMatchObject([
+      {
+        eventType: 'credits.redemption.confirmed',
+        payload: { voucher: { voucherOwnershipId: claimed.voucherOwnershipId, expiresAt: deadline.toISOString() } },
+      },
+    ]);
+  });
+
+  it('refuses to confirm a paid claim without the chain’s issue time', async () => {
+    const claimed = await claim((await create({ validForDays: 7, pointsCost: 10 })).id);
+    await expect(
+      credits.confirmPosRedemptionOnChain({
+        loyaltyTransactionId: claimed.transactionId!,
+        organizationEndUserId: claimed.organizationEndUserId,
+        pointsAmount: claimed.pointsCost!,
+        digest: 'no-issue-time',
+        sender: '0xmember',
+      }),
+    ).rejects.toThrow(/issued_at_ms/);
+    expect((await repo.getClaim(orgId, claimed.voucherOwnershipId)).status).toBe('RESERVED');
   });
 
   it('a voucher past its own deadline cannot be used while the catalog is still open', async () => {
     const voucher = await create({ validForDays: 7, expiresAt: new Date(Date.now() + 30 * DAY) });
     const granted = await grant(voucher.id);
-    await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g' });
+    await repo.confirmVoucherGrant({
+      voucherOwnershipId: granted.voucherOwnershipId,
+      digest: 'g',
+      issuedAt: new Date(),
+    });
     await db
       .update(schema.voucherOwnerships)
       .set({ expiresAt: new Date(Date.now() - 1) })

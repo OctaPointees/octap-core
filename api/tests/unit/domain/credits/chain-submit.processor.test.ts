@@ -1105,7 +1105,15 @@ describe('ChainSubmitProcessor voucher commands', () => {
     await processor(
       operations,
       { getOrCreateCreditOwnership: existingAccount },
-      { signGrantVoucher, openAccount, execute: async () => fakeChainResult({ digest: 'DIGEST-V' }) },
+      {
+        signGrantVoucher,
+        openAccount,
+        execute: async () =>
+          fakeChainResult({
+            digest: 'DIGEST-V',
+            events: [{ type: 'pkg::credit_account::VoucherGranted', parsedJson: { issued_at_ms: '1767225600000' } }],
+          }),
+      },
       PROGRAMS_REPO,
       { findOwnershipWithVoucher: async () => ({ voucher }), confirmVoucherGrant },
     ).process(grantOp);
@@ -1115,7 +1123,11 @@ describe('ChainSubmitProcessor voucher commands', () => {
       termsId: '0xterms',
       reference: 'voucher-claim-own-1',
     });
-    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: 'own-1', digest: 'DIGEST-V' });
+    expect(confirmVoucherGrant).toHaveBeenCalledWith({
+      voucherOwnershipId: 'own-1',
+      digest: 'DIGEST-V',
+      issuedAt: new Date(1767225600000),
+    });
   });
 
   it('opens an account first for a member who never earned', async () => {

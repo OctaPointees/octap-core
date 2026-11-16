@@ -463,11 +463,20 @@ describe('ChainOutcomeReconciler voucher commands', () => {
     const confirmVoucherGrant = vi.fn(async () => ({ key: null }));
     const { reconciler } = fixture({
       operations: [op(VOUCHER_GRANT_COMMAND_TYPE, { voucherOwnershipId: 'own-1' })],
-      outcomes: { 'DIGEST-V': landed('DIGEST-V') },
+      outcomes: {
+        'DIGEST-V': landed('DIGEST-V', [
+          { type: 'pkg::credit_account::VoucherGranted', parsedJson: { issued_at_ms: '1767225600000' } },
+        ]),
+      },
       rewardsRepo: { confirmVoucherGrant },
     });
     expect(await reconciler.reconcileOnce()).toEqual(['confirmed']);
-    expect(confirmVoucherGrant).toHaveBeenCalledWith({ voucherOwnershipId: 'own-1', digest: 'DIGEST-V' });
+    // The chain's issue time, not the reconciler's clock: this confirmation may run hours late.
+    expect(confirmVoucherGrant).toHaveBeenCalledWith({
+      voucherOwnershipId: 'own-1',
+      digest: 'DIGEST-V',
+      issuedAt: new Date(1767225600000),
+    });
   });
 
   it('confirms a use from its digest, even when the voucher here was already taken back', async () => {
