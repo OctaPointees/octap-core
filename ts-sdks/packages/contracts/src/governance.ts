@@ -1,9 +1,25 @@
+import type { OrganizationIdentityInput, OrganizationType } from './console.js';
+
 export type GovernanceRequestType =
-  'UPDATE_PROFILE' | 'TRANSFER_OWNERSHIP' | 'DEACTIVATE' | 'BUDGET_TOP_UP' | 'SUSPEND' | 'REINSTATE';
+  | 'UPDATE_PROFILE'
+  | 'TRANSFER_OWNERSHIP'
+  | 'DEACTIVATE'
+  | 'BUDGET_TOP_UP'
+  | 'SUSPEND'
+  | 'REINSTATE'
+  | 'UPDATE_IDENTITY';
+/**
+ * `UPDATE_IDENTITY` replaces an organization's legal details once a System Admin approves it. Send
+ * at least one field; `organizationType` only classifies an organization that has none yet. The
+ * stored request keeps only the CCCD's last four digits, never the number.
+ */
+export interface IdentityChangePayload extends OrganizationIdentityInput {
+  organizationType?: OrganizationType;
+}
 export interface GovernanceProposal {
   requestType: GovernanceRequestType;
   reason: string;
-  payload: { name?: string; targetUserId?: string; amount?: number };
+  payload: { name?: string; targetUserId?: string; amount?: number } & IdentityChangePayload;
 }
 export interface GovernanceRequest {
   id: string;

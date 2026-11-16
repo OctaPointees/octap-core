@@ -28,6 +28,7 @@ export const changeRequestTypeEnum = pgEnum('change_request_type', [
   'SUSPEND',
   'REINSTATE',
   'BUDGET_TOP_UP',
+  'UPDATE_IDENTITY',
 ]);
 
 /**
@@ -130,4 +131,19 @@ export const organizationChangeRequests = pgTable('organization_change_requests'
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}).enableRLS();
+
+/**
+ * A pending UPDATE_IDENTITY request's replacement CCCD, kept out of the request's `payload` (which
+ * the platform listing returns). Encrypted exactly like `organization_identity_details`, with the
+ * organization id as associated data, so approval moves the ciphertext there without decrypting it.
+ * The row is deleted once the request is decided. RLS with no policies: Core workflows only.
+ */
+export const organizationChangeRequestSecrets = pgTable('organization_change_request_secrets', {
+  changeRequestId: uuid('change_request_id')
+    .primaryKey()
+    .references(() => organizationChangeRequests.id, { onDelete: 'cascade' }),
+  nationalIdEncrypted: text('national_id_encrypted').notNull(),
+  nationalIdLast4: text('national_id_last4').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }).enableRLS();

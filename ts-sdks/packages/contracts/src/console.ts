@@ -2,17 +2,27 @@ import type { CreateVoucherRequest } from './rewards.js';
 import type { OrganizationPersona } from './system-users.js';
 
 export type OrganizationType = 'INDIVIDUAL_HOUSEHOLD' | 'COMPANY';
+/**
+ * `PATCH /v1/console/organizations/:id/profile`: display details, applied immediately. Send at least
+ * one field. Legal details (legal name, tax ID, representative, CCCD, type) change only through an
+ * `UPDATE_IDENTITY` change request; a legal field sent here must equal the stored value, else 400.
+ */
 export interface OrganizationProfileInput {
-  /** Existing legacy organizations can classify their type once. */
-  organizationType?: OrganizationType;
-  name: string;
+  /** 2–160 characters. */
+  name?: string;
+  /** An `https:` URL of up to 2048 characters, or `null` to remove the logo. */
+  logoUrl?: string | null;
+}
+/** The legal details an organization is registered with. */
+export interface OrganizationIdentityInput {
   legalName?: string;
   taxId?: string;
   representativeName?: string;
-  /** Optional replacement CCCD, write-only. Verification is not implemented yet. */
+  /** CCCD, 12 digits, write-only: responses only ever return its last four digits. */
   nationalId?: string;
 }
-export interface OrganizationApplicationInput extends OrganizationProfileInput {
+export interface OrganizationApplicationInput extends OrganizationIdentityInput {
+  name: string;
   slug: string;
   organizationType: OrganizationType;
 }
@@ -43,6 +53,7 @@ export interface ConsoleOrganization {
   persona: OrganizationPersona;
   organizationType: OrganizationType | null;
   representativeName: string | null;
+  logoUrl: string | null;
   /** Returned only to Business Owners. Never the full CCCD. */
   nationalIdLast4?: string | null;
 }

@@ -25,6 +25,8 @@ export const organizations = pgTable(
     representativeName: text('representative_name'),
     legalName: text('legal_name'),
     taxId: text('tax_id'),
+    /** Display logo: an https URL the Owner hosts. Changed directly, like `name`. */
+    logoUrl: text('logo_url'),
     status: organizationStatusEnum('status').default('ACTIVE').notNull(),
     suiPackageId: text('sui_package_id'),
     suiTreasuryCap: text('sui_treasury_cap'),

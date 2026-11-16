@@ -3,28 +3,134 @@ import { alias } from 'drizzle-orm/pg-core';
 import { and, asc, eq, gt, getTableColumns } from 'drizzle-orm';
 import type { GovernanceProposal } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { organizationChangeRequests, organizationMemberships, systemUsers } from '../schema/auth.schema.js';
-import { organizations } from '../schema/organizations.schema.js';
+import {
+  organizationChangeRequests,
+  organizationChangeRequestSecrets,
+  organizationMemberships,
+  systemUsers,
+} from '../schema/auth.schema.js';
+import { organizationIdentityDetails, organizations } from '../schema/organizations.schema.js';
+import { OrganizationIdentityCipher } from '../organization-identity.cipher.js';
+import {
+  applyIdentityChange,
+  identityProblem,
+  type IdentityChange,
+  type IdentityState,
+} from '../organization-identity.rules.js';
 import {
   ConsoleOrganizationsRepository,
   ConsoleAccessError,
   ConsoleConflictError,
   ConsoleNotFoundError,
+  ConsoleValidationError,
 } from './console-organizations.repository.js';
 import { withInitialOwners, requireSystemAdmin } from './console-access.js';
 import { acceptCommand } from './operations.repository.js';
 import { ORGANIZATION_BUDGET_TOP_UP_COMMAND } from './organizations.repository.js';
 import { programs } from '../schema/programs.schema.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
+type Organization = typeof organizations.$inferSelect;
 const reviewer = alias(systemUsers, 'reviewer');
+
+/** The legal details an `UPDATE_IDENTITY` request was proposed against, to detect a stale approval. */
+interface IdentitySnapshot extends IdentityState {
+  nationalIdLast4: string | null;
+}
+/** What an `UPDATE_IDENTITY` request stores: the new values, never the CCCD itself. */
+type IdentityPayload = Omit<IdentityChange, 'nationalId'> & {
+  nationalIdLast4?: string;
+  expected: IdentitySnapshot;
+};
 
 @Injectable()
 export class GovernanceRepository {
   constructor(
     @Inject(DRIZZLE_DB) private readonly db: DrizzleDb,
     private readonly access: ConsoleOrganizationsRepository,
+    private readonly identityCipher: OrganizationIdentityCipher,
   ) {}
   private admin = requireSystemAdmin;
+  private async identitySnapshot(tx: Tx, org: Organization): Promise<IdentitySnapshot> {
+    const [details] = await tx
+      .select({ last4: organizationIdentityDetails.nationalIdLast4 })
+      .from(organizationIdentityDetails)
+      .where(eq(organizationIdentityDetails.organizationId, org.id));
+    return {
+      organizationType: org.organizationType,
+      legalName: org.legalName,
+      taxId: org.taxId,
+      representativeName: org.representativeName,
+      nationalIdLast4: details?.last4 ?? null,
+    };
+  }
+  /**
+   * Checks an `UPDATE_IDENTITY` change against the organization's current details and returns the
+   * payload to store. The caller holds the organization row FOR UPDATE, which serializes the
+   * one-open-request check. The CCCD goes to `organization_change_request_secrets`, not the payload.
+   */
+  private async identityPayload(tx: Tx, org: Organization, change: IdentityChange): Promise<IdentityPayload> {
+    const [open] = await tx
+      .select({ id: organizationChangeRequests.id })
+      .from(organizationChangeRequests)
+      .where(
+        and(
+          eq(organizationChangeRequests.organizationId, org.id),
+          eq(organizationChangeRequests.requestType, 'UPDATE_IDENTITY'),
+          eq(organizationChangeRequests.status, 'PENDING'),
+        ),
+      );
+    if (open) throw new ConsoleConflictError('This organization already has a legal details change waiting for review');
+    if (change.organizationType && org.organizationType)
+      throw new ConsoleValidationError('Organization type is already set');
+    const expected = await this.identitySnapshot(tx, org);
+    const problem = identityProblem(applyIdentityChange(expected, change), change.nationalId !== undefined);
+    if (problem) throw new ConsoleValidationError(problem);
+    const { nationalId, ...fields } = change;
+    return { ...fields, ...(nationalId ? { nationalIdLast4: nationalId.slice(-4) } : {}), expected };
+  }
+  /** Applies an approved `UPDATE_IDENTITY` request, refusing it if the details moved since submission. */
+  private async applyIdentity(tx: Tx, org: Organization, requestId: string, payload: IdentityPayload) {
+    const current = await this.identitySnapshot(tx, org);
+    const expected = payload.expected;
+    if (
+      !expected ||
+      (Object.keys(current) as (keyof IdentitySnapshot)[]).some((key) => current[key] !== (expected[key] ?? null))
+    )
+      throw new ConsoleConflictError('Organization details changed since submission');
+    const change: IdentityChange = {
+      ...(payload.legalName !== undefined ? { legalName: payload.legalName } : {}),
+      ...(payload.taxId !== undefined ? { taxId: payload.taxId } : {}),
+      ...(payload.representativeName !== undefined ? { representativeName: payload.representativeName } : {}),
+      ...(payload.organizationType !== undefined ? { organizationType: payload.organizationType } : {}),
+    };
+    const nationalIdLast4 = payload.nationalIdLast4;
+    if (change.organizationType && org.organizationType)
+      throw new ConsoleConflictError('Organization type is already set');
+    const [secret] = await tx
+      .select()
+      .from(organizationChangeRequestSecrets)
+      .where(eq(organizationChangeRequestSecrets.changeRequestId, requestId));
+    if (nationalIdLast4 && !secret) throw new ConsoleConflictError('Request is missing its CCCD; ask for a new one');
+    const problem = identityProblem(applyIdentityChange(current, change), secret !== undefined);
+    if (problem) throw new ConsoleConflictError(problem);
+    if (Object.keys(change).length > 0)
+      await tx
+        .update(organizations)
+        .set({ ...change, updatedAt: new Date() })
+        .where(eq(organizations.id, org.id));
+    if (secret) {
+      // Encrypted with the organization id as associated data, so it moves here unchanged.
+      const details = {
+        nationalIdEncrypted: secret.nationalIdEncrypted,
+        nationalIdLast4: secret.nationalIdLast4,
+        updatedAt: new Date(),
+      };
+      await tx
+        .insert(organizationIdentityDetails)
+        .values({ organizationId: org.id, ...details })
+        .onConflictDoUpdate({ target: organizationIdentityDetails.organizationId, set: details });
+    }
+  }
   async propose(actor: string, orgId: string, input: GovernanceProposal, platform: boolean) {
     const action = async (tx: Tx) => {
       const [org] = await tx.select().from(organizations).where(eq(organizations.id, orgId)).for('update');
@@ -43,8 +149,10 @@ export class GovernanceRepository {
             eq(organizationMemberships.status, 'ACTIVE'),
           ),
         );
+      const identity =
+        input.requestType === 'UPDATE_IDENTITY' ? await this.identityPayload(tx, org, input.payload) : undefined;
       const payload = {
-        ...input.payload,
+        ...(identity ?? input.payload),
         expectedStatus: org.status,
         ...(input.requestType === 'UPDATE_PROFILE' ? { expectedName: org.name } : {}),
         requestedReason: input.reason,
@@ -65,6 +173,12 @@ export class GovernanceRepository {
           reason: input.reason,
         })
         .returning();
+      if (identity && input.payload.nationalId)
+        await tx.insert(organizationChangeRequestSecrets).values({
+          changeRequestId: row.id,
+          nationalIdEncrypted: this.identityCipher.encrypt(input.payload.nationalId, orgId),
+          nationalIdLast4: input.payload.nationalId.slice(-4),
+        });
       return row;
     };
     return platform
@@ -219,10 +333,17 @@ export class GovernanceRepository {
             });
             break;
           }
+          case 'UPDATE_IDENTITY':
+            await this.applyIdentity(tx, org, request.id, request.payload as IdentityPayload);
+            break;
           default:
             throw new ConsoleConflictError('Unsupported request type');
         }
       }
+      // A decided request no longer needs its CCCD: approval has copied it, rejection discards it.
+      await tx
+        .delete(organizationChangeRequestSecrets)
+        .where(eq(organizationChangeRequestSecrets.changeRequestId, request.id));
       await tx
         .update(organizationChangeRequests)
         .set({

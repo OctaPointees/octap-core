@@ -111,18 +111,25 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "payload": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "targetUserId": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              }
+            }
           },
-          "targetUserId": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "number"
+          {
+            "$ref": "#/components/schemas/IdentityChangePayload"
           }
-        }
+        ]
       }
     },
     "required": [
@@ -177,6 +184,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
         "type": "string"
@@ -556,15 +564,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleOrganizationsController_apply_Body": {
     "type": "object",
     "properties": {
+      "name": {
+        "type": "string"
+      },
       "slug": {
         "type": "string"
       },
       "organizationType": {
-        "$ref": "#/components/schemas/OrganizationType",
-        "description": "Existing legacy organizations can classify their type once."
-      },
-      "name": {
-        "type": "string"
+        "$ref": "#/components/schemas/OrganizationType"
       },
       "legalName": {
         "type": "string"
@@ -576,7 +583,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "nationalId": {
-        "description": "Optional replacement CCCD, write-only. Verification is not implemented yet.",
+        "description": "CCCD, 12 digits, write-only: responses only ever return its last four digits.",
         "type": "string"
       }
     },
@@ -750,11 +757,18 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "null",
           "string"
         ]
+      },
+      "logoUrl": {
+        "type": [
+          "null",
+          "string"
+        ]
       }
     },
     "required": [
       "id",
       "legalName",
+      "logoUrl",
       "name",
       "organizationType",
       "persona",
@@ -767,34 +781,18 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleOrganizationsController_profile_Body": {
     "type": "object",
     "properties": {
-      "organizationType": {
-        "description": "Existing legacy organizations can classify their type once.",
-        "enum": [
-          "COMPANY",
-          "INDIVIDUAL_HOUSEHOLD"
-        ],
-        "type": "string"
-      },
       "name": {
+        "description": "2–160 characters.",
         "type": "string"
       },
-      "legalName": {
-        "type": "string"
-      },
-      "taxId": {
-        "type": "string"
-      },
-      "representativeName": {
-        "type": "string"
-      },
-      "nationalId": {
-        "description": "Optional replacement CCCD, write-only. Verification is not implemented yet.",
-        "type": "string"
+      "logoUrl": {
+        "description": "An `https:` URL of up to 2048 characters, or `null` to remove the logo.",
+        "type": [
+          "null",
+          "string"
+        ]
       }
-    },
-    "required": [
-      "name"
-    ]
+    }
   },
   "ConsoleOrganizationsController_profile_Response": {
     "type": "object",
@@ -1463,6 +1461,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "REINSTATE",
       "SUSPEND",
       "TRANSFER_OWNERSHIP",
+      "UPDATE_IDENTITY",
       "UPDATE_PROFILE"
     ],
     "type": "string"
@@ -1986,6 +1985,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                     "REINSTATE",
                     "SUSPEND",
                     "TRANSFER_OWNERSHIP",
+                    "UPDATE_IDENTITY",
                     "UPDATE_PROFILE"
                   ],
                   "type": "string"
@@ -2089,18 +2089,25 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "payload": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "targetUserId": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              }
+            }
           },
-          "targetUserId": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "number"
+          {
+            "$ref": "#/components/schemas/IdentityChangePayload"
           }
-        }
+        ]
       }
     },
     "required": [
@@ -2155,6 +2162,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
         "type": "string"
@@ -2497,15 +2505,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "format": "uuid",
         "type": "string"
       },
+      "name": {
+        "type": "string"
+      },
       "slug": {
         "type": "string"
       },
       "organizationType": {
-        "$ref": "#/components/schemas/OrganizationType",
-        "description": "Existing legacy organizations can classify their type once."
-      },
-      "name": {
-        "type": "string"
+        "$ref": "#/components/schemas/OrganizationType"
       },
       "legalName": {
         "type": "string"
@@ -2517,7 +2524,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "nationalId": {
-        "description": "Optional replacement CCCD, write-only. Verification is not implemented yet.",
+        "description": "CCCD, 12 digits, write-only: responses only ever return its last four digits.",
         "type": "string"
       }
     },
@@ -2623,6 +2630,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "logoUrl": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "createdAt": {
         "type": "string",
         "format": "date-time"
@@ -2644,6 +2657,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "id",
       "legalName",
+      "logoUrl",
       "name",
       "organizationType",
       "programControlId",
@@ -2777,6 +2791,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                 "string"
               ]
             },
+            "logoUrl": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time"
@@ -2798,6 +2818,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
             "createdAt",
             "id",
             "legalName",
+            "logoUrl",
             "name",
             "organizationType",
             "programControlId",
@@ -4204,6 +4225,32 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "scopes",
       "status"
     ]
+  },
+  "IdentityChangePayload": {
+    "description": "`UPDATE_IDENTITY` replaces an organization's legal details once a System Admin approves it. Send\nat least one field; `organizationType` only classifies an organization that has none yet. The\nstored request keeps only the CCCD's last four digits, never the number.",
+    "type": "object",
+    "properties": {
+      "organizationType": {
+        "enum": [
+          "COMPANY",
+          "INDIVIDUAL_HOUSEHOLD"
+        ],
+        "type": "string"
+      },
+      "legalName": {
+        "type": "string"
+      },
+      "taxId": {
+        "type": "string"
+      },
+      "representativeName": {
+        "type": "string"
+      },
+      "nationalId": {
+        "description": "CCCD, 12 digits, write-only: responses only ever return its last four digits.",
+        "type": "string"
+      }
+    }
   },
   "CreditBalanceSnapshot": {
     "type": "object",
