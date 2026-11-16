@@ -25,11 +25,21 @@ export interface CreateVoucherRequest {
    * voucher's terms and cannot change afterwards, so it must hold no personal data.
    */
   terms?: Record<string, unknown>;
+  /**
+   * How many can be issued in all. `null`, or omitting it on create, is no limit.
+   * @TJS-type ["integer", "null"]
+   * @minimum 1
+   * @maximum 2147483647
+   */
   totalSupply?: number | null;
   /**
-   * How many vouchers of this kind one member may hold, counting used and expired ones but not
-   * cancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,
+   * How many vouchers of this kind one member may hold. Used and expired ones count, even when
+   * refunded later; cancelled ones (including an unused one that was refunded) don't. `null`, or
+   * omitting it on create, is no limit. Stays editable after publishing,
    * like supply; lowering it never takes back vouchers already issued.
+   * @TJS-type ["integer", "null"]
+   * @minimum 1
+   * @maximum 2147483647
    */
   perMemberLimit?: number | null;
   startsAt?: string | null;

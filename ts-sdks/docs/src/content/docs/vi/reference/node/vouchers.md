@@ -21,7 +21,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `pointsCost` | `number` | Mặc định là 0, tức voucher miễn phí. |
 | `discountValue` | `string` | |
 | `totalSupply` | `number \| null` | |
-| `perMemberLimit` | `number \| null` | Số voucher loại này một thành viên được giữ, tính cả voucher đã dùng hoặc hết hạn, không tính voucher đã hủy. `null` là không giới hạn. Claim hoặc grant vượt giới hạn trả 409. |
+| `perMemberLimit` | `number \| null` | Số voucher loại này một thành viên được giữ, tính cả voucher đã dùng hoặc hết hạn, kể cả khi sau đó được hoàn; không tính voucher đã hủy (gồm voucher chưa dùng đã được hoàn). `null` là không giới hạn. Claim hoặc grant vượt giới hạn trả 409. |
 | `startsAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `expiresAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `metadata` | `object` | |

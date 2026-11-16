@@ -424,7 +424,9 @@ export class RewardsRepository {
       throw invalid('Voucher is completely depleted');
     if (voucher.perMemberLimit !== null) {
       // Under the voucher's row lock taken above, so two claims by one member count one after the other.
-      // Cancelled vouchers (failed, abandoned or refunded) don't count; used and expired ones do.
+      // No database constraint backs this: any new path that inserts or revives an ownership must go
+      // through this method. Cancelled vouchers (failed, abandoned, or refunded while unused) don't
+      // count; used and expired ones do, even when refunded, since refunds keep REDEEMED/EXPIRED.
       const [{ held }] = await tx
         .select({ held: count() })
         .from(voucherOwnerships)

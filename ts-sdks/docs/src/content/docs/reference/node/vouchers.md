@@ -21,7 +21,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `pointsCost` | `number` | Defaults to 0, a free voucher. |
 | `discountValue` | `string` | |
 | `totalSupply` | `number \| null` | |
-| `perMemberLimit` | `number \| null` | How many of this voucher one member may hold, counting used and expired ones, not cancelled ones. `null` is no limit. A claim or grant past it is a 409. |
+| `perMemberLimit` | `number \| null` | How many of this voucher one member may hold. Used and expired ones count, even when refunded later; cancelled ones (including an unused one that was refunded) don't. `null` is no limit. A claim or grant past it is a 409. |
 | `startsAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `expiresAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `metadata` | `object` | |

@@ -914,17 +914,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "description": "How many can be issued in all. `null`, or omitting it on create, is no limit.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
+        "description": "How many vouchers of this kind one member may hold. Used and expired ones count, even when\nrefunded later; cancelled ones (including an unused one that was refunded) don't. `null`, or\nomitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "startsAt": {
         "type": [
@@ -990,17 +995,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "description": "How many can be issued in all. `null`, or omitting it on create, is no limit.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
+        "description": "How many vouchers of this kind one member may hold. Used and expired ones count, even when\nrefunded later; cancelled ones (including an unused one that was refunded) don't. `null`, or\nomitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "startsAt": {
         "type": [
@@ -3001,17 +3011,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "description": "How many can be issued in all. `null`, or omitting it on create, is no limit.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
+        "description": "How many vouchers of this kind one member may hold. Used and expired ones count, even when\nrefunded later; cancelled ones (including an unused one that was refunded) don't. `null`, or\nomitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "startsAt": {
         "type": [
@@ -3493,17 +3508,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "$ref": "#/components/schemas/Record_string_unknown"
       },
       "totalSupply": {
+        "description": "How many can be issued in all. `null`, or omitting it on create, is no limit.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "perMemberLimit": {
-        "description": "How many vouchers of this kind one member may hold, counting used and expired ones but not\ncancelled ones. `null`, or omitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
+        "description": "How many vouchers of this kind one member may hold. Used and expired ones count, even when\nrefunded later; cancelled ones (including an unused one that was refunded) don't. `null`, or\nomitting it on create, is no limit. Stays editable after publishing,\nlike supply; lowering it never takes back vouchers already issued.",
         "type": [
-          "null",
-          "number"
-        ]
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 2147483647
       },
       "startsAt": {
         "type": [
