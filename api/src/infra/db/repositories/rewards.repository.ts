@@ -4,6 +4,7 @@ import { eq, desc, and, sql, ne, isNull, count } from 'drizzle-orm';
 import {
   DEFAULT_VOUCHER_REFUND_POLICY,
   VOUCHER_MIN_USE_WINDOW_MS,
+  voucherUseDeadline,
   type ClaimVoucherResponse,
   type CreateVoucherRequest,
 } from '@octap/contracts';
@@ -50,6 +51,13 @@ export const VOUCHER_PUBLISH_COMMAND_TYPE = 'VOUCHER_TERMS_PUBLISH';
 export const VOUCHER_GRANT_COMMAND_TYPE = 'VOUCHER_GRANT';
 /** Customer-signed: marks a voucher used. */
 export const VOUCHER_USE_COMMAND_TYPE = 'VOUCHER_USE_RESERVE';
+
+export interface ConfirmVoucherGrantParams {
+  voucherOwnershipId: string;
+  digest: string;
+  /** `VoucherGranted.issued_at_ms` (see `voucherIssuedAt`). */
+  issuedAt: Date;
+}
 const CLAIM_COMMAND_TYPES = [
   VOUCHER_CLAIM_COMMAND_TYPE,
   VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
@@ -66,6 +74,7 @@ const PUBLISHED_FIELDS = [
   'terms',
   'startsAt',
   'expiresAt',
+  'validForDays',
 ] as const;
 
 /** A voucher rule a request broke. `RewardsService` maps `kind` to the HTTP status. */
@@ -518,7 +527,8 @@ export class RewardsRepository {
         pendingOperationId: params.pendingOperationId,
         serialCode: `${voucher.code.toUpperCase()}-${randomBytes(8).toString('hex').toUpperCase()}`,
         loyaltyTransactionId: params.loyaltyTransactionId,
-        expiresAt: voucher.expiresAt,
+        // Provisional: fixed again when it becomes AVAILABLE, which is when the chain issues it.
+        expiresAt: voucherUseDeadline(voucher, new Date()),
       })
       .returning();
     const claimedCount = voucher.claimedCount + 1;
@@ -590,9 +600,10 @@ export class RewardsRepository {
 
   /**
    * The chain recorded a grant or free claim. Returns the command to settle, or null when the voucher
-   * is not waiting for this.
+   * is not waiting for this. `issuedAt` is the event's `issued_at_ms`: the voucher's own deadline
+   * counts from it, as the chain's does, however late this confirmation runs.
    */
-  async confirmVoucherGrant(params: { voucherOwnershipId: string; digest: string }, db: DrizzleDb = this.db) {
+  async confirmVoucherGrant(params: ConfirmVoucherGrantParams, db: DrizzleDb = this.db) {
     return withTenantOf(
       db,
       (lookup) => tenantOf.voucherOwnership(lookup, params.voucherOwnershipId),
@@ -601,7 +612,7 @@ export class RewardsRepository {
     );
   }
 
-  private async settleGrant(tx: DrizzleDb, params: { voucherOwnershipId: string; digest: string }) {
+  private async settleGrant(tx: DrizzleDb, params: ConfirmVoucherGrantParams) {
     const [ownership] = await tx
       .select()
       .from(voucherOwnerships)
@@ -609,14 +620,21 @@ export class RewardsRepository {
       .for('update');
     if (!ownership || ownership.status !== 'RESERVED' || ownership.loyaltyTransactionId) return null;
     const key = await this.operationKey(tx, ownership.pendingOperationId);
+    const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
+    // The foreign key keeps the catalog row; failing loudly beats a TypeError mid-settlement.
+    if (!voucher) throw new Error(`voucher ${ownership.voucherId} of ownership ${ownership.id} is missing`);
     const [updated] = await tx
       .update(voucherOwnerships)
-      .set({ status: 'AVAILABLE', pendingOperationId: null, updatedAt: new Date() })
+      .set({
+        status: 'AVAILABLE',
+        pendingOperationId: null,
+        expiresAt: voucherUseDeadline(voucher, params.issuedAt),
+        updatedAt: new Date(),
+      })
       .where(eq(voucherOwnerships.id, ownership.id))
       .returning();
-    const voucher = await tx.query.vouchers.findFirst({ where: eq(vouchers.id, ownership.voucherId) });
     await enqueueWebhookEvent(tx, {
-      organizationId: voucher!.organizationId,
+      organizationId: voucher.organizationId,
       eventType: 'voucher.granted',
       payload: {
         voucherOwnershipId: updated.id,
@@ -624,6 +642,7 @@ export class RewardsRepository {
         organizationEndUserId: updated.organizationEndUserId,
         serialCode: updated.serialCode,
         status: updated.status,
+        expiresAt: updated.expiresAt?.toISOString() ?? null,
         blockchainDigest: params.digest,
       },
     });

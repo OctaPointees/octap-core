@@ -110,14 +110,18 @@ export const VoucherClaimed = new MoveStruct({ name: `${$moduleName}::VoucherCla
         beneficiary: bcs.Address,
         terms_id: bcs.Address,
         points_paid: bcs.u64(),
-        reference: bcs.vector(bcs.u8())
+        reference: bcs.vector(bcs.u8()),
+        /** The record's `issued_at_ms`: the voucher's own use deadline counts from it. */
+        issued_at_ms: bcs.u64()
     } });
 export const VoucherGranted = new MoveStruct({ name: `${$moduleName}::VoucherGranted`, fields: {
         account_id: bcs.Address,
         program_id: bcs.Address,
         beneficiary: bcs.Address,
         terms_id: bcs.Address,
-        reference: bcs.vector(bcs.u8())
+        reference: bcs.vector(bcs.u8()),
+        /** The record's `issued_at_ms`: the voucher's own use deadline counts from it. */
+        issued_at_ms: bcs.u64()
     } });
 export const VoucherUsed = new MoveStruct({ name: `${$moduleName}::VoucherUsed`, fields: {
         account_id: bcs.Address,
@@ -159,7 +163,7 @@ export interface OpenAccountOptions {
  * anyone spam shared objects.
  */
 export function openAccount(options: OpenAccountOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -208,7 +212,7 @@ export interface EarnOptions {
  * budget shard aborts `budget_shard::EBudgetExceeded`.
  */
 export function earn(options: EarnOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -250,7 +254,7 @@ export interface RedeemOptions {
  * (`EDuplicateRedemption`): it is what `reverse_redeem` later names.
  */
 export function redeem(options: RedeemOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'u64',
@@ -285,7 +289,7 @@ export interface ClaimVoucherOptions {
  * `reverse_redeem` work as they do for `redeem`.
  */
 export function claimVoucher(options: ClaimVoucherOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -320,7 +324,7 @@ export interface GrantVoucherOptions {
  * customer signature. Only using it does.
  */
 export function grantVoucher(options: GrantVoucherOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -354,7 +358,7 @@ export interface UseVoucherOptions {
  * path for an organization or admin to use a customer's voucher.
  */
 export function useVoucher(options: UseVoucherOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -388,7 +392,7 @@ export interface CancelVoucherOptions {
  * voucher by returning what it cost: a granted voucher cannot be cancelled.
  */
 export function cancelVoucher(options: CancelVoucherOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -431,7 +435,7 @@ export interface ReverseEarnOptions {
  * key aborts `operation_shard::EAlreadyReversed`.
  */
 export function reverseEarn(options: ReverseEarnOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -468,7 +472,7 @@ export interface ReverseRedeemOptions {
  * `reference`.
  */
 export function reverseRedeem(options: ReverseRedeemOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         null,
@@ -496,7 +500,7 @@ export interface SpendableOptions {
  * the PostgreSQL projection without needing a transaction.
  */
 export function spendable(options: SpendableOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         '0x2::clock::Clock'
@@ -525,7 +529,7 @@ export interface VoucherIsUsedOptions {
  * voucher.
  */
 export function voucherIsUsed(options: VoucherIsUsedOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -554,7 +558,7 @@ export interface VoucherIsCancelledOptions {
  * voucher.
  */
 export function voucherIsCancelled(options: VoucherIsCancelledOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -577,7 +581,7 @@ export interface BeneficiaryOptions {
     ];
 }
 export function beneficiary(options: BeneficiaryOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -599,7 +603,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0x775796f068175941f7bc20375760b9e158059c908b764cf8324d1390f3561a23';
+    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

@@ -74,6 +74,12 @@ export interface CreditsChainConfirmedEventData {
   /** The confirmed balance right after this transaction. */
   newBalance: number;
   blockchainDigest: string;
+  /**
+   * Only on `credits.redemption.confirmed` for a paid voucher claim: the voucher it bought, now
+   * AVAILABLE, with its final `expiresAt` counted from the chain's issue time. The claim response's
+   * `expiresAt` was provisional.
+   */
+  voucher?: { voucherOwnershipId: string; expiresAt: string | null };
 }
 
 export type EarnFailureCode = 'BUDGET_EXHAUSTED' | 'REJECTED';
@@ -125,6 +131,11 @@ export interface VoucherGrantedEventData {
   organizationEndUserId: string;
   serialCode: string;
   status: VoucherOwnershipStatus;
+  /**
+   * This customer's final use deadline, counted from the chain's issue time; `null` never expires.
+   * The grant response's `expiresAt` was provisional.
+   */
+  expiresAt: string | null;
   blockchainDigest: string;
 }
 

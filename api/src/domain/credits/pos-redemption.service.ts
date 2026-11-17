@@ -10,6 +10,7 @@ import { requireProgramConfig } from '../programs/program-config.js';
 import { MemberEligibilityError } from '#infra/db/repositories/member-eligibility.js';
 import { mapMemberEligibilityError } from './member-eligibility-error.js';
 import { transactionExpirationEpoch } from '@octap/chain';
+import { voucherClaimIssuedAt } from '#domain/rewards/voucher-issued-at.js';
 import type {
   ReservePosRedemptionRequest,
   ReservePosRedemptionResponse,
@@ -318,6 +319,7 @@ export class PosRedemptionService {
         pointsAmount: cached.pointsAmount,
         digest: result.digest,
         sender: beneficiaryAddress,
+        voucherIssuedAt: voucherClaimIssuedAt(result),
       });
     } catch (err: unknown) {
       if (!isUniqueViolation(err)) {

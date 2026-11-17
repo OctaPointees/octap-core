@@ -140,6 +140,8 @@ public struct VoucherClaimed has copy, drop {
     terms_id: ID,
     points_paid: u64,
     reference: vector<u8>,
+    /// The record's `issued_at_ms`: the voucher's own use deadline counts from it.
+    issued_at_ms: u64,
 }
 
 public struct VoucherGranted has copy, drop {
@@ -148,6 +150,8 @@ public struct VoucherGranted has copy, drop {
     beneficiary: address,
     terms_id: ID,
     reference: vector<u8>,
+    /// The record's `issued_at_ms`: the voucher's own use deadline counts from it.
+    issued_at_ms: u64,
 }
 
 public struct VoucherUsed has copy, drop {
@@ -282,6 +286,7 @@ entry fun claim_voucher(
     assert_terms_issuable(account, terms, clock);
     let points_paid = voucher_terms::points_cost(terms);
     assert!(!table::contains(&account.vouchers, reference), EDuplicateVoucher);
+    let issued_at_ms = clock::timestamp_ms(clock);
 
     debit(account, points_paid, copy reference, clock);
     table::add(
@@ -291,7 +296,7 @@ entry fun claim_voucher(
             terms_id: object::id(terms),
             points_paid,
             status: VOUCHER_AVAILABLE,
-            issued_at_ms: clock::timestamp_ms(clock),
+            issued_at_ms,
         },
     );
     event::emit(VoucherClaimed {
@@ -301,6 +306,7 @@ entry fun claim_voucher(
         terms_id: object::id(terms),
         points_paid,
         reference,
+        issued_at_ms,
     });
 }
 
@@ -317,6 +323,7 @@ entry fun grant_voucher(
     assert!(capabilities::issuer_program_id(issuer) == account.program_id, EWrongProgram);
     assert_terms_issuable(account, terms, clock);
     assert!(!table::contains(&account.vouchers, reference), EDuplicateVoucher);
+    let issued_at_ms = clock::timestamp_ms(clock);
 
     table::add(
         &mut account.vouchers,
@@ -325,7 +332,7 @@ entry fun grant_voucher(
             terms_id: object::id(terms),
             points_paid: 0,
             status: VOUCHER_AVAILABLE,
-            issued_at_ms: clock::timestamp_ms(clock),
+            issued_at_ms,
         },
     );
     event::emit(VoucherGranted {
@@ -334,6 +341,7 @@ entry fun grant_voucher(
         beneficiary: account.beneficiary,
         terms_id: object::id(terms),
         reference,
+        issued_at_ms,
     });
 }
 
@@ -348,11 +356,12 @@ entry fun use_voucher(
 ) {
     assert!(tx_context::sender(ctx) == account.beneficiary, ENotBeneficiary);
     assert!(table::contains(&account.vouchers, reference), EUnknownVoucher);
-    assert!(voucher_terms::is_unexpired(terms, clock::timestamp_ms(clock)), EVoucherNotActive);
 
     let terms_id = object::id(terms);
     let record = table::borrow_mut(&mut account.vouchers, reference);
     assert!(record.terms_id == terms_id, EWrongVoucherTerms);
+    // The deadline is this voucher's own: from when it was issued, capped by the terms' expiry.
+    assert!(voucher_terms::is_usable(terms, record.issued_at_ms, clock::timestamp_ms(clock)), EVoucherNotActive);
     assert!(record.status == VOUCHER_AVAILABLE, EVoucherNotAvailable);
     record.status = VOUCHER_USED;
 

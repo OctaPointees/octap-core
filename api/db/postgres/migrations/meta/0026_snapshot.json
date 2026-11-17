@@ -1,5 +1,5 @@
 {
-  "id": "a584e84d-bd57-4d80-9e8d-8d7646df69c1",
+  "id": "91364fe4-2e2b-4875-adc0-8354185a8d1e",
   "prevId": "28811420-a48c-4b9f-95ea-9a596541cda8",
   "version": "7",
   "dialect": "postgresql",
@@ -144,58 +144,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "public.organization_change_request_secrets": {
-      "name": "organization_change_request_secrets",
-      "schema": "",
-      "columns": {
-        "change_request_id": {
-          "name": "change_request_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "national_id_encrypted": {
-          "name": "national_id_encrypted",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "national_id_last4": {
-          "name": "national_id_last4",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "organization_change_request_secrets_change_request_id_organization_change_requests_id_fk": {
-          "name": "organization_change_request_secrets_change_request_id_organization_change_requests_id_fk",
-          "tableFrom": "organization_change_request_secrets",
-          "tableTo": "organization_change_requests",
-          "columnsFrom": [
-            "change_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": true
@@ -763,12 +711,6 @@
         },
         "tax_id": {
           "name": "tax_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "logo_url": {
-          "name": "logo_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1925,6 +1867,12 @@
         },
         "per_member_limit": {
           "name": "per_member_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_for_days": {
+          "name": "valid_for_days",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -3304,8 +3252,7 @@
         "DEACTIVATE",
         "SUSPEND",
         "REINSTATE",
-        "BUDGET_TOP_UP",
-        "UPDATE_IDENTITY"
+        "BUDGET_TOP_UP"
       ]
     },
     "public.invitation_status": {

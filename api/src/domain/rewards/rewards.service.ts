@@ -88,6 +88,7 @@ export class RewardsService {
           perMemberLimit: req.perMemberLimit,
           startsAt: req.startsAt ? new Date(req.startsAt) : undefined,
           expiresAt: req.expiresAt ? new Date(req.expiresAt) : undefined,
+          validForDays: req.validForDays,
           metadata: req.metadata,
           status: req.status,
         },
@@ -206,6 +207,7 @@ export class RewardsService {
             perMemberLimit: merged.perMemberLimit,
             startsAt: merged.startsAt?.toISOString(),
             expiresAt: merged.expiresAt?.toISOString(),
+            validForDays: merged.validForDays,
           });
         },
         tx,
@@ -291,6 +293,7 @@ export class RewardsService {
       status: voucher.status,
       startsAt: voucher.startsAt ? new Date(voucher.startsAt).toISOString() : null,
       expiresAt: voucher.expiresAt ? new Date(voucher.expiresAt).toISOString() : null,
+      validForDays: voucher.validForDays,
       metadata: voucher.metadata as Record<string, unknown> | null,
       createdAt: new Date(voucher.createdAt).toISOString(),
       updatedAt: new Date(voucher.updatedAt).toISOString(),

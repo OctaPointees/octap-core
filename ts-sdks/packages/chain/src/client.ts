@@ -91,6 +91,8 @@ export interface PublishVoucherTermsParams {
   startsAtMs: number | bigint;
   /** Zero means it never expires. */
   expiresAtMs: number | bigint;
+  /** How long each customer's voucher is usable from its issue, capped by `expiresAtMs`. Zero: unused. */
+  useDurationMs: number | bigint;
 }
 
 export interface ClaimVoucherParams {
@@ -365,6 +367,7 @@ export class OctapChainClient {
         pointsCost: params.pointsCost,
         startsAtMs: params.startsAtMs,
         expiresAtMs: params.expiresAtMs,
+        useDurationMs: params.useDurationMs,
       },
     })(tx);
     return tx;

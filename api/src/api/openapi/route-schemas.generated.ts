@@ -936,10 +936,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
-        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "description": "When claims close. At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.\nWithout `validForDays` it is also when every customer's voucher expires; with it, the cap on\neach customer's own deadline.",
         "type": [
           "null",
           "string"
+        ]
+      },
+      "validForDays": {
+        "description": "Each customer's voucher stays usable this many days from when it is issued to them, capped by\n`expiresAt`. 1 to `VOUCHER_MAX_VALID_FOR_DAYS`, or omit/`null` so every voucher expires at\n`expiresAt`. Part of the on-chain promise: it cannot change once publishing starts.",
+        "type": [
+          "null",
+          "number"
         ]
       }
     },
@@ -1017,10 +1024,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
-        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "description": "When claims close. At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.\nWithout `validForDays` it is also when every customer's voucher expires; with it, the cap on\neach customer's own deadline.",
         "type": [
           "null",
           "string"
+        ]
+      },
+      "validForDays": {
+        "description": "Each customer's voucher stays usable this many days from when it is issued to them, capped by\n`expiresAt`. 1 to `VOUCHER_MAX_VALID_FOR_DAYS`, or omit/`null` so every voucher expires at\n`expiresAt`. Part of the on-chain promise: it cannot change once publishing starts.",
+        "type": [
+          "null",
+          "number"
         ]
       },
       "metadata": {
@@ -2984,6 +2998,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -3056,10 +3071,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
-        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "description": "When claims close. At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.\nWithout `validForDays` it is also when every customer's voucher expires; with it, the cap on\neach customer's own deadline.",
         "type": [
           "null",
           "string"
+        ]
+      },
+      "validForDays": {
+        "description": "Each customer's voucher stays usable this many days from when it is issued to them, capped by\n`expiresAt`. 1 to `VOUCHER_MAX_VALID_FOR_DAYS`, or omit/`null` so every voucher expires at\n`expiresAt`. Part of the on-chain promise: it cannot change once publishing starts.",
+        "type": [
+          "null",
+          "number"
         ]
       },
       "metadata": {
@@ -3196,6 +3218,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -3356,6 +3379,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "expiresAt": {
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"
@@ -3553,10 +3577,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
-        "description": "At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.",
+        "description": "When claims close. At least `VOUCHER_MIN_USE_WINDOW_MS` away when the voucher is activated.\nWithout `validForDays` it is also when every customer's voucher expires; with it, the cap on\neach customer's own deadline.",
         "type": [
           "null",
           "string"
+        ]
+      },
+      "validForDays": {
+        "description": "Each customer's voucher stays usable this many days from when it is issued to them, capped by\n`expiresAt`. 1 to `VOUCHER_MAX_VALID_FOR_DAYS`, or omit/`null` so every voucher expires at\n`expiresAt`. Part of the on-chain promise: it cannot change once publishing starts.",
+        "type": [
+          "null",
+          "number"
         ]
       },
       "metadata": {
@@ -4532,6 +4563,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "validForDays": {
+        "description": "`null`: every customer's voucher expires at `expiresAt`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
       "metadata": {
         "anyOf": [
           {
@@ -4560,7 +4598,8 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "publishStatus",
       "status",
       "title",
-      "updatedAt"
+      "updatedAt",
+      "validForDays"
     ]
   },
   "VoucherOwnershipDto": {
@@ -4594,6 +4633,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "expiresAt": {
+        "description": "This customer's own deadline (`voucherUseDeadline`). While RESERVED it is provisional: it is set\nagain from the chain's issue time, so time spent waiting for a signature doesn't count. The\nfinal value arrives on `voucher.granted` or `credits.redemption.confirmed`.",
         "type": [
           "null",
           "string"

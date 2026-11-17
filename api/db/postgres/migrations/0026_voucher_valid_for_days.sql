@@ -1,0 +1,1 @@
+ALTER TABLE "vouchers" ADD COLUMN "valid_for_days" integer;
