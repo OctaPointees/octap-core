@@ -35,8 +35,8 @@ function displayName(value: unknown): string {
 /** An `https:` logo URL, or null to remove it. */
 function logoUrl(value: unknown): string | null {
   if (value === null) return null;
-  if (typeof value !== 'string' || value.length > LOGO_URL_MAX_LENGTH)
-    throw new BadRequestException(`The logo must be an https URL of up to ${LOGO_URL_MAX_LENGTH} characters`);
+  const tooLong = `The logo must be an https URL of up to ${LOGO_URL_MAX_LENGTH} characters`;
+  if (typeof value !== 'string' || value.length > LOGO_URL_MAX_LENGTH) throw new BadRequestException(tooLong);
   let url: URL;
   try {
     url = new URL(value.trim());
@@ -44,7 +44,10 @@ function logoUrl(value: unknown): string | null {
     throw new BadRequestException('The logo must be an https URL');
   }
   if (url.protocol !== 'https:') throw new BadRequestException('The logo must be an https URL');
-  return url.toString();
+  // Normalizing can percent-encode characters and make the URL longer: the stored form must fit.
+  const normalized = url.toString();
+  if (normalized.length > LOGO_URL_MAX_LENGTH) throw new BadRequestException(tooLong);
+  return normalized;
 }
 
 @Injectable()
@@ -99,9 +102,9 @@ export class ConsoleOrganizationsService {
         userId,
         {
           name,
-          legalName: identity.legalName,
-          taxId: identity.taxId,
-          representativeName: identity.representativeName,
+          legalName: identity.legalName ?? undefined,
+          taxId: identity.taxId ?? undefined,
+          representativeName: identity.representativeName ?? undefined,
           nationalId: identity.nationalId,
           slug,
           organizationType,

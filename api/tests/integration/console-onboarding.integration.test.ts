@@ -701,6 +701,8 @@ describe('console onboarding and protected portal operations', () => {
       { logoUrl: 'javascript:alert(1)' },
       { logoUrl: 'not a url' },
       { logoUrl: `https://cdn.example.com/${'a'.repeat(2048)}` },
+      // Short as sent, but each "é" becomes "%C3%A9" once normalized, past 2048.
+      { logoUrl: `https://cdn.example.com/${'é'.repeat(1000)}` },
       { name: 'Brand', taxId: '9999999999' },
     ])
       await patch(body).expect(400);

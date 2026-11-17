@@ -10,10 +10,11 @@ export const ORGANIZATION_TYPES: readonly OrganizationType[] = ['INDIVIDUAL_HOUS
 export const TAX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{1,30}[A-Za-z0-9]$/;
 export const NATIONAL_ID_PATTERN = /^\d{12}$/;
 
+/** A text field set to `null` is cleared: blank input is stored as null, never as `""`. */
 export interface IdentityChange {
-  legalName?: string;
-  taxId?: string;
-  representativeName?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  representativeName?: string | null;
   nationalId?: string;
   organizationType?: OrganizationType;
 }
@@ -30,8 +31,9 @@ export interface IdentityState {
 export class IdentityInputError extends Error {}
 
 /**
- * Reads the legal fields present in `input`: text trimmed and at most 160 characters, a 12-digit
- * CCCD, a known organization type. Absent fields stay absent. Throws `IdentityInputError`.
+ * Reads the legal fields present in `input`: text trimmed and at most 160 characters (blank becomes
+ * null, so a cleared field is stored as null like one never set), a 12-digit CCCD, a known
+ * organization type. Absent fields stay absent. Throws `IdentityInputError`.
  */
 export function parseIdentityChange(input: Record<string, unknown>): IdentityChange {
   const change: IdentityChange = {};
@@ -39,7 +41,8 @@ export function parseIdentityChange(input: Record<string, unknown>): IdentityCha
     const value = input[key];
     if (value === undefined) continue;
     if (typeof value !== 'string' || value.length > 160) throw new IdentityInputError(`Invalid ${key}`);
-    change[key] = value.trim();
+    const text = value.trim();
+    change[key] = text === '' ? null : text;
   }
   const nationalId = input.nationalId;
   if (nationalId !== undefined) {
@@ -77,8 +80,8 @@ export function identityProblem(state: IdentityState, hasNewNationalId: boolean)
 export function applyIdentityChange(state: IdentityState, change: IdentityChange): IdentityState {
   return {
     organizationType: change.organizationType ?? state.organizationType,
-    legalName: change.legalName ?? state.legalName,
-    taxId: change.taxId ?? state.taxId,
-    representativeName: change.representativeName ?? state.representativeName,
+    legalName: change.legalName !== undefined ? change.legalName : state.legalName,
+    taxId: change.taxId !== undefined ? change.taxId : state.taxId,
+    representativeName: change.representativeName !== undefined ? change.representativeName : state.representativeName,
   };
 }

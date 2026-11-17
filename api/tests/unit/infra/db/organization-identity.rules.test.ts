@@ -27,6 +27,9 @@ describe('parseIdentityChange', () => {
     });
     expect(parseIdentityChange({})).toEqual({});
   });
+  it('turns a blank text field into null, never an empty string', () => {
+    expect(parseIdentityChange({ legalName: '   ', taxId: '' })).toEqual({ legalName: null, taxId: null });
+  });
   it('rejects malformed values', () => {
     for (const input of [
       { legalName: 5 },
@@ -64,5 +67,8 @@ describe('applyIdentityChange', () => {
       ...company,
       legalName: 'Cong Ty XYZ',
     });
+  });
+  it('clears a field the change sets to null', () => {
+    expect(applyIdentityChange(company, { legalName: null })).toEqual({ ...company, legalName: null });
   });
 });
