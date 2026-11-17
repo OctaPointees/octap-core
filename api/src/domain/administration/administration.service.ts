@@ -11,8 +11,24 @@ import {
   ConsoleAccessError,
   ConsoleConflictError,
   ConsoleNotFoundError,
+  ConsoleValidationError,
 } from '#infra/db/repositories/console-organizations.repository.js';
 import { UUID_PATTERN as uuid } from '#infra/db/repositories/console-access.js';
+import {
+  IDENTITY_FIELDS,
+  IdentityInputError,
+  parseIdentityChange,
+  type IdentityChange,
+} from '#infra/db/organization-identity.rules.js';
+const REQUEST_TYPES = [
+  'UPDATE_PROFILE',
+  'TRANSFER_OWNERSHIP',
+  'DEACTIVATE',
+  'SUSPEND',
+  'REINSTATE',
+  'BUDGET_TOP_UP',
+  'UPDATE_IDENTITY',
+];
 @Injectable()
 export class AdministrationService {
   constructor(private readonly governance: GovernanceRepository) {}
@@ -25,12 +41,7 @@ export class AdministrationService {
     const reason = this.reason(body?.reason);
     if (!platform && body?.requestType === 'UPDATE_PROFILE')
       throw new BadRequestException('Use the organization profile endpoint to change the display name directly');
-    if (
-      !['UPDATE_PROFILE', 'TRANSFER_OWNERSHIP', 'DEACTIVATE', 'SUSPEND', 'REINSTATE', 'BUDGET_TOP_UP'].includes(
-        String(body?.requestType),
-      )
-    )
-      throw new BadRequestException('Invalid request type');
+    if (!REQUEST_TYPES.includes(String(body?.requestType))) throw new BadRequestException('Invalid request type');
     const payload = body.payload ?? {};
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new BadRequestException('Invalid payload');
@@ -42,7 +53,9 @@ export class AdministrationService {
           ? ['name']
           : body.requestType === 'BUDGET_TOP_UP'
             ? ['amount']
-            : [];
+            : body.requestType === 'UPDATE_IDENTITY'
+              ? [...IDENTITY_FIELDS]
+              : [];
     if (Object.keys(input).some((key) => !allowed.includes(key)))
       throw new BadRequestException('Unexpected request fields');
     if (
@@ -57,16 +70,27 @@ export class AdministrationService {
       throw new BadRequestException('A display name of 2–160 characters is required');
     if (body.requestType === 'BUDGET_TOP_UP' && (!Number.isSafeInteger(input.amount) || (input.amount as number) < 1))
       throw new BadRequestException('A top-up amount must be a positive whole number of points');
+    let identity: IdentityChange | undefined;
+    if (body.requestType === 'UPDATE_IDENTITY') {
+      try {
+        identity = parseIdentityChange(input);
+      } catch (error) {
+        if (error instanceof IdentityInputError) throw new BadRequestException(error.message);
+        throw error;
+      }
+      if (Object.keys(identity).length === 0) throw new BadRequestException('Send at least one legal detail to change');
+    }
     try {
       return await this.governance.propose(
         actor,
         orgId,
-        { requestType: body.requestType, reason, payload } as GovernanceProposal,
+        { requestType: body.requestType, reason, payload: identity ?? payload } as GovernanceProposal,
         platform,
       );
     } catch (error) {
       if (error instanceof ConsoleAccessError) throw new ForbiddenException('Owner access required');
       if (error instanceof ConsoleConflictError) throw new ConflictException(error.message);
+      if (error instanceof ConsoleValidationError) throw new BadRequestException(error.message);
       if (error instanceof ConsoleNotFoundError) throw new NotFoundException('Organization not found');
       throw error;
     }

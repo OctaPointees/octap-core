@@ -41,7 +41,9 @@ administrator receives no implicit tenant membership.
   a reason, archives the pending organization and creates no membership. Decisions
   are terminal (409 on replay), including concurrent decisions.
 - GET `/v1/console/organizations/:id`: active Owner/Developer organization detail.
-- PATCH `/:id/profile`, GET `/:id/staff`: Owner-only profile/staff operations.
+- PATCH `/:id/profile`, GET `/:id/staff`: Owner-only profile/staff operations. The profile
+  route changes display details only (`name`, `logoUrl`); legal details change through an
+  approved `UPDATE_IDENTITY` change request (see below).
 - GET `/:id/api-credentials`: Owner/Developer listing of ACTIVE keys, with `createdAt` and
   `lastUsedAt`; never returns raw keys or key hashes. Lists are bounded to 100 rows.
 - POST `/:id/api-credentials` (`{ name, scope?: 'read' | 'write' }`), PATCH `/:id/api-credentials/:keyId`
@@ -112,17 +114,38 @@ Migration 0017 adds nullable `organization_type` (INDIVIDUAL_HOUSEHOLD / COMPANY
 and `representative_name`. Existing organizations keep a null type. New requests must
 choose explicitly. Individual/household requests require a representative name;
 companies require their legal name and business registration/tax number. Inputs are
-format-checked, not verified against a civil/business registry. Owner-only profile
-updates allow one-time classification of legacy organizations and retain required
-fields; ordinary edits cannot switch an established type.
+format-checked, not verified against a civil/business registry. An established type
+never changes; a legacy organization with a null type can be classified once.
+
+## Display details vs legal details (OCT-281)
+
+`PATCH /v1/console/organizations/:id/profile` is Owner-only and applies at once. It takes
+`name` (2–160 characters) and `logoUrl` (an `https:` URL up to 2048 characters, or `null` to
+remove it); send at least one. The logo is a URL the Owner hosts: Core stores no image.
+
+Legal details are `legalName`, `taxId`, `representativeName`, `nationalId` (CCCD) and the
+one-time `organizationType`. They change only through an `UPDATE_IDENTITY` change request
+(`POST /v1/console/organizations/:id/change-requests`, or the platform route for a System
+Admin) that a System Admin approves. The profile route accepts a legal field only when it
+equals the stored value, so a form that re-sends the whole profile keeps working; a CCCD, a
+type, or any changed value is a 400 naming the change-request route.
+
+An organization has at most one pending `UPDATE_IDENTITY` request (409 otherwise). The
+request is checked against the rules above for the details that would result, and records
+the current details. Approval fails with 409 when they changed since submission. A new CCCD
+never enters the request's payload, which keeps only its last four digits: the ciphertext
+waits in `organization_change_request_secrets` (RLS, no policies), encrypted like
+`organization_identity_details` with the organization id as associated data, so approval
+moves it there unchanged. Either decision deletes that row.
 
 Optional 12-digit CCCD values live in `organization_identity_details`, encrypted with
 AES-256-GCM using fresh IVs and organization-ID associated data. The table enables RLS
 with no public policies. Only Core's authorized server workflows access it. Applicant
 and platform request listings return a last-four mask, never ciphertext or plaintext.
 Organization detail returns the mask only to Owners; Developers do not receive it.
-Owners can replace a value, while omission preserves it. No verification flag can be
-set through these requests. There is no plaintext CCCD read endpoint.
+A replacement CCCD goes through an approved `UPDATE_IDENTITY` request; omitting it preserves
+the stored value. No verification flag can be set through these requests. There is no
+plaintext CCCD read endpoint.
 
 Set `ORGANIZATION_IDENTITY_ENCRYPTION_KEY` to a stable, secret, base64-encoded 32-byte
 key on Core only. Generate it once with a cryptographically secure random generator

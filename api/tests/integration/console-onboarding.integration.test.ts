@@ -323,11 +323,18 @@ describe('console onboarding and protected portal operations', () => {
       .http()
       .patch(`${orgPath}/profile`)
       .set('Authorization', bearer('owner'))
-      .send({ name: 'Updated Business', legalName: 'Legal Co', systemRole: 'SYSTEM_ADMIN', status: 'SUSPENDED' })
+      .send({ name: 'Updated Business', systemRole: 'SYSTEM_ADMIN', status: 'SUSPENDED' })
       .expect(200);
+    // A legal detail never changes here: it needs an approved UPDATE_IDENTITY request.
+    await ctx
+      .http()
+      .patch(`${orgPath}/profile`)
+      .set('Authorization', bearer('owner'))
+      .send({ name: 'Updated Business', legalName: 'Legal Co' })
+      .expect(400);
     expect((await ctx.db.select().from(schema.organizations))[0]).toMatchObject({
       name: 'Updated Business',
-      legalName: 'Legal Co',
+      legalName: null,
       status: 'ACTIVE',
     });
     await ctx.http().get(`${orgPath}/staff`).set('Authorization', bearer('developer')).expect(403);
@@ -493,7 +500,7 @@ describe('console onboarding and protected portal operations', () => {
         .expect(400);
     expect(await ctx.db.select().from(schema.organizations)).toEqual([]);
   });
-  it('stores CCCD encrypted, masks it in responses and permits only an Owner to replace it', async () => {
+  it('stores CCCD encrypted, masks it in responses and replaces it only through an approved request', async () => {
     const nationalId = '000000000001';
     const input = {
       name: 'Household',
@@ -553,18 +560,40 @@ describe('console onboarding and protected portal operations', () => {
       .patch(`${path}/profile`)
       .set('Authorization', bearer('owner'))
       .send({ name: 'Household', nationalId: '000000000002' })
-      .expect(200);
+      .expect(400);
+    const changeRequest = (nationalId: string, actor = 'owner') =>
+      ctx
+        .http()
+        .post(`${path}/change-requests`)
+        .set('Authorization', bearer(actor))
+        .send({ requestType: 'UPDATE_IDENTITY', reason: 'New CCCD issued', payload: { nationalId } });
+    await changeRequest('bad').expect(400);
+    await changeRequest('000000000002', 'developer').expect(403);
+    const proposal = await changeRequest('000000000002').expect(201);
+    expect(proposal.body.payload).toMatchObject({ nationalIdLast4: '0002' });
+    expect(JSON.stringify(await ctx.db.select().from(schema.organizationChangeRequests))).not.toContain('000000000002');
+    const [secret] = await ctx.db.select().from(schema.organizationChangeRequestSecrets);
+    expect(secret.nationalIdEncrypted).toMatch(/^v1\./);
+    await withRls(ctx.db, { userId: ids.owner }, async (tx) => {
+      expect(await tx.select().from(schema.organizationChangeRequestSecrets)).toEqual([]);
+    });
+    // Nothing changes until a System Admin approves.
+    expect((await ctx.http().get(path).set('Authorization', bearer('owner')).expect(200)).body.nationalIdLast4).toBe(
+      '0001',
+    );
+    await ctx
+      .http()
+      .post(`/v1/platform/change-requests/${proposal.body.id}/approve`)
+      .set('Authorization', bearer('admin'))
+      .send({ reason: 'Checked the new card' })
+      .expect(201);
     expect((await ctx.http().get(path).set('Authorization', bearer('owner')).expect(200)).body.nationalIdLast4).toBe(
       '0002',
     );
     const [updated] = await ctx.db.select().from(schema.organizationIdentityDetails);
+    expect(updated.nationalIdEncrypted).toBe(secret.nationalIdEncrypted);
     expect(updated.nationalIdEncrypted).not.toBe(stored.nationalIdEncrypted);
-    await ctx
-      .http()
-      .patch(`${path}/profile`)
-      .set('Authorization', bearer('owner'))
-      .send({ name: 'Household', nationalId: 'bad' })
-      .expect(400);
+    expect(await ctx.db.select().from(schema.organizationChangeRequestSecrets)).toEqual([]);
   });
   it('persists a company registration and prevents clearing required details or changing its type', async () => {
     const request = await ctx
@@ -600,7 +629,7 @@ describe('console onboarding and protected portal operations', () => {
       await ctx.http().patch(path).set('Authorization', bearer('owner')).send(input).expect(400);
     expect(await ctx.db.select().from(schema.organizationIdentityDetails)).toEqual([]);
   });
-  it('can classify an existing legacy organization once without guessing during migration', async () => {
+  it('classifies an existing legacy organization once, through an approved request', async () => {
     const org = await seedOrganization(ctx.db);
     await ctx.db
       .insert(schema.organizationMemberships)
@@ -615,27 +644,70 @@ describe('console onboarding and protected portal operations', () => {
       .set('Authorization', bearer('owner'))
       .send({ name: org.name, organizationType: 'INDIVIDUAL_HOUSEHOLD' })
       .expect(400);
+    const propose = (payload: object) =>
+      ctx
+        .http()
+        .post(`${path}/change-requests`)
+        .set('Authorization', bearer('owner'))
+        .send({ requestType: 'UPDATE_IDENTITY', reason: 'Classify the organization', payload });
+    await propose({ organizationType: 'INDIVIDUAL_HOUSEHOLD' }).expect(400); // Needs a representative.
+    await propose({ organizationType: 'WRONG' }).expect(400);
+    await propose({ nationalId: '000000000001' }).expect(400); // A CCCD needs the household type.
+    const request = await propose({
+      organizationType: 'INDIVIDUAL_HOUSEHOLD',
+      representativeName: 'Owner',
+      nationalId: '000000000001',
+    }).expect(201);
     await ctx
       .http()
-      .patch(`${path}/profile`)
-      .set('Authorization', bearer('owner'))
-      .send({
-        name: org.name,
-        organizationType: 'INDIVIDUAL_HOUSEHOLD',
-        representativeName: 'Owner',
-        nationalId: '000000000001',
-      })
-      .expect(200);
+      .post(`/v1/platform/change-requests/${request.body.id}/approve`)
+      .set('Authorization', bearer('admin'))
+      .send({ reason: 'Classified' })
+      .expect(201);
     expect((await ctx.http().get(path).set('Authorization', bearer('owner')).expect(200)).body).toMatchObject({
       organizationType: 'INDIVIDUAL_HOUSEHOLD',
+      representativeName: 'Owner',
       nationalIdLast4: '0001',
     });
-    await ctx
+    await propose({ organizationType: 'COMPANY', legalName: 'Company', taxId: '0123456789' }).expect(400); // Type is set.
+  });
+  it('changes display details directly and accepts unchanged legal details re-sent by the form', async () => {
+    const request = await ctx
       .http()
-      .patch(`${path}/profile`)
+      .post('/v1/console/organization-requests')
       .set('Authorization', bearer('owner'))
-      .send({ name: org.name, organizationType: 'WRONG' })
-      .expect(400);
+      .send({ name: 'Brand', slug: 'brand', organizationType: 'COMPANY', legalName: 'Brand Co', taxId: '0123456789' })
+      .expect(201);
+    const approval = await ctx
+      .http()
+      .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+      .set('Authorization', bearer('admin'))
+      .send({ reason: 'Reviewed application' })
+      .expect(201);
+    const path = `/v1/console/organizations/${approval.body.organizationId}`;
+    const patch = (body: object) =>
+      ctx.http().patch(`${path}/profile`).set('Authorization', bearer('owner')).send(body);
+    await patch({ name: 'Brand Renamed', legalName: 'Brand Co', taxId: ' 0123456789 ' }).expect(200);
+    await patch({ logoUrl: 'https://cdn.example.com/brand.png' }).expect(200);
+    expect((await ctx.http().get(path).set('Authorization', bearer('owner')).expect(200)).body).toMatchObject({
+      name: 'Brand Renamed',
+      legalName: 'Brand Co',
+      logoUrl: 'https://cdn.example.com/brand.png',
+    });
+    for (const body of [
+      {},
+      { name: 'x' },
+      { logoUrl: 'http://cdn.example.com/brand.png' },
+      { logoUrl: 'javascript:alert(1)' },
+      { logoUrl: 'not a url' },
+      { logoUrl: `https://cdn.example.com/${'a'.repeat(2048)}` },
+      // Short as sent, but each "é" becomes "%C3%A9" once normalized, past 2048.
+      { logoUrl: `https://cdn.example.com/${'é'.repeat(1000)}` },
+      { name: 'Brand', taxId: '9999999999' },
+    ])
+      await patch(body).expect(400);
+    await patch({ logoUrl: null }).expect(200);
+    expect((await ctx.http().get(path).set('Authorization', bearer('owner')).expect(200)).body.logoUrl).toBeNull();
   });
   it('fails closed without an encryption key and rolls back the entire CCCD submission', async () => {
     vi.stubEnv('ORGANIZATION_IDENTITY_ENCRYPTION_KEY', '');

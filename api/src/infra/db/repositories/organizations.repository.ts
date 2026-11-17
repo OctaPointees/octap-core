@@ -20,6 +20,7 @@ const fields = {
   legalName: organizations.legalName,
   taxId: organizations.taxId,
   representativeName: organizations.representativeName,
+  logoUrl: organizations.logoUrl,
   createdAt: organizations.createdAt,
   programStatus: programs.status,
   programControlId: programs.programControlId,

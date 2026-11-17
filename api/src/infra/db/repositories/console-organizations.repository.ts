@@ -237,6 +237,7 @@ export class ConsoleOrganizationsRepository {
         taxId: org.taxId,
         organizationType: org.organizationType,
         representativeName: org.representativeName,
+        logoUrl: org.logoUrl,
         ...(membership.role === 'OWNER' ? { nationalIdLast4: masked[0]?.last4 ?? null } : {}),
         status: org.status,
         persona: membership.role === 'OWNER' ? ('BUSINESS_OWNER' as const) : ('BUSINESS_DEVELOPER' as const),
@@ -254,30 +255,41 @@ export class ConsoleOrganizationsRepository {
       .values({ organizationId, ...details })
       .onConflictDoUpdate({ target: organizationIdentityDetails.organizationId, set: details });
   }
-  async profile(userId: string, organizationId: string, input: OrganizationProfileInput) {
+  /**
+   * Owner-only display update. `legal` holds any legal fields the caller re-sent: each must equal
+   * the stored value (the console form sends the whole profile). A CCCD, a type, or a changed value
+   * is refused, because legal details change only through an approved `UPDATE_IDENTITY` request.
+   */
+  async profile(
+    userId: string,
+    organizationId: string,
+    display: OrganizationProfileInput,
+    legal: Record<string, unknown> = {},
+  ) {
     return this.db.transaction(async (tx) => {
       const { org } = await this.member(tx, userId, organizationId, true);
-      const { nationalId, ...publicDetails } = input;
-      const type = input.organizationType ?? org.organizationType;
-      if (org.organizationType && input.organizationType && input.organizationType !== org.organizationType)
-        throw new ConsoleValidationError('Organization type is already set');
-      if (nationalId && type !== 'INDIVIDUAL_HOUSEHOLD')
-        throw new ConsoleValidationError('CCCD belongs to an Individual / Household business organization');
-      if (
-        type === 'COMPANY' &&
-        (!(input.legalName ?? org.legalName)?.trim() ||
-          !/^[A-Za-z0-9][A-Za-z0-9-]{1,30}[A-Za-z0-9]$/.test(input.taxId ?? org.taxId ?? ''))
-      )
-        throw new ConsoleValidationError('Companies require a legal name and business registration / tax number');
-      if (
-        type === 'INDIVIDUAL_HOUSEHOLD' &&
-        (input.representativeName ?? org.representativeName ?? '').trim().length < 2
-      )
-        throw new ConsoleValidationError('Representative name is required');
-      if (nationalId) await this.saveNationalId(tx, organizationId, nationalId);
+      const stored: Record<string, string | null> = {
+        legalName: org.legalName,
+        taxId: org.taxId,
+        representativeName: org.representativeName,
+        organizationType: org.organizationType,
+      };
+      const changed = Object.entries(legal).some(
+        ([key, value]) =>
+          key === 'nationalId' || !(key in stored) || typeof value !== 'string' || value.trim() !== (stored[key] ?? ''),
+      );
+      if (changed)
+        throw new ConsoleValidationError(
+          `Legal details change through a change request: POST /v1/console/organizations/${organizationId}/change-requests with requestType UPDATE_IDENTITY`,
+        );
+      if (display.name === undefined && display.logoUrl === undefined) return;
       await tx
         .update(organizations)
-        .set({ ...publicDetails, updatedAt: new Date() })
+        .set({
+          ...(display.name !== undefined ? { name: display.name } : {}),
+          ...(display.logoUrl !== undefined ? { logoUrl: display.logoUrl } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(organizations.id, organizationId));
     });
   }

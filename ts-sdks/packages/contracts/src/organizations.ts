@@ -21,6 +21,7 @@ export interface PlatformOrganization {
   legalName: string | null;
   taxId: string | null;
   representativeName: string | null;
+  logoUrl: string | null;
   programStatus: string | null;
   programControlId: string | null;
   createdAt: string;

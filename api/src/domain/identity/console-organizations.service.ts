@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { ConsoleIdentity, OrganizationApplicationInput } from '@octap/contracts';
+import type { ConsoleIdentity, OrganizationApplicationInput, OrganizationProfileInput } from '@octap/contracts';
 import {
   ConsoleAccessError,
   ConsoleConflictError,
@@ -16,6 +16,39 @@ import {
   ConsoleOrganizationsRepository,
   ConsoleValidationError,
 } from '#infra/db/repositories/console-organizations.repository.js';
+import {
+  IDENTITY_FIELDS,
+  IdentityInputError,
+  identityProblem,
+  parseIdentityChange,
+} from '#infra/db/organization-identity.rules.js';
+
+const LOGO_URL_MAX_LENGTH = 2048;
+
+/** A display name: 2–160 characters once trimmed. */
+function displayName(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length < 2 || value.length > 160)
+    throw new BadRequestException('Invalid name: use 2–160 characters');
+  return value.trim();
+}
+
+/** An `https:` logo URL, or null to remove it. */
+function logoUrl(value: unknown): string | null {
+  if (value === null) return null;
+  const tooLong = `The logo must be an https URL of up to ${LOGO_URL_MAX_LENGTH} characters`;
+  if (typeof value !== 'string' || value.length > LOGO_URL_MAX_LENGTH) throw new BadRequestException(tooLong);
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new BadRequestException('The logo must be an https URL');
+  }
+  if (url.protocol !== 'https:') throw new BadRequestException('The logo must be an https URL');
+  // Normalizing can percent-encode characters and make the URL longer: the stored form must fit.
+  const normalized = url.toString();
+  if (normalized.length > LOGO_URL_MAX_LENGTH) throw new BadRequestException(tooLong);
+  return normalized;
+}
 
 @Injectable()
 export class ConsoleOrganizationsService {
@@ -34,45 +67,29 @@ export class ConsoleOrganizationsService {
       throw error;
     }
   }
-  private profileInput(input: Record<string, unknown>) {
-    const text = (key: string, required = false) => {
-      const value = input?.[key];
-      if (value === undefined && !required) return undefined;
-      if (typeof value !== 'string' || value.trim().length < (required ? 2 : 0) || value.length > 160)
-        throw new BadRequestException(`Invalid ${key}`);
-      return value.trim();
-    };
-    const nationalId = input?.nationalId;
-    if (nationalId !== undefined && (typeof nationalId !== 'string' || !/^\d{12}$/.test(nationalId)))
-      throw new BadRequestException('CCCD must contain exactly 12 digits');
-    return {
-      name: text('name', true)!,
-      legalName: text('legalName'),
-      taxId: text('taxId'),
-      representativeName: text('representativeName'),
-      nationalId: nationalId as string | undefined,
-    };
-  }
   apply(userId: string, input: Record<string, unknown>, adminActorId?: string) {
-    const profile = this.profileInput(input);
-    const organizationType = input?.organizationType;
-    if (organizationType !== 'INDIVIDUAL_HOUSEHOLD' && organizationType !== 'COMPANY')
-      throw new BadRequestException('Choose Individual / Household business or Company');
-    if (
-      organizationType === 'INDIVIDUAL_HOUSEHOLD' &&
-      (!profile.representativeName || profile.representativeName.length < 2)
-    )
-      throw new BadRequestException('A representative full name is required');
-    if (
-      organizationType === 'COMPANY' &&
-      (!profile.legalName ||
-        profile.legalName.length < 2 ||
-        !profile.taxId ||
-        !/^[A-Za-z0-9][A-Za-z0-9-]{1,30}[A-Za-z0-9]$/.test(profile.taxId))
-    )
-      throw new BadRequestException('A company legal name and business registration / tax number are required');
-    if (organizationType === 'COMPANY' && profile.nationalId !== undefined)
-      throw new BadRequestException('CCCD belongs to the Individual / Household business setup');
+    if (typeof input?.name !== 'string' || input.name.trim().length < 2 || input.name.length > 160)
+      throw new BadRequestException('Invalid name');
+    const name = input.name.trim();
+    let identity;
+    try {
+      identity = parseIdentityChange(input);
+    } catch (error) {
+      if (error instanceof IdentityInputError) throw new BadRequestException(error.message);
+      throw error;
+    }
+    const organizationType = identity.organizationType;
+    if (!organizationType) throw new BadRequestException('Choose Individual / Household business or Company');
+    const problem = identityProblem(
+      {
+        organizationType,
+        legalName: identity.legalName ?? null,
+        taxId: identity.taxId ?? null,
+        representativeName: identity.representativeName ?? null,
+      },
+      identity.nationalId !== undefined,
+    );
+    if (problem) throw new BadRequestException(problem);
     const slug = input?.slug;
     if (
       typeof slug !== 'string' ||
@@ -84,7 +101,11 @@ export class ConsoleOrganizationsService {
       id: await this.organizations.apply(
         userId,
         {
-          ...profile,
+          name,
+          legalName: identity.legalName ?? undefined,
+          taxId: identity.taxId ?? undefined,
+          representativeName: identity.representativeName ?? undefined,
+          nationalId: identity.nationalId,
           slug,
           organizationType,
         } satisfies OrganizationApplicationInput,
@@ -105,21 +126,23 @@ export class ConsoleOrganizationsService {
   organization(userId: string, orgId: string) {
     return this.run(() => this.organizations.organization(userId, orgId));
   }
+  /**
+   * Display details only, applied immediately. Legal fields may be re-sent unchanged (the console
+   * form sends the whole profile); a changed one is a 400 pointing at `UPDATE_IDENTITY`.
+   */
   profile(userId: string, orgId: string, input: Record<string, unknown>) {
-    if (
-      input?.organizationType !== undefined &&
-      input.organizationType !== 'INDIVIDUAL_HOUSEHOLD' &&
-      input.organizationType !== 'COMPANY'
-    )
-      throw new BadRequestException('Invalid organization type');
-    const profile = this.profileInput(input);
+    const display: OrganizationProfileInput = {};
+    if (input?.name !== undefined) display.name = displayName(input.name);
+    if (input?.logoUrl !== undefined) display.logoUrl = logoUrl(input.logoUrl);
+    const legal = Object.fromEntries(
+      IDENTITY_FIELDS.filter((key) => input?.[key] !== undefined).map((key) => [key, input[key]]),
+    );
+    for (const [key, value] of Object.entries(legal))
+      if (typeof value !== 'string') throw new BadRequestException(`Invalid ${key}`);
+    if (display.name === undefined && display.logoUrl === undefined && Object.keys(legal).length === 0)
+      throw new BadRequestException('Send a name or logoUrl to update');
     return this.run(async () => {
-      await this.organizations.profile(userId, orgId, {
-        ...profile,
-        ...(input.organizationType
-          ? { organizationType: input.organizationType as 'INDIVIDUAL_HOUSEHOLD' | 'COMPANY' }
-          : {}),
-      });
+      await this.organizations.profile(userId, orgId, display, legal);
       return { updated: true };
     });
   }

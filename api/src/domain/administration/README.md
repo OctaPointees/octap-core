@@ -17,7 +17,16 @@ Other proposal bodies are `{requestType,reason,payload}`:
   previous Owner to active Developer and promotes the target to Owner in one transaction.
   Changed ownership/target eligibility rejects stale approval; roles cannot be chosen in payloads.
 - UPDATE_PROFILE: `{name}` is available only to System Admins. Owners rename directly
-  through the existing profile endpoint; legal identity/CCCD updates stay in Owner settings.
+  through the existing profile endpoint.
+- UPDATE_IDENTITY: any of `{legalName, taxId, representativeName, nationalId, organizationType}`,
+  at least one. Owners and System Admins can propose it; it is the only way legal details change
+  (OCT-281). `organizationType` only classifies an organization that has none. The result must
+  satisfy the setup rules for its type (a company keeps a legal name and tax number and has no CCCD;
+  a household keeps a representative). One pending request per organization (409). The payload
+  records the current details as `expected`, and approval rejects with 409 if they moved. The CCCD
+  is stored encrypted in `organization_change_request_secrets`, never in the payload (only its last
+  four digits); approval copies the ciphertext into `organization_identity_details`, and either
+  decision deletes the row. See `docs/console-google-login.md`.
 - BUDGET_TOP_UP: `{amount}` is a positive whole number of points. Owners and System Admins can propose it.
   Approval needs an active program and queues one durable command in the same transaction, which the
   worker with `ORG_PROVISION_WORKER_ENABLED=true` executes. An unknown chain outcome becomes UNKNOWN and is

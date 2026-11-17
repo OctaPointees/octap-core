@@ -154,6 +154,57 @@ describe('platform organization governance', () => {
       .send({})
       .expect(400);
   });
+  describe('UPDATE_IDENTITY', () => {
+    const company = { organizationType: 'COMPANY', legalName: 'Old Legal Co', taxId: '0123456789' } as const;
+    const org = () => ctx.db.query.organizations.findFirst({ where: eq(schema.organizations.id, orgId) });
+    beforeEach(async () => {
+      await ctx.db.update(schema.organizations).set(company).where(eq(schema.organizations.id, orgId));
+    });
+    it('applies a company legal change only once a System Admin approves it', async () => {
+      const request = await propose('UPDATE_IDENTITY', { legalName: 'New Legal Co', taxId: '0987654321' }).expect(201);
+      expect(request.body.payload).toMatchObject({
+        legalName: 'New Legal Co',
+        taxId: '0987654321',
+        expected: { legalName: 'Old Legal Co', taxId: '0123456789', organizationType: 'COMPANY' },
+      });
+      expect(await org()).toMatchObject({ legalName: 'Old Legal Co', taxId: '0123456789' });
+      await decide(request.body.id, 'approve', 'owner').expect(403);
+      await decide(request.body.id).expect(201);
+      expect(await org()).toMatchObject({ legalName: 'New Legal Co', taxId: '0987654321' });
+      await decide(request.body.id).expect(409);
+    });
+    it('allows one open request per organization and leaves a rejected one without effect', async () => {
+      const request = await propose('UPDATE_IDENTITY', { legalName: 'Pending Co' }).expect(201);
+      await propose('UPDATE_IDENTITY', { legalName: 'Second Co' }).expect(409);
+      await propose('UPDATE_IDENTITY', { legalName: 'Admin Co' }, true).expect(409);
+      await decide(request.body.id, 'reject').expect(201);
+      expect((await org())?.legalName).toBe('Old Legal Co');
+      await propose('UPDATE_IDENTITY', { legalName: 'Second Co' }).expect(201);
+    });
+    it('refuses an approval when the legal details moved after submission', async () => {
+      const request = await propose('UPDATE_IDENTITY', { legalName: 'Proposed Co' }).expect(201);
+      await ctx.db.update(schema.organizations).set({ taxId: '1111111111' }).where(eq(schema.organizations.id, orgId));
+      await decide(request.body.id).expect(409);
+      expect((await org())?.legalName).toBe('Old Legal Co');
+    });
+    it('validates the payload and the rules for the resulting details', async () => {
+      for (const payload of [
+        {},
+        { name: 'Display Name' },
+        { legalName: 'x'.repeat(161) },
+        { taxId: 'bad format!' },
+        { legalName: '' },
+        { nationalId: '000000000001' }, // A company has no CCCD.
+        { nationalId: '123' },
+        { organizationType: 'INDIVIDUAL_HOUSEHOLD', representativeName: 'Owner' }, // Type is already set.
+        { organizationType: 'ADMIN' },
+      ])
+        await propose('UPDATE_IDENTITY', payload).expect(400);
+      await propose('UPDATE_IDENTITY', { legalName: 'Dev Co' }, false, 'developer').expect(403);
+      await propose('UPDATE_IDENTITY', { legalName: 'Outsider Co' }, false, 'outsider').expect(403);
+      expect(await ctx.db.select().from(schema.organizationChangeRequests)).toEqual([]);
+    });
+  });
   it('routes organization creation approvals through the existing atomic onboarding workflow', async () => {
     const request = await ctx
       .http()
