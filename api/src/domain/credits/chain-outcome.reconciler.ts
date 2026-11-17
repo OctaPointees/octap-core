@@ -17,6 +17,7 @@ import {
 } from '#infra/db/repositories/rewards.repository.js';
 import type { operations } from '#infra/db/schema/operations.schema.js';
 import { SuiClientService } from '#infra/clients/sui/sui.client.js';
+import { voucherClaimIssuedAt, voucherIssuedAtIn } from '#domain/rewards/voucher-issued-at.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 
 export const EARN_COMMAND_TYPE = 'CREDIT_EARN_CHAIN_SUBMIT';
@@ -218,7 +219,11 @@ export class ChainOutcomeReconciler {
     outcome: SubmittedChainTransaction,
   ): Promise<ReconcileOutcome> {
     const { voucherOwnershipId } = operation.payload as unknown as { voucherOwnershipId: string };
-    await this.rewardsRepo.confirmVoucherGrant({ voucherOwnershipId, digest: outcome.digest });
+    await this.rewardsRepo.confirmVoucherGrant({
+      voucherOwnershipId,
+      digest: outcome.digest,
+      issuedAt: voucherIssuedAtIn(outcome, 'VoucherGranted'),
+    });
     await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
     return 'confirmed';
   }
@@ -249,6 +254,7 @@ export class ChainOutcomeReconciler {
       pointsAmount: payload.pointsAmount,
       digest: outcome.digest,
       sender,
+      voucherIssuedAt: voucherClaimIssuedAt(outcome),
     });
     await this.operationsRepo.settleFromChain(operation.id, 'SUBMITTED');
     this.logger.log(`POS redemption ${loyaltyTx.id} confirmed from digest ${outcome.digest}`);

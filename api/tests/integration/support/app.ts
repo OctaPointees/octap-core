@@ -32,7 +32,15 @@ export function fakeChainAdapters() {
     buildRedeemTransactionKind: vi.fn(async () => new Uint8Array([1, 2, 3])),
     buildClaimVoucherTransactionKind: vi.fn(async () => new Uint8Array([4, 5, 6])),
     buildUseVoucherTransactionKind: vi.fn(async () => new Uint8Array([7, 8, 9])),
-    waitForTransaction: vi.fn(async (digest: string) => ({ digest, status: 'success' as const, events: [] })),
+    // A real `claim_voucher` emits `VoucherClaimed` with the issue time Core counts the deadline from.
+    // A plain POS `redeem` doesn't, but Core ignores the event when the debit bought no voucher.
+    waitForTransaction: vi.fn(async (digest: string) => ({
+      digest,
+      status: 'success' as const,
+      events: [
+        { type: '0xpkg::credit_account::VoucherClaimed', parsedJson: { issued_at_ms: String(Date.now()) } },
+      ] as Array<{ type: string; parsedJson: unknown }>,
+    })),
     budgetShardRemaining: vi.fn<(shardId: string) => Promise<bigint>>(async () => 1_000_000n),
     latestCheckpoint: vi.fn<() => Promise<bigint>>(async () => 1_000n),
     listCreditAccountEvents: vi.fn(async () => ({

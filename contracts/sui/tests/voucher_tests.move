@@ -89,8 +89,20 @@ fun setup(scenario: &mut ts::Scenario, clock: &Clock): Setup {
     Setup { program: program_id, account: account_id }
 }
 
-/// Publishes terms as `ISSUER` and returns their id.
+/// Publishes terms as `ISSUER`, with no use duration, and returns their id.
 fun publish(scenario: &mut ts::Scenario, setup: &Setup, cost: u64, starts: u64, expires: u64): ID {
+    publish_with_duration(scenario, setup, cost, starts, expires, 0)
+}
+
+/// Publishes terms whose vouchers each stay usable `duration` ms from when they are issued.
+fun publish_with_duration(
+    scenario: &mut ts::Scenario,
+    setup: &Setup,
+    cost: u64,
+    starts: u64,
+    expires: u64,
+    duration: u64,
+): ID {
     ts::next_tx(scenario, ISSUER);
     let program = ts::take_shared_by_id<ProgramControl>(scenario, setup.program);
     let issuer_cap = ts::take_from_sender<IssuerCap>(scenario);
@@ -102,6 +114,7 @@ fun publish(scenario: &mut ts::Scenario, setup: &Setup, cost: u64, starts: u64, 
         cost,
         starts,
         expires,
+        duration,
         ts::ctx(scenario),
     );
     ts::return_shared(program);
@@ -225,7 +238,7 @@ fun publish_rejects_issuer_cap_of_another_program() {
     ts::next_tx(&mut scenario, ISSUER_B);
     let issuer_b = ts::take_from_sender<IssuerCap>(&scenario);
     let program_a = ts::take_shared_by_id<ProgramControl>(&scenario, s.program);
-    voucher_terms::publish_terms(&issuer_b, &program_a, b"v", b"{}", COST, 0, 0, ts::ctx(&mut scenario));
+    voucher_terms::publish_terms(&issuer_b, &program_a, b"v", b"{}", COST, 0, 0, 0, ts::ctx(&mut scenario));
     ts::return_shared(program_a);
     ts::return_to_sender(&scenario, issuer_b);
     finish(scenario, clock);
@@ -238,7 +251,7 @@ fun publish_rejects_empty_terms() {
     ts::next_tx(&mut scenario, ISSUER);
     let issuer_cap = ts::take_from_sender<IssuerCap>(&scenario);
     let program = ts::take_shared_by_id<ProgramControl>(&scenario, s.program);
-    voucher_terms::publish_terms(&issuer_cap, &program, b"v", b"", COST, 0, 0, ts::ctx(&mut scenario));
+    voucher_terms::publish_terms(&issuer_cap, &program, b"v", b"", COST, 0, 0, 0, ts::ctx(&mut scenario));
     ts::return_shared(program);
     ts::return_to_sender(&scenario, issuer_cap);
     finish(scenario, clock);
@@ -388,6 +401,91 @@ fun an_expired_voucher_cannot_be_used() {
     grant(&mut scenario, &s, terms, b"gift", &clock);
     clock::set_for_testing(&mut clock, DAY_MS);
     use_as(&mut scenario, MEMBER, &s, terms, b"gift", &clock);
+    finish(scenario, clock);
+}
+
+#[test, expected_failure(abort_code = 3, location = octap::voucher_terms)] // EInvalidUseDuration
+fun publish_rejects_a_use_duration_under_a_day() {
+    let (mut scenario, clock) = start();
+    let s = setup(&mut scenario, &clock);
+    publish_with_duration(&mut scenario, &s, COST, 0, 0, DAY_MS - 1);
+    finish(scenario, clock);
+}
+
+#[test, expected_failure(abort_code = 3, location = octap::voucher_terms)] // EInvalidUseDuration
+fun publish_rejects_a_use_duration_over_ten_years() {
+    let (mut scenario, clock) = start();
+    let s = setup(&mut scenario, &clock);
+    publish_with_duration(&mut scenario, &s, COST, 0, 0, 3651 * DAY_MS);
+    finish(scenario, clock);
+}
+
+#[test]
+fun the_use_deadline_runs_from_each_vouchers_own_issue_date() {
+    let (mut scenario, mut clock) = start();
+    let s = setup(&mut scenario, &clock);
+    let terms = publish_with_duration(&mut scenario, &s, 0, 0, 0, 7 * DAY_MS);
+    grant(&mut scenario, &s, terms, b"early", &clock);
+    clock::set_for_testing(&mut clock, 5 * DAY_MS);
+    grant(&mut scenario, &s, terms, b"late", &clock);
+
+    ts::next_tx(&mut scenario, OTHER);
+    let voucher = ts::take_immutable_by_id<VoucherTerms>(&scenario, terms);
+    assert!(voucher_terms::use_duration_ms(&voucher) == 7 * DAY_MS);
+    assert!(voucher_terms::use_deadline_ms(&voucher, 0) == 7 * DAY_MS);
+    assert!(voucher_terms::use_deadline_ms(&voucher, 5 * DAY_MS) == 12 * DAY_MS);
+    ts::return_immutable(voucher);
+
+    // Day 8: the early one has lapsed, the late one is still good.
+    clock::set_for_testing(&mut clock, 8 * DAY_MS);
+    use_as(&mut scenario, MEMBER, &s, terms, b"late", &clock);
+    assert!(is_used(&mut scenario, &s, b"late"));
+    finish(scenario, clock);
+}
+
+#[test, expected_failure(abort_code = 13, location = octap::credit_account)] // EVoucherNotActive
+fun a_voucher_past_its_own_deadline_cannot_be_used_while_the_terms_are_open() {
+    let (mut scenario, mut clock) = start();
+    let s = setup(&mut scenario, &clock);
+    let terms = publish_with_duration(&mut scenario, &s, 0, 0, 30 * DAY_MS, 7 * DAY_MS);
+    grant(&mut scenario, &s, terms, b"gift", &clock);
+    clock::set_for_testing(&mut clock, 7 * DAY_MS);
+    use_as(&mut scenario, MEMBER, &s, terms, b"gift", &clock);
+    finish(scenario, clock);
+}
+
+#[test, expected_failure(abort_code = 13, location = octap::credit_account)] // EVoucherNotActive
+fun the_terms_expiry_caps_a_vouchers_own_deadline() {
+    let (mut scenario, mut clock) = start();
+    let s = setup(&mut scenario, &clock);
+    let terms = publish_with_duration(&mut scenario, &s, 0, 0, 10 * DAY_MS, 7 * DAY_MS);
+    clock::set_for_testing(&mut clock, 5 * DAY_MS);
+    grant(&mut scenario, &s, terms, b"gift", &clock);
+    // Its own deadline would be day 12; the terms close on day 10.
+    clock::set_for_testing(&mut clock, 10 * DAY_MS);
+    use_as(&mut scenario, MEMBER, &s, terms, b"gift", &clock);
+    finish(scenario, clock);
+}
+
+#[test, expected_failure(abort_code = 13, location = octap::credit_account)] // EVoucherNotActive
+fun a_use_duration_does_not_lift_the_minimum_window_before_the_cap() {
+    let (mut scenario, mut clock) = start();
+    let s = setup(&mut scenario, &clock);
+    let terms = publish_with_duration(&mut scenario, &s, COST, 0, 10 * DAY_MS, 7 * DAY_MS);
+    // min(now + 7 days, day 10) - now is under a day.
+    clock::set_for_testing(&mut clock, 9 * DAY_MS + 1);
+    claim_as(&mut scenario, MEMBER, &s, terms, b"v1", &clock);
+    finish(scenario, clock);
+}
+
+#[test]
+fun a_voucher_with_a_use_duration_is_issuable_until_a_day_before_the_cap() {
+    let (mut scenario, mut clock) = start();
+    let s = setup(&mut scenario, &clock);
+    let terms = publish_with_duration(&mut scenario, &s, COST, 0, 10 * DAY_MS, 7 * DAY_MS);
+    clock::set_for_testing(&mut clock, 9 * DAY_MS);
+    claim_as(&mut scenario, MEMBER, &s, terms, b"v1", &clock);
+    assert!(spendable_of(&mut scenario, &s, &clock) == 100 - COST);
     finish(scenario, clock);
 }
 

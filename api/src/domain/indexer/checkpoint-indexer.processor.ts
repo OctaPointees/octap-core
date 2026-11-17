@@ -9,6 +9,7 @@ import { OperationsRepository } from '#infra/db/repositories/operations.reposito
 import { RewardsRepository } from '#infra/db/repositories/rewards.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
+import { voucherClaimIssuedAt, voucherIssuedAt } from '#domain/rewards/voucher-issued-at.js';
 import {
   ChainHistoryPrunedError,
   SuiTransactionBuilderClient,
@@ -402,6 +403,14 @@ export class CheckpointIndexerProcessor {
       return 'skipped';
     }
 
+    // A paid claim's `VoucherClaimed` follows this event in the same transaction, maybe on the next
+    // page: read its issue time from the transaction itself.
+    let voucherIssuedAt: Date | undefined;
+    if (claimId) {
+      const claimTx = await this.sui.findTransaction(event.transactionDigest);
+      if (!claimTx) throw new Error(`voucher claim ${event.transactionDigest} is not readable yet`);
+      voucherIssuedAt = voucherClaimIssuedAt(claimTx);
+    }
     const confirmed = await this.creditsRepo.confirmPosRedemptionOnChain(
       {
         loyaltyTransactionId: loyaltyTx.id,
@@ -409,6 +418,7 @@ export class CheckpointIndexerProcessor {
         pointsAmount: amount,
         digest: event.transactionDigest,
         sender: event.sender,
+        voucherIssuedAt,
       },
       tx,
     );
@@ -446,7 +456,10 @@ export class CheckpointIndexerProcessor {
     const params = { voucherOwnershipId, digest: event.transactionDigest };
     const settled =
       event.name === 'VoucherGranted'
-        ? await this.rewardsRepo.confirmVoucherGrant(params, tx)
+        ? await this.rewardsRepo.confirmVoucherGrant(
+            { ...params, issuedAt: voucherIssuedAt(event.json?.issued_at_ms) },
+            tx,
+          )
         : await this.rewardsRepo.confirmVoucherUse(params, tx);
     if (!settled) {
       this.logger.warn(`${event.name} ${event.transactionDigest} found voucher ${voucherOwnershipId} already settled`);

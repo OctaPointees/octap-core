@@ -60,7 +60,12 @@ The hold was released and nothing was credited. The key stays used, so [a retry 
 
 ## credits.redemption.confirmed
 
-Has the same fields as `credits.earn.confirmed`, where `pointsAmount` is the amount debited.
+Has the same fields as `credits.earn.confirmed`, where `pointsAmount` is the amount debited. A paid voucher claim also carries `voucher`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `voucher.voucherOwnershipId` | `string` | The voucher this spend bought, now `AVAILABLE` |
+| `voucher.expiresAt` | `string \| null` | Its final use deadline, counted from when the chain issued it. The claim response's `expiresAt` was provisional. |
 
 ## credits.reversed
 
@@ -86,6 +91,7 @@ The customer now holds the voucher. A paid claim reports through `credits.redemp
 | `organizationEndUserId` | `string` | |
 | `serialCode` | `string` | |
 | `status` | `string` | `AVAILABLE` |
+| `expiresAt` | `string \| null` | This customer's final use deadline, counted from when the chain issued it. The grant response's `expiresAt` was provisional. `null` never expires. |
 | `blockchainDigest` | `string` | |
 
 ## voucher.redeemed

@@ -24,14 +24,15 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `perMemberLimit` | `number \| null` | How many of this voucher one member may hold. Used and expired ones count, even when refunded later; cancelled ones (including an unused one that was refunded) don't. `null` is no limit. A claim or grant past it is a 409. |
 | `startsAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `expiresAt` | `string \| null` | ISO date-time with seconds and timezone |
+| `validForDays` | `number \| null` | Each customer's voucher is usable this many days from when it is issued, capped by `expiresAt`. 1–3650; `null` means every voucher expires at `expiresAt`. Fixed once publishing starts. |
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. |
 
-`VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` and `updatedAt`.
+A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` and `updatedAt`.
 
 ## updateVoucher
 
-Takes any fields from `createVoucher`. Once publishing starts, everything in the terms is fixed; metadata, supply, `perMemberLimit` and status are not. [Guide](/guides/manage-vouchers/#edit-a-voucher)
+Takes any fields from `createVoucher`. Once publishing starts, everything in the terms is fixed; metadata, supply, `perMemberLimit` and status are not. `validForDays` is part of the terms. [Guide](/guides/manage-vouchers/#edit-a-voucher)
 
 `PATCH /v1/rewards/vouchers/:id` · Scope: `write`
 

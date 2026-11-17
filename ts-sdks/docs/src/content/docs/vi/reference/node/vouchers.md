@@ -24,14 +24,15 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `perMemberLimit` | `number \| null` | Số voucher loại này một thành viên được giữ, tính cả voucher đã dùng hoặc hết hạn, kể cả khi sau đó được hoàn; không tính voucher đã hủy (gồm voucher chưa dùng đã được hoàn). `null` là không giới hạn. Claim hoặc grant vượt giới hạn trả 409. |
 | `startsAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `expiresAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
+| `validForDays` | `number \| null` | Voucher của mỗi khách dùng được bấy nhiêu ngày kể từ lúc nhận, không quá `expiresAt`. Từ 1 đến 3650; `null` nghĩa là mọi voucher hết hạn vào `expiresAt`. Không đổi được sau khi bắt đầu publish. |
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Mặc định là `ACTIVE`, tức publish điều khoản lên chain trước. |
 
-`VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` và `updatedAt`.
+`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` và `updatedAt`.
 
 ## updateVoucher
 
-Nhận bất kỳ field nào của `createVoucher`. Từ khi bắt đầu publish, mọi thứ trong điều khoản được cố định; metadata, số lượng, `perMemberLimit` và trạng thái thì không. [Hướng dẫn](/vi/guides/manage-vouchers/)
+Nhận bất kỳ field nào của `createVoucher`. Từ khi bắt đầu publish, mọi thứ trong điều khoản được cố định; metadata, số lượng, `perMemberLimit` và trạng thái thì không. `validForDays` thuộc điều khoản. [Hướng dẫn](/vi/guides/manage-vouchers/)
 
 `PATCH /v1/rewards/vouchers/:id` · Scope: `write`
 
