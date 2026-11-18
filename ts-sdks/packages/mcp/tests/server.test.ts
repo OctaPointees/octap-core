@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport, type AuthInfo } from '@modelcontextprotocol/server';
@@ -16,6 +18,8 @@ describe('Octap MCP Server', () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    // Never let a real ~/.octap/mcp.json on the test machine satisfy the config checks.
+    process.env.OCTAP_MCP_CONFIG_PATH = join(tmpdir(), `octap-mcp-missing-${process.pid}.json`);
   });
 
   afterEach(() => {

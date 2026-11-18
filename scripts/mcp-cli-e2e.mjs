@@ -1,10 +1,11 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, URL } from 'node:url';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
@@ -17,13 +18,16 @@ import { closeDemoResources } from './lib/close-demo-resources.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cliPath = resolve(repoRoot, 'ts-sdks/packages/mcp/dist/cli.js');
+// Point the CLI's saved-config fallback at a file that never exists, so a developer's own
+// ~/.octap/mcp.json can't satisfy the missing-key checks below.
+const noSavedConfig = { OCTAP_MCP_CONFIG_PATH: resolve(repoRoot, '.octap-mcp-e2e-no-config.json') };
 const containers = [];
 let database;
 let apiDatabase;
 let app;
 
 async function connectStdioClient(apiUrl, apiKey) {
-  const env = { ...getDefaultEnvironment(), OCTAP_API_URL: apiUrl };
+  const env = { ...getDefaultEnvironment(), ...noSavedConfig, OCTAP_API_URL: apiUrl };
   if (apiKey !== undefined) env.OCTAP_API_KEY = apiKey;
   else delete env.OCTAP_API_KEY;
 
@@ -167,9 +171,60 @@ try {
   }
   console.log('Cross-tenant member lookup: all tools returned the generic 404 response.');
 
+  // The demo flow: `octap-mcp setup` once in a terminal, a host config with no env vars, then
+  // `setup --clear` takes access away again.
+  const savedConfigDir = mkdtempSync(join(tmpdir(), 'octap-mcp-e2e-'));
+  try {
+    const savedConfigEnv = { ...getDefaultEnvironment(), OCTAP_MCP_CONFIG_PATH: join(savedConfigDir, 'mcp.json') };
+    delete savedConfigEnv.OCTAP_API_URL;
+    delete savedConfigEnv.OCTAP_API_KEY;
+    const runCli = (args, input = '') =>
+      spawnSync(process.execPath, [cliPath, ...args], {
+        cwd: repoRoot,
+        env: savedConfigEnv,
+        input,
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+
+    const setup = runCli(
+      ['setup'],
+      `${apiUrl}
+${validKey}
+`,
+    );
+    assert.equal(setup.status, 0, `setup failed: ${setup.stderr}`);
+    assert.doesNotMatch(setup.stdout, new RegExp(validKey), 'setup must not echo the full key');
+
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [cliPath],
+      cwd: repoRoot,
+      env: savedConfigEnv,
+      stderr: 'pipe',
+    });
+    const savedClient = new Client({ name: 'octap-mcp-cli-e2e', version: '1.0.0' }, { capabilities: {} });
+    await savedClient.connect(transport);
+    try {
+      const balance = await savedClient.callTool({ name: 'get_member_balance', arguments: { memberId } });
+      assert.equal(balance.isError, undefined);
+      assert.equal(JSON.parse(balance.content[0].text).confirmedBalance, 120);
+    } finally {
+      await savedClient.close();
+    }
+
+    assert.equal(runCli(['setup', '--clear']).status, 0);
+    const cleared = runCli([]);
+    assert.notEqual(cleared.status, 0, 'CLI should refuse to start after setup --clear');
+    assert.match(cleared.stderr, /OCTAP_API_KEY is required/);
+  } finally {
+    rmSync(savedConfigDir, { recursive: true, force: true });
+  }
+  console.log('Saved config: setup -> tool call with no env vars -> setup --clear -> CLI refuses to start.');
+
   const missingKey = spawnSync(process.execPath, [cliPath], {
     cwd: repoRoot,
-    env: { ...getDefaultEnvironment(), OCTAP_API_URL: apiUrl },
+    env: { ...getDefaultEnvironment(), ...noSavedConfig, OCTAP_API_URL: apiUrl },
     input: '',
     encoding: 'utf8',
     timeout: 10_000,

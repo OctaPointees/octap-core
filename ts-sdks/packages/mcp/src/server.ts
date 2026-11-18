@@ -2,6 +2,7 @@ import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
 import { OctaPointClient, OctaApiError } from '@octap/sdk';
 import { readFileSync } from 'node:fs';
 import * as z from 'zod/v4';
+import { resolveCoreConfig } from './config.js';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -55,23 +56,8 @@ export function isOctaApiError(err: unknown): err is OctaApiError {
 }
 
 export function coreClient(): OctaPointClient {
-  const apiKey = process.env.OCTAP_API_KEY?.trim();
-  if (!apiKey) throw new Error('OCTAP_API_KEY is required');
-
-  const rawUrl = process.env.OCTAP_API_URL?.trim();
-  if (!rawUrl) throw new Error('OCTAP_API_URL is required');
-
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error('OCTAP_API_URL must be an absolute HTTP(S) URL');
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('OCTAP_API_URL must use HTTP or HTTPS');
-  }
-
-  return new OctaPointClient({ baseUrl: parsed.toString(), credentials: { apiKey } });
+  const { apiUrl, apiKey } = resolveCoreConfig();
+  return new OctaPointClient({ baseUrl: apiUrl, credentials: { apiKey } });
 }
 
 export function safeError(tool: string, error: unknown) {

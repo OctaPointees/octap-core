@@ -1,7 +1,13 @@
 {
   "name": "@octap/mcp",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Read-only Model Context Protocol server for Octap loyalty points, transactions and vouchers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctaPointees/OctaP_Core.git",
+    "directory": "ts-sdks/packages/mcp"
+  },
   "type": "module",
   "engines": {
     "node": ">=20.3.0"
@@ -11,7 +17,7 @@
     "README.md"
   ],
   "bin": {
-    "octap-mcp": "./dist/cli.js"
+    "octap-mcp": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -28,11 +34,14 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "~2.4.0",
-    "@octap/sdk": "0.0.0",
+    "@octap/sdk": "^0.1.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "~2.4.0",
     "tsx": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

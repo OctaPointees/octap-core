@@ -2,6 +2,7 @@
   "name": "@octap/browser-sdk",
   "version": "0.1.0",
   "description": "Firebase-style customer sign-in and transaction signing for OctaP loyalty programs.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "exports": {

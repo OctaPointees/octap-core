@@ -1,7 +1,13 @@
 {
   "name": "@octap/contracts",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Typed request/response contracts for the Octap Core REST API.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctaPointees/OctaP_Core.git",
+    "directory": "ts-sdks/packages/contracts"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -17,5 +23,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
