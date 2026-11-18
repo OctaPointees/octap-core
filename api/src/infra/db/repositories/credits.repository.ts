@@ -1413,4 +1413,48 @@ export class CreditsRepository {
       }),
     );
   }
+
+  /**
+   * One page of a member's history, newest first, keyed on (`created_at`, `id`). The cursor is the
+   * last row's id; the database compares against that row's own timestamp, so a JS `Date` never
+   * truncates the microseconds and skips or repeats a row. Null when the cursor is not one of this
+   * member's transactions.
+   */
+  async listTransactionPageByMember(
+    organizationId: string,
+    organizationEndUserId: string,
+    limit: number,
+    cursor?: string,
+  ) {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const ofMember = and(
+        eq(loyaltyTransactions.organizationId, organizationId),
+        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+      );
+      if (cursor) {
+        const [anchor] = await tx
+          .select({ id: loyaltyTransactions.id })
+          .from(loyaltyTransactions)
+          .where(and(ofMember, eq(loyaltyTransactions.id, cursor)));
+        if (!anchor) return null;
+      }
+      const rows = await tx
+        .select({ row: loyaltyTransactions, digest: blockchainTransactions.digest })
+        .from(loyaltyTransactions)
+        .leftJoin(blockchainTransactions, eq(blockchainTransactions.id, loyaltyTransactions.blockchainTransactionId))
+        .where(
+          and(
+            ofMember,
+            cursor
+              ? sql`(${loyaltyTransactions.createdAt}, ${loyaltyTransactions.id}) < (select a.created_at, a.id from ${loyaltyTransactions} a where a.id = ${cursor})`
+              : undefined,
+          ),
+        )
+        .orderBy(desc(loyaltyTransactions.createdAt), desc(loyaltyTransactions.id))
+        .limit(limit + 1);
+      const more = rows.length > limit;
+      if (more) rows.pop();
+      return { rows, nextCursor: more ? rows.at(-1)!.row.id : null };
+    });
+  }
 }

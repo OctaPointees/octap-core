@@ -9,6 +9,7 @@ import type { MemberDirectoryQuery, MemberProfilePatch } from '@octap/contracts'
 import { MembersRepository } from '#infra/db/repositories/members.repository.js';
 import { ConsoleAccessError, ConsoleNotFoundError } from '#infra/db/repositories/console-organizations.repository.js';
 import { CreditsService } from '../credits/credits.service.js';
+import { RewardsService } from '../rewards/rewards.service.js';
 
 import { UUID_PATTERN as uuid } from '#infra/db/repositories/console-access.js';
 @Injectable()
@@ -16,6 +17,7 @@ export class MembersService {
   constructor(
     private readonly members: MembersRepository,
     private readonly credits: CreditsService,
+    private readonly rewards: RewardsService,
   ) {}
   private async run<T>(action: () => Promise<T>) {
     try {
@@ -48,6 +50,32 @@ export class MembersService {
     return this.run(async () => {
       const member = await this.members.detail(userId, orgId, memberId);
       return { ...member, balance: await this.credits.getBalance(orgId, memberId) };
+    });
+  }
+  /**
+   * The member's points history, newest first, with each row's status (PENDING until the chain
+   * confirms it). Owner or Business Developer; another organization's member is a 404.
+   */
+  transactions(userId: string, orgId: string, memberId: string, query: Record<string, unknown>) {
+    if (Object.keys(query).some((key) => !['limit', 'cursor'].includes(key)))
+      throw new BadRequestException('Only limit and cursor are supported');
+    const limit = query.limit === undefined ? 25 : Number(query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
+    if (query.cursor !== undefined && (typeof query.cursor !== 'string' || !uuid.test(query.cursor)))
+      throw new BadRequestException('Invalid cursor');
+    const cursor = query.cursor as string | undefined;
+    return this.run(async () => {
+      await this.members.detail(userId, orgId, memberId);
+      const page = await this.credits.listTransactionPage(orgId, memberId, limit, cursor);
+      if (!page) throw new BadRequestException('Invalid cursor');
+      return page;
+    });
+  }
+  /** Every voucher the member holds, with its status. Owner or Business Developer. */
+  vouchers(userId: string, orgId: string, memberId: string) {
+    return this.run(async () => {
+      await this.members.detail(userId, orgId, memberId);
+      return this.rewards.listMemberVouchers(orgId, memberId);
     });
   }
   patch(userId: string, orgId: string, memberId: string, input: Record<string, unknown>) {

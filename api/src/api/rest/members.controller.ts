@@ -2,7 +2,12 @@ import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Query, Req,
 import { MembersService } from '#domain/members/members.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
-import type { MemberDirectoryQueryDto, MemberProfilePatchBodyDto } from '../dto/console.dto.js';
+import type { LoyaltyTransactionPage, VoucherOwnershipDto } from '@octap/contracts';
+import type {
+  MemberDirectoryQueryDto,
+  MemberProfilePatchBodyDto,
+  MemberTransactionQueryDto,
+} from '../dto/console.dto.js';
 @Public()
 @UseGuards(ConsoleAccessGuard)
 @Controller('v1/console/organizations/:organizationId/members')
@@ -25,6 +30,25 @@ export class MembersController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
   ) {
     return this.members.detail(req.consoleIdentity.user.id, orgId, memberId);
+  }
+  @Get(':memberId/transactions')
+  @Header('Cache-Control', 'no-store')
+  transactions(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+    @Query() query: MemberTransactionQueryDto,
+  ): Promise<LoyaltyTransactionPage> {
+    return this.members.transactions(req.consoleIdentity.user.id, orgId, memberId, query);
+  }
+  @Get(':memberId/vouchers')
+  @Header('Cache-Control', 'no-store')
+  vouchers(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<VoucherOwnershipDto[]> {
+    return this.members.vouchers(req.consoleIdentity.user.id, orgId, memberId);
   }
   @Patch(':memberId')
   @Header('Cache-Control', 'no-store')

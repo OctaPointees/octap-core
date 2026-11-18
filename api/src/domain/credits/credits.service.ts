@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
-import type { CreditBalanceSnapshot, LoyaltyTransactionDto } from '@octap/contracts';
+import type { CreditBalanceSnapshot, LoyaltyTransactionDto, LoyaltyTransactionPage } from '@octap/contracts';
+import type { loyaltyTransactions } from '#infra/db/schema/credits.schema.js';
 
 @Injectable()
 export class CreditsService {
@@ -60,28 +61,27 @@ export class CreditsService {
   ): Promise<LoyaltyTransactionDto[]> {
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
     const records = await this.creditsRepo.listTransactionsByMember(organizationId, organizationEndUserId, limit);
+    return records.map((tx) => toTransactionDto(tx, tx.blockchainTransaction?.digest ?? null));
+  }
 
-    return records.map((tx) => ({
-      id: tx.id,
-      organizationId: tx.organizationId,
-      organizationEndUserId: tx.organizationEndUserId,
-      createdByMembershipId: tx.createdByMembershipId,
-      blockchainTransactionId: tx.blockchainTransactionId,
-      blockchainDigest: tx.blockchainTransaction?.digest ?? null,
-      transactionType: tx.transactionType,
-      pointsAmount:
-        tx.transactionType === 'EARN' && (tx.status === 'PENDING' || tx.status === 'FAILED')
-          ? null
-          : Number(tx.pointsAmount),
-      purchaseAmount: tx.purchaseAmount,
-      estimatedPoints: tx.transactionType === 'EARN' && tx.status === 'PENDING' ? Number(tx.pointsAmount) : null,
-      idempotencyKey: tx.idempotencyKey,
-      receiptReference: tx.receiptReference,
-      status: tx.status,
-      metadata: tx.metadata as Record<string, unknown> | null,
-      createdAt: tx.createdAt.toISOString(),
-      updatedAt: tx.updatedAt.toISOString(),
-    }));
+  /**
+   * Cursor page of a member's history, newest first (console member detail). The caller has already
+   * checked that the member is in this organization. Null when `cursor` is not one of its rows.
+   */
+  async listTransactionPage(
+    organizationId: string,
+    organizationEndUserId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<LoyaltyTransactionPage | null> {
+    const page = await this.creditsRepo.listTransactionPageByMember(
+      organizationId,
+      organizationEndUserId,
+      limit,
+      cursor,
+    );
+    if (!page) return null;
+    return { items: page.rows.map(({ row, digest }) => toTransactionDto(row, digest)), nextCursor: page.nextCursor };
   }
 
   private async assertMemberBelongsToOrganization(organizationId: string, organizationEndUserId: string) {
@@ -90,4 +90,29 @@ export class CreditsService {
       throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
     }
   }
+}
+
+/** An unconfirmed earn shows no points yet, only its estimate: the chain decides the final amount. */
+function toTransactionDto(tx: typeof loyaltyTransactions.$inferSelect, digest: string | null): LoyaltyTransactionDto {
+  return {
+    id: tx.id,
+    organizationId: tx.organizationId,
+    organizationEndUserId: tx.organizationEndUserId,
+    createdByMembershipId: tx.createdByMembershipId,
+    blockchainTransactionId: tx.blockchainTransactionId,
+    blockchainDigest: digest,
+    transactionType: tx.transactionType,
+    pointsAmount:
+      tx.transactionType === 'EARN' && (tx.status === 'PENDING' || tx.status === 'FAILED')
+        ? null
+        : Number(tx.pointsAmount),
+    purchaseAmount: tx.purchaseAmount,
+    estimatedPoints: tx.transactionType === 'EARN' && tx.status === 'PENDING' ? Number(tx.pointsAmount) : null,
+    idempotencyKey: tx.idempotencyKey,
+    receiptReference: tx.receiptReference,
+    status: tx.status,
+    metadata: tx.metadata as Record<string, unknown> | null,
+    createdAt: tx.createdAt.toISOString(),
+    updatedAt: tx.updatedAt.toISOString(),
+  };
 }

@@ -6,6 +6,11 @@ export interface MemberDirectoryQuery {
   status?: 'ACTIVE' | 'BLOCKED';
   externalMemberId?: string;
 }
+/** `GET …/members/{memberId}/transactions`: `limit` 1–100 (default 25), `cursor` from the last page. */
+export interface MemberTransactionQuery {
+  limit?: number;
+  cursor?: string;
+}
 export interface MemberProfile {
   id: string;
   endUserId: string;
