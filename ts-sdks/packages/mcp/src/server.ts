@@ -162,7 +162,7 @@ export function createServer(options: CreateServerOptions = {}) {
           const parsedMemberId = MEMBER_ID.safeParse(memberId);
           if (!parsedMemberId.success) return memberBindingError();
           const limit = args.limit ?? DEFAULT_LIMIT;
-          const rows = await core.listTransactions(parsedMemberId.data, {
+          const { items: rows } = await core.listTransactions(parsedMemberId.data, {
             limit,
             signal: combineSignal(extra),
           });

@@ -102,7 +102,9 @@ describe('OctaPointClient', () => {
 
   it('getBalance and listTransactions query the credits API (GETs carry no content-type)', async () => {
     const { fetchFn, last } = recordingFetch((url) =>
-      url.includes('/balance') ? { confirmedBalance: 500, asOfCheckpoint: '100' } : [{ id: 'tx-1' }],
+      url.includes('/balance')
+        ? { confirmedBalance: 500, asOfCheckpoint: '100' }
+        : { items: [{ id: 'tx-1' }], nextCursor: 'tx-1' },
     );
     const client = new OctaPointClient({ baseUrl: 'https://api.octap.network', fetchFn });
 
@@ -110,8 +112,14 @@ describe('OctaPointClient', () => {
     expect(last().url).toBe('https://api.octap.network/v1/credits/members/user-1/balance');
     expect(last().headers).toEqual({ accept: 'application/json' });
 
-    expect(await client.listTransactions('user-1', { limit: 10 })).toEqual([{ id: 'tx-1' }]);
+    expect(await client.listTransactions('user-1', { limit: 10 })).toEqual({
+      items: [{ id: 'tx-1' }],
+      nextCursor: 'tx-1',
+    });
     expect(last().url).toBe('https://api.octap.network/v1/credits/members/user-1/transactions?limit=10');
+
+    await client.listTransactions('user-1', { limit: 10, cursor: 'tx-1' });
+    expect(last().url).toBe('https://api.octap.network/v1/credits/members/user-1/transactions?limit=10&cursor=tx-1');
 
     await client.listTransactions('user-1');
     expect(last().url).toBe('https://api.octap.network/v1/credits/members/user-1/transactions');

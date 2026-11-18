@@ -27,6 +27,7 @@ export type {
   ReverseTransactionResponse,
   CreditBalanceSnapshot,
   LoyaltyTransactionDto,
+  LoyaltyTransactionPage,
   VoucherRefundPolicy,
   VoucherRefundPolicySnapshot,
   SetVoucherRefundPolicyRequest,

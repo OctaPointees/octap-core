@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
 import type { CreditBalanceSnapshot, LoyaltyTransactionDto, LoyaltyTransactionPage } from '@octap/contracts';
 import type { loyaltyTransactions } from '#infra/db/schema/credits.schema.js';
+import { UUID_PATTERN } from '#infra/db/repositories/console-access.js';
 
 @Injectable()
 export class CreditsService {
@@ -54,33 +55,29 @@ export class CreditsService {
     };
   }
 
+  /**
+   * One page of a member's history, newest first, for both the API-key and console routes.
+   * `limit` 1–100 (default 25); `cursor` is the previous page's `nextCursor`. A cursor that is not
+   * one of this member's transactions is a 400, never an empty page that looks like the end.
+   */
   async listTransactions(
     organizationId: string,
     organizationEndUserId: string,
-    limit = 50,
-  ): Promise<LoyaltyTransactionDto[]> {
+    query: { limit?: unknown; cursor?: unknown } = {},
+  ): Promise<LoyaltyTransactionPage> {
+    const limit = query.limit === undefined || query.limit === '' ? 25 : Number(query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
+    const cursor = query.cursor === undefined || query.cursor === '' ? undefined : query.cursor;
+    if (cursor !== undefined && (typeof cursor !== 'string' || !UUID_PATTERN.test(cursor)))
+      throw new BadRequestException('Invalid cursor');
     await this.assertMemberBelongsToOrganization(organizationId, organizationEndUserId);
-    const records = await this.creditsRepo.listTransactionsByMember(organizationId, organizationEndUserId, limit);
-    return records.map((tx) => toTransactionDto(tx, tx.blockchainTransaction?.digest ?? null));
-  }
-
-  /**
-   * Cursor page of a member's history, newest first (console member detail). The caller has already
-   * checked that the member is in this organization. Null when `cursor` is not one of its rows.
-   */
-  async listTransactionPage(
-    organizationId: string,
-    organizationEndUserId: string,
-    limit: number,
-    cursor?: string,
-  ): Promise<LoyaltyTransactionPage | null> {
     const page = await this.creditsRepo.listTransactionPageByMember(
       organizationId,
       organizationEndUserId,
       limit,
       cursor,
     );
-    if (!page) return null;
+    if (!page) throw new BadRequestException('Invalid cursor');
     return { items: page.rows.map(({ row, digest }) => toTransactionDto(row, digest)), nextCursor: page.nextCursor };
   }
 

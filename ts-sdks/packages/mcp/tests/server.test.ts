@@ -336,7 +336,7 @@ describe('Octap MCP Server', () => {
 
       const mockClient: CoreClientLike = {
         getBalance: vi.fn(),
-        listTransactions: vi.fn().mockResolvedValue(mockRows),
+        listTransactions: vi.fn().mockResolvedValue({ items: mockRows, nextCursor: null }),
         listMemberVouchers: vi.fn(),
       };
 

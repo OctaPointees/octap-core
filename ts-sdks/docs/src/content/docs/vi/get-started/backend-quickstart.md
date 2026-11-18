@@ -56,7 +56,7 @@ Với tỷ lệ earn 1%, response như sau:
 const balance = await client.getBalance(memberId);
 // balance.pendingEarn là 1000 cho đến khi chain xác nhận, sau đó balance.confirmedBalance tăng lên.
 
-const history = await client.listTransactions(memberId, { limit: 20 });
+const { items: history } = await client.listTransactions(memberId, { limit: 20 });
 ```
 
 Trên production, đừng polling. Hãy [nhận webhook](/vi/guides/receive-webhooks/) và xử lý `credits.earn.confirmed`, event này mang số điểm thực sự được cộng.

@@ -101,15 +101,26 @@ Throws `OctaApiError` with status 404 if you have no active program, and 503 if 
 
 ## listTransactions
 
-Lists a member's transactions.
+Lists a member's transactions, newest first, one page at a time.
 
 `GET /v1/credits/members/:memberId/transactions` · Scope: `read`
 
 ```ts
-listTransactions(memberId: string, options?: RequestOptions & { limit?: number }): Promise<LoyaltyTransactionDto[]>
+listTransactions(memberId: string, options?: RequestOptions & { limit?: number; cursor?: string }): Promise<LoyaltyTransactionPage>
 ```
 
-`limit` defaults to 50. For an unconfirmed earn, `pointsAmount` is `null` and `estimatedPoints` holds the estimate. A failed earn has `null` for both.
+Returns `{ items, nextCursor }`. `limit` is 1–100 and defaults to 25. To read the next page, pass `nextCursor` back as `cursor`; it is `null` on the last page. A `cursor` that is not one of this member's transactions is a 400.
+
+```ts
+let cursor: string | undefined;
+do {
+  const page = await client.listTransactions(memberId, { limit: 100, cursor });
+  for (const tx of page.items) handle(tx);
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+For an unconfirmed earn, `pointsAmount` is `null` and `estimatedPoints` holds the estimate. A failed earn has `null` for both.
 
 ## reservePosRedemption
 

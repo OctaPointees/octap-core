@@ -24,7 +24,9 @@ const earn = await client.earnPoints({
 The response is `PENDING`. Act on the [`credits.earn.confirmed`](/reference/webhook-events/#creditsearnconfirmed) webhook, or read history:
 
 ```ts
-const [latest] = await client.listTransactions(memberId, { limit: 1 });
+const {
+  items: [latest],
+} = await client.listTransactions(memberId, { limit: 1 });
 if (latest.status === 'CONFIRMED') {
   showPoints(latest.pointsAmount);
 }

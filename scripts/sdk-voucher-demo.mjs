@@ -61,7 +61,7 @@ export async function runVoucherDemo(client, config, log = console.log) {
   if (existing.some((owned) => owned.voucherId === voucherId)) {
     throw new Error('Member already owns this voucher. Inspect that ownership instead of claiming again.');
   }
-  const history = await client.listTransactions(memberId, { limit: 50 });
+  const { items: history } = await client.listTransactions(memberId, { limit: 50 });
   if (history.some((transaction) => transaction.idempotencyKey === idempotencyKey)) {
     throw new Error('This run ID already appears in member history. Inspect the previous attempt before continuing.');
   }
@@ -103,7 +103,7 @@ export async function runVoucherDemo(client, config, log = console.log) {
   log(`Redemption response: ${redeemed.status}. Reading persisted state…`);
   const after = await client.getBalance(memberId);
   const owned = await client.listMemberVouchers(memberId);
-  const transactions = await client.listTransactions(memberId, { limit: 50 });
+  const { items: transactions } = await client.listTransactions(memberId, { limit: 50 });
   const ownership = owned.find((item) => item.id === claim.voucherOwnershipId);
   const transaction = transactions.find((item) => item.idempotencyKey === idempotencyKey);
   if (

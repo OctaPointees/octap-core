@@ -80,8 +80,8 @@ async function fixture(t, overrides = {}) {
       return send(state.claimed ? [ownership] : []);
     }
     if (req.url.includes('/transactions')) {
-      return send(
-        state.claimed
+      return send({
+        items: state.claimed
           ? [
               {
                 id: 'transaction-1',
@@ -92,7 +92,8 @@ async function fixture(t, overrides = {}) {
               },
             ]
           : [],
-      );
+        nextCursor: null,
+      });
     }
     if (req.url.endsWith('/claim')) {
       if (state.claimFails) return send({ message: 'Claim failed' }, 503);

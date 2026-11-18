@@ -59,16 +59,9 @@ export class MembersService {
   transactions(userId: string, orgId: string, memberId: string, query: Record<string, unknown>) {
     if (Object.keys(query).some((key) => !['limit', 'cursor'].includes(key)))
       throw new BadRequestException('Only limit and cursor are supported');
-    const limit = query.limit === undefined ? 25 : Number(query.limit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
-    if (query.cursor !== undefined && (typeof query.cursor !== 'string' || !uuid.test(query.cursor)))
-      throw new BadRequestException('Invalid cursor');
-    const cursor = query.cursor as string | undefined;
     return this.run(async () => {
       await this.members.detail(userId, orgId, memberId);
-      const page = await this.credits.listTransactionPage(orgId, memberId, limit, cursor);
-      if (!page) throw new BadRequestException('Invalid cursor');
-      return page;
+      return this.credits.listTransactions(orgId, memberId, query);
     });
   }
   /** Every voucher the member holds, with its status. Owner or Business Developer. */

@@ -101,15 +101,26 @@ Ném `OctaApiError` với status 404 nếu bạn không có chương trình đan
 
 ## listTransactions
 
-Liệt kê giao dịch của thành viên.
+Liệt kê giao dịch của thành viên theo từng trang, mới nhất trước.
 
 `GET /v1/credits/members/:memberId/transactions` · Scope: `read`
 
 ```ts
-listTransactions(memberId: string, options?: RequestOptions & { limit?: number }): Promise<LoyaltyTransactionDto[]>
+listTransactions(memberId: string, options?: RequestOptions & { limit?: number; cursor?: string }): Promise<LoyaltyTransactionPage>
 ```
 
-`limit` mặc định là 50. Với lệnh earn chưa xác nhận, `pointsAmount` là `null` và `estimatedPoints` chứa số ước tính. Lệnh earn thất bại có `null` ở cả hai.
+Trả về `{ items, nextCursor }`. `limit` từ 1 đến 100, mặc định 25. Để đọc trang tiếp theo, truyền lại `nextCursor` vào `cursor`; ở trang cuối `nextCursor` là `null`. `cursor` không thuộc giao dịch của thành viên này trả về 400.
+
+```ts
+let cursor: string | undefined;
+do {
+  const page = await client.listTransactions(memberId, { limit: 100, cursor });
+  for (const tx of page.items) handle(tx);
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+Với lệnh earn chưa xác nhận, `pointsAmount` là `null` và `estimatedPoints` chứa số ước tính. Lệnh earn thất bại có `null` ở cả hai.
 
 ## reservePosRedemption
 

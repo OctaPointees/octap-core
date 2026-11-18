@@ -24,7 +24,9 @@ const earn = await client.earnPoints({
 Response có trạng thái `PENDING`. Hãy xử lý webhook [`credits.earn.confirmed`](/vi/reference/webhook-events/#creditsearnconfirmed), hoặc đọc lịch sử:
 
 ```ts
-const [latest] = await client.listTransactions(memberId, { limit: 1 });
+const {
+  items: [latest],
+} = await client.listTransactions(memberId, { limit: 1 });
 if (latest.status === 'CONFIRMED') {
   showPoints(latest.pointsAmount);
 }

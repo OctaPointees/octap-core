@@ -32,7 +32,7 @@ describe('README customer embedding example', () => {
         observedAt: '2026-11-12T12:00:00Z',
         stale: false,
       }),
-      listTransactions: vi.fn().mockResolvedValue([]),
+      listTransactions: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       listMemberVouchers: vi.fn(),
     };
     const server = createCustomerMcpServer(authenticatedSessions, coreClient);

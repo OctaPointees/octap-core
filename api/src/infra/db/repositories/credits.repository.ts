@@ -1400,20 +1400,6 @@ export class CreditsRepository {
     );
   }
 
-  async listTransactionsByMember(organizationId: string, organizationEndUserId: string, limit = 50) {
-    return withTenant(this.db, organizationId, (tx) =>
-      tx.query.loyaltyTransactions.findMany({
-        where: and(
-          eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
-          eq(loyaltyTransactions.organizationId, organizationId),
-        ),
-        orderBy: [desc(loyaltyTransactions.createdAt)],
-        limit,
-        with: { blockchainTransaction: true },
-      }),
-    );
-  }
-
   /**
    * One page of a member's history, newest first, keyed on (`created_at`, `id`). The cursor is the
    * last row's id; the database compares against that row's own timestamp, so a JS `Date` never

@@ -113,8 +113,8 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
       newBalance: 0,
     });
     expect(await balance()).toMatchObject({ confirmedBalance: 0, pendingEarn: 1000, stale: true });
-    const pending = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(auth).expect(200))
-      .body[0];
+    const pending = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(auth).expect(200)).body
+      .items[0];
     expect(pending).toMatchObject({ purchaseAmount: 100_000, estimatedPoints: 1000, pointsAmount: null });
     expect((await earn(100_000, 'receipt-001').expect(201)).body.transactionId).toBe(accepted.body.transactionId);
     await earn(100_001, 'receipt-001').expect(409);
@@ -130,7 +130,8 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
       estimatedPoints: null,
     });
     const history = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(auth).expect(200)).body;
-    expect(history[0]).toMatchObject({ pointsAmount: 1000, purchaseAmount: 100_000, status: 'CONFIRMED' });
+    expect(history.nextCursor).toBeNull();
+    expect(history.items[0]).toMatchObject({ pointsAmount: 1000, purchaseAmount: 100_000, status: 'CONFIRMED' });
     await ctx
       .http()
       .post('/v1/credits/redeem')
