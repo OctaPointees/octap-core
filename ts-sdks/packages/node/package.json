@@ -1,7 +1,12 @@
 {
   "name": "@octap/sdk",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Server-side Node.js SDK for the Octap Core loyalty API.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctaPointees/OctaP_Core.git",
+    "directory": "ts-sdks/packages/node"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -14,10 +19,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@octap/contracts": "0.0.0"
+    "@octap/contracts": "^0.1.0"
   },
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

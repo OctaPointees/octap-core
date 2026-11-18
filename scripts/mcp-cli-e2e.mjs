@@ -17,13 +17,16 @@ import { closeDemoResources } from './lib/close-demo-resources.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cliPath = resolve(repoRoot, 'ts-sdks/packages/mcp/dist/cli.js');
+// Point the CLI's saved-config fallback at a file that never exists, so a developer's own
+// ~/.octap/mcp.json can't satisfy the missing-key checks below.
+const noSavedConfig = { OCTAP_MCP_CONFIG_PATH: resolve(repoRoot, '.octap-mcp-e2e-no-config.json') };
 const containers = [];
 let database;
 let apiDatabase;
 let app;
 
 async function connectStdioClient(apiUrl, apiKey) {
-  const env = { ...getDefaultEnvironment(), OCTAP_API_URL: apiUrl };
+  const env = { ...getDefaultEnvironment(), ...noSavedConfig, OCTAP_API_URL: apiUrl };
   if (apiKey !== undefined) env.OCTAP_API_KEY = apiKey;
   else delete env.OCTAP_API_KEY;
 
@@ -169,7 +172,7 @@ try {
 
   const missingKey = spawnSync(process.execPath, [cliPath], {
     cwd: repoRoot,
-    env: { ...getDefaultEnvironment(), OCTAP_API_URL: apiUrl },
+    env: { ...getDefaultEnvironment(), ...noSavedConfig, OCTAP_API_URL: apiUrl },
     input: '',
     encoding: 'utf8',
     timeout: 10_000,

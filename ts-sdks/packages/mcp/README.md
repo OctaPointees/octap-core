@@ -8,7 +8,7 @@ It translates MCP tool calls from LLM hosts into authorized REST calls via `@oct
 
 > [!IMPORTANT]
 > **Audience & Credential Scope:**
-> This server runs with an organization-scoped API key (`OCTAP_API_KEY`). In the standalone CLI runner (`octap-mcp`), the LLM can query any member belonging to that organization by providing their `memberId`.
+> This server runs with an organization-scoped API key (`OCTAP_API_KEY`, or the key saved by `octap-mcp setup`). In the standalone CLI runner (`octap-mcp`), the LLM can query any member belonging to that organization by providing their `memberId`.
 >
 > This default setup is intended for **merchant operators, business development (BD), and support agents**.
 >
@@ -19,49 +19,63 @@ It translates MCP tool calls from LLM hosts into authorized REST calls via `@oct
 
 ## Configuration
 
-Set the following environment variables:
+The server needs two settings. It takes each one from an environment variable first, and otherwise from a saved config file.
 
-| Variable | Description | Default |
+| Setting | Env var | Description |
 |---|---|---|
-| `OCTAP_API_URL` | Base URL for Octap Core REST API (e.g., `http://127.0.0.1:3000` or staging URL). | *(None; required)* |
-| `OCTAP_API_KEY` | Dedicated API credential for the organization with `read` scope. | *(None; required)* |
+| API URL | `OCTAP_API_URL` | Base URL of the Octap Core REST API, e.g. `http://127.0.0.1:3000` for a local dev server. No default. |
+| API key | `OCTAP_API_KEY` | Organization API credential with `read` scope. |
 
-> [!NOTE]
-> The server requires both variables to be explicitly set. It deliberately does not default to `http://localhost:3000` to prevent accidental misconfiguration in staging/production environments.
+If neither source provides a value, the server refuses to start and prints which setting is missing.
+
+### Save the settings once with `octap-mcp setup`
+
+An MCP host talks to this server over stdio, and stdout carries the JSON-RPC stream, so the server can't ask you for anything itself. Run setup once in a normal terminal, outside the host:
+
+```bash
+npx -y @octap/mcp setup
+# or, from a checkout after building: node ts-sdks/packages/mcp/dist/cli.js setup
+```
+
+It asks for the API URL (press Enter to accept the default shown, `http://127.0.0.1:3000` the first time) and the API key (input hidden; when a key is already saved, Enter keeps it). Run it again whenever you want to point at a different server.
+
+**Where the key is stored:** `~/.octap/mcp.json` (on Windows `%USERPROFILE%.octapmcp.json`). The file is plain JSON, written with owner-only permissions (`0600`) on macOS/Linux; on Windows it is protected by your user profile's permissions. Set `OCTAP_MCP_CONFIG_PATH` to use another location. `octap-mcp setup --path` prints the location in use.
+
+**Revoking local access:** `octap-mcp setup --clear` (or deleting the file). The next time the host starts the server, it exits with `OCTAP_API_KEY is required` and no tools are available. This only removes the local copy; revoke the key itself in the Octap Console if it may have leaked.
 
 ## Installation & Launch
 
-### 1. Build the package
+### Configure your MCP Host (e.g. Claude Desktop, Cursor, Antigravity)
 
-From the repository root:
-
-```bash
-npm install
-npm run build
-```
-
-### 2. Configure your MCP Host (e.g. Antigravity, Claude Desktop, Cursor)
-
-Add the server to your MCP configuration file (e.g., `mcp_config.json` or `claude_desktop_config.json`):
+After `octap-mcp setup`, the host entry needs no env vars:
 
 ```json
 {
   "mcpServers": {
     "octap": {
-      "command": "node",
-      "args": ["<path-to-octap-core>/ts-sdks/packages/mcp/dist/cli.js"],
-      "env": {
-        "OCTAP_API_URL": "http://127.0.0.1:3000",
-        "OCTAP_API_KEY": "your_test_organization_api_key"
-      }
+      "command": "npx",
+      "args": ["-y", "@octap/mcp"]
     }
   }
 }
 ```
 
+From a local checkout, build it first (`npm install && npm run build` at the repository root) and use `"command": "node"`, `"args": ["<path-to-octap-core>/ts-sdks/packages/mcp/dist/cli.js"]` instead.
+
+You can still pass the settings through the host instead of the file, or override just one of them (env vars win per setting):
+
+```json
+"env": {
+  "OCTAP_API_URL": "http://127.0.0.1:3000",
+  "OCTAP_API_KEY": "your_test_organization_api_key"
+}
+```
+
+On startup the server logs to stderr which URL it is using and whether each setting came from the environment or the config file.
+
 > [!WARNING]
 > **Do not use `npm run` in host launch commands:**
-> Tools like `npm run dev` or `npm run start` write lifecycle banners to `stdout`. Because MCP uses `stdout` for JSON-RPC messages, any extraneous console output will corrupt the protocol stream and cause the MCP client to disconnect. Always launch the compiled script directly with `node` or `npx @octap/mcp` (once published).
+> Tools like `npm run dev` or `npm run start` write lifecycle banners to `stdout`. Because MCP uses `stdout` for JSON-RPC messages, any extraneous console output will corrupt the protocol stream and cause the MCP client to disconnect. Launch the compiled script directly with `node`, or use `npx -y @octap/mcp`.
 
 ## Programmatic Usage
 
