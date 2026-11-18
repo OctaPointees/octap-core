@@ -2,6 +2,7 @@
   "name": "@octap/contracts",
   "version": "0.1.0",
   "description": "Typed request/response contracts for the Octap Core REST API.",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OctaPointees/OctaP_Core.git",

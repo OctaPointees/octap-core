@@ -2,6 +2,7 @@
   "name": "@octap/mcp",
   "version": "0.1.0",
   "description": "Read-only Model Context Protocol server for Octap loyalty points, transactions and vouchers.",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OctaPointees/OctaP_Core.git",
