@@ -18,7 +18,7 @@ import type { TenantContext } from '#infra/auth/tenant-context.js';
 import { stub } from '../../../helpers/stub.js';
 import { POS_BENEFIT } from '../../../helpers/fixtures.js';
 
-const tenant: TenantContext = { organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write', 'admin'] };
+const tenant: TenantContext = { organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write'] };
 const ok = <T>(value: T) => vi.fn(async () => value);
 const bad = (promise: Promise<unknown>, message: RegExp) =>
   expect(promise).rejects.toMatchObject({ name: 'BadRequestException', message: expect.stringMatching(message) });
@@ -224,29 +224,18 @@ describe('CustomerVerificationController', () => {
 });
 
 describe('WebhooksController', () => {
-  it('validates the endpoint URL and delegates every route with the tenant org', async () => {
-    const endpoints = { register: ok({}), list: ok([]), disable: ok({}), enable: ok({}), rotateSecret: ok({}) };
-    const deliveries = { list: ok([]), replay: ok({}) };
+  it('only reads, with the tenant org', async () => {
+    const endpoints = { list: ok([]) };
+    const deliveries = { list: ok([]) };
     const c = new WebhooksController(
       stub<WebhookEndpointsService>(endpoints),
       stub<WebhookDeliveryService>(deliveries),
     );
 
-    await c.registerEndpoint(tenant, { url: 'https://x', description: 'd' });
     await c.listEndpoints(tenant);
-    await c.disableEndpoint(tenant, 'ep-1');
-    await c.enableEndpoint(tenant, 'ep-1');
-    await c.rotateSecret(tenant, 'ep-1');
     await c.listDeliveries(tenant);
-    await c.replayDelivery(tenant, 'dlv-1');
 
-    expect(endpoints.register).toHaveBeenCalledWith('org-1', 'https://x', 'd');
     expect(endpoints.list).toHaveBeenCalledWith('org-1');
-    expect(endpoints.disable).toHaveBeenCalledWith('org-1', 'ep-1');
-    expect(endpoints.enable).toHaveBeenCalledWith('org-1', 'ep-1');
-    expect(endpoints.rotateSecret).toHaveBeenCalledWith('org-1', 'ep-1');
     expect(deliveries.list).toHaveBeenCalledWith('org-1');
-    expect(deliveries.replay).toHaveBeenCalledWith('org-1', 'dlv-1');
-    await bad(c.registerEndpoint(tenant, { url: '' }), /url is required/);
   });
 });

@@ -14,8 +14,13 @@ Signed event delivery to merchant-registered endpoints.
 - `webhook-signing.util.ts`: HMAC-SHA256 signing/verification shared by the processor and tests.
   `ts-sdks/packages/node/src/webhooks.ts` has the receiver-side equivalent for merchants.
 
+- `console-webhooks.service.ts`: the Owner's console routes (register, list, disable, enable,
+  rotate-secret, list deliveries, replay), each inside the Owner check's transaction. Owner only,
+  reads included; a Business Developer is a 403 (OCT-301).
+
 Persistence is `infra/db/repositories/webhooks.repository.ts`; HTTP is
-`api/rest/webhooks.controller.ts`.
+`api/rest/console-webhooks.controller.ts` (the Owner manages endpoints) and
+`api/rest/webhooks.controller.ts` (a `read` API key lists endpoints and deliveries; no key changes them).
 
 Events (types in `@octap/contracts`' `WebhookEvent`):
 

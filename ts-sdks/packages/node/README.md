@@ -38,19 +38,20 @@ and `signal`, including both balance overloads.
 | `POST /v1/credits/transactions/:id/reverse` | `reverseTransaction` |
 | `GET /v1/credits/members/:id/balance`, `/transactions` | `getBalance`, `listTransactions` |
 | `GET /v1/credits/budget` | `getIssuanceBudget` |
-| `GET/PUT /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
+| `GET /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | `POST/GET /v1/rewards/vouchers`, `GET/PATCH .../:id` | `createVoucher`, `listVouchers`, `getVoucher`, `updateVoucher` |
 | `POST .../vouchers/:id/claim`, `GET .../claims/:id` | `claimVoucher`, `getVoucherClaim` |
 | `POST .../vouchers/:id/grant` | `grantVoucher` |
 | `POST .../vouchers/use`, `/use/finalize` | `prepareVoucherUse`, `finalizeVoucherUse` |
 | `GET .../members/:id/vouchers` | `listMemberVouchers` |
-| `POST/GET /v1/webhooks/endpoints` | `registerWebhookEndpoint`, `listWebhookEndpoints` |
-| `POST .../endpoints/:id/disable`, `/enable`, `/rotate-secret` | `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret` |
-| `GET /v1/webhooks/deliveries`, `POST .../:id/replay` | `listWebhookDeliveries`, `replayWebhookDelivery` |
+| `GET /v1/webhooks/endpoints` | `listWebhookEndpoints` |
+| `GET /v1/webhooks/deliveries` | `listWebhookDeliveries` |
 
 `finalizeVoucherClaim` is an alias for the shared finalize route. Customer signatures authorize
-finalization; no merchant credential is needed there. Webhook mutations and refund policy publication/
-history require an admin-scoped key. Store register/rotate secrets securely; list responses omit them.
+finalization; no merchant credential is needed there. A `read` key is enough for every read here; a
+`write` key for the rest. The Owner registers, disables, enables and rotates webhook endpoints, replays
+deliveries and publishes the refund policy in the console, not with a key (removed from the SDK in
+0.2.0, see `CHANGELOG.md`). List responses never include a webhook secret.
 
 ## Earn
 

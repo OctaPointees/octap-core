@@ -137,7 +137,7 @@ export async function seedCredential(
   db: DrizzleDb,
   organizationId: string,
   {
-    scopes = ['read', 'write', 'admin'],
+    scopes = ['read', 'write'],
     expiresAt,
     status,
   }: { scopes?: string[]; expiresAt?: Date; status?: 'ACTIVE' | 'REVOKED' } = {},

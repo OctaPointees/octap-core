@@ -7,17 +7,13 @@ Webhook báo cho server của bạn khi có việc đã hoàn tất, nên bạn 
 
 ## 1. Đăng ký endpoint
 
-Lệnh này cần key `admin`. Secret chỉ được trả về ở đây và khi bạn rotate, nên hãy lưu an toàn.
+Owner của tổ chức đăng ký endpoint trên Console, ở mục **Webhook**, với URL `http` hoặc `https`. Không API key nào đăng ký hay thay đổi được endpoint.
+
+Console chỉ hiện secret ký một lần, ngay sau khi đăng ký, và lại hiện khi Owner xoay secret. Hãy lưu nó ở nơi receiver của bạn đọc được, ví dụ secret manager. Server của bạn kiểm tra được những gì đã đăng ký:
 
 ```ts
-const endpoint = await client.registerWebhookEndpoint({
-  url: 'https://shop.example/webhooks/octap',
-  description: 'Production orders',
-});
-saveSecret(endpoint.secret);
+const endpoints = await client.listWebhookEndpoints(); // không bao giờ gồm secret
 ```
-
-Đừng thử lại lệnh này một cách mù quáng, vì nó không idempotent. Hãy liệt kê endpoint của bạn trước.
 
 ## 2. Xác minh và xử lý event
 
@@ -63,7 +59,7 @@ Kiểu của `event.data` phụ thuộc vào `event.type`. Xem [Webhook events](
 | Thành công | Bất kỳ response 2xx nào trong vòng 10 giây |
 | Thử lại | Tối đa 6 lần tổng cộng, chờ lâu dần mỗi lần (1, 2, 5, 15, rồi 30 phút) |
 | Sau lần cuối | Delivery chuyển thành `DEAD_LETTER` |
-| Replay | `replayWebhookDelivery(id)` xếp lại hàng delivery đã dead-letter, giữ nguyên event ID |
+| Replay | Owner gửi lại delivery đã dead-letter trên Console. Delivery được xếp lại hàng, giữ nguyên event ID. |
 
 Mỗi request có các header sau:
 
@@ -79,11 +75,8 @@ Mỗi request có các header sau:
 
 ## Quản lý endpoint
 
+Owner tắt, bật và xoay secret của endpoint trên Console. Xoay secret làm secret cũ hết hiệu lực ngay, nên hãy cập nhật secret của receiver ngay sau đó. Server của bạn theo dõi được delivery:
+
 ```ts
-await client.disableWebhookEndpoint(endpoint.id);
-await client.enableWebhookEndpoint(endpoint.id);
-
-const { secret: newSecret } = await client.rotateWebhookSecret(endpoint.id);
-
 const deliveries = await client.listWebhookDeliveries();
 ```

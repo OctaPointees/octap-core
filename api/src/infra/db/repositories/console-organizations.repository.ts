@@ -126,6 +126,13 @@ export class ConsoleOrganizationsRepository {
     });
   }
   /**
+   * `withOwnerAccess`'s check on the caller's own transaction, for a repository that must take its own
+   * locks first (see `VoucherRefundPoliciesRepository.publish`). Throws `ConsoleAccessError`.
+   */
+  async assertOwner(tx: Tx, userId: string, organizationId: string) {
+    await this.member(tx, userId, organizationId, true, false);
+  }
+  /**
    * Owner or Business Developer, locking the organization and membership rows for update, so `action`
    * commits only while the caller still has access (unlike `withAccess`, whose writes are Owner-only).
    * `action` gets the caller's role, for rules that differ between the two.

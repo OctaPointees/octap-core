@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
 import { CreditsRepository, VoucherClaimNotReversibleError } from '#infra/db/repositories/credits.repository.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
@@ -17,7 +11,7 @@ export class ReversalService {
   async reverseTransaction(
     organizationId: string,
     request: ReverseTransactionRequest,
-    credential?: Pick<TenantContext, 'credentialId' | 'scopes'>,
+    credential?: Pick<TenantContext, 'credentialId'>,
   ): Promise<ReverseTransactionResponse> {
     const existingByIdempotency = await this.creditsRepo.findTransactionByIdempotency(
       organizationId,
@@ -69,17 +63,9 @@ export class ReversalService {
         idempotencyKey: request.idempotencyKey,
         reason: request.reason,
         refundedByCredentialId: credential?.credentialId,
-        evaluateRefund: (coupon, nowMs) => {
-          const decision = evaluateVoucherRefund(coupon, nowMs);
-          // Check the locked coupon's effective state, including AVAILABLE past expiry.
-          // Request fields cannot grant scopes; only the authenticated tenant context can.
-          if (decision.allowed && decision.nextStatus !== 'CANCELLED' && !credential?.scopes.includes('admin')) {
-            throw new ForbiddenException(
-              'An admin-scoped credential is required to refund a redeemed or expired coupon',
-            );
-          }
-          return decision;
-        },
+        // Judged on the locked coupon's effective state, including AVAILABLE past expiry. The Owner's
+        // refund policy is the only gate: any `write` key may refund what the policy allows.
+        evaluateRefund: (coupon, nowMs) => evaluateVoucherRefund(coupon, nowMs),
       });
 
       return {
@@ -92,7 +78,6 @@ export class ReversalService {
         idempotencyKey: reversal.idempotencyKey,
       };
     } catch (err: unknown) {
-      if (err instanceof ForbiddenException) throw err;
       if (err instanceof VoucherClaimNotReversibleError) {
         throw new ConflictException(err.message);
       }

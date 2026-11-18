@@ -305,26 +305,16 @@ describe('customer-signed voucher claims', () => {
 });
 
 describe('voucher refund policy SDK', () => {
-  it('reads, replaces and lists policies through tenant-scoped API methods', async () => {
+  it('reads the policy and lists its versions through tenant-scoped API methods', async () => {
     const { fetchFn, last } = recordingFetch(() => ({ version: 1 }));
-    const client = createOctaPointClient({ credentials: { apiKey: 'admin' }, fetchFn });
+    const client = createOctaPointClient({ credentials: { apiKey: 'reader' }, fetchFn });
     const signal = new AbortController().signal;
-    const request = {
-      allowUnused: true,
-      allowExpired: true,
-      allowRedeemed: false,
-      restockUnused: false,
-      refundWindowDays: 7,
-      reason: 'New terms',
-    };
     await client.getVoucherRefundPolicy({ signal, organizationId: 'org' });
     expect(last()).toMatchObject({
       method: 'GET',
       url: 'http://localhost:3000/v1/rewards/refund-policy',
       headers: { 'x-organization-id': 'org' },
     });
-    await client.setVoucherRefundPolicy(request, { signal });
-    expect(last()).toMatchObject({ method: 'PUT', body: request });
     await client.listVoucherRefundPolicyHistory();
     expect(last()).toMatchObject({ method: 'GET', url: 'http://localhost:3000/v1/rewards/refund-policy/history' });
     await client.listVoucherRefundPolicyHistory(
@@ -340,22 +330,13 @@ describe('voucher refund policy SDK', () => {
 });
 
 describe('merchant route coverage and cancellation', () => {
-  it('wraps all webhook lifecycle and delivery routes with per-request options', async () => {
+  it('reads webhook endpoints and deliveries with per-request options, and changes nothing', async () => {
     const { fetchFn, last } = recordingFetch();
     const client = new OctaPointClient({ credentials: { apiKey: 'server-key' }, fetchFn });
     const options = { organizationId: 'tenant' };
-    await client.registerWebhookEndpoint({ url: 'https://merchant.test/hooks', description: 'orders' }, options);
-    expect(last()).toMatchObject({
-      method: 'POST',
-      body: { url: 'https://merchant.test/hooks', description: 'orders' },
-    });
     const calls = [
       [() => client.listWebhookEndpoints(options), '/endpoints', 'GET'],
-      [() => client.disableWebhookEndpoint('a/b', options), '/endpoints/a%2Fb/disable', 'POST'],
-      [() => client.enableWebhookEndpoint('a/b', options), '/endpoints/a%2Fb/enable', 'POST'],
-      [() => client.rotateWebhookSecret('a/b', options), '/endpoints/a%2Fb/rotate-secret', 'POST'],
       [() => client.listWebhookDeliveries(options), '/deliveries', 'GET'],
-      [() => client.replayWebhookDelivery('d/e', options), '/deliveries/d%2Fe/replay', 'POST'],
     ] as const;
     for (const [call, path, method] of calls) {
       await call();
@@ -365,6 +346,16 @@ describe('merchant route coverage and cancellation', () => {
         headers: { authorization: 'Bearer server-key', 'x-organization-id': 'tenant' },
       });
     }
+    // Managing webhooks and the refund policy is the Owner's, in the console (0.2.0).
+    for (const removed of [
+      'registerWebhookEndpoint',
+      'disableWebhookEndpoint',
+      'enableWebhookEndpoint',
+      'rotateWebhookSecret',
+      'replayWebhookDelivery',
+      'setVoucherRefundPolicy',
+    ])
+      expect(removed in client).toBe(false);
   });
   it('reads the issuance budget', async () => {
     const { fetchFn, last } = recordingFetch(() => ({ remaining: 10 }));

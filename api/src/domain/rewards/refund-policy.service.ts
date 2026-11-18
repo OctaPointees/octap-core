@@ -3,6 +3,7 @@ import type { SetVoucherRefundPolicyRequest, ListVoucherRefundPolicyHistoryReque
 import {
   VoucherRefundPoliciesRepository,
   RefundPolicyOrganizationNotFoundError,
+  type RefundPolicyAuthorize,
 } from '#infra/db/repositories/voucher-refund-policies.repository.js';
 import { validateRefundPolicy } from './refund-policy.js';
 
@@ -22,13 +23,18 @@ export class RefundPolicyService {
       throw new BadRequestException('beforeVersion must be a positive 32-bit integer');
     return this.policies.history(organizationId, query);
   }
-  async publish(organizationId: string, credentialId: string, request: SetVoucherRefundPolicyRequest) {
+  /** Publishing is the console's (`ConsoleRefundPolicyService`): `authorize` is its Owner check. */
+  async publish(
+    organizationId: string,
+    userId: string,
+    request: SetVoucherRefundPolicyRequest,
+    authorize: RefundPolicyAuthorize,
+  ) {
     validateRefundPolicy(request);
     try {
-      return await this.policies.publish(organizationId, credentialId, request);
+      return await this.policies.publish(organizationId, userId, request, authorize);
     } catch (error) {
-      if (error instanceof RefundPolicyOrganizationNotFoundError)
-        throw new NotFoundException('Organization or credential not found');
+      if (error instanceof RefundPolicyOrganizationNotFoundError) throw new NotFoundException('Organization not found');
       throw error;
     }
   }

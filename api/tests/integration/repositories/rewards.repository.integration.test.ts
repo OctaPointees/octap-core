@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
@@ -688,15 +689,19 @@ describe('voucher terms publishing', () => {
   it('a policy published later does not change a voucher that already published its own', async () => {
     const policies = new VoucherRefundPoliciesRepository(db);
     const voucher = await create();
-    const { credential } = await seedCredential(db, orgId);
-    await policies.publish(orgId, credential.id, {
-      allowUnused: false,
-      allowExpired: false,
-      allowRedeemed: false,
-      restockUnused: true,
-      refundWindowDays: null,
-      reason: 'Stricter terms',
-    });
+    await policies.publish(
+      orgId,
+      randomUUID(),
+      {
+        allowUnused: false,
+        allowExpired: false,
+        allowRedeemed: false,
+        restockUnused: true,
+        refundWindowDays: null,
+        reason: 'Stricter terms',
+      },
+      async () => undefined,
+    );
     expect((await claim(voucher.id)).refundPolicy).toEqual(DEFAULT_VOUCHER_REFUND_POLICY);
   });
 });
@@ -1071,6 +1076,8 @@ describe('voucher redeem outbox retained from OCT-244', () => {
 
 describe('organization refund policy snapshots', () => {
   const policies = new VoucherRefundPoliciesRepository(db);
+  // No FK: the actor is a historical identity, so any id records.
+  const ownerId = randomUUID();
   const publish = async (changes: Partial<Omit<typeof DEFAULT_VOUCHER_REFUND_POLICY, 'version'>>) => {
     const defaults = {
       allowUnused: true,
@@ -1079,9 +1086,8 @@ describe('organization refund policy snapshots', () => {
       restockUnused: true,
       refundWindowDays: null as number | null,
     };
-    const { credential } = await seedCredential(db, orgId);
     const settings = { ...defaults, ...changes };
-    return policies.publish(orgId, credential.id, { ...settings, reason: 'Merchant refund terms' });
+    return policies.publish(orgId, ownerId, { ...settings, reason: 'Merchant refund terms' }, async () => undefined);
   };
   const reverse = async (result: Awaited<ReturnType<typeof confirm>>, key: string) =>
     credits.recordReversalTransaction({
@@ -1198,17 +1204,33 @@ describe('organization refund policy snapshots', () => {
     expect(issued.refundPolicySnapshot).toEqual(DEFAULT_VOUCHER_REFUND_POLICY);
   });
 
-  it('retains the historical actor after a credential is removed', async () => {
+  it('records the publishing Owner, and keeps a legacy key version and its actor after the key is removed', async () => {
+    // A version an API key published before publishing moved to the console.
+    const { credential } = await seedCredential(db, orgId);
+    await db.insert(schema.voucherRefundPolicies).values({
+      organizationId: orgId,
+      version: 1,
+      policy: {
+        allowUnused: true,
+        allowExpired: false,
+        allowRedeemed: false,
+        restockUnused: true,
+        refundWindowDays: null,
+      },
+      reason: 'Set with an admin key',
+      createdByCredentialId: credential.id,
+    });
     const published = await publish({ allowUnused: false });
-    if (published.createdByCredentialId === null) throw new Error('Published policies require an actor');
-    await db.delete(schema.apiCredentials).where(eq(schema.apiCredentials.id, published.createdByCredentialId));
-    expect((await policies.current(orgId)).createdByCredentialId).toBe(published.createdByCredentialId);
-    expect((await policies.history(orgId))[0].createdByCredentialId).toBe(published.createdByCredentialId);
+    expect(published).toMatchObject({ version: 2, createdByUserId: ownerId, createdByCredentialId: null });
+    await db.delete(schema.apiCredentials).where(eq(schema.apiCredentials.id, credential.id));
+    expect((await policies.history(orgId)).map((row) => [row.createdByUserId, row.createdByCredentialId])).toEqual([
+      [ownerId, null],
+      [null, credential.id],
+    ]);
   });
 
-  it('cannot publish with a credential from another tenant', async () => {
-    const other = await seedOrganization(db);
-    const { credential } = await seedCredential(db, other.id);
+  it('writes nothing when the publisher is refused, and every version names exactly one actor', async () => {
+    const refused = new Error('not the Owner');
     const settings = {
       allowUnused: true,
       allowExpired: false,
@@ -1216,7 +1238,18 @@ describe('organization refund policy snapshots', () => {
       restockUnused: true,
       refundWindowDays: null as number | null,
     };
-    await expect(policies.publish(orgId, credential.id, { ...settings, reason: 'Foreign change' })).rejects.toThrow();
+    await expect(
+      policies.publish(orgId, ownerId, { ...settings, reason: 'Refused change' }, async () => {
+        throw refused;
+      }),
+    ).rejects.toBe(refused);
     expect(await policies.history(orgId)).toEqual([]);
+    const row = { organizationId: orgId, version: 1, policy: settings, reason: 'One actor' };
+    await expect(db.insert(schema.voucherRefundPolicies).values(row)).rejects.toThrow();
+    await expect(
+      db
+        .insert(schema.voucherRefundPolicies)
+        .values({ ...row, createdByUserId: ownerId, createdByCredentialId: randomUUID() }),
+    ).rejects.toThrow();
   });
 });

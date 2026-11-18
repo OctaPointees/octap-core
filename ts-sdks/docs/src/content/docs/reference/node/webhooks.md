@@ -3,22 +3,7 @@ title: Webhooks
 description: Node SDK methods for webhook endpoints, deliveries and signature verification.
 ---
 
-## registerWebhookEndpoint
-
-Returns the secret, which you can't read again. Not idempotent.
-
-`POST /v1/webhooks/endpoints` · Scope: `admin`
-
-```ts
-registerWebhookEndpoint(request: RegisterWebhookEndpointRequest, options?): Promise<WebhookEndpointWithSecretDto>
-```
-
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `url` | `string` | **Required.** An `http` or `https` URL. |
-| `description` | `string` | |
-
-Returns `id`, `organizationId`, `url`, `description`, `status`, `createdAt`, `updatedAt` and `secret`.
+The Owner registers, disables, enables and rotates endpoints, and replays dead-lettered deliveries, in the console. No API key can, so the SDK only reads them. See [Receive webhooks](/guides/receive-webhooks/).
 
 ## listWebhookEndpoints
 
@@ -30,32 +15,6 @@ Doesn't include secrets.
 listWebhookEndpoints(options?): Promise<WebhookEndpointDto[]>
 ```
 
-## disableWebhookEndpoint
-
-`POST /v1/webhooks/endpoints/:id/disable` · Scope: `admin`
-
-```ts
-disableWebhookEndpoint(id: string, options?): Promise<WebhookEndpointDto>
-```
-
-## enableWebhookEndpoint
-
-`POST /v1/webhooks/endpoints/:id/enable` · Scope: `admin`
-
-```ts
-enableWebhookEndpoint(id: string, options?): Promise<WebhookEndpointDto>
-```
-
-## rotateWebhookSecret
-
-Returns a new secret. Not idempotent.
-
-`POST /v1/webhooks/endpoints/:id/rotate-secret` · Scope: `admin`
-
-```ts
-rotateWebhookSecret(id: string, options?): Promise<WebhookEndpointWithSecretDto>
-```
-
 ## listWebhookDeliveries
 
 `GET /v1/webhooks/deliveries` · Scope: `read`
@@ -65,16 +24,6 @@ listWebhookDeliveries(options?): Promise<WebhookDeliveryDto[]>
 ```
 
 Each delivery has `id`, `endpointId`, `eventType`, `status`, `attemptCount`, `nextAttemptAt`, `lastResponseStatus`, `lastError`, `createdAt` and `updatedAt`.
-
-## replayWebhookDelivery
-
-Re-queues a dead-lettered delivery with the same event ID.
-
-`POST /v1/webhooks/deliveries/:id/replay` · Scope: `admin`
-
-```ts
-replayWebhookDelivery(id: string, options?): Promise<WebhookDeliveryDto>
-```
 
 ## constructWebhookEvent
 

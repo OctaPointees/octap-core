@@ -2,7 +2,6 @@ import {
   Controller,
   Post,
   Get,
-  Put,
   Patch,
   Query,
   ParseIntPipe,
@@ -12,7 +11,6 @@ import {
   BadRequestException,
   UseGuards,
 } from '@nestjs/common';
-import type { SetVoucherRefundPolicyRequest } from '@octap/contracts';
 import { RefundPolicyService } from '#domain/rewards/refund-policy.service.js';
 import { RewardsService } from '#domain/rewards/rewards.service.js';
 import { VoucherUseService } from '#domain/rewards/voucher-use.service.js';
@@ -45,6 +43,7 @@ export class RewardsController {
     private readonly refundPolicy: RefundPolicyService,
   ) {}
 
+  /** Read-only with an API key; the Owner publishes from the console (`ConsoleRefundPolicyController`). */
   @Get('refund-policy')
   @Scopes('read')
   getRefundPolicy(@Tenant() tenant: TenantContext) {
@@ -52,19 +51,13 @@ export class RewardsController {
   }
 
   @Get('refund-policy/history')
-  @Scopes('admin')
+  @Scopes('read')
   getRefundPolicyHistory(
     @Tenant() tenant: TenantContext,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
     @Query('beforeVersion', new ParseIntPipe({ optional: true })) beforeVersion?: number,
   ) {
     return this.refundPolicy.history(tenant.organizationId, { limit, beforeVersion });
-  }
-
-  @Put('refund-policy')
-  @Scopes('admin')
-  setRefundPolicy(@Tenant() tenant: TenantContext, @Body() body: SetVoucherRefundPolicyRequest) {
-    return this.refundPolicy.publish(tenant.organizationId, tenant.credentialId, body);
   }
 
   @Post('vouchers')

@@ -40,8 +40,8 @@ Every method takes `RequestOptions` as its last argument.
 | Area | Methods |
 | --- | --- |
 | [Identity and credits](/reference/node/credits/) | `verifyCustomer`, `earnPoints`, `getBalance`, `getIssuanceBudget`, `listTransactions`, `reservePosRedemption`, `finalizePosRedemption`, `reverseTransaction` |
-| [Vouchers](/reference/node/vouchers/) | `createVoucher`, `updateVoucher`, `listVouchers`, `getVoucher`, `claimVoucher`, `getVoucherClaim`, `finalizeVoucherClaim`, `grantVoucher`, `prepareVoucherUse`, `finalizeVoucherUse`, `listMemberVouchers`, `getVoucherRefundPolicy`, `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
-| [Webhooks](/reference/node/webhooks/) | `registerWebhookEndpoint`, `listWebhookEndpoints`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `listWebhookDeliveries`, `replayWebhookDelivery`, `verifyWebhookSignature`, `constructWebhookEvent` |
+| [Vouchers](/reference/node/vouchers/) | `createVoucher`, `updateVoucher`, `listVouchers`, `getVoucher`, `claimVoucher`, `getVoucherClaim`, `finalizeVoucherClaim`, `grantVoucher`, `prepareVoucherUse`, `finalizeVoucherUse`, `listMemberVouchers`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
+| [Webhooks](/reference/node/webhooks/) | `listWebhookEndpoints`, `listWebhookDeliveries`, `verifyWebhookSignature`, `constructWebhookEvent` |
 
 ## Out of scope
 
