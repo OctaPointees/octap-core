@@ -1,6 +1,6 @@
 ---
 title: Cài đặt
-description: Các package của OctaP SDK, công dụng của từng package và cách dùng hiện nay.
+description: Các package của OctaP SDK, công dụng của từng package và cách cài từ npm.
 ---
 
 ## Các package
@@ -10,16 +10,13 @@ description: Các package của OctaP SDK, công dụng của từng package và
 | `@octap/sdk` | Server Node của bạn | Điểm, voucher, webhook và xác minh khách hàng. Giữ API key của bạn. |
 | `@octap/browser-sdk` | Website của bạn | Đăng nhập và ký giao dịch của khách hàng. Không giữ thông tin xác thực của merchant. |
 | `@octap/contracts` | Bất kỳ đâu | Chỉ gồm kiểu TypeScript. `@octap/sdk` đã re-export những kiểu bạn cần. |
+| `@octap/mcp` | Máy tính của nhân viên | MCP server chỉ đọc, cho phép trợ lý AI tra cứu thành viên. Xem [Kết nối MCP host](/vi/mcp/connect-an-mcp-host/). |
 
 Đừng bao giờ import `@octap/sdk` vào code chạy trên trình duyệt, vì việc đó sẽ làm lộ API key của bạn.
 
 ## Cài đặt package
 
-:::caution[Chưa có trên npm]
-Các package đang ở chế độ private và chưa được publish, nên lệnh bên dưới chưa chạy được. `@octap/browser-sdk` đang ở phiên bản 0.1.0, `@octap/sdk` ở 0.0.0, và cả hai vẫn có thể thay đổi.
-:::
-
-Sau khi được publish, bạn sẽ cài như sau:
+Tất cả package đều public trên npm dưới scope `@octap`, ở phiên bản 0.1.0. Vì còn trước 1.0, một bản minor vẫn có thể có thay đổi không tương thích.
 
 ```sh
 # Trên server của bạn
@@ -29,9 +26,11 @@ npm install @octap/sdk
 npm install @octap/browser-sdk
 ```
 
-## Cách dùng hiện nay
+`@octap/sdk` tự cài kèm `@octap/contracts`. Các package chỉ hỗ trợ ES module.
 
-Làm việc ngay trong repository `octap-core`, nơi thư mục gốc quản lý mọi package dưới dạng npm workspace.
+## Làm việc từ repository
+
+Để sửa SDK, hoặc chạy các ví dụ với thay đổi của chính bạn, hãy dùng repository `octap-core`. Thư mục gốc của nó quản lý mọi package dưới dạng npm workspace:
 
 ```sh
 git clone https://github.com/OctaPointees/octap-core.git
@@ -40,7 +39,7 @@ npm ci
 npm run build
 ```
 
-Code trong repository đó có thể import `@octap/sdk` và `@octap/browser-sdk` theo tên. Trang [Chạy thử trên máy](/vi/get-started/run-locally/) có các ví dụ làm đúng như vậy.
+Trang [Chạy thử trên máy](/vi/get-started/run-locally/) có các ví dụ làm đúng như vậy.
 
 ## Yêu cầu
 

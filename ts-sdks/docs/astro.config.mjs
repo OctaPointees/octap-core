@@ -113,6 +113,17 @@ export default defineConfig({
           ],
         },
         {
+          label: 'AI assistants (MCP)',
+          translations: { vi: 'Trợ lý AI (MCP)' },
+          items: [
+            {
+              label: 'Connect an MCP host',
+              translations: { vi: 'Kết nối MCP host' },
+              slug: 'mcp/connect-an-mcp-host',
+            },
+          ],
+        },
+        {
           label: 'Node SDK reference',
           translations: { vi: 'Tham chiếu Node SDK' },
           items: [
