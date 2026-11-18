@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: The OctaP SDK packages, what each one is for, and how to use them today.
+description: The OctaP SDK packages, what each one is for, and how to install them from npm.
 ---
 
 ## Packages
@@ -10,16 +10,13 @@ description: The OctaP SDK packages, what each one is for, and how to use them t
 | `@octap/sdk` | Your Node server | Points, vouchers, webhooks and verifying customers. Holds your API key. |
 | `@octap/browser-sdk` | Your website | Customer sign-in and signing. Holds no merchant credential. |
 | `@octap/contracts` | Anywhere | TypeScript types only. `@octap/sdk` re-exports the ones you need. |
+| `@octap/mcp` | A teammate's computer | Read-only MCP server that lets an AI assistant look up members. See [Connect an MCP host](/mcp/connect-an-mcp-host/). |
 
 Never import `@octap/sdk` into browser code, because it would expose your API key.
 
 ## Install
 
-:::caution[Not on npm yet]
-The packages are private and unpublished, so the command below does not work yet. `@octap/browser-sdk` is at version 0.1.0 and `@octap/sdk` at 0.0.0, and both may still change.
-:::
-
-Once they are published, you will install them like this:
+All packages are public on npm under the `@octap` scope, at version 0.1.0. They are pre-1.0, so a minor version may still contain breaking changes.
 
 ```sh
 # On your server
@@ -29,9 +26,11 @@ npm install @octap/sdk
 npm install @octap/browser-sdk
 ```
 
-## Use them today
+`@octap/sdk` installs `@octap/contracts` for you. The packages are ES modules only.
 
-Work inside the `octap-core` repository, where the root manages every package as an npm workspace.
+## Work from the repository
+
+To change the SDKs, or to run the examples against your own changes, use the `octap-core` repository. Its root manages every package as an npm workspace:
 
 ```sh
 git clone https://github.com/OctaPointees/octap-core.git
@@ -40,7 +39,7 @@ npm ci
 npm run build
 ```
 
-Code in that repository can then import `@octap/sdk` and `@octap/browser-sdk` by name. [Run it locally](/get-started/run-locally/) shows the examples that do this.
+[Run it locally](/get-started/run-locally/) shows the examples that do this.
 
 ## Requirements
 
