@@ -5630,9 +5630,6 @@
           "url": {
             "type": "string"
           },
-          "secret": {
-            "type": "string"
-          },
           "description": {
             "type": [
               "null",
@@ -5660,7 +5657,6 @@
           "description",
           "id",
           "organizationId",
-          "secret",
           "status",
           "updatedAt",
           "url"
@@ -5678,9 +5674,6 @@
           "url": {
             "type": "string"
           },
-          "secret": {
-            "type": "string"
-          },
           "description": {
             "type": [
               "null",
@@ -5708,7 +5701,6 @@
           "description",
           "id",
           "organizationId",
-          "secret",
           "status",
           "updatedAt",
           "url"
@@ -5854,6 +5846,18 @@
           "id": {
             "type": "string"
           },
+          "organizationId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "status": {
             "enum": [
               "ACTIVE",
@@ -5868,18 +5872,6 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "url": {
-            "type": "string"
           }
         },
         "required": [
