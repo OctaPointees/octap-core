@@ -169,21 +169,11 @@ Reads the policy the next published voucher takes.
 getVoucherRefundPolicy(options?): Promise<VoucherRefundPolicyDto>
 ```
 
-## setVoucherRefundPolicy
-
-Sets the policy for vouchers published from now on. [Settings](/guides/manage-vouchers/#refunds)
-
-`PUT /v1/rewards/refund-policy` · Scope: `admin`
-
-```ts
-setVoucherRefundPolicy(request: SetVoucherRefundPolicyRequest, options?): Promise<VoucherRefundPolicyDto>
-```
-
 ## listVoucherRefundPolicyHistory
 
-Lists policy versions, newest first.
+Lists policy versions, newest first. The Owner publishes a new version in the console; no API key can. [Settings](/guides/manage-vouchers/#refunds)
 
-`GET /v1/rewards/refund-policy/history` · Scope: `admin`
+`GET /v1/rewards/refund-policy/history` · Scope: `read`
 
 ```ts
 listVoucherRefundPolicyHistory(query?: { limit?: number; beforeVersion?: number }, options?): Promise<VoucherRefundPolicyDto[]>

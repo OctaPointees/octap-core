@@ -9,18 +9,23 @@ Giữ key trên server tin cậy. Việc quản lý API key không nằm trong S
 
 ## Scope
 
-Một key có thể có scope `read`, `write` và `admin`. Key thiếu scope cần thiết sẽ nhận 403.
+Một key có scope `read`, hoặc `read` và `write`. Key thiếu scope cần thiết sẽ nhận 403. Key tạo trên Console dùng được mọi method bên dưới mà scope của nó cho phép.
 
 Key có scope nào thì làm được việc đó, bất kể ai đang cầm key: route không xét vai trò của người đã tạo key. Trên Console, chỉ Owner của tổ chức tạo được key `write`; Business Developer chỉ tạo key `read`.
 
 | Scope | Method của SDK |
 | --- | --- |
-| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
+| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
 | `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
-| `admin` | `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `registerWebhookEndpoint`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `replayWebhookDelivery` |
 | Không cần | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: chữ ký của khách hàng xác nhận các lệnh này |
 
-Một số lần hoàn tiền cũng cần `admin`: khi chính sách hoàn tiền chỉ cho phép đảo giao dịch đối với voucher đã hết hạn hoặc đã redeem.
+`reverseTransaction` hoàn được mọi thứ mà chính sách hoàn tiền của tổ chức cho phép, kể cả voucher đã hết hạn hoặc đã redeem nếu chính sách cho phép. Chính sách là lớp kiểm soát duy nhất, và chỉ Owner đặt được chính sách.
+
+## Việc không key nào làm được
+
+Quản lý webhook và chính sách hoàn tiền là việc của Owner, trên Console: đăng ký, tắt, bật và xoay secret của webhook endpoint, gửi lại một delivery, và publish chính sách hoàn tiền. Key chỉ đọc được (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`), không bao giờ thay đổi được. Xem [Nhận webhook](/vi/guides/receive-webhooks/) và [Quản lý voucher](/vi/guides/manage-vouchers/).
+
+Key tạo trước khi OctaP bỏ scope `admin` có thể vẫn còn ghi scope này. OctaP bỏ qua nó: key đó chỉ làm được những gì scope `read` và `write` của nó cho phép.
 
 Hãy cấp cho mỗi service số scope ít nhất mà nó cần.
 

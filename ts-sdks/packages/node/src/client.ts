@@ -18,7 +18,6 @@ import type {
   FinalizeVoucherUseRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
-  SetVoucherRefundPolicyRequest,
   ListVoucherRefundPolicyHistoryRequest,
   VoucherRefundPolicyDto,
   VerifyCustomerResponse,
@@ -27,8 +26,6 @@ import type {
   ReverseTransactionRequest,
   ReverseTransactionResponse,
   WebhookEndpointDto,
-  WebhookEndpointWithSecretDto,
-  RegisterWebhookEndpointRequest,
   WebhookDeliveryDto,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
@@ -260,15 +257,10 @@ export class OctaPointClient {
     return this.request('/v1/rewards/refund-policy', 'GET', undefined, options);
   }
 
-  /** Publishes immutable terms for future claims; requires an admin-scoped credential. */
-  async setVoucherRefundPolicy(
-    request: SetVoucherRefundPolicyRequest,
-    options?: RequestOptions,
-  ): Promise<VoucherRefundPolicyDto> {
-    return this.request('/v1/rewards/refund-policy', 'PUT', request, options);
-  }
-
-  /** Lists immutable policy versions, newest first; requires an admin-scoped credential. */
+  /**
+   * Lists immutable policy versions, newest first. The Owner publishes a new version from the console;
+   * no API key can.
+   */
   async listVoucherRefundPolicyHistory(
     query: ListVoucherRefundPolicyHistoryRequest = {},
     options?: RequestOptions,
@@ -389,35 +381,17 @@ export class OctaPointClient {
     );
   }
 
-  async registerWebhookEndpoint(
-    request: RegisterWebhookEndpointRequest,
-    options?: RequestOptions,
-  ): Promise<WebhookEndpointWithSecretDto> {
-    return this.request('/v1/webhooks/endpoints', 'POST', request, options);
-  }
-
+  /**
+   * The organization's webhook endpoints, without their secrets. The Owner registers, disables,
+   * enables and rotates them from the console; no API key can.
+   */
   async listWebhookEndpoints(options?: RequestOptions): Promise<WebhookEndpointDto[]> {
     return this.request('/v1/webhooks/endpoints', 'GET', undefined, options);
   }
 
-  async disableWebhookEndpoint(id: string, options?: RequestOptions): Promise<WebhookEndpointDto> {
-    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/disable`, 'POST', undefined, options);
-  }
-
-  async enableWebhookEndpoint(id: string, options?: RequestOptions): Promise<WebhookEndpointDto> {
-    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/enable`, 'POST', undefined, options);
-  }
-
-  async rotateWebhookSecret(id: string, options?: RequestOptions): Promise<WebhookEndpointWithSecretDto> {
-    return this.request(`/v1/webhooks/endpoints/${encodeURIComponent(id)}/rotate-secret`, 'POST', undefined, options);
-  }
-
+  /** Recent deliveries, newest first. The Owner replays a dead-lettered one from the console. */
   async listWebhookDeliveries(options?: RequestOptions): Promise<WebhookDeliveryDto[]> {
     return this.request('/v1/webhooks/deliveries', 'GET', undefined, options);
-  }
-
-  async replayWebhookDelivery(id: string, options?: RequestOptions): Promise<WebhookDeliveryDto> {
-    return this.request(`/v1/webhooks/deliveries/${encodeURIComponent(id)}/replay`, 'POST', undefined, options);
   }
 }
 

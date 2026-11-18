@@ -1,6 +1,6 @@
 {
   "name": "@octap/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only Model Context Protocol server for Octap loyalty points, transactions and vouchers.",
   "license": "MIT",
   "repository": {
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "~2.4.0",
-    "@octap/sdk": "^0.1.0",
+    "@octap/sdk": "^0.2.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

@@ -1,16 +1,40 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { UnauthorizedException } from '@nestjs/common';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { verifyWebhookSignature } from '@octap/sdk';
 import { WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { createTestApp } from '../support/app.js';
-import { resetDb, seedCredential, seedMember, seedOrganization, setOwnership, seedProgram } from '../support/db.js';
+import {
+  resetDb,
+  schema,
+  seedCredential,
+  seedMember,
+  seedOrganization,
+  setOwnership,
+  seedProgram,
+} from '../support/db.js';
 
 let ctx: Awaited<ReturnType<typeof createTestApp>>;
 let orgId: string;
 let memberId: string;
 let auth: { authorization: string };
+/** The organization's Owner, signed in to the console: endpoints are registered and changed there. */
+const owner = { authorization: 'Bearer owner' };
+const hooks = (path: string) => `/v1/console/organizations/${orgId}/webhooks${path}`;
+const google = {
+  verify: async (token: string) => {
+    if (token !== 'owner') throw new UnauthorizedException();
+    return {
+      subject: token,
+      email: `${token}@example.com`,
+      fullName: token,
+      avatarUrl: null,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    };
+  },
+};
 
 /** A real merchant receiver on localhost: records what it got, answers with `status`. */
 const receiver = {
@@ -21,7 +45,7 @@ const receiver = {
 };
 
 beforeAll(async () => {
-  ctx = await createTestApp();
+  ctx = await createTestApp(undefined, google);
   receiver.server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -44,6 +68,11 @@ beforeEach(async () => {
   memberId = (await seedMember(ctx.db, orgId)).memberId;
   auth = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId)).rawKey}` };
   await setOwnership(ctx.db, memberId, { confirmedBalance: 100 });
+  const ownerId = (await ctx.http().post('/v1/console/auth/google').send({ idToken: 'owner' }).expect(201)).body.user
+    .id;
+  await ctx.db
+    .insert(schema.organizationMemberships)
+    .values({ organizationId: orgId, systemUserId: ownerId, role: 'OWNER' });
 });
 
 afterAll(async () => {
@@ -63,11 +92,14 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
   it('a business event is signed with the endpoint secret and verifies with the Node SDK', async () => {
     const endpoint = await ctx
       .http()
-      .post('/v1/webhooks/endpoints')
-      .set(auth)
+      .post(hooks('/endpoints'))
+      .set(owner)
       .send({ url: receiver.url, description: 'pos' })
       .expect(201);
     expect(endpoint.body.secret).toMatch(/^whsec_/);
+    expect(endpoint.headers['cache-control']).toBe('no-store');
+    // Listing never shows the secret, from the console or with a read key.
+    expect((await ctx.http().get(hooks('/endpoints')).set(owner).expect(200)).body[0]).not.toHaveProperty('secret');
     expect((await ctx.http().get('/v1/webhooks/endpoints').set(auth).expect(200)).body[0]).not.toHaveProperty('secret');
 
     await ctx
@@ -88,6 +120,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     });
 
     const [delivery] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
+    expect((await ctx.http().get(hooks('/deliveries')).set(owner).expect(200)).body).toEqual([delivery]);
     expect(delivery).toMatchObject({
       id: headers['x-octap-event-id'],
       status: 'DELIVERED',
@@ -97,7 +130,7 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
   });
 
   it('a failing receiver gets a retry scheduled; a dead-lettered delivery can be replayed under the same id', async () => {
-    await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201);
+    await ctx.http().post(hooks('/endpoints')).set(owner).send({ url: receiver.url }).expect(201);
     receiver.status = 503;
     await ctx
       .http()
@@ -109,10 +142,18 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
 
     const [pending] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
     expect(pending).toMatchObject({ status: 'PENDING', lastResponseStatus: 503, lastError: 'HTTP 503' });
-    await ctx.http().post(`/v1/webhooks/deliveries/${pending.id}/replay`).set(auth).expect(400);
+    await ctx
+      .http()
+      .post(hooks(`/deliveries/${pending.id}/replay`))
+      .set(owner)
+      .expect(400);
 
     await ctx.app.get(WebhooksRepository).markDeadLetter(pending.id, 503, 'HTTP 503');
-    const replayed = await ctx.http().post(`/v1/webhooks/deliveries/${pending.id}/replay`).set(auth).expect(201);
+    const replayed = await ctx
+      .http()
+      .post(hooks(`/deliveries/${pending.id}/replay`))
+      .set(owner)
+      .expect(201);
     expect(replayed.body).toMatchObject({ id: pending.id, status: 'PENDING', attemptCount: 0 });
 
     receiver.status = 200;
@@ -121,10 +162,14 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
   });
 
   it('disable stops deliveries, enable resumes them, rotate-secret returns a new secret once', async () => {
-    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201))
+    const endpoint = (await ctx.http().post(hooks('/endpoints')).set(owner).send({ url: receiver.url }).expect(201))
       .body;
 
-    await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/disable`).set(auth).expect(201);
+    await ctx
+      .http()
+      .post(hooks(`/endpoints/${endpoint.id}/disable`))
+      .set(owner)
+      .expect(201);
     await ctx
       .http()
       .post('/v1/credits/earn')
@@ -134,9 +179,18 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     await deliverDue();
     expect(receiver.received).toEqual([]);
 
-    await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/enable`).set(auth).expect(201);
-    const rotated = (await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/rotate-secret`).set(auth).expect(201))
-      .body;
+    await ctx
+      .http()
+      .post(hooks(`/endpoints/${endpoint.id}/enable`))
+      .set(owner)
+      .expect(201);
+    const rotated = (
+      await ctx
+        .http()
+        .post(hooks(`/endpoints/${endpoint.id}/rotate-secret`))
+        .set(owner)
+        .expect(201)
+    ).body;
     expect(rotated.secret).not.toBe(endpoint.secret);
 
     await ctx
@@ -150,14 +204,22 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
     expect(verifyWebhookSignature(body, headers['x-octap-signature'] as string, rotated.secret)).toBe(true);
   });
 
-  it('validates the URL and hides other tenants’ endpoints', async () => {
-    const other = await seedOrganization(ctx.db);
-    const otherAuth = { authorization: `Bearer ${(await seedCredential(ctx.db, other.id)).rawKey}` };
-    const endpoint = (await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: receiver.url }).expect(201))
+  it('validates the URL, and no API key registers or changes an endpoint any more', async () => {
+    const endpoint = (await ctx.http().post(hooks('/endpoints')).set(owner).send({ url: receiver.url }).expect(201))
       .body;
+    await ctx.http().post(hooks('/endpoints')).set(owner).send({}).expect(400);
+    await ctx.http().post(hooks('/endpoints')).set(owner).send({ url: 'ftp://nope' }).expect(400);
 
-    await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({}).expect(400);
-    await ctx.http().post('/v1/webhooks/endpoints').set(auth).send({ url: 'ftp://nope' }).expect(400);
-    await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/disable`).set(otherAuth).expect(404);
+    // A key that still carries the retired `admin` scope gets no further than a write key.
+    const legacy = {
+      authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read', 'write', 'admin'] })).rawKey}`,
+    };
+    for (const key of [auth, legacy]) {
+      await ctx.http().post('/v1/webhooks/endpoints').set(key).send({ url: receiver.url }).expect(404);
+      for (const action of ['disable', 'enable', 'rotate-secret'])
+        await ctx.http().post(`/v1/webhooks/endpoints/${endpoint.id}/${action}`).set(key).expect(404);
+      await ctx.http().post(`/v1/webhooks/deliveries/${endpoint.id}/replay`).set(key).expect(404);
+    }
+    expect((await ctx.http().get('/v1/webhooks/endpoints').set(legacy).expect(200)).body).toHaveLength(1);
   });
 });

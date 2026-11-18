@@ -1,9 +1,12 @@
 /** Merchant refund terms, independent of the on-chain points earn/expiry policy. */
 export interface VoucherRefundPolicy {
   allowUnused: boolean;
-  /** Opt-in only; refund execution additionally requires an admin-scoped credential. */
+  /** Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate. */
   allowExpired: boolean;
-  /** Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution. */
+  /**
+   * Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a
+   * redeemed coupon; the policy is the only gate.
+   */
   allowRedeemed: boolean;
   /** False permanently consumes the campaign allocation even when an unused coupon is canceled. */
   restockUnused: boolean;
@@ -30,6 +33,9 @@ export interface SetVoucherRefundPolicyRequest extends VoucherRefundPolicy {
 
 export interface VoucherRefundPolicyDto extends VoucherRefundPolicySnapshot {
   reason: string;
+  /** The Owner who published this version from the console. Null on the default policy and on legacy versions. */
+  createdByUserId: string | null;
+  /** The API key that published this version, before publishing moved to the console. Null otherwise. */
   createdByCredentialId: string | null;
   createdAt: string | null;
 }

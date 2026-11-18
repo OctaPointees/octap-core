@@ -73,26 +73,22 @@ const owned = await client.listMemberVouchers(memberId);
 
 A voucher publishes the refund policy in force when publishing starts, so it is part of the promise. Changing the policy only affects vouchers you publish afterwards.
 
+The organization's Owner sets the policy in the console, under **Refund policy**, with a reason for each change. No API key can change it. Your server reads it:
+
 ```ts
-await client.setVoucherRefundPolicy({
-  allowUnused: true,
-  allowExpired: false,
-  allowRedeemed: false,
-  restockUnused: true,
-  refundWindowDays: 30,
-  reason: 'Thirty-day returns',
-});
+const policy = await client.getVoucherRefundPolicy();
+const versions = await client.listVoucherRefundPolicyHistory({ limit: 10 });
 ```
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `allowUnused` | `true` | Refund a voucher that hasn't been used |
-| `allowExpired` | `false` | Refund an expired voucher. Executing it needs an `admin` key. |
-| `allowRedeemed` | `false` | Refund a used voucher, as exceptional service recovery. Executing it needs an `admin` key. |
+| `allowExpired` | `false` | Refund an expired voucher. Any `write` key can then refund one. |
+| `allowRedeemed` | `false` | Refund a used voucher, as exceptional service recovery. Any `write` key can then refund one. |
 | `restockUnused` | `true` | Return the unit to stock. `false` consumes it permanently. |
 | `refundWindowDays` | `null` | Days since the claim, exclusive. `null` means no limit. |
 
-Publishing a policy and reading its history need an `admin` key. `getVoucherRefundPolicy` needs only `read`.
+The policy is the only gate on a refund: a `write` key refunds whatever the policy allows. Reading the policy and its history needs only `read`. Each version records who published it: `createdByUserId` is the Owner, or, on a version set with an API key before the console took this over, `createdByCredentialId`.
 
 To refund a claim, [reverse](/guides/earn-and-reverse-points/#reverse-a-transaction) its `REDEEM` transaction, whose ID is the claim's `transactionId`. Under the default policy:
 

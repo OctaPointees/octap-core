@@ -12,6 +12,7 @@ import {
 import { NotFoundException } from '@nestjs/common';
 import { stub } from '../helpers/stub.js';
 import { createTestApp } from './support/app.js';
+import { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
 import { resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from './support/db.js';
 
 describe('issuance budget', () => {
@@ -193,12 +194,8 @@ describe('issuance budget', () => {
         .map((delivery) => delivery.payload);
 
     beforeEach(async () => {
-      await ctx
-        .http()
-        .post('/v1/webhooks/endpoints')
-        .set({ authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['admin'] })).rawKey}` })
-        .send({ url: 'https://merchant.test/hooks' })
-        .expect(201);
+      // What the Owner does in the console; covered in console-webhooks-refund-policy.
+      await ctx.app.get(WebhookEndpointsService).register(orgId, 'https://merchant.test/hooks');
     });
     afterEach(() => {
       remaining(1_000_000n);
@@ -280,12 +277,8 @@ describe('issuance budget', () => {
     });
 
     it('sends one failure webhook, and a retry under the failed key reports the failure', async () => {
-      await ctx
-        .http()
-        .post('/v1/webhooks/endpoints')
-        .set({ authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['admin'] })).rawKey}` })
-        .send({ url: 'https://merchant.test/hooks' })
-        .expect(201);
+      // What the Owner does in the console; covered in console-webhooks-refund-policy.
+      await ctx.app.get(WebhookEndpointsService).register(orgId, 'https://merchant.test/hooks');
       const accepted = await earn('will-fail').expect(201);
       const credits = new CreditsRepository(ctx.db);
       const failure = {

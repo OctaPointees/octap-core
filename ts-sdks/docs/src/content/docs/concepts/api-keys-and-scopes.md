@@ -9,18 +9,23 @@ Keep keys on a trusted server. API key management is not part of this SDK.
 
 ## Scopes
 
-A key can hold the `read`, `write` and `admin` scopes. A key missing the required scope gets a 403.
+A key holds the `read` scope, or `read` and `write`. A key missing the required scope gets a 403. Every key the console creates works with every SDK method below that its scopes allow.
 
 A key's scopes are what it can do, whoever holds it: a route never checks the role of the person who created the key. In the console, only the organization's Owner creates `write` keys; a Business Developer creates `read` keys.
 
 | Scope | SDK methods |
 | --- | --- |
-| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
+| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
 | `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
-| `admin` | `setVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `registerWebhookEndpoint`, `disableWebhookEndpoint`, `enableWebhookEndpoint`, `rotateWebhookSecret`, `replayWebhookDelivery` |
 | None | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: the customer's signature authorizes these |
 
-Some refunds also need `admin`: a reversal that the refund policy allows only for an expired or already redeemed voucher.
+`reverseTransaction` refunds whatever the organization's refund policy allows, including an expired or already redeemed voucher when the policy says so. The policy is the only gate, and only the Owner sets it.
+
+## What no key can do
+
+Managing webhooks and the refund policy is the organization's Owner's, in the console: registering, disabling, enabling and rotating webhook endpoints, replaying a delivery, and publishing a refund policy. A key reads them (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`) but never changes them. See [Receive webhooks](/guides/receive-webhooks/) and [Manage vouchers](/guides/manage-vouchers/).
+
+Keys made before OctaP retired the `admin` scope may still list it. OctaP ignores it: such a key can do what its `read` and `write` scopes allow, and nothing more.
 
 Give each service the smallest set of scopes it needs.
 

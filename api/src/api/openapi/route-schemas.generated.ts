@@ -872,6 +872,129 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       ]
     }
   },
+  "ConsoleRefundPolicyController_current_Response": {
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string"
+      },
+      "createdByUserId": {
+        "description": "The Owner who published this version from the console. Null on the default policy and on legacy versions.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdByCredentialId": {
+        "description": "The API key that published this version, before publishing moved to the console. Null otherwise.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "version": {
+        "type": "number"
+      },
+      "allowUnused": {
+        "type": "boolean"
+      },
+      "allowExpired": {
+        "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
+        "type": "boolean"
+      },
+      "allowRedeemed": {
+        "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
+        "type": "boolean"
+      },
+      "restockUnused": {
+        "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
+        "type": "boolean"
+      },
+      "refundWindowDays": {
+        "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "allowExpired",
+      "allowRedeemed",
+      "allowUnused",
+      "createdAt",
+      "createdByCredentialId",
+      "createdByUserId",
+      "reason",
+      "refundWindowDays",
+      "restockUnused",
+      "version"
+    ]
+  },
+  "ConsoleRefundPolicyController_history_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "beforeVersion": {
+        "type": "number"
+      }
+    }
+  },
+  "ConsoleRefundPolicyController_history_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/VoucherRefundPolicyDto"
+    }
+  },
+  "ConsoleRefundPolicyController_publish_Body": {
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string"
+      },
+      "allowUnused": {
+        "type": "boolean"
+      },
+      "allowExpired": {
+        "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
+        "type": "boolean"
+      },
+      "allowRedeemed": {
+        "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
+        "type": "boolean"
+      },
+      "restockUnused": {
+        "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
+        "type": "boolean"
+      },
+      "refundWindowDays": {
+        "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "allowExpired",
+      "allowRedeemed",
+      "allowUnused",
+      "reason",
+      "refundWindowDays",
+      "restockUnused"
+    ]
+  },
+  "ConsoleRefundPolicyController_publish_Response": {
+    "$ref": "#/components/schemas/VoucherRefundPolicyDto"
+  },
   "ConsoleRewardsController_create_Body": {
     "type": "object",
     "properties": {
@@ -1052,6 +1175,388 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   },
   "ConsoleRewardsController_update_Response": {
     "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleWebhooksController_disableEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_enableEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_listDeliveries_Response": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "DEAD_LETTER",
+            "DELIVERED",
+            "PENDING"
+          ],
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "organizationId": {
+          "type": "string"
+        },
+        "payload": {},
+        "endpointId": {
+          "type": "string"
+        },
+        "eventType": {
+          "type": "string"
+        },
+        "attemptCount": {
+          "type": "number"
+        },
+        "nextAttemptAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastResponseStatus": {
+          "type": [
+            "null",
+            "number"
+          ]
+        },
+        "lastError": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "attemptCount",
+        "createdAt",
+        "endpointId",
+        "eventType",
+        "id",
+        "lastError",
+        "lastResponseStatus",
+        "nextAttemptAt",
+        "organizationId",
+        "payload",
+        "status",
+        "updatedAt"
+      ]
+    }
+  },
+  "ConsoleWebhooksController_listEndpoints_Response": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "organizationId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ACTIVE",
+            "DISABLED"
+          ],
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "createdAt",
+        "description",
+        "id",
+        "organizationId",
+        "status",
+        "updatedAt",
+        "url"
+      ]
+    }
+  },
+  "ConsoleWebhooksController_registerEndpoint_Body": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_registerEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "secret",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_replayDelivery_Response": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "endpointId": {
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string"
+      },
+      "payload": {},
+      "status": {
+        "enum": [
+          "DEAD_LETTER",
+          "DELIVERED",
+          "PENDING"
+        ],
+        "type": "string"
+      },
+      "attemptCount": {
+        "type": "number"
+      },
+      "nextAttemptAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastResponseStatus": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "lastError": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "attemptCount",
+      "createdAt",
+      "endpointId",
+      "eventType",
+      "id",
+      "lastError",
+      "lastResponseStatus",
+      "nextAttemptAt",
+      "organizationId",
+      "payload",
+      "status",
+      "updatedAt"
+    ]
+  },
+  "ConsoleWebhooksController_rotateSecret_Response": {
+    "type": "object",
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "secret",
+      "status",
+      "updatedAt",
+      "url"
+    ]
   },
   "CreditsController_earn_Body": {
     "type": "object",
@@ -3253,60 +3758,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     }
   },
   "RewardsController_getRefundPolicy_Response": {
-    "type": "object",
-    "properties": {
-      "reason": {
-        "type": "string"
-      },
-      "createdByCredentialId": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "createdAt": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "version": {
-        "type": "number"
-      },
-      "allowUnused": {
-        "type": "boolean"
-      },
-      "allowExpired": {
-        "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
-        "type": "boolean"
-      },
-      "allowRedeemed": {
-        "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
-        "type": "boolean"
-      },
-      "restockUnused": {
-        "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
-        "type": "boolean"
-      },
-      "refundWindowDays": {
-        "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
-        "type": [
-          "null",
-          "number"
-        ]
-      }
-    },
-    "required": [
-      "allowExpired",
-      "allowRedeemed",
-      "allowUnused",
-      "createdAt",
-      "createdByCredentialId",
-      "reason",
-      "refundWindowDays",
-      "restockUnused",
-      "version"
-    ]
+    "$ref": "#/components/schemas/VoucherRefundPolicyDto"
   },
   "RewardsController_getVoucher_Response": {
     "$ref": "#/components/schemas/VoucherDto"
@@ -3480,47 +3932,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "voucherTitle"
     ]
   },
-  "RewardsController_setRefundPolicy_Body": {
-    "type": "object",
-    "properties": {
-      "reason": {
-        "type": "string"
-      },
-      "allowUnused": {
-        "type": "boolean"
-      },
-      "allowExpired": {
-        "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
-        "type": "boolean"
-      },
-      "allowRedeemed": {
-        "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
-        "type": "boolean"
-      },
-      "restockUnused": {
-        "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
-        "type": "boolean"
-      },
-      "refundWindowDays": {
-        "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
-        "type": [
-          "null",
-          "number"
-        ]
-      }
-    },
-    "required": [
-      "allowExpired",
-      "allowRedeemed",
-      "allowUnused",
-      "reason",
-      "refundWindowDays",
-      "restockUnused"
-    ]
-  },
-  "RewardsController_setRefundPolicy_Response": {
-    "$ref": "#/components/schemas/VoucherRefundPolicyDto"
-  },
   "RewardsController_updateVoucher_Body": {
     "type": "object",
     "properties": {
@@ -3643,102 +4054,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
-  "WebhooksController_disableEndpoint_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "url": {
-        "type": "string"
-      },
-      "secret": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "status": {
-        "enum": [
-          "ACTIVE",
-          "DISABLED"
-        ],
-        "type": "string"
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "createdAt",
-      "description",
-      "id",
-      "organizationId",
-      "secret",
-      "status",
-      "updatedAt",
-      "url"
-    ]
-  },
-  "WebhooksController_enableEndpoint_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "url": {
-        "type": "string"
-      },
-      "secret": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "status": {
-        "enum": [
-          "ACTIVE",
-          "DISABLED"
-        ],
-        "type": "string"
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "createdAt",
-      "description",
-      "id",
-      "organizationId",
-      "secret",
-      "status",
-      "updatedAt",
-      "url"
-    ]
-  },
   "WebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
@@ -3855,183 +4170,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "url"
       ]
     }
-  },
-  "WebhooksController_registerEndpoint_Body": {
-    "type": "object",
-    "properties": {
-      "url": {
-        "type": "string"
-      },
-      "description": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "url"
-    ]
-  },
-  "WebhooksController_registerEndpoint_Response": {
-    "type": "object",
-    "properties": {
-      "secret": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "status": {
-        "enum": [
-          "ACTIVE",
-          "DISABLED"
-        ],
-        "type": "string"
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "url": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "createdAt",
-      "description",
-      "id",
-      "organizationId",
-      "secret",
-      "status",
-      "updatedAt",
-      "url"
-    ]
-  },
-  "WebhooksController_replayDelivery_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "endpointId": {
-        "type": "string"
-      },
-      "eventType": {
-        "type": "string"
-      },
-      "payload": {},
-      "status": {
-        "enum": [
-          "DEAD_LETTER",
-          "DELIVERED",
-          "PENDING"
-        ],
-        "type": "string"
-      },
-      "attemptCount": {
-        "type": "number"
-      },
-      "nextAttemptAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "lastResponseStatus": {
-        "type": [
-          "null",
-          "number"
-        ]
-      },
-      "lastError": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "attemptCount",
-      "createdAt",
-      "endpointId",
-      "eventType",
-      "id",
-      "lastError",
-      "lastResponseStatus",
-      "nextAttemptAt",
-      "organizationId",
-      "payload",
-      "status",
-      "updatedAt"
-    ]
-  },
-  "WebhooksController_rotateSecret_Response": {
-    "type": "object",
-    "properties": {
-      "secret": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "url": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "status": {
-        "enum": [
-          "ACTIVE",
-          "DISABLED"
-        ],
-        "type": "string"
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "createdAt",
-      "description",
-      "id",
-      "organizationId",
-      "secret",
-      "status",
-      "updatedAt",
-      "url"
-    ]
   },
   "DependencyCheck": {
     "type": "object",
@@ -4658,7 +4796,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "reason": {
         "type": "string"
       },
+      "createdByUserId": {
+        "description": "The Owner who published this version from the console. Null on the default policy and on legacy versions.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "createdByCredentialId": {
+        "description": "The API key that published this version, before publishing moved to the console. Null otherwise.",
         "type": [
           "null",
           "string"
@@ -4677,11 +4823,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "boolean"
       },
       "allowExpired": {
-        "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
+        "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
         "type": "boolean"
       },
       "allowRedeemed": {
-        "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
+        "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
         "type": "boolean"
       },
       "restockUnused": {
@@ -4702,6 +4848,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "allowUnused",
       "createdAt",
       "createdByCredentialId",
+      "createdByUserId",
       "reason",
       "refundWindowDays",
       "restockUnused",
@@ -4718,11 +4865,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "boolean"
       },
       "allowExpired": {
-        "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
+        "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
         "type": "boolean"
       },
       "allowRedeemed": {
-        "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
+        "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
         "type": "boolean"
       },
       "restockUnused": {

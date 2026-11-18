@@ -73,26 +73,22 @@ const owned = await client.listMemberVouchers(memberId);
 
 Voucher publish kèm chính sách hoàn tiền có hiệu lực lúc bắt đầu publish, nên nó là một phần của lời hứa. Đổi chính sách chỉ ảnh hưởng đến các voucher publish sau đó.
 
+Owner của tổ chức đặt chính sách trên Console, ở mục **Chính sách hoàn tiền**, kèm lý do cho mỗi lần đổi. Không API key nào đổi được chính sách. Server của bạn đọc nó:
+
 ```ts
-await client.setVoucherRefundPolicy({
-  allowUnused: true,
-  allowExpired: false,
-  allowRedeemed: false,
-  restockUnused: true,
-  refundWindowDays: 30,
-  reason: 'Thirty-day returns',
-});
+const policy = await client.getVoucherRefundPolicy();
+const versions = await client.listVoucherRefundPolicyHistory({ limit: 10 });
 ```
 
 | Thiết lập | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `allowUnused` | `true` | Hoàn tiền voucher chưa dùng |
-| `allowExpired` | `false` | Hoàn tiền voucher đã hết hạn. Khi thực hiện cần key `admin`. |
-| `allowRedeemed` | `false` | Hoàn tiền voucher đã dùng, như một biện pháp hỗ trợ ngoại lệ. Khi thực hiện cần key `admin`. |
+| `allowExpired` | `false` | Hoàn tiền voucher đã hết hạn. Khi bật, mọi key `write` đều hoàn được. |
+| `allowRedeemed` | `false` | Hoàn tiền voucher đã dùng, như một biện pháp hỗ trợ ngoại lệ. Khi bật, mọi key `write` đều hoàn được. |
 | `restockUnused` | `true` | Trả đơn vị về tồn kho. `false` thì đơn vị bị tiêu hao vĩnh viễn. |
 | `refundWindowDays` | `null` | Số ngày kể từ lúc claim, không tính ngày biên. `null` là không giới hạn. |
 
-Publish chính sách và đọc lịch sử chính sách cần key `admin`. `getVoucherRefundPolicy` chỉ cần `read`.
+Chính sách là lớp kiểm soát duy nhất của việc hoàn tiền: key `write` hoàn được mọi thứ chính sách cho phép. Đọc chính sách và lịch sử chỉ cần `read`. Mỗi phiên bản ghi lại người publish: `createdByUserId` là Owner, hoặc `createdByCredentialId` với phiên bản đặt bằng API key trước khi việc này chuyển sang Console.
 
 Để hoàn tiền một claim, hãy [đảo giao dịch](/vi/guides/earn-and-reverse-points/) `REDEEM` của nó, có ID là `transactionId` của claim. Theo chính sách mặc định:
 

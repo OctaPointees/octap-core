@@ -53,7 +53,7 @@ describe('WebhookDeliveryService.list / replay', () => {
     const service = new WebhookDeliveryService(stub<WebhooksRepository>({ listDeliveries }));
 
     expect(await service.list('org-1')).toEqual([{ id: 'dlv-1' }]);
-    expect(listDeliveries).toHaveBeenCalledWith('org-1');
+    expect(listDeliveries).toHaveBeenCalledWith('org-1', undefined, undefined);
   });
 
   it('replay only works on a DEAD_LETTER delivery of the same org, and keeps its id', async () => {

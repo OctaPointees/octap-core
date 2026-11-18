@@ -1,0 +1,3 @@
+ALTER TABLE "voucher_refund_policies" ALTER COLUMN "created_by_credential_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "voucher_refund_policies" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "voucher_refund_policies" ADD CONSTRAINT "voucher_refund_policies_one_actor" CHECK (("voucher_refund_policies"."created_by_credential_id" is null) <> ("voucher_refund_policies"."created_by_user_id" is null));

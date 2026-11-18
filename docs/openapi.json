@@ -1290,6 +1290,570 @@
         }
       }
     },
+    "/v1/console/organizations/{organizationId}/refund-policy": {
+      "get": {
+        "operationId": "ConsoleRefundPolicyController_current",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleRefundPolicyController_current_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Refund Policy"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      },
+      "put": {
+        "operationId": "ConsoleRefundPolicyController_publish",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherRefundPolicyDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Refund Policy"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleRefundPolicyController_publish_Body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}/refund-policy/history": {
+      "get": {
+        "operationId": "ConsoleRefundPolicyController_history",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "beforeVersion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleRefundPolicyController_history_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Refund Policy"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/endpoints": {
+      "get": {
+        "operationId": "ConsoleWebhooksController_listEndpoints",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_listEndpoints_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      },
+      "post": {
+        "operationId": "ConsoleWebhooksController_registerEndpoint",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_registerEndpoint_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleWebhooksController_registerEndpoint_Body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/endpoints/{id}/disable": {
+      "post": {
+        "operationId": "ConsoleWebhooksController_disableEndpoint",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_disableEndpoint_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/endpoints/{id}/enable": {
+      "post": {
+        "operationId": "ConsoleWebhooksController_enableEndpoint",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_enableEndpoint_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/endpoints/{id}/rotate-secret": {
+      "post": {
+        "operationId": "ConsoleWebhooksController_rotateSecret",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_rotateSecret_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/deliveries": {
+      "get": {
+        "operationId": "ConsoleWebhooksController_listDeliveries",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_listDeliveries_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/webhooks/deliveries/{id}/replay": {
+      "post": {
+        "operationId": "ConsoleWebhooksController_replayDelivery",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_replayDelivery_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/api-credentials": {
       "get": {
         "operationId": "ConsoleApiCredentialsController_list",
@@ -1935,7 +2499,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RewardsController_getRefundPolicy_Response"
+                  "$ref": "#/components/schemas/VoucherRefundPolicyDto"
                 }
               }
             }
@@ -1966,61 +2530,6 @@
           ]
         },
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
-      },
-      "put": {
-        "operationId": "RewardsController_setRefundPolicy",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoucherRefundPolicyDto"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Rewards"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RewardsController_setRefundPolicy_Body"
-              }
-            }
-          }
-        }
       }
     },
     "/v1/rewards/refund-policy/history": {
@@ -2080,10 +2589,10 @@
         "x-octap-auth": {
           "kind": "apiKey",
           "scopes": [
-            "admin"
+            "read"
           ]
         },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
       }
     },
     "/v1/rewards/vouchers": {
@@ -2651,61 +3160,6 @@
       }
     },
     "/v1/webhooks/endpoints": {
-      "post": {
-        "operationId": "WebhooksController_registerEndpoint",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhooksController_registerEndpoint_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WebhooksController_registerEndpoint_Body"
-              }
-            }
-          }
-        }
-      },
       "get": {
         "operationId": "WebhooksController_listEndpoints",
         "parameters": [
@@ -2750,171 +3204,6 @@
           ]
         },
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
-      }
-    },
-    "/v1/webhooks/endpoints/{id}/disable": {
-      "post": {
-        "operationId": "WebhooksController_disableEndpoint",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhooksController_disableEndpoint_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
-      }
-    },
-    "/v1/webhooks/endpoints/{id}/enable": {
-      "post": {
-        "operationId": "WebhooksController_enableEndpoint",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhooksController_enableEndpoint_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
-      }
-    },
-    "/v1/webhooks/endpoints/{id}/rotate-secret": {
-      "post": {
-        "operationId": "WebhooksController_rotateSecret",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhooksController_rotateSecret_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
       }
     },
     "/v1/webhooks/deliveries": {
@@ -2962,61 +3251,6 @@
           ]
         },
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
-      }
-    },
-    "/v1/webhooks/deliveries/{id}/replay": {
-      "post": {
-        "operationId": "WebhooksController_replayDelivery",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/OrganizationIdHeader"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhooksController_replayDelivery_Response"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Request rejected. `message` says why.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
-        "x-octap-auth": {
-          "kind": "apiKey",
-          "scopes": [
-            "admin"
-          ]
-        },
-        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `admin`."
       }
     },
     "/v1/identity/google-login": {
@@ -4140,7 +4374,13 @@
       "name": "Console Organizations"
     },
     {
+      "name": "Console Refund Policy"
+    },
+    {
       "name": "Console Rewards"
+    },
+    {
+      "name": "Console Webhooks"
     },
     {
       "name": "Credits"
@@ -5074,6 +5314,129 @@
           ]
         }
       },
+      "ConsoleRefundPolicyController_current_Response": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "description": "The Owner who published this version from the console. Null on the default policy and on legacy versions.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdByCredentialId": {
+            "description": "The API key that published this version, before publishing moved to the console. Null otherwise.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
+            "type": "number"
+          },
+          "allowUnused": {
+            "type": "boolean"
+          },
+          "allowExpired": {
+            "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
+            "type": "boolean"
+          },
+          "allowRedeemed": {
+            "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
+            "type": "boolean"
+          },
+          "restockUnused": {
+            "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
+            "type": "boolean"
+          },
+          "refundWindowDays": {
+            "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
+            "type": [
+              "null",
+              "number"
+            ]
+          }
+        },
+        "required": [
+          "allowExpired",
+          "allowRedeemed",
+          "allowUnused",
+          "createdAt",
+          "createdByCredentialId",
+          "createdByUserId",
+          "reason",
+          "refundWindowDays",
+          "restockUnused",
+          "version"
+        ]
+      },
+      "ConsoleRefundPolicyController_history_Query": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number"
+          },
+          "beforeVersion": {
+            "type": "number"
+          }
+        }
+      },
+      "ConsoleRefundPolicyController_history_Response": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherRefundPolicyDto"
+        }
+      },
+      "ConsoleRefundPolicyController_publish_Body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "allowUnused": {
+            "type": "boolean"
+          },
+          "allowExpired": {
+            "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
+            "type": "boolean"
+          },
+          "allowRedeemed": {
+            "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
+            "type": "boolean"
+          },
+          "restockUnused": {
+            "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
+            "type": "boolean"
+          },
+          "refundWindowDays": {
+            "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
+            "type": [
+              "null",
+              "number"
+            ]
+          }
+        },
+        "required": [
+          "allowExpired",
+          "allowRedeemed",
+          "allowUnused",
+          "reason",
+          "refundWindowDays",
+          "restockUnused"
+        ]
+      },
+      "ConsoleRefundPolicyController_publish_Response": {
+        "$ref": "#/components/schemas/VoucherRefundPolicyDto"
+      },
       "ConsoleRewardsController_create_Body": {
         "type": "object",
         "properties": {
@@ -5254,6 +5617,396 @@
       },
       "ConsoleRewardsController_update_Response": {
         "$ref": "#/components/schemas/VoucherDto"
+      },
+      "ConsoleWebhooksController_disableEndpoint_Response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "createdAt",
+          "description",
+          "id",
+          "organizationId",
+          "secret",
+          "status",
+          "updatedAt",
+          "url"
+        ]
+      },
+      "ConsoleWebhooksController_enableEndpoint_Response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "createdAt",
+          "description",
+          "id",
+          "organizationId",
+          "secret",
+          "status",
+          "updatedAt",
+          "url"
+        ]
+      },
+      "ConsoleWebhooksController_listDeliveries_Response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "DEAD_LETTER",
+                "DELIVERED",
+                "PENDING"
+              ],
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "organizationId": {
+              "type": "string"
+            },
+            "payload": {},
+            "endpointId": {
+              "type": "string"
+            },
+            "eventType": {
+              "type": "string"
+            },
+            "attemptCount": {
+              "type": "number"
+            },
+            "nextAttemptAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastResponseStatus": {
+              "type": [
+                "null",
+                "number"
+              ]
+            },
+            "lastError": {
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "attemptCount",
+            "createdAt",
+            "endpointId",
+            "eventType",
+            "id",
+            "lastError",
+            "lastResponseStatus",
+            "nextAttemptAt",
+            "organizationId",
+            "payload",
+            "status",
+            "updatedAt"
+          ]
+        }
+      },
+      "ConsoleWebhooksController_listEndpoints_Response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "organizationId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "description": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "status": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "createdAt",
+            "description",
+            "id",
+            "organizationId",
+            "status",
+            "updatedAt",
+            "url"
+          ]
+        }
+      },
+      "ConsoleWebhooksController_registerEndpoint_Body": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "ConsoleWebhooksController_registerEndpoint_Response": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "description",
+          "id",
+          "organizationId",
+          "secret",
+          "status",
+          "updatedAt",
+          "url"
+        ]
+      },
+      "ConsoleWebhooksController_replayDelivery_Response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "endpointId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "payload": {},
+          "status": {
+            "enum": [
+              "DEAD_LETTER",
+              "DELIVERED",
+              "PENDING"
+            ],
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "number"
+          },
+          "nextAttemptAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastResponseStatus": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "attemptCount",
+          "createdAt",
+          "endpointId",
+          "eventType",
+          "id",
+          "lastError",
+          "lastResponseStatus",
+          "nextAttemptAt",
+          "organizationId",
+          "payload",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "ConsoleWebhooksController_rotateSecret_Response": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "createdAt",
+          "description",
+          "id",
+          "organizationId",
+          "secret",
+          "status",
+          "updatedAt",
+          "url"
+        ]
       },
       "CreditsController_earn_Body": {
         "type": "object",
@@ -7455,60 +8208,7 @@
         }
       },
       "RewardsController_getRefundPolicy_Response": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "createdByCredentialId": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "createdAt": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "version": {
-            "type": "number"
-          },
-          "allowUnused": {
-            "type": "boolean"
-          },
-          "allowExpired": {
-            "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
-            "type": "boolean"
-          },
-          "allowRedeemed": {
-            "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
-            "type": "boolean"
-          },
-          "restockUnused": {
-            "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
-            "type": "boolean"
-          },
-          "refundWindowDays": {
-            "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
-            "type": [
-              "null",
-              "number"
-            ]
-          }
-        },
-        "required": [
-          "allowExpired",
-          "allowRedeemed",
-          "allowUnused",
-          "createdAt",
-          "createdByCredentialId",
-          "reason",
-          "refundWindowDays",
-          "restockUnused",
-          "version"
-        ]
+        "$ref": "#/components/schemas/VoucherRefundPolicyDto"
       },
       "RewardsController_getVoucher_Response": {
         "$ref": "#/components/schemas/VoucherDto"
@@ -7682,47 +8382,6 @@
           "voucherTitle"
         ]
       },
-      "RewardsController_setRefundPolicy_Body": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "allowUnused": {
-            "type": "boolean"
-          },
-          "allowExpired": {
-            "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
-            "type": "boolean"
-          },
-          "allowRedeemed": {
-            "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
-            "type": "boolean"
-          },
-          "restockUnused": {
-            "description": "False permanently consumes the campaign allocation even when an unused coupon is canceled.",
-            "type": "boolean"
-          },
-          "refundWindowDays": {
-            "description": "Elapsed days since claim; null means no time limit. The boundary is exclusive.",
-            "type": [
-              "null",
-              "number"
-            ]
-          }
-        },
-        "required": [
-          "allowExpired",
-          "allowRedeemed",
-          "allowUnused",
-          "reason",
-          "refundWindowDays",
-          "restockUnused"
-        ]
-      },
-      "RewardsController_setRefundPolicy_Response": {
-        "$ref": "#/components/schemas/VoucherRefundPolicyDto"
-      },
       "RewardsController_updateVoucher_Body": {
         "type": "object",
         "properties": {
@@ -7845,102 +8504,6 @@
         ],
         "type": "string"
       },
-      "WebhooksController_disableEndpoint_Response": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "secret": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "createdAt",
-          "description",
-          "id",
-          "organizationId",
-          "secret",
-          "status",
-          "updatedAt",
-          "url"
-        ]
-      },
-      "WebhooksController_enableEndpoint_Response": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "secret": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "createdAt",
-          "description",
-          "id",
-          "organizationId",
-          "secret",
-          "status",
-          "updatedAt",
-          "url"
-        ]
-      },
       "WebhooksController_listDeliveries_Response": {
         "type": "array",
         "items": {
@@ -8057,183 +8620,6 @@
             "url"
           ]
         }
-      },
-      "WebhooksController_registerEndpoint_Body": {
-        "type": "object",
-        "properties": {
-          "url": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ]
-      },
-      "WebhooksController_registerEndpoint_Response": {
-        "type": "object",
-        "properties": {
-          "secret": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "url": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "createdAt",
-          "description",
-          "id",
-          "organizationId",
-          "secret",
-          "status",
-          "updatedAt",
-          "url"
-        ]
-      },
-      "WebhooksController_replayDelivery_Response": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "endpointId": {
-            "type": "string"
-          },
-          "eventType": {
-            "type": "string"
-          },
-          "payload": {},
-          "status": {
-            "enum": [
-              "DEAD_LETTER",
-              "DELIVERED",
-              "PENDING"
-            ],
-            "type": "string"
-          },
-          "attemptCount": {
-            "type": "number"
-          },
-          "nextAttemptAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "lastResponseStatus": {
-            "type": [
-              "null",
-              "number"
-            ]
-          },
-          "lastError": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "attemptCount",
-          "createdAt",
-          "endpointId",
-          "eventType",
-          "id",
-          "lastError",
-          "lastResponseStatus",
-          "nextAttemptAt",
-          "organizationId",
-          "payload",
-          "status",
-          "updatedAt"
-        ]
-      },
-      "WebhooksController_rotateSecret_Response": {
-        "type": "object",
-        "properties": {
-          "secret": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "organizationId": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "createdAt",
-          "description",
-          "id",
-          "organizationId",
-          "secret",
-          "status",
-          "updatedAt",
-          "url"
-        ]
       },
       "DependencyCheck": {
         "type": "object",
@@ -8860,7 +9246,15 @@
           "reason": {
             "type": "string"
           },
+          "createdByUserId": {
+            "description": "The Owner who published this version from the console. Null on the default policy and on legacy versions.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "createdByCredentialId": {
+            "description": "The API key that published this version, before publishing moved to the console. Null otherwise.",
             "type": [
               "null",
               "string"
@@ -8879,11 +9273,11 @@
             "type": "boolean"
           },
           "allowExpired": {
-            "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
+            "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
             "type": "boolean"
           },
           "allowRedeemed": {
-            "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
+            "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
             "type": "boolean"
           },
           "restockUnused": {
@@ -8904,6 +9298,7 @@
           "allowUnused",
           "createdAt",
           "createdByCredentialId",
+          "createdByUserId",
           "reason",
           "refundWindowDays",
           "restockUnused",
@@ -8920,11 +9315,11 @@
             "type": "boolean"
           },
           "allowExpired": {
-            "description": "Opt-in only; refund execution additionally requires an admin-scoped credential.",
+            "description": "Opt-in only. When on, any `write` key may refund an expired coupon; the policy is the only gate.",
             "type": "boolean"
           },
           "allowRedeemed": {
-            "description": "Exceptional service recovery; preserves REDEEMED history and requires admin-scoped refund execution.",
+            "description": "Exceptional service recovery; preserves REDEEMED history. When on, any `write` key may refund a\nredeemed coupon; the policy is the only gate.",
             "type": "boolean"
           },
           "restockUnused": {

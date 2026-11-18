@@ -44,7 +44,6 @@ Claim trả phí tuân theo cùng quy tắc, với chữ ký của khách hàng 
 | Thao tác | Trước khi thử lại |
 | --- | --- |
 | `finalizeVoucherClaim`, `finalizeVoucherUse`, `finalizePosRedemption` | Dùng lại chữ ký và digest ban đầu, hoặc đọc trạng thái hiện tại. |
-| `registerWebhookEndpoint`, `rotateWebhookSecret` | Đừng thử lại mù quáng. Liệt kê endpoint của bạn trước. |
 | Các lệnh đọc | Thử lại với backoff có giới hạn, và chờ `retryAfter` sau 429. |
 
 ## Hủy request

@@ -58,8 +58,12 @@ describe('WebhookEndpointsService', () => {
     const service = new WebhookEndpointsService(inMemoryRepo());
     const { id, secret } = await service.register('org-1', 'http://merchant.example/hooks');
 
-    expect((await service.disable('org-1', id)).status).toBe('DISABLED');
-    expect((await service.enable('org-1', id)).status).toBe('ACTIVE');
+    const disabled = await service.disable('org-1', id);
+    expect(disabled.status).toBe('DISABLED');
+    expect(disabled).not.toHaveProperty('secret');
+    const enabled = await service.enable('org-1', id);
+    expect(enabled.status).toBe('ACTIVE');
+    expect(enabled).not.toHaveProperty('secret');
 
     const rotated = await service.rotateSecret('org-1', id);
     expect(rotated.secret).not.toBe(secret);

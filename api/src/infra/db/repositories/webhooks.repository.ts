@@ -40,6 +40,9 @@ export async function enqueueWebhookEvent(
 }
 
 /**
+ * Request-path methods take an optional `db`, so a console route can run them inside its Owner
+ * check's transaction (`ConsoleWebhooksService`).
+ *
  * Every method runs under an organization's RLS context (`withTenant`), except the worker's scan for
  * due deliveries across organizations (`claimDueDeliveries`). Request paths pass the authenticated
  * organization, so RLS refuses another organization's endpoint or delivery. Only the delivery
@@ -62,15 +65,18 @@ export class WebhooksRepository {
 
   // --- Endpoints -----------------------------------------------------------
 
-  async createEndpoint(params: { organizationId: string; url: string; secret: string; description?: string }) {
-    return withTenant(this.db, params.organizationId, async (tx) => {
+  async createEndpoint(
+    params: { organizationId: string; url: string; secret: string; description?: string },
+    db: DrizzleDb = this.db,
+  ) {
+    return withTenant(db, params.organizationId, async (tx) => {
       const [created] = await tx.insert(webhookEndpoints).values(params).returning();
       return created;
     });
   }
 
-  async listEndpoints(organizationId: string) {
-    return withTenant(this.db, organizationId, (tx) =>
+  async listEndpoints(organizationId: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, (tx) =>
       tx.query.webhookEndpoints.findMany({
         where: eq(webhookEndpoints.organizationId, organizationId),
         orderBy: [desc(webhookEndpoints.createdAt)],
@@ -78,8 +84,8 @@ export class WebhooksRepository {
     );
   }
 
-  async findEndpointForOrganization(organizationId: string, endpointId: string) {
-    return withTenant(this.db, organizationId, (tx) =>
+  async findEndpointForOrganization(organizationId: string, endpointId: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, (tx) =>
       tx.query.webhookEndpoints.findFirst({
         where: and(eq(webhookEndpoints.id, endpointId), eq(webhookEndpoints.organizationId, organizationId)),
       }),
@@ -100,8 +106,13 @@ export class WebhooksRepository {
     );
   }
 
-  async setEndpointStatus(organizationId: string, endpointId: string, status: 'ACTIVE' | 'DISABLED') {
-    return withTenant(this.db, organizationId, async (tx) => {
+  async setEndpointStatus(
+    organizationId: string,
+    endpointId: string,
+    status: 'ACTIVE' | 'DISABLED',
+    db: DrizzleDb = this.db,
+  ) {
+    return withTenant(db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookEndpoints)
         .set({ status, updatedAt: new Date() })
@@ -111,8 +122,8 @@ export class WebhooksRepository {
     });
   }
 
-  async rotateEndpointSecret(organizationId: string, endpointId: string, secret: string) {
-    return withTenant(this.db, organizationId, async (tx) => {
+  async rotateEndpointSecret(organizationId: string, endpointId: string, secret: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookEndpoints)
         .set({ secret, updatedAt: new Date() })
@@ -136,8 +147,8 @@ export class WebhooksRepository {
     });
   }
 
-  async listDeliveries(organizationId: string, limit = 50) {
-    return withTenant(this.db, organizationId, (tx) =>
+  async listDeliveries(organizationId: string, limit = 50, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, (tx) =>
       tx.query.webhookDeliveries.findMany({
         where: eq(webhookDeliveries.organizationId, organizationId),
         orderBy: [desc(webhookDeliveries.createdAt)],
@@ -146,8 +157,8 @@ export class WebhooksRepository {
     );
   }
 
-  async findDeliveryForOrganization(organizationId: string, deliveryId: string) {
-    return withTenant(this.db, organizationId, (tx) =>
+  async findDeliveryForOrganization(organizationId: string, deliveryId: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, (tx) =>
       tx.query.webhookDeliveries.findFirst({
         where: and(eq(webhookDeliveries.id, deliveryId), eq(webhookDeliveries.organizationId, organizationId)),
       }),
@@ -238,8 +249,8 @@ export class WebhooksRepository {
   }
 
   /** Resets a FAILED/DEAD_LETTER delivery back to PENDING for immediate redelivery, same id. */
-  async resetForReplay(organizationId: string, id: string) {
-    return withTenant(this.db, organizationId, async (tx) => {
+  async resetForReplay(organizationId: string, id: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, async (tx) => {
       const [updated] = await tx
         .update(webhookDeliveries)
         .set({

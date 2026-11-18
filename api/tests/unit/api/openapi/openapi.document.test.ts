@@ -85,9 +85,13 @@ describe('OpenAPI document', () => {
     });
     expect(operation('post', '/v1/credits/earn').security).toEqual([{ apiKey: [] }]);
 
-    expect(operation('put', '/v1/rewards/refund-policy')['x-octap-auth']).toEqual({
+    expect(operation('get', '/v1/rewards/refund-policy/history')['x-octap-auth']).toEqual({
       kind: 'apiKey',
-      scopes: ['admin'],
+      scopes: ['read'],
+    });
+    expect(operation('put', '/v1/console/organizations/{organizationId}/refund-policy')['x-octap-auth']).toEqual({
+      kind: 'console',
+      platformAdminOnly: false,
     });
     expect(operation('post', '/v1/console/organizations/{organizationId}/api-credentials')['x-octap-auth']).toEqual({
       kind: 'console',

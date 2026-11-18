@@ -169,21 +169,11 @@ listMemberVouchers(memberId: string, options?): Promise<VoucherOwnershipDto[]>
 getVoucherRefundPolicy(options?): Promise<VoucherRefundPolicyDto>
 ```
 
-## setVoucherRefundPolicy
-
-Đặt chính sách cho các voucher publish từ bây giờ. [Thiết lập](/vi/guides/manage-vouchers/)
-
-`PUT /v1/rewards/refund-policy` · Scope: `admin`
-
-```ts
-setVoucherRefundPolicy(request: SetVoucherRefundPolicyRequest, options?): Promise<VoucherRefundPolicyDto>
-```
-
 ## listVoucherRefundPolicyHistory
 
-Liệt kê các phiên bản chính sách, mới nhất trước.
+Liệt kê các phiên bản chính sách, mới nhất trước. Owner publish phiên bản mới trên Console; không API key nào làm được. [Thiết lập](/vi/guides/manage-vouchers/)
 
-`GET /v1/rewards/refund-policy/history` · Scope: `admin`
+`GET /v1/rewards/refund-policy/history` · Scope: `read`
 
 ```ts
 listVoucherRefundPolicyHistory(query?: { limit?: number; beforeVersion?: number }, options?): Promise<VoucherRefundPolicyDto[]>

@@ -44,7 +44,6 @@ A paid claim follows the same rules, with the customer's signature in the middle
 | Operation | Before you retry |
 | --- | --- |
 | `finalizeVoucherClaim`, `finalizeVoucherUse`, `finalizePosRedemption` | Reuse the original signature and digest, or read the current state. |
-| `registerWebhookEndpoint`, `rotateWebhookSecret` | Don't blindly retry. List your endpoints first. |
 | Reads | Retry with bounded backoff, and wait `retryAfter` after a 429. |
 
 ## Cancellation

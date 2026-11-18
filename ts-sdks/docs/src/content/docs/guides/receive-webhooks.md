@@ -7,17 +7,13 @@ Webhooks tell your server when something settles, so you don't have to poll.
 
 ## 1. Register an endpoint
 
-This needs an `admin` key. The secret is only returned here and when you rotate it, so store it securely.
+The organization's Owner registers the endpoint in the console, under **Webhooks**, with an `http` or `https` URL. No API key can register or change one.
+
+The console shows the signing secret once, right after registering, and again only when the Owner rotates it. Store it where your receiver can read it, such as a secret manager. Your server can check what is registered:
 
 ```ts
-const endpoint = await client.registerWebhookEndpoint({
-  url: 'https://shop.example/webhooks/octap',
-  description: 'Production orders',
-});
-saveSecret(endpoint.secret);
+const endpoints = await client.listWebhookEndpoints(); // never includes the secret
 ```
-
-Don't blindly retry this call, because it isn't idempotent. List your endpoints first.
 
 ## 2. Verify and handle events
 
@@ -63,7 +59,7 @@ app.post('/webhooks/octap', async (req, res) => {
 | Success | Any 2xx response within 10 seconds |
 | Retries | Up to 6 attempts in total, waiting longer each time (1, 2, 5, 15, then 30 minutes) |
 | After the last attempt | The delivery becomes `DEAD_LETTER` |
-| Replay | `replayWebhookDelivery(id)` re-queues a dead-lettered delivery with the same event ID |
+| Replay | The Owner replays a dead-lettered delivery in the console. It is re-queued with the same event ID. |
 
 Each request carries these headers:
 
@@ -79,11 +75,8 @@ Each request carries these headers:
 
 ## Manage endpoints
 
+The Owner disables, enables and rotates the secret of an endpoint in the console. Rotating stops the old secret at once, so update your receiver's secret straight after. Your server can follow deliveries:
+
 ```ts
-await client.disableWebhookEndpoint(endpoint.id);
-await client.enableWebhookEndpoint(endpoint.id);
-
-const { secret: newSecret } = await client.rotateWebhookSecret(endpoint.id);
-
 const deliveries = await client.listWebhookDeliveries();
 ```

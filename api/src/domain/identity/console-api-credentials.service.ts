@@ -12,7 +12,7 @@ type DeveloperRole = 'OWNER' | 'BUSINESS_DEVELOPER';
 /**
  * An organization's API keys, managed from the console by its Owner or a Business Developer.
  * A key's scopes are what it can do, whoever holds it: only the Owner creates or manages a key with
- * more than `read`. Console keys are never `admin`; that stays with the seed script.
+ * more than `read`. There is no `admin` scope: managing webhooks and the refund policy is console-only.
  */
 @Injectable()
 export class ConsoleApiCredentialsService {

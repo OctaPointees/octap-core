@@ -22,9 +22,10 @@ describe('RefundPolicyService', () => {
     const service = new RefundPolicyService(stub<VoucherRefundPoliciesRepository>({ current, history, publish }));
     expect(await service.current('org')).toEqual({ version: 1 });
     expect(await service.history('org')).toEqual([{ version: 1 }]);
-    expect(await service.publish('org', 'credential', request)).toEqual({ version: 2 });
-    expect(publish).toHaveBeenCalledWith('org', 'credential', request);
-    await expect(service.publish('org', 'credential', { ...request, reason: '' })).rejects.toThrow();
+    const authorize = async () => undefined;
+    expect(await service.publish('org', 'owner', request, authorize)).toEqual({ version: 2 });
+    expect(publish).toHaveBeenCalledWith('org', 'owner', request, authorize);
+    await expect(service.publish('org', 'owner', { ...request, reason: '' }, authorize)).rejects.toThrow();
     expect(publish).toHaveBeenCalledTimes(1);
   });
   it('validates bounded history filters before reaching persistence', async () => {
@@ -39,13 +40,14 @@ describe('RefundPolicyService', () => {
     expect(history).toHaveBeenCalledTimes(1);
   });
 
-  it('maps missing organization/credential errors and preserves unexpected failures', async () => {
+  it('maps a missing organization to 404 and preserves unexpected failures', async () => {
     const publish = vi
       .fn()
       .mockRejectedValueOnce(new RefundPolicyOrganizationNotFoundError())
       .mockRejectedValueOnce(new Error('database down'));
     const service = new RefundPolicyService(stub<VoucherRefundPoliciesRepository>({ publish }));
-    await expect(service.publish('org', 'credential', request)).rejects.toMatchObject({ status: 404 });
-    await expect(service.publish('org', 'credential', request)).rejects.toThrow('database down');
+    const authorize = async () => undefined;
+    await expect(service.publish('org', 'owner', request, authorize)).rejects.toMatchObject({ status: 404 });
+    await expect(service.publish('org', 'owner', request, authorize)).rejects.toThrow('database down');
   });
 });
