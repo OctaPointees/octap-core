@@ -132,4 +132,40 @@ describe('octap-mcp saved config', () => {
       expect(() => resolveCoreConfig()).toThrow('OCTAP_API_KEY is required');
     });
   });
+  describe('runSetup (interactive terminal)', () => {
+    /** A PassThrough posing as a TTY; answers each prompt once it appears on the output. */
+    function fakeTerminal(answers: Record<string, string>) {
+      const input = Object.assign(new PassThrough(), { isTTY: true, rawModes: [] as boolean[] });
+      const setRawMode = (mode: boolean) => input.rawModes.push(mode);
+      const output = new PassThrough();
+      let printed = '';
+      const pending = Object.entries(answers);
+      output.on('data', (chunk) => {
+        printed += String(chunk);
+        const next = pending[0];
+        if (next && printed.includes(next[0])) {
+          pending.shift();
+          setImmediate(() => input.write(next[1]));
+        }
+      });
+      return { input: Object.assign(input, { setRawMode }), output, printed: () => printed };
+    }
+
+    it('masks the key, handles backspace, and restores the terminal', async () => {
+      const term = fakeTerminal({ 'API URL': 'http://127.0.0.1:3001\r', 'API key': 'sk_abx\u007fc9999\r' });
+      await runSetup([], { input: term.input, output: term.output });
+
+      expect(readStoredConfig()).toEqual({ apiUrl: 'http://127.0.0.1:3001/', apiKey: 'sk_abc9999' });
+      expect(term.printed()).not.toContain('sk_ab');
+      expect(term.printed()).toContain('****9999');
+      expect(term.input.rawModes.at(-1)).toBe(false); // terminal left in cooked mode
+    });
+
+    it('Ctrl+C at the key prompt saves nothing', async () => {
+      const term = fakeTerminal({ 'API URL': '\r', 'API key': 'sk_partial\u0003' });
+      await expect(runSetup([], { input: term.input, output: term.output })).rejects.toBeInstanceOf(SetupAbortedError);
+      expect(readStoredConfig()).toBeUndefined();
+      expect(term.input.rawModes.at(-1)).toBe(false); // terminal left in cooked mode
+    });
+  });
 });
