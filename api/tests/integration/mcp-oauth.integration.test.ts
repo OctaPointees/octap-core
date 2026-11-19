@@ -18,9 +18,6 @@ describe('MCP OAuth sign-in (OCT-293)', () => {
   let userId: string;
 
   beforeAll(async () => {
-    vi.stubEnv('MCP_OAUTH_ISSUER_URL', 'http://127.0.0.1:3000');
-    vi.stubEnv('MCP_OAUTH_SIGNING_KEY', Buffer.alloc(32, 3).toString('base64'));
-    vi.stubEnv('CONSOLE_GOOGLE_CLIENT_ID', 'google-client');
     // A fake Google token is `<subject>` or `<subject>|<nonce>`.
     ctx = await createTestApp(undefined, {
       verify: async (token: string) => {
@@ -38,9 +35,12 @@ describe('MCP OAuth sign-in (OCT-293)', () => {
   });
   afterAll(async () => {
     await ctx?.close();
-    vi.unstubAllEnvs();
   });
   beforeEach(async () => {
+    // Read per request, and vitest unstubs env after every test, so stub before each one.
+    vi.stubEnv('MCP_OAUTH_ISSUER_URL', 'http://127.0.0.1:3000');
+    vi.stubEnv('MCP_OAUTH_SIGNING_KEY', Buffer.alloc(32, 3).toString('base64'));
+    vi.stubEnv('CONSOLE_GOOGLE_CLIENT_ID', 'google-client');
     await resetDb(ctx.db);
     orgA = (await seedOrganization(ctx.db, { name: 'A Coffee' })).id;
     orgB = (await seedOrganization(ctx.db, { name: 'B Bakery' })).id;
