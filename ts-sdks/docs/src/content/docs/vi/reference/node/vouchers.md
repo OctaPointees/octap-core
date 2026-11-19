@@ -26,9 +26,9 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `expiresAt` | `string \| null` | Ngày giờ ISO có giây và múi giờ |
 | `validForDays` | `number \| null` | Voucher của mỗi khách dùng được bấy nhiêu ngày kể từ lúc nhận, không quá `expiresAt`. Từ 1 đến 3650; `null` nghĩa là mọi voucher hết hạn vào `expiresAt`. Không đổi được sau khi bắt đầu publish. |
 | `metadata` | `object` | |
-| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Mặc định là `ACTIVE`, tức publish điều khoản lên chain trước. |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Mặc định là `ACTIVE`, tức publish điều khoản lên chain trước. Nếu tổ chức bật yêu cầu duyệt, `ACTIVE` đưa voucher vào `PENDING_APPROVAL` cho đến khi Owner duyệt trong console. Mở lại voucher đã publish thì không cần duyệt. |
 
-`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` và `updatedAt`.
+`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `createdAt` và `updatedAt`. `approval` là yêu cầu duyệt gần nhất, `null` nếu chưa từng có. `submittedBy` là `null` khi user hoặc key đó đã bị xoá. Các field: `status` (`PENDING`, `APPROVED`, `REJECTED` hoặc `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` và `reason` (lý do từ chối).
 
 ## updateVoucher
 

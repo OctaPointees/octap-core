@@ -26,9 +26,9 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `expiresAt` | `string \| null` | ISO date-time with seconds and timezone |
 | `validForDays` | `number \| null` | Each customer's voucher is usable this many days from when it is issued, capped by `expiresAt`. 1–3650; `null` means every voucher expires at `expiresAt`. Fixed once publishing starts. |
 | `metadata` | `object` | |
-| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. If your organization requires approval, `ACTIVE` puts the voucher in `PENDING_APPROVAL` until an Owner approves it in the console. Resuming a published voucher needs no approval. |
 
-A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `createdAt` and `updatedAt`.
+A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `createdAt` and `updatedAt`. `approval` is the latest approval request, `null` if there never was one. `submittedBy` is `null` once that user or key is deleted. Fields: `status` (`PENDING`, `APPROVED`, `REJECTED` or `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` and `reason` (why it was rejected).
 
 ## updateVoucher
 

@@ -4906,7 +4906,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "approval": {
-        "description": "On the catalog's list and detail: the latest approval request, `null` if there never was one.",
+        "description": "On every catalog response (not a member's vouchers): the latest approval request, `null` if there never was one.",
         "anyOf": [
           {
             "$ref": "#/components/schemas/VoucherApprovalDto"

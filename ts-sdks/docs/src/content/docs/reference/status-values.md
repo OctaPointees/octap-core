@@ -37,6 +37,7 @@ description: What each transaction, voucher and webhook status means.
 | Status | Meaning |
 | --- | --- |
 | `DRAFT` | Not offered yet |
+| `PENDING_APPROVAL` | Waiting for an Owner's approval, when the organization requires it. It can't be edited or claimed. Approved, it is published and becomes `ACTIVE`; rejected or withdrawn, it is `DRAFT` again. |
 | `ACTIVE` | Can be claimed |
 | `PAUSED` | Claims are paused |
 | `EXPIRED` | Past its end date |

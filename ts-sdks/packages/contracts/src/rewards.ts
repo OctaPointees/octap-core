@@ -132,7 +132,7 @@ export interface VoucherDto {
   /** `null`: every customer's voucher expires at `expiresAt`. */
   validForDays: number | null;
   metadata?: Record<string, unknown> | null;
-  /** On the catalog's list and detail: the latest approval request, `null` if there never was one. */
+  /** On every catalog response (not a member's vouchers): the latest approval request, `null` if there never was one. */
   approval?: VoucherApprovalDto | null;
   createdAt: string;
   updatedAt: string;
