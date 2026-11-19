@@ -37,6 +37,11 @@ export class ConsoleUsersRepository {
     throw new GoogleAccountLinkRequiredError();
   }
 
+  /** The account behind an already-verified credential, or null when it no longer exists. */
+  async findById(systemUserId: string) {
+    return (await this.db.query.systemUsers.findFirst({ where: eq(systemUsers.id, systemUserId) })) ?? null;
+  }
+
   async memberships(systemUserId: string): Promise<ConsoleIdentity['organizations']> {
     return withRls(this.db, { userId: systemUserId }, async (tx) => {
       const rows = await tx
