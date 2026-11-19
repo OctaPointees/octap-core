@@ -146,7 +146,11 @@ describe('RewardsController', () => {
     await c.finalizeVoucherUse({ digest: 'd', signature: 'sig' });
     await c.listMemberVouchers(tenant, 'user-1');
 
-    expect(service.createVoucher).toHaveBeenCalledWith('org-1', voucher);
+    // An API key writes as itself, so the organization's approval rule applies to it (OCT-59).
+    expect(service.createVoucher).toHaveBeenCalledWith('org-1', voucher, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
     expect(service.listVouchers).toHaveBeenCalledWith('org-1');
     expect(service.getVoucher).toHaveBeenCalledWith('org-1', 'v-1');
     expect(service.claimVoucher).toHaveBeenCalledWith('org-1', 'v-1', {

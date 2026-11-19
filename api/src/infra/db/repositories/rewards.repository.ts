@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { eq, desc, and, sql, ne, isNull, count } from 'drizzle-orm';
+import { eq, desc, and, sql, ne, isNull, count, inArray } from 'drizzle-orm';
 import {
   DEFAULT_VOUCHER_REFUND_POLICY,
   VOUCHER_MIN_USE_WINDOW_MS,
@@ -10,7 +10,7 @@ import {
 } from '@octap/contracts';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { vouchers, voucherOwnerships } from '../schema/rewards.schema.js';
+import { vouchers, voucherApprovalRequests, voucherOwnerships } from '../schema/rewards.schema.js';
 import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
@@ -80,7 +80,7 @@ const PUBLISHED_FIELDS = [
 /** A voucher rule a request broke. `RewardsService` maps `kind` to the HTTP status. */
 export class RewardsRuleError extends Error {
   constructor(
-    readonly kind: 'NOT_FOUND' | 'CONFLICT' | 'INVALID',
+    readonly kind: 'NOT_FOUND' | 'CONFLICT' | 'INVALID' | 'FORBIDDEN',
     message: string,
   ) {
     super(message);
@@ -102,6 +102,19 @@ function sameVoucherField(key: (typeof PUBLISHED_FIELDS)[number], before: unknow
 const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message);
 const conflict = (message: string) => new RewardsRuleError('CONFLICT', message);
 const invalid = (message: string) => new RewardsRuleError('INVALID', message);
+const forbidden = (message: string) => new RewardsRuleError('FORBIDDEN', message);
+
+/**
+ * Who is writing a voucher, for the approval rules (OCT-59). An Owner never needs approval. A
+ * Business Developer (`DEVELOPER`) writes drafts, and activates them only while the organization does
+ * not require approval. An API key (`CREDENTIAL`) asking for `ACTIVE` there is queued for approval.
+ */
+export type VoucherActor =
+  | { role: 'OWNER'; userId?: string }
+  | { role: 'DEVELOPER'; userId: string }
+  | { role: 'CREDENTIAL'; credentialId: string };
+const OWNER: VoucherActor = { role: 'OWNER' };
+type VoucherApprovalRequest = typeof voucherApprovalRequests.$inferSelect;
 
 /**
  * Every method runs under the voucher's organization's RLS context (`withTenant`), so Postgres itself
@@ -123,6 +136,7 @@ export class RewardsRepository {
       expiresAt?: Date;
     },
     db: DrizzleDb = this.db,
+    actor: VoucherActor = OWNER,
   ) {
     const status = data.status ?? 'ACTIVE';
     return withTenant(db, data.organizationId, async (tx) => {
@@ -133,8 +147,51 @@ export class RewardsRepository {
         .onConflictDoNothing({ target: [vouchers.organizationId, vouchers.code] })
         .returning();
       if (!voucher) throw conflict('Voucher code already exists for this organization');
-      return status === 'ACTIVE' ? this.queuePublish(tx, voucher) : voucher;
+      if (status !== 'ACTIVE') return voucher;
+      return (await this.activation(tx, data.organizationId, actor)) === 'PUBLISH'
+        ? this.queuePublish(tx, voucher)
+        : this.queueApproval(tx, voucher, actor);
     });
+  }
+
+  /**
+   * Whether activating publishes now or waits for an Owner. Read after the voucher's lock and FOR
+   * SHARE, the order a claim takes them, so it cannot deadlock with one; turning the setting on or off
+   * (which locks the organization FOR UPDATE) waits for this write instead of racing it.
+   */
+  private async activation(tx: DrizzleDb, organizationId: string, actor: VoucherActor): Promise<'PUBLISH' | 'QUEUE'> {
+    if (actor.role === 'OWNER') return 'PUBLISH';
+    if (!(await this.approvalRequired(tx, organizationId))) return 'PUBLISH';
+    if (actor.role === 'DEVELOPER')
+      throw forbidden('This organization requires approval: submit the voucher for approval instead of activating it');
+    return 'QUEUE';
+  }
+
+  private async approvalRequired(tx: DrizzleDb, organizationId: string): Promise<boolean> {
+    const [org] = await asOwnRole(tx, (own) =>
+      own
+        .select({ required: organizations.voucherApprovalRequired })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for('share'),
+    );
+    return org?.required ?? false;
+  }
+
+  /** Waits for an Owner; the fields in `patch` are saved with it. */
+  private async queueApproval(tx: DrizzleDb, voucher: Voucher, submitter: VoucherActor, patch: VoucherPatch = {}) {
+    const [updated] = await tx
+      .update(vouchers)
+      .set({ ...patch, status: 'PENDING_APPROVAL', updatedAt: new Date() })
+      .where(eq(vouchers.id, voucher.id))
+      .returning();
+    await tx.insert(voucherApprovalRequests).values({
+      organizationId: voucher.organizationId,
+      voucherId: voucher.id,
+      submittedByUserId: submitter.role === 'CREDENTIAL' ? null : (submitter.userId ?? null),
+      submittedByCredentialId: submitter.role === 'CREDENTIAL' ? submitter.credentialId : null,
+    });
+    return updated;
   }
 
   /** Fixes the promise, including the refund policy current now, and queues it for the chain. */
@@ -238,17 +295,18 @@ export class RewardsRepository {
     patch: VoucherPatch,
     validate: (merged: Voucher) => void,
     db: DrizzleDb = this.db,
+    actor: VoucherActor = OWNER,
   ) {
     return withTenant(db, organizationId, async (tx) => {
-      const [current] = await tx
-        .select()
-        .from(vouchers)
-        .where(and(eq(vouchers.id, id), eq(vouchers.organizationId, organizationId)))
-        .for('update');
-      if (!current) throw notFound('Voucher not found');
+      const current = await this.lockVoucher(tx, organizationId, id);
+      if (current.status === 'PENDING_APPROVAL')
+        throw conflict('The voucher is waiting for approval; withdraw it to make changes');
       const merged = { ...current, ...patch };
       validate(merged);
       const onChain = current.publishStatus === 'PUBLISHING' || current.publishStatus === 'PUBLISHED';
+      if (actor.role === 'DEVELOPER' && onChain)
+        throw forbidden('Only an Owner can change a voucher once it is published');
+      if (actor.role === 'DEVELOPER' && patch.status === 'PAUSED') throw forbidden('Only an Owner can pause a voucher');
       if (onChain) {
         for (const key of PUBLISHED_FIELDS) {
           if (!sameVoucherField(key, current[key], merged[key])) {
@@ -263,7 +321,10 @@ export class RewardsRepository {
       const depleted = merged.totalSupply !== null && merged.claimedCount >= merged.totalSupply;
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
-      if (requestedStatus === 'ACTIVE' && !onChain) return this.queuePublish(tx, current, fields);
+      if (requestedStatus === 'ACTIVE' && !onChain)
+        return (await this.activation(tx, organizationId, actor)) === 'PUBLISH'
+          ? this.queuePublish(tx, current, fields)
+          : this.queueApproval(tx, current, actor, fields);
       // DRAFT means an activation in progress here, so it would go ACTIVE when the chain confirms.
       if (requestedStatus === 'DRAFT' && onChain) {
         throw conflict('A published voucher cannot return to DRAFT; pause it instead');
@@ -283,6 +344,100 @@ export class RewardsRepository {
         .returning();
       return updated;
     });
+  }
+
+  private async lockVoucher(tx: DrizzleDb, organizationId: string, id: string): Promise<Voucher> {
+    const [current] = await tx
+      .select()
+      .from(vouchers)
+      .where(and(eq(vouchers.id, id), eq(vouchers.organizationId, organizationId)))
+      .for('update');
+    if (!current) throw notFound('Voucher not found');
+    return current;
+  }
+
+  /** A Business Developer asks an Owner to take a draft live. Only while the organization requires it. */
+  async submitVoucher(organizationId: string, id: string, userId: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, async (tx) => {
+      const current = await this.lockVoucher(tx, organizationId, id);
+      if (current.status === 'PENDING_APPROVAL') throw conflict('The voucher is already waiting for approval');
+      if (current.publishStatus === 'PUBLISHING' || current.publishStatus === 'PUBLISHED')
+        throw conflict('The voucher is already published');
+      if (expiresTooSoon(current)) throw invalid('A voucher must stay valid for at least 24 hours to be activated');
+      if (!(await this.approvalRequired(tx, organizationId)))
+        throw conflict('This organization does not require approval: activate the voucher instead');
+      return this.queueApproval(tx, current, { role: 'DEVELOPER', userId });
+    });
+  }
+
+  /** Back to DRAFT, so it can be edited again. `userId` is whoever withdrew it. */
+  async withdrawVoucher(organizationId: string, id: string, userId: string, db: DrizzleDb = this.db) {
+    return this.decide(db, organizationId, id, userId, 'WITHDRAWN');
+  }
+
+  /**
+   * An Owner's decision. Approving starts publishing, exactly as activating does, after the same
+   * checks, made again now: days may have passed since it was submitted. Rejecting returns it to DRAFT.
+   */
+  async reviewVoucher(
+    organizationId: string,
+    id: string,
+    ownerId: string,
+    decision: { approve: true } | { approve: false; reason: string },
+    db: DrizzleDb = this.db,
+  ) {
+    return decision.approve
+      ? this.decide(db, organizationId, id, ownerId, 'APPROVED')
+      : this.decide(db, organizationId, id, ownerId, 'REJECTED', decision.reason);
+  }
+
+  private async decide(
+    db: DrizzleDb,
+    organizationId: string,
+    id: string,
+    userId: string,
+    outcome: 'APPROVED' | 'REJECTED' | 'WITHDRAWN',
+    reason: string | null = null,
+  ) {
+    return withTenant(db, organizationId, async (tx) => {
+      const current = await this.lockVoucher(tx, organizationId, id);
+      if (current.status !== 'PENDING_APPROVAL') throw conflict('The voucher is not waiting for approval');
+      if (outcome === 'APPROVED' && expiresTooSoon(current))
+        throw invalid('A voucher must stay valid for at least 24 hours to be activated; reject it instead');
+      await tx
+        .update(voucherApprovalRequests)
+        .set({ status: outcome, reviewedById: userId, reviewedAt: new Date(), reason })
+        .where(and(eq(voucherApprovalRequests.voucherId, id), eq(voucherApprovalRequests.status, 'PENDING')));
+      if (outcome === 'APPROVED') return this.queuePublish(tx, current);
+      const [updated] = await tx
+        .update(vouchers)
+        .set({ status: 'DRAFT', updatedAt: new Date() })
+        .where(eq(vouchers.id, id))
+        .returning();
+      return updated;
+    });
+  }
+
+  /** The latest approval request of each voucher, by voucher id. */
+  async latestApprovals(
+    organizationId: string,
+    voucherIds: string[],
+    db: DrizzleDb = this.db,
+  ): Promise<Map<string, VoucherApprovalRequest>> {
+    if (!voucherIds.length) return new Map();
+    const rows = await withTenant(db, organizationId, (tx) =>
+      tx
+        .selectDistinctOn([voucherApprovalRequests.voucherId])
+        .from(voucherApprovalRequests)
+        .where(
+          and(
+            eq(voucherApprovalRequests.organizationId, organizationId),
+            inArray(voucherApprovalRequests.voucherId, voucherIds),
+          ),
+        )
+        .orderBy(voucherApprovalRequests.voucherId, desc(voucherApprovalRequests.submittedAt)),
+    );
+    return new Map(rows.map((row) => [row.voucherId, row]));
   }
 
   /**

@@ -1,15 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { ConsoleVoucherInput, UpdateVoucherRequest, VoucherDto } from '@octap/contracts';
 import {
   ConsoleAccessError,
   ConsoleOrganizationsRepository,
 } from '#infra/db/repositories/console-organizations.repository.js';
+import type { VoucherActor } from '#infra/db/repositories/rewards.repository.js';
 import { RewardsService } from './rewards.service.js';
 
 /**
  * The organization's reward catalog from the console session. The Owner and a Business Developer
- * read it; only the Owner creates, edits, pauses and activates. Every rule about the voucher itself
- * is `RewardsService`'s, shared with `/v1/rewards/vouchers`.
+ * read it and write drafts. Only the Owner pauses, changes a published voucher, and approves or
+ * rejects. A Business Developer activates directly unless the organization requires approval
+ * (`voucherApprovalRequired`); then they submit the draft and an Owner decides (OCT-59). Every rule
+ * about the voucher itself is `RewardsService`'s, shared with `/v1/rewards/vouchers`.
  */
 @Injectable()
 export class ConsoleRewardsService {
@@ -56,19 +59,70 @@ export class ConsoleRewardsService {
       throw new BadRequestException("A voucher is created as DRAFT; activate it with PATCH { status: 'ACTIVE' }");
     const req: ConsoleVoucherInput = { ...input, status: 'DRAFT' };
     return this.run(WRITE_DENIED, () =>
-      this.organizations.withOwnerAccess(userId, orgId, (tx) => this.rewards.createVoucher(orgId, req, tx)),
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.rewards.createVoucher(orgId, req, actorOf(userId, role), tx),
+      ),
     );
   }
 
-  /** Edits fields, or pauses/activates with `{ status }`. Another organization's voucher is a 404. */
+  /**
+   * Edits fields, or pauses/activates with `{ status }`. A Business Developer edits drafts only, and
+   * cannot pause. Another organization's voucher is a 404.
+   */
   update(userId: string, orgId: string, voucherId: string, input: UpdateVoucherRequest): Promise<VoucherDto> {
     return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.rewards.updateVoucher(orgId, voucherId, input, actorOf(userId, role), tx),
+      ),
+    );
+  }
+
+  /** A Business Developer's draft goes to an Owner. An Owner activates directly instead. */
+  submit(userId: string, orgId: string, voucherId: string): Promise<VoucherDto> {
+    return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) => {
+        if (role === 'OWNER')
+          throw new ConflictException("An Owner needs no approval: activate it with PATCH { status: 'ACTIVE' }");
+        return this.rewards.submitVoucher(orgId, voucherId, userId, tx);
+      }),
+    );
+  }
+
+  /** Back to DRAFT, by the Owner or a Business Developer. */
+  withdraw(userId: string, orgId: string, voucherId: string): Promise<VoucherDto> {
+    return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx) =>
+        this.rewards.withdrawVoucher(orgId, voucherId, userId, tx),
+      ),
+    );
+  }
+
+  approve(userId: string, orgId: string, voucherId: string): Promise<VoucherDto> {
+    return this.run(REVIEW_DENIED, () =>
       this.organizations.withOwnerAccess(userId, orgId, (tx) =>
-        this.rewards.updateVoucher(orgId, voucherId, input, tx),
+        this.rewards.approveVoucher(orgId, voucherId, userId, tx),
+      ),
+    );
+  }
+
+  reject(userId: string, orgId: string, voucherId: string, input: { reason?: unknown } | null): Promise<VoucherDto> {
+    const body = input && typeof input === 'object' ? input : {};
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason || reason.length > 500 || Object.keys(body).some((key) => key !== 'reason'))
+      throw new BadRequestException('A rejection reason is required (up to 500 characters)');
+    return this.run(REVIEW_DENIED, () =>
+      this.organizations.withOwnerAccess(userId, orgId, (tx) =>
+        this.rewards.rejectVoucher(orgId, voucherId, userId, reason, tx),
       ),
     );
   }
 }
 
+function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {
+  return role === 'OWNER' ? { role: 'OWNER', userId } : { role: 'DEVELOPER', userId };
+}
+
 const READ_DENIED = 'Only an active Owner or Business Developer of an active organization can view its rewards';
-const WRITE_DENIED = 'Only an active Owner of an active organization can create or change its rewards';
+const WRITE_DENIED =
+  'Only an active Owner or Business Developer of an active organization can create or change its rewards';
+const REVIEW_DENIED = 'Only an active Owner of an active organization can approve or reject its rewards';

@@ -54,6 +54,8 @@ export interface ConsoleOrganization {
   organizationType: OrganizationType | null;
   representativeName: string | null;
   logoUrl: string | null;
+  /** Business Developers' vouchers need an Owner's approval before they go live. */
+  voucherApprovalRequired: boolean;
   /** Returned only to Business Owners. Never the full CCCD. */
   nationalIdLast4?: string | null;
 }
@@ -115,10 +117,25 @@ export interface ConsoleInvitationInput {
   persona?: 'BUSINESS_DEVELOPER';
 }
 
+/** `PATCH /v1/console/organizations/:id/settings`, Owner only. */
+export interface OrganizationSettingsInput {
+  /**
+   * When on, a Business Developer submits a voucher for approval instead of activating it, and an
+   * API key asking for `ACTIVE` puts it in `PENDING_APPROVAL`. Owners never need approval. Turning
+   * it off leaves vouchers already waiting as they are.
+   */
+  voucherApprovalRequired: boolean;
+}
+/** `POST /v1/console/organizations/:id/vouchers/:voucherId/reject`. */
+export interface VoucherRejectInput {
+  /** 1–500 characters, shown to whoever submitted it. */
+  reason: string;
+}
+
 /**
  * Creating a voucher from the console session, which is stricter than `CreateVoucherRequest`: it is
  * always a `DRAFT`, activated afterwards with `PATCH { status: 'ACTIVE' }`, and `pointsCost` must be
- * sent (0 for a free reward). Only the Owner may create one.
+ * sent (0 for a free reward). The Owner and a Business Developer may create one.
  */
 export interface ConsoleVoucherInput extends Omit<CreateVoucherRequest, 'status'> {
   pointsCost: number;

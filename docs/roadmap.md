@@ -13,7 +13,7 @@ then move the row to **Implemented** in the same pull request.
 | --- | --- |
 | PostgreSQL (Supabase) connection, Drizzle schema, first migration, RLS helper | api/src/infra/db; api/db/postgres/migrations |
 | Earn from purchase amounts, customer-signed POS redeem, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
-| Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279). A per-voucher `perMemberLimit` caps how many one member may hold, null for no limit, and `validForDays` makes each customer's voucher usable N days from its issue, capped by `expiresAt` (OCT-291) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
+| Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279). A per-voucher `perMemberLimit` caps how many one member may hold, null for no limit, and `validForDays` makes each customer's voucher usable N days from its issue, capped by `expiresAt` (OCT-291). Organizations may require an Owner's approval before a Business Developer's or an API key's voucher goes live (`PENDING_APPROVAL`, OCT-59) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
 | Console reward catalog: Owner/Business Developer list and detail, Owner-only create (DRAFT by default, `pointsCost` required), edit, pause and activate, from the Google session, checked in the write's transaction (OCT-236) | api/src/api/rest/console-rewards.controller.ts; api/src/domain/rewards/console-rewards.service.ts |
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for credits, vouchers, webhook management, structured errors and cancellation | ts-sdks/packages/node |
@@ -187,7 +187,7 @@ then move the row to **Implemented** in the same pull request.
 - Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
   and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
   or the same `code` and content returning the existing voucher. No webhook fires when a voucher is
-  created, activated or paused either; only `voucher.granted` and `voucher.redeemed` exist.
+  created, activated, paused or submitted for approval either; only `voucher.granted` and `voucher.redeemed` exist.
 - Console API keys record no creator or revoker, and survive the member who issued them leaving:
   an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the

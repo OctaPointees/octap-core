@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
 import {
   bigint,
+  check,
   index,
   integer,
   jsonb,
@@ -15,11 +16,25 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
-import { organizations } from './organizations.schema.js';
+import { apiCredentials, organizations } from './organizations.schema.js';
+import { systemUsers } from './auth.schema.js';
 import { organizationEndUsers } from './members.schema.js';
 import { loyaltyTransactions } from './credits.schema.js';
 
-export const voucherStatusEnum = pgEnum('voucher_status', ['DRAFT', 'ACTIVE', 'PAUSED', 'EXPIRED', 'DEPLETED']);
+export const voucherStatusEnum = pgEnum('voucher_status', [
+  'DRAFT',
+  'ACTIVE',
+  'PAUSED',
+  'EXPIRED',
+  'DEPLETED',
+  'PENDING_APPROVAL',
+]);
+export const voucherApprovalStatusEnum = pgEnum('voucher_approval_status', [
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'WITHDRAWN',
+]);
 
 export const voucherOwnershipStatusEnum = pgEnum('voucher_ownership_status', [
   'AVAILABLE',
@@ -142,6 +157,49 @@ export const voucherOwnerships = pgTable(
       for: 'all',
       to: authenticatedRole,
       using: sql`exists (select 1 from ${organizationEndUsers} where ${organizationEndUsers.id} = ${t.organizationEndUserId} and ${organizationEndUsers.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))) and exists (select 1 from ${vouchers} where ${vouchers.id} = ${t.voucherId} and ${vouchers.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')))`,
+    }),
+  ],
+);
+
+/**
+ * VOUCHER APPROVAL REQUEST: one request to take a voucher live in an organization that requires
+ * approval, and how it ended. A Business Developer submits it, or an API key asking for `ACTIVE`
+ * (so the submitter is a user or a credential, never both). At most one is PENDING per voucher.
+ */
+export const voucherApprovalRequests = pgTable(
+  'voucher_approval_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    voucherId: uuid('voucher_id')
+      .notNull()
+      .references(() => vouchers.id, { onDelete: 'cascade' }),
+    status: voucherApprovalStatusEnum('status').default('PENDING').notNull(),
+    submittedByUserId: uuid('submitted_by_user_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    submittedByCredentialId: uuid('submitted_by_credential_id').references(() => apiCredentials.id, {
+      onDelete: 'set null',
+    }),
+    reviewedById: uuid('reviewed_by_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    reason: text('reason'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).defaultNow().notNull(),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('voucher_approval_requests_voucher_idx').on(t.voucherId, t.submittedAt),
+    uniqueIndex('voucher_approval_requests_one_pending_idx')
+      .on(t.voucherId)
+      .where(sql`${t.status} = 'PENDING'`),
+    // Never both. The repository always sets one; either may become null when its user or key is deleted.
+    check(
+      'voucher_approval_requests_one_submitter',
+      sql`num_nonnulls(${t.submittedByUserId}, ${t.submittedByCredentialId}) <= 1`,
+    ),
+    pgPolicy('tenant_manage_voucher_approval_requests', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')) and exists (select 1 from ${vouchers} where ${vouchers.id} = ${t.voucherId} and ${vouchers.organizationId} = ${t.organizationId})`,
     }),
   ],
 );

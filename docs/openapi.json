@@ -1422,6 +1422,248 @@
         }
       }
     },
+    "/v1/console/organizations/{organizationId}/vouchers/{id}/submit": {
+      "post": {
+        "operationId": "ConsoleRewardsController_submit",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Rewards"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/vouchers/{id}/withdraw": {
+      "post": {
+        "operationId": "ConsoleRewardsController_withdraw",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Rewards"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/vouchers/{id}/approve": {
+      "post": {
+        "operationId": "ConsoleRewardsController_approve",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Rewards"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/vouchers/{id}/reject": {
+      "post": {
+        "operationId": "ConsoleRewardsController_reject",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Rewards"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleRewardsController_reject_Body"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/organizations/{organizationId}/refund-policy": {
       "get": {
         "operationId": "ConsoleRefundPolicyController_current",
@@ -3935,6 +4177,66 @@
         }
       }
     },
+    "/v1/console/organizations/{organizationId}/settings": {
+      "patch": {
+        "operationId": "ConsoleOrganizationsController_settings",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOrganizationsController_settings_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Organizations"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleOrganizationsController_settings_Body"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/organizations/{organizationId}/staff": {
       "get": {
         "operationId": "ConsoleOrganizationsController_staff",
@@ -5345,6 +5647,9 @@
               "null",
               "string"
             ]
+          },
+          "voucherApprovalRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -5357,7 +5662,8 @@
           "representativeName",
           "slug",
           "status",
-          "taxId"
+          "taxId",
+          "voucherApprovalRequired"
         ]
       },
       "ConsoleOrganizationsController_profile_Body": {
@@ -5396,6 +5702,29 @@
         },
         "required": [
           "revoked"
+        ]
+      },
+      "ConsoleOrganizationsController_settings_Body": {
+        "type": "object",
+        "properties": {
+          "voucherApprovalRequired": {
+            "description": "When on, a Business Developer submits a voucher for approval instead of activating it, and an\nAPI key asking for `ACTIVE` puts it in `PENDING_APPROVAL`. Owners never need approval. Turning\nit off leaves vouchers already waiting as they are.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "voucherApprovalRequired"
+        ]
+      },
+      "ConsoleOrganizationsController_settings_Response": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "updated"
         ]
       },
       "ConsoleOrganizationsController_staffAccess_Body": {
@@ -5577,6 +5906,9 @@
       "ConsoleRefundPolicyController_publish_Response": {
         "$ref": "#/components/schemas/VoucherRefundPolicyDto"
       },
+      "ConsoleRewardsController_approve_Response": {
+        "$ref": "#/components/schemas/VoucherDto"
+      },
       "ConsoleRewardsController_create_Body": {
         "type": "object",
         "properties": {
@@ -5673,6 +6005,24 @@
           "$ref": "#/components/schemas/VoucherDto"
         }
       },
+      "ConsoleRewardsController_reject_Body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "1–500 characters, shown to whoever submitted it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ConsoleRewardsController_reject_Response": {
+        "$ref": "#/components/schemas/VoucherDto"
+      },
+      "ConsoleRewardsController_submit_Response": {
+        "$ref": "#/components/schemas/VoucherDto"
+      },
       "ConsoleRewardsController_update_Body": {
         "type": "object",
         "properties": {
@@ -5756,6 +6106,9 @@
         }
       },
       "ConsoleRewardsController_update_Response": {
+        "$ref": "#/components/schemas/VoucherDto"
+      },
+      "ConsoleRewardsController_withdraw_Response": {
         "$ref": "#/components/schemas/VoucherDto"
       },
       "ConsoleWebhooksController_disableEndpoint_Response": {
@@ -8664,6 +9017,15 @@
         ],
         "type": "string"
       },
+      "VoucherApprovalStatus": {
+        "enum": [
+          "APPROVED",
+          "PENDING",
+          "REJECTED",
+          "WITHDRAWN"
+        ],
+        "type": "string"
+      },
       "VoucherOwnershipStatus": {
         "enum": [
           "AVAILABLE",
@@ -8685,12 +9047,14 @@
         "type": "string"
       },
       "VoucherStatus": {
+        "description": "`PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for\nit to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner\napproves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.",
         "enum": [
           "ACTIVE",
           "DEPLETED",
           "DRAFT",
           "EXPIRED",
-          "PAUSED"
+          "PAUSED",
+          "PENDING_APPROVAL"
         ],
         "type": "string"
       },
@@ -9243,6 +9607,73 @@
           "updatedAt"
         ]
       },
+      "VoucherApprovalDto": {
+        "description": "The latest request to take a voucher live, when approval was needed.",
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/VoucherApprovalStatus"
+          },
+          "submittedBy": {
+            "description": "A console user (Business Developer) or an API key; `null` once that user or key is deleted.",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "API_CREDENTIAL",
+                      "USER"
+                    ],
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "reviewedById": {
+            "description": "The Owner who approved or rejected it, or whoever withdrew it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reviewedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "description": "Why an Owner rejected it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "reviewedAt",
+          "reviewedById",
+          "status",
+          "submittedAt",
+          "submittedBy"
+        ]
+      },
       "VoucherDto": {
         "type": "object",
         "properties": {
@@ -9352,6 +9783,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Record_string_unknown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approval": {
+            "description": "On the catalog's list and detail: the latest approval request, `null` if there never was one.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoucherApprovalDto"
               },
               {
                 "type": "null"

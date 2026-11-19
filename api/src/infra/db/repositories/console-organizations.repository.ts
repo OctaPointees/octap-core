@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, inArray, lte, desc } from 'drizzle-orm';
-import type { ConsoleIdentity, OrganizationApplicationInput, OrganizationProfileInput } from '@octap/contracts';
+import type {
+  ConsoleIdentity,
+  OrganizationApplicationInput,
+  OrganizationProfileInput,
+  OrganizationSettingsInput,
+} from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   invitations,
@@ -133,6 +138,21 @@ export class ConsoleOrganizationsRepository {
     await this.member(tx, userId, organizationId, true, false);
   }
   /**
+   * Owner or Business Developer, holding the organization and membership rows FOR SHARE until
+   * `action` commits, like `withOwnerAccess` and for the same reason: `action` may lock a voucher
+   * afterwards. `action` gets the caller's role, for rules that differ between the two.
+   */
+  async withEditorAccess<T>(
+    userId: string,
+    organizationId: string,
+    action: (tx: Tx, role: 'OWNER' | 'BUSINESS_DEVELOPER') => Promise<T>,
+  ) {
+    return this.db.transaction(async (tx) => {
+      const { membership } = await this.member(tx, userId, organizationId, false, false);
+      return action(tx, membership.role as 'OWNER' | 'BUSINESS_DEVELOPER');
+    });
+  }
+  /**
    * Owner or Business Developer, locking the organization and membership rows for update, so `action`
    * commits only while the caller still has access (unlike `withAccess`, whose writes are Owner-only).
    * `action` gets the caller's role, for rules that differ between the two.
@@ -245,6 +265,7 @@ export class ConsoleOrganizationsRepository {
         organizationType: org.organizationType,
         representativeName: org.representativeName,
         logoUrl: org.logoUrl,
+        voucherApprovalRequired: org.voucherApprovalRequired,
         ...(membership.role === 'OWNER' ? { nationalIdLast4: masked[0]?.last4 ?? null } : {}),
         status: org.status,
         persona: membership.role === 'OWNER' ? ('BUSINESS_OWNER' as const) : ('BUSINESS_DEVELOPER' as const),
@@ -297,6 +318,19 @@ export class ConsoleOrganizationsRepository {
           ...(display.logoUrl !== undefined ? { logoUrl: display.logoUrl } : {}),
           updatedAt: new Date(),
         })
+        .where(eq(organizations.id, organizationId));
+    });
+  }
+  /**
+   * Owner-only. The organization row is locked for update, so a voucher write in progress (which
+   * reads the setting FOR SHARE) finishes under the old value first.
+   */
+  async settings(userId: string, organizationId: string, input: OrganizationSettingsInput) {
+    return this.db.transaction(async (tx) => {
+      await this.member(tx, userId, organizationId, true);
+      await tx
+        .update(organizations)
+        .set({ voucherApprovalRequired: input.voucherApprovalRequired, updatedAt: new Date() })
         .where(eq(organizations.id, organizationId));
     });
   }

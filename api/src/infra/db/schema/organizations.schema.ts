@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 
 export const organizationStatusEnum = pgEnum('organization_status', [
@@ -28,6 +28,8 @@ export const organizations = pgTable(
     /** Display logo: an https URL the Owner hosts. Changed directly, like `name`. */
     logoUrl: text('logo_url'),
     status: organizationStatusEnum('status').default('ACTIVE').notNull(),
+    /** Business Developers' vouchers need an Owner's approval to go live (OCT-59). Owner-only setting. */
+    voucherApprovalRequired: boolean('voucher_approval_required').default(false).notNull(),
     suiPackageId: text('sui_package_id'),
     suiTreasuryCap: text('sui_treasury_cap'),
     metadata: jsonb('metadata').default({}),
