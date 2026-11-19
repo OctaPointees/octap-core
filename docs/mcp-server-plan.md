@@ -71,10 +71,14 @@ For this staging/developer pilot, stdio is the connection mechanism. The pilot i
 6. **Protocol-level test suite:** 24 tests exercising the MCP `Client` over `InMemoryTransport` without private SDK reflection, including host cancellation and `http.authInfo` member binding.
 7. **Stdio end-to-end check:** CI runs the built CLI against disposable Postgres, Redis and Core services, including valid/invalid credentials, missing configuration, and cross-tenant reads returning a generic 404.
 
+### Implemented: console sign-in over HTTP (OCT-293)
+
+`octap-mcp serve-http` serves the same tools over Streamable HTTP. Users sign in with their console Google account through Core's OAuth 2.1 authorization server (see `api/src/domain/mcp-auth/README.md`); each token is bound to one user, one organization and their persona, and the tools call the console member routes with it, so Core checks the membership on every call. One MCP server instance is built per request; a session id is never authentication. stdio with an API key stays for local development.
+
 ### Deferred to future tickets
 
-1. **Durable audit trail:** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
-2. **Remote Streamable HTTP transport:** Multi-user SSE/HTTP transport with bearer token auth.
+1. **Durable audit trail (OCT-296):** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
+2. **Persona-based tool sets (OCT-294) and Owner/Developer read tools (OCT-295).**
 3. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
 4. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 

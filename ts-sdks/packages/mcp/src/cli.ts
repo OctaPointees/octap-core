@@ -4,6 +4,9 @@ const USAGE = `Usage:
   octap-mcp setup           Save the Core API URL and API key to a local config file
   octap-mcp setup --clear   Delete the saved config file
   octap-mcp setup --path    Print where the config file lives
+  octap-mcp serve-http      Serve remote MCP over HTTP; users sign in with their console Google account
+                            Env: OCTAP_API_URL (Core), OCTAP_MCP_PUBLIC_URL (this server's public URL),
+                            OCTAP_MCP_PORT (default 4100), OCTAP_MCP_HOST (default 127.0.0.1)
 `;
 
 const [command, ...args] = process.argv.slice(2);
@@ -16,6 +19,24 @@ if (command === 'setup') {
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Setup failed');
     process.exit(error instanceof SetupAbortedError ? 130 : 1);
+  }
+} else if (command === 'serve-http') {
+  const { createHttpHandler, listen } = await import('./http.js');
+  try {
+    const apiUrl = process.env.OCTAP_API_URL?.trim();
+    if (!apiUrl) throw new Error('Set OCTAP_API_URL to the Core API URL');
+    const port = Number(process.env.OCTAP_MCP_PORT ?? 4100);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('OCTAP_MCP_PORT must be a port number');
+    const host = process.env.OCTAP_MCP_HOST?.trim() || '127.0.0.1';
+    const publicUrl = process.env.OCTAP_MCP_PUBLIC_URL?.trim() || `http://localhost:${port}`;
+    const handler = await createHttpHandler({ apiUrl, publicUrl });
+    await listen(handler, port, host);
+    console.error(
+      `Octap MCP server at ${new URL('/mcp', publicUrl)} (listening on ${host}:${port}), signing in through ${apiUrl}`,
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'MCP HTTP server failed to start');
+    process.exit(1);
   }
 } else if (command === '--help' || command === '-h' || command === 'help') {
   process.stdout.write(USAGE);
