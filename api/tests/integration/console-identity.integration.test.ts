@@ -56,7 +56,11 @@ describe('console Google identity', () => {
   it('returns only active owner/developer memberships and refreshes database roles', async () => {
     const initial = await login().expect(201);
     const userId = initial.body.user.id as string;
-    const owner = await seedOrganization(ctx.db, { name: 'A Owner' });
+    const owner = await seedOrganization(ctx.db, {
+      name: 'A Owner',
+      organizationType: 'COMPANY',
+      representativeName: 'Nguyen Van A',
+    });
     const developer = await seedOrganization(ctx.db, { name: 'B Developer' });
     const legacy = await seedOrganization(ctx.db);
     const inactive = await seedOrganization(ctx.db, { status: 'SUSPENDED' });
@@ -76,9 +80,24 @@ describe('console Google identity', () => {
     const result = await ctx.http().get('/v1/console/me').set('Authorization', 'Bearer valid').expect(200);
     expect(result.body.user.systemRole).toBe('SYSTEM_ADMIN');
     expect(result.body.organizations).toEqual([
-      { organizationId: owner.id, name: owner.name, slug: owner.slug, persona: 'BUSINESS_OWNER' },
-      { organizationId: developer.id, name: developer.name, slug: developer.slug, persona: 'BUSINESS_DEVELOPER' },
+      {
+        organizationId: owner.id,
+        name: owner.name,
+        slug: owner.slug,
+        persona: 'BUSINESS_OWNER',
+        organizationType: 'COMPANY',
+        representativeName: 'Nguyen Van A',
+      },
+      {
+        organizationId: developer.id,
+        name: developer.name,
+        slug: developer.slug,
+        persona: 'BUSINESS_DEVELOPER',
+        organizationType: null,
+        representativeName: null,
+      },
     ]);
+    expect((await login().expect(201)).body.organizations).toEqual(result.body.organizations);
     await ctx.db
       .update(schema.organizationMemberships)
       .set({ status: 'INACTIVE' })

@@ -44,6 +44,8 @@ export class ConsoleUsersRepository {
           organizationId: organizations.id,
           name: organizations.name,
           slug: organizations.slug,
+          organizationType: organizations.organizationType,
+          representativeName: organizations.representativeName,
           role: organizationMemberships.role,
         })
         .from(organizationMemberships)
@@ -62,6 +64,8 @@ export class ConsoleUsersRepository {
         name: row.name,
         slug: row.slug,
         persona: row.role === 'OWNER' ? 'BUSINESS_OWNER' : 'BUSINESS_DEVELOPER',
+        organizationType: row.organizationType,
+        representativeName: row.representativeName,
       }));
     });
   }
