@@ -1804,14 +1804,33 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "properties": {
       "limit": {
         "type": "string"
+      },
+      "cursor": {
+        "type": "string"
       }
     }
   },
   "CreditsController_getTransactions_Response": {
-    "type": "array",
-    "items": {
-      "$ref": "#/components/schemas/LoyaltyTransactionDto"
-    }
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ]
   },
   "CreditsController_reservePosRedemption_Body": {
     "type": "object",
@@ -2370,6 +2389,45 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "updated"
     ]
+  },
+  "MembersController_transactions_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "cursor": {
+        "type": "string"
+      }
+    }
+  },
+  "MembersController_transactions_Response": {
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ]
+  },
+  "MembersController_vouchers_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/VoucherOwnershipDto"
+    }
   },
   "OrganizationPersona": {
     "enum": [

@@ -1058,6 +1058,138 @@
         }
       }
     },
+    "/v1/console/organizations/{organizationId}/members/{memberId}/transactions": {
+      "get": {
+        "operationId": "MembersController_transactions",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersController_transactions_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/members/{memberId}/vouchers": {
+      "get": {
+        "operationId": "MembersController_vouchers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersController_vouchers_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/vouchers": {
       "get": {
         "operationId": "ConsoleRewardsController_list",
@@ -2436,6 +2568,14 @@
           },
           {
             "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
             "in": "query",
             "required": false,
             "schema": {
@@ -6246,14 +6386,33 @@
         "properties": {
           "limit": {
             "type": "string"
+          },
+          "cursor": {
+            "type": "string"
           }
         }
       },
       "CreditsController_getTransactions_Response": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/LoyaltyTransactionDto"
-        }
+        "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LoyaltyTransactionDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       },
       "CreditsController_reservePosRedemption_Body": {
         "type": "object",
@@ -6812,6 +6971,45 @@
         "required": [
           "updated"
         ]
+      },
+      "MembersController_transactions_Query": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "MembersController_transactions_Response": {
+        "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LoyaltyTransactionDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "MembersController_vouchers_Response": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherOwnershipDto"
+        }
       },
       "OrganizationPersona": {
         "enum": [

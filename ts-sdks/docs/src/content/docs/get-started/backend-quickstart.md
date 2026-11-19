@@ -56,7 +56,7 @@ Read the member's balance and history:
 const balance = await client.getBalance(memberId);
 // balance.pendingEarn is 1000 until the chain confirms, then balance.confirmedBalance grows.
 
-const history = await client.listTransactions(memberId, { limit: 20 });
+const { items: history } = await client.listTransactions(memberId, { limit: 20 });
 ```
 
 For production, don't poll. [Receive webhooks](/guides/receive-webhooks/) and act on `credits.earn.confirmed`, which carries the points actually credited.

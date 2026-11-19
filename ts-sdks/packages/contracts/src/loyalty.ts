@@ -130,6 +130,12 @@ export interface LoyaltyTransactionDto {
   updatedAt: string;
 }
 
+/** A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page. */
+export interface LoyaltyTransactionPage {
+  items: LoyaltyTransactionDto[];
+  nextCursor: string | null;
+}
+
 export type BudgetWarningThreshold = 80 | 95;
 
 export interface IssuanceBudgetShard {

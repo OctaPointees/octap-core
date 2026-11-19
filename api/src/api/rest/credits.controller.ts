@@ -19,7 +19,7 @@ import type {
   EarnPointsResponse,
   IssuanceBudgetDto,
   CreditBalanceSnapshot,
-  LoyaltyTransactionDto,
+  LoyaltyTransactionPage,
   ReverseTransactionResponse,
   ReservePosRedemptionResponse,
   FinalizePosRedemptionResponse,
@@ -111,7 +111,8 @@ export class CreditsController {
     @Tenant() tenant: TenantContext,
     @Param('memberId') memberId: string,
     @Query('limit') limit?: string,
-  ): Promise<LoyaltyTransactionDto[]> {
-    return this.creditsService.listTransactions(tenant.organizationId, memberId, limit ? Number(limit) : 50);
+    @Query('cursor') cursor?: string,
+  ): Promise<LoyaltyTransactionPage> {
+    return this.creditsService.listTransactions(tenant.organizationId, memberId, { limit, cursor });
   }
 }

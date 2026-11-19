@@ -100,18 +100,18 @@ describe('CreditsController', () => {
     );
   });
 
-  it('balance and transactions read through CreditsService, parsing the limit', async () => {
+  it('balance and transactions read through CreditsService, passing limit and cursor through', async () => {
     const getBalance = ok({ confirmedBalance: 1 });
-    const listTransactions = ok([]);
+    const listTransactions = ok({ items: [], nextCursor: null });
     const c = controller({ credits: { getBalance, listTransactions } });
 
     await c.getBalance(tenant, 'user-1');
-    await c.getTransactions(tenant, 'user-1', '10');
+    await c.getTransactions(tenant, 'user-1', '10', 'cursor-1');
     await c.getTransactions(tenant, 'user-1');
     expect(getBalance).toHaveBeenCalledWith('org-1', 'user-1', undefined);
     expect(listTransactions.mock.calls).toEqual([
-      ['org-1', 'user-1', 10],
-      ['org-1', 'user-1', 50],
+      ['org-1', 'user-1', { limit: '10', cursor: 'cursor-1' }],
+      ['org-1', 'user-1', { limit: undefined, cursor: undefined }],
     ]);
   });
 });

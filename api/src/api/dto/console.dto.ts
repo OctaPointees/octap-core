@@ -9,6 +9,7 @@ import type {
   GovernanceRequestListQuery,
   MemberDirectoryQuery,
   MemberProfilePatch,
+  MemberTransactionQuery,
   OrganizationApplicationInput,
   OrganizationProfileInput,
   PlatformOrganizationInput,
@@ -37,6 +38,7 @@ export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;
 export type ConsoleCredentialPatchBodyDto = Wire<ConsoleCredentialPatch>;
 export type MemberDirectoryQueryDto = Wire<MemberDirectoryQuery>;
 export type MemberProfilePatchBodyDto = Wire<MemberProfilePatch>;
+export type MemberTransactionQueryDto = Wire<MemberTransactionQuery>;
 export type PlatformOrganizationListQueryDto = Wire<PlatformOrganizationListQuery>;
 export type PlatformOrganizationBodyDto = Wire<PlatformOrganizationInput>;
 export type ProvisionOrganizationBodyDto = Wire<ProvisionOrganizationInput>;

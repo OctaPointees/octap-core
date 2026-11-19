@@ -4,7 +4,7 @@ import type {
   EarnPointsResponse,
   IssuanceBudgetDto,
   CreditBalanceSnapshot,
-  LoyaltyTransactionDto,
+  LoyaltyTransactionPage,
   CreateVoucherRequest,
   UpdateVoucherRequest,
   VoucherDto,
@@ -233,18 +233,19 @@ export class OctaPointClient {
   }
 
   /**
-   * List loyalty transactions for a member.
+   * One page of a member's loyalty transactions, newest first. `limit` 1–100 (default 25). Pass the
+   * returned `nextCursor` as `cursor` for the next page; it is `null` on the last page.
    */
   async listTransactions(
     memberId: string,
-    options?: RequestOptions & { limit?: number },
-  ): Promise<LoyaltyTransactionDto[]> {
-    return this.request<LoyaltyTransactionDto[]>(
+    options?: RequestOptions & { limit?: number; cursor?: string },
+  ): Promise<LoyaltyTransactionPage> {
+    return this.request<LoyaltyTransactionPage>(
       `/v1/credits/members/${encodeURIComponent(memberId)}/transactions`,
       'GET',
       undefined,
       options,
-      { limit: options?.limit },
+      { limit: options?.limit, cursor: options?.cursor },
     );
   }
 

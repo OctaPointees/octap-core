@@ -270,8 +270,8 @@ describe('earn', () => {
       { earnTransactionId: transaction.id, amount: 100, remaining: 100, expiresAtMs },
     ]);
 
-    const [listed] = await repo.listTransactionsByMember(orgId, memberId);
-    expect(listed.blockchainTransaction?.digest).toBe('D-EARN');
+    const [listed] = (await repo.listTransactionPageByMember(orgId, memberId, 1))!.rows;
+    expect(listed.digest).toBe('D-EARN');
   });
 
   it('confirming twice (sync path vs. indexer) applies the balance effect exactly once', async () => {
@@ -966,17 +966,21 @@ describe('tenant scoping', () => {
     expect((await repo.findTransactionByIdForOrganization(orgId, earn.id))?.id).toBe(earn.id);
     expect(await repo.findTransactionByIdForOrganization(other.id, earn.id)).toBeUndefined();
     expect(await repo.findTransactionByIdempotency(other.id, earn.idempotencyKey)).toBeUndefined();
-    expect(await repo.listTransactionsByMember(other.id, memberId)).toEqual([]);
+    expect(await repo.listTransactionPageByMember(other.id, memberId, 10)).toEqual({ rows: [], nextCursor: null });
+    expect(await repo.listTransactionPageByMember(other.id, memberId, 10, earn.id)).toBeNull();
     expect((await repo.getLoyaltyTransactionById(earn.id))?.id).toBe(earn.id);
   });
 
-  it('history is newest-first and honours the limit', async () => {
+  it('history is newest-first and pages by cursor', async () => {
     await confirmedEarn(1, { key: 'a' });
     await confirmedEarn(2, { key: 'b' });
     await confirmedEarn(3, { key: 'c' });
 
-    const history = await repo.listTransactionsByMember(orgId, memberId, 2);
-    expect(history.map((t) => t.idempotencyKey)).toEqual(['c', 'b']);
+    const first = (await repo.listTransactionPageByMember(orgId, memberId, 2))!;
+    expect(first.rows.map((t) => t.row.idempotencyKey)).toEqual(['c', 'b']);
+    const second = (await repo.listTransactionPageByMember(orgId, memberId, 2, first.nextCursor!))!;
+    expect(second.rows.map((t) => t.row.idempotencyKey)).toEqual(['a']);
+    expect(second.nextCursor).toBeNull();
   });
 });
 
