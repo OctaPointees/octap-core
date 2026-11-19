@@ -63,7 +63,10 @@ export class RewardsController {
   @Post('vouchers')
   @Scopes('write')
   async createVoucher(@Tenant() tenant: TenantContext, @Body() body: CreateVoucherBodyDto): Promise<VoucherDto> {
-    return this.rewardsService.createVoucher(tenant.organizationId, body);
+    return this.rewardsService.createVoucher(tenant.organizationId, body, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
   }
 
   @Get('vouchers')
@@ -85,7 +88,10 @@ export class RewardsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: UpdateVoucherBodyDto,
   ): Promise<VoucherDto> {
-    return this.rewardsService.updateVoucher(tenant.organizationId, id, body);
+    return this.rewardsService.updateVoucher(tenant.organizationId, id, body, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
   }
 
   @Post('vouchers/:id/claim')

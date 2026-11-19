@@ -46,7 +46,9 @@ An API-key route authorizes by the key's scopes only, never by the role of whoev
 
 The console session also manages the reward catalog at
 `/v1/console/organizations/:organizationId/vouchers`: the Owner or a Business Developer lists and
-reads it; only the Owner creates, edits, pauses and activates. A console create is always a `DRAFT`
+reads it and writes drafts; only the Owner pauses or changes a published voucher, and, when the
+organization requires approval, approves or rejects what a Developer or an API key submitted (OCT-59; see
+`api/src/domain/rewards/README.md`). A console create is always a `DRAFT`
 (activated afterwards with a PATCH) and must send `pointsCost`; `/v1/rewards/vouchers` keeps its own defaults.
 
 ## API docs

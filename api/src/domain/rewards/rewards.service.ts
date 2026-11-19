@@ -1,7 +1,13 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { RewardsRepository, RewardsRuleError } from '#infra/db/repositories/rewards.repository.js';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { RewardsRepository, RewardsRuleError, type VoucherActor } from '#infra/db/repositories/rewards.repository.js';
 import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
-import type { vouchers } from '#infra/db/schema/rewards.schema.js';
+import type { voucherApprovalRequests, vouchers } from '#infra/db/schema/rewards.schema.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { PosRedemptionService } from '../credits/pos-redemption.service.js';
@@ -17,6 +23,7 @@ import {
   type ClaimVoucherRequest,
   type ClaimVoucherResponse,
   type GrantVoucherRequest,
+  type VoucherApprovalDto,
   type VoucherOwnershipDto,
 } from '@octap/contracts';
 
@@ -33,6 +40,7 @@ export function toHttpError(error: unknown): unknown {
   if (error instanceof RewardsRuleError) {
     if (error.kind === 'NOT_FOUND') return new NotFoundException(error.message);
     if (error.kind === 'CONFLICT') return new ConflictException(error.message);
+    if (error.kind === 'FORBIDDEN') return new ForbiddenException(error.message);
     return new BadRequestException(error.message);
   }
   if (error instanceof OperationPayloadConflictError) return new ConflictException(error.message);
@@ -56,8 +64,16 @@ export class RewardsService {
     private readonly programsRepo: ProgramsRepository,
   ) {}
 
-  /** `tx` joins the caller's transaction, e.g. the console's Owner check; see `RewardsRepository`. */
-  async createVoucher(organizationId: string, req: CreateVoucherRequest, tx?: DrizzleDb): Promise<VoucherDto> {
+  /**
+   * `actor` decides whether asking for `ACTIVE` publishes or waits for an Owner's approval (see
+   * `VoucherActor`). `tx` joins the caller's transaction, e.g. the console's access check.
+   */
+  async createVoucher(
+    organizationId: string,
+    req: CreateVoucherRequest,
+    actor: VoucherActor,
+    tx?: DrizzleDb,
+  ): Promise<VoucherDto> {
     if (!req?.code || !req.title || (!req.discountType && !req.terms)) {
       throw new BadRequestException('code, title, and either discountType or terms are required');
     }
@@ -93,23 +109,71 @@ export class RewardsService {
           status: req.status,
         },
         tx,
+        actor,
       ),
     );
 
-    return this.mapVoucherDto(created);
+    return this.withApproval(organizationId, created, tx);
   }
 
+  /** Each with its latest approval request. */
   async listVouchers(organizationId: string): Promise<VoucherDto[]> {
     const list = await this.rewardsRepo.listVouchersByOrganization(organizationId);
-    return list.map((v) => this.mapVoucherDto(v));
+    const approvals = await this.rewardsRepo.latestApprovals(
+      organizationId,
+      list.map((v) => v.id),
+    );
+    return list.map((v) => this.mapVoucherDto(v, approvals.get(v.id) ?? null));
   }
 
   async getVoucher(organizationId: string, voucherId: string): Promise<VoucherDto> {
+    const voucher = await this.findVoucher(organizationId, voucherId);
+    return this.withApproval(organizationId, voucher);
+  }
+
+  private async findVoucher(organizationId: string, voucherId: string) {
     const voucher = await this.rewardsRepo.findVoucherById(organizationId, voucherId);
     if (!voucher || voucher.organizationId !== organizationId) {
       throw new NotFoundException(`Voucher with id ${voucherId} not found`);
     }
-    return this.mapVoucherDto(voucher);
+    return voucher;
+  }
+
+  /** Reads on `tx` when given, so a write's own transaction sees its request. */
+  private async withApproval(
+    organizationId: string,
+    voucher: typeof vouchers.$inferSelect,
+    tx?: DrizzleDb,
+  ): Promise<VoucherDto> {
+    const approvals = await this.rewardsRepo.latestApprovals(organizationId, [voucher.id], tx);
+    return this.mapVoucherDto(voucher, approvals.get(voucher.id) ?? null);
+  }
+
+  /** A Business Developer asks an Owner to take a draft live (organizations that require approval). */
+  async submitVoucher(organizationId: string, voucherId: string, userId: string, tx?: DrizzleDb) {
+    const voucher = await mapErrors(this.rewardsRepo.submitVoucher(organizationId, voucherId, userId, tx));
+    return this.withApproval(organizationId, voucher, tx);
+  }
+
+  async withdrawVoucher(organizationId: string, voucherId: string, userId: string, tx?: DrizzleDb) {
+    const voucher = await mapErrors(this.rewardsRepo.withdrawVoucher(organizationId, voucherId, userId, tx));
+    return this.withApproval(organizationId, voucher, tx);
+  }
+
+  /** Publishing starts, as when an Owner activates it, after the same checks, made now. */
+  async approveVoucher(organizationId: string, voucherId: string, ownerId: string, tx?: DrizzleDb) {
+    await requireProgramConfig(this.programs(tx), organizationId);
+    const voucher = await mapErrors(
+      this.rewardsRepo.reviewVoucher(organizationId, voucherId, ownerId, { approve: true }, tx),
+    );
+    return this.withApproval(organizationId, voucher, tx);
+  }
+
+  async rejectVoucher(organizationId: string, voucherId: string, ownerId: string, reason: string, tx?: DrizzleDb) {
+    const voucher = await mapErrors(
+      this.rewardsRepo.reviewVoucher(organizationId, voucherId, ownerId, { approve: false, reason }, tx),
+    );
+    return this.withApproval(organizationId, voucher, tx);
   }
 
   async claimVoucher(
@@ -127,7 +191,7 @@ export class RewardsService {
         'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
       );
     }
-    const voucher = await this.getVoucher(organizationId, voucherId);
+    const voucher = await this.findVoucher(organizationId, voucherId);
     // A retry under an accepted key skips these: it only reports or resumes the existing claim.
     const isNewClaim = !(await this.creditsRepo.findOperationForClaim(organizationId, key));
     if (isNewClaim) {
@@ -167,7 +231,7 @@ export class RewardsService {
         'idempotencyKey must contain 1-100 letters, numbers, colons, underscores or hyphens',
       );
     }
-    await this.getVoucher(organizationId, voucherId);
+    await this.findVoucher(organizationId, voucherId);
     if (!(await this.creditsRepo.findOperationForClaim(organizationId, req.idempotencyKey))) {
       await this.requireChainMember(organizationId, req.organizationEndUserId);
     }
@@ -178,6 +242,7 @@ export class RewardsService {
     organizationId: string,
     voucherId: string,
     req: UpdateVoucherRequest,
+    actor: VoucherActor,
     tx?: DrizzleDb,
   ): Promise<VoucherDto> {
     validateVoucher(req, true);
@@ -211,8 +276,9 @@ export class RewardsService {
           });
         },
         tx,
+        actor,
       );
-      return this.mapVoucherDto(updated);
+      return await this.withApproval(organizationId, updated, tx);
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('Voucher code already exists');
       throw toHttpError(error);
@@ -273,7 +339,11 @@ export class RewardsService {
     return { findByOrganization: (organizationId: string) => this.programsRepo.findByOrganization(organizationId, tx) };
   }
 
-  private mapVoucherDto(voucher: typeof vouchers.$inferSelect): VoucherDto {
+  /** `approval` is left out where it was not read (a member's vouchers). */
+  private mapVoucherDto(
+    voucher: typeof vouchers.$inferSelect,
+    approval?: typeof voucherApprovalRequests.$inferSelect | null,
+  ): VoucherDto {
     return {
       id: voucher.id,
       organizationId: voucher.organizationId,
@@ -295,8 +365,24 @@ export class RewardsService {
       expiresAt: voucher.expiresAt ? new Date(voucher.expiresAt).toISOString() : null,
       validForDays: voucher.validForDays,
       metadata: voucher.metadata as Record<string, unknown> | null,
+      ...(approval !== undefined ? { approval: approval && mapApproval(approval) } : {}),
       createdAt: new Date(voucher.createdAt).toISOString(),
       updatedAt: new Date(voucher.updatedAt).toISOString(),
     };
   }
+}
+
+function mapApproval(row: typeof voucherApprovalRequests.$inferSelect): VoucherApprovalDto {
+  return {
+    status: row.status,
+    submittedBy: row.submittedByCredentialId
+      ? { type: 'API_CREDENTIAL', id: row.submittedByCredentialId }
+      : row.submittedByUserId
+        ? { type: 'USER', id: row.submittedByUserId }
+        : null,
+    submittedAt: row.submittedAt.toISOString(),
+    reviewedById: row.reviewedById,
+    reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    reason: row.reason,
+  };
 }

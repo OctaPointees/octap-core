@@ -1,6 +1,25 @@
 import type { VoucherRefundPolicySnapshot } from './voucher-refunds.js';
 
-export type VoucherStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED';
+/**
+ * `PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for
+ * it to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner
+ * approves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.
+ */
+export type VoucherStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED';
+export type VoucherApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+
+/** The latest request to take a voucher live, when approval was needed. */
+export interface VoucherApprovalDto {
+  status: VoucherApprovalStatus;
+  /** A console user (Business Developer) or an API key; `null` once that user or key is deleted. */
+  submittedBy: { type: 'USER' | 'API_CREDENTIAL'; id: string } | null;
+  submittedAt: string;
+  /** The Owner who approved or rejected it, or whoever withdrew it. */
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  /** Why an Owner rejected it. */
+  reason: string | null;
+}
 export type VoucherOwnershipStatus = 'AVAILABLE' | 'RESERVED' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
 export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_ITEM';
 /** Whether a voucher's terms are on-chain. Only a PUBLISHED voucher can be ACTIVE. */
@@ -113,6 +132,8 @@ export interface VoucherDto {
   /** `null`: every customer's voucher expires at `expiresAt`. */
   validForDays: number | null;
   metadata?: Record<string, unknown> | null;
+  /** On every catalog response (not a member's vouchers): the latest approval request, `null` if there never was one. */
+  approval?: VoucherApprovalDto | null;
   createdAt: string;
   updatedAt: string;
 }

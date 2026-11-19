@@ -6,17 +6,21 @@ import {
   type ConsoleOrganizationsRepository,
 } from '#infra/db/repositories/console-organizations.repository.js';
 
-function setup(access: 'granted' | 'denied' = 'granted') {
+function setup(access: 'granted' | 'denied' = 'granted', role: 'OWNER' | 'BUSINESS_DEVELOPER' = 'OWNER') {
   const run = vi.fn(async (...args: unknown[]) => {
     if (access === 'denied') throw new ConsoleAccessError();
-    return (args.at(-1) as (tx: unknown) => unknown)('tx');
+    return (args.at(-1) as (tx: unknown, role: string) => unknown)('tx', role);
   });
-  const organizations = { withAccess: run, withOwnerAccess: run };
+  const organizations = { withAccess: run, withOwnerAccess: run, withEditorAccess: run };
   const rewards = {
     listVouchers: vi.fn(async () => []),
     getVoucher: vi.fn(async () => ({ id: 'v-1' })),
     createVoucher: vi.fn(async () => ({ id: 'v-1' })),
     updateVoucher: vi.fn(async () => ({ id: 'v-1' })),
+    submitVoucher: vi.fn(async () => ({ id: 'v-1' })),
+    withdrawVoucher: vi.fn(async () => ({ id: 'v-1' })),
+    approveVoucher: vi.fn(async () => ({ id: 'v-1' })),
+    rejectVoucher: vi.fn(async () => ({ id: 'v-1' })),
   };
   const service = new ConsoleRewardsService(
     organizations as unknown as ConsoleOrganizationsRepository,
@@ -26,24 +30,26 @@ function setup(access: 'granted' | 'denied' = 'granted') {
 }
 
 const voucher = { code: 'C', title: 'T', discountType: 'FREE_ITEM' as const, pointsCost: 100 };
+const owner = { role: 'OWNER', userId: 'user' };
+const developer = { role: 'DEVELOPER', userId: 'user' };
 
 describe('ConsoleRewardsService', () => {
-  it('always creates a DRAFT inside the Owner check, and refuses any other status', async () => {
+  it('always creates a DRAFT inside the editor check, and refuses any other status', async () => {
     const { service, organizations, rewards } = setup();
     await service.create('user', 'org', voucher);
-    expect(organizations.withOwnerAccess).toHaveBeenCalledWith('user', 'org', expect.any(Function));
-    expect(rewards.createVoucher).toHaveBeenLastCalledWith('org', { ...voucher, status: 'DRAFT' }, 'tx');
+    expect(organizations.withEditorAccess).toHaveBeenCalledWith('user', 'org', expect.any(Function));
+    expect(rewards.createVoucher).toHaveBeenLastCalledWith('org', { ...voucher, status: 'DRAFT' }, owner, 'tx');
     await service.create('user', 'org', { ...voucher, status: 'DRAFT' });
     expect(rewards.createVoucher).toHaveBeenCalledTimes(2);
 
     rewards.createVoucher.mockClear();
-    organizations.withOwnerAccess.mockClear();
+    organizations.withEditorAccess.mockClear();
     for (const status of ['ACTIVE', 'PAUSED', 'DEPLETED']) {
       expect(() => service.create('user', 'org', { ...voucher, status } as never)).toThrow(
         /created as DRAFT; activate it with PATCH/,
       );
     }
-    expect(organizations.withOwnerAccess).not.toHaveBeenCalled();
+    expect(organizations.withEditorAccess).not.toHaveBeenCalled();
     expect(rewards.createVoucher).not.toHaveBeenCalled();
   });
 
@@ -53,14 +59,22 @@ describe('ConsoleRewardsService', () => {
     delete withoutCost.pointsCost;
     expect(() => service.create('user', 'org', withoutCost as never)).toThrow(/pointsCost is required/);
     expect(() => service.create('user', 'org', null as never)).toThrow(/must be an object/);
-    expect(organizations.withOwnerAccess).not.toHaveBeenCalled();
+    expect(organizations.withEditorAccess).not.toHaveBeenCalled();
     await expect(service.create('user', 'org', { ...voucher, pointsCost: 0 })).resolves.toEqual({ id: 'v-1' });
   });
 
-  it('updates inside the Owner check, and reads with Owner or Business Developer access', async () => {
+  it("passes the caller's role on as the actor: a Business Developer writes as DEVELOPER", async () => {
+    const { service, rewards } = setup('granted', 'BUSINESS_DEVELOPER');
+    await service.create('user', 'org', voucher);
+    expect(rewards.createVoucher).toHaveBeenLastCalledWith('org', { ...voucher, status: 'DRAFT' }, developer, 'tx');
+    await service.update('user', 'org', 'v-1', { status: 'ACTIVE' });
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'ACTIVE' }, developer, 'tx');
+  });
+
+  it('updates inside the editor check, and reads with Owner or Business Developer access', async () => {
     const { service, organizations, rewards } = setup();
     await service.update('user', 'org', 'v-1', { status: 'PAUSED' });
-    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, 'tx');
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, owner, 'tx');
 
     await service.list('user', 'org');
     await service.detail('user', 'org', 'v-1');
@@ -69,17 +83,50 @@ describe('ConsoleRewardsService', () => {
     expect(rewards.getVoucher).toHaveBeenCalledWith('org', 'v-1');
   });
 
+  it('lets a Business Developer submit and withdraw; an Owner activates directly instead of submitting', async () => {
+    const bd = setup('granted', 'BUSINESS_DEVELOPER');
+    await bd.service.submit('user', 'org', 'v-1');
+    expect(bd.rewards.submitVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
+    await bd.service.withdraw('user', 'org', 'v-1');
+    expect(bd.rewards.withdrawVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
+
+    const own = setup();
+    await expect(own.service.submit('user', 'org', 'v-1')).rejects.toThrow(/Owner needs no approval/);
+    expect(own.rewards.submitVoucher).not.toHaveBeenCalled();
+    await own.service.withdraw('user', 'org', 'v-1');
+    expect(own.rewards.withdrawVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
+  });
+
+  it('approves and rejects inside the Owner check, and requires a reason to reject', async () => {
+    const { service, organizations, rewards } = setup();
+    await service.approve('user', 'org', 'v-1');
+    expect(organizations.withOwnerAccess).toHaveBeenCalledWith('user', 'org', expect.any(Function));
+    expect(rewards.approveVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
+    await service.reject('user', 'org', 'v-1', { reason: '  Cap too high ' });
+    expect(rewards.rejectVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'Cap too high', 'tx');
+
+    rewards.rejectVoucher.mockClear();
+    for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', extra: 1 }, null]) {
+      expect(() => service.reject('user', 'org', 'v-1', body as never)).toThrow(/rejection reason is required/);
+    }
+    expect(rewards.rejectVoucher).not.toHaveBeenCalled();
+  });
+
   it('answers 403 when the access check refuses, and writes nothing', async () => {
     const { service, rewards } = setup('denied');
     await expect(service.create('user', 'org', voucher)).rejects.toMatchObject({
       name: 'ForbiddenException',
-      message: expect.stringMatching(/Only an active Owner/),
+      message: expect.stringMatching(/Only an active Owner or Business Developer/),
     });
     await expect(service.update('user', 'org', 'v-1', { status: 'ACTIVE' })).rejects.toThrow(/Only an active Owner/);
+    await expect(service.submit('user', 'org', 'v-1')).rejects.toThrow(/Only an active Owner/);
+    await expect(service.approve('user', 'org', 'v-1')).rejects.toThrow(/Only an active Owner of an active/);
+    await expect(service.reject('user', 'org', 'v-1', { reason: 'no' })).rejects.toThrow(/approve or reject/);
     await expect(service.list('user', 'org')).rejects.toThrow(/Owner or Business Developer/);
     await expect(service.detail('user', 'org', 'v-1')).rejects.toThrow(/Owner or Business Developer/);
     expect(rewards.createVoucher).not.toHaveBeenCalled();
     expect(rewards.updateVoucher).not.toHaveBeenCalled();
+    expect(rewards.approveVoucher).not.toHaveBeenCalled();
   });
 
   it('lets other errors through unchanged', async () => {

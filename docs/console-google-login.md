@@ -54,8 +54,12 @@ administrator receives no implicit tenant membership.
   keys per organization (OCT-70).
 - GET `/:id/vouchers`, GET `/:id/vouchers/:voucherId`: Owner/Developer view of the reward catalog.
   POST `/:id/vouchers` and PATCH `/:id/vouchers/:voucherId` (fields, or `{ status: 'ACTIVE' | 'PAUSED' }`):
-  Owner only. A console create is always a `DRAFT` (any other `status` is a 400) and requires `pointsCost`.
-  Another organization's voucher is a 404 (OCT-236).
+  Owner/Developer; a Developer edits drafts only and cannot pause. A console create is always a `DRAFT`
+  (any other `status` is a 400) and requires `pointsCost`. Another organization's voucher is a 404 (OCT-236).
+- PATCH `/:id/settings` (`{ voucherApprovalRequired }`): Owner only. When on, a Developer activates
+  nothing directly: POST `/:id/vouchers/:voucherId/submit` (Developer) puts a draft in
+  `PENDING_APPROVAL`, `/withdraw` (Owner/Developer) takes it back, and `/approve` or `/reject`
+  (`{ reason }`) are the Owner's. An API key asking for `ACTIVE` is queued the same way (OCT-59).
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
 Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.

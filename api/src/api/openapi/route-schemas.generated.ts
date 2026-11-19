@@ -763,6 +763,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "null",
           "string"
         ]
+      },
+      "voucherApprovalRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -775,7 +778,8 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "representativeName",
       "slug",
       "status",
-      "taxId"
+      "taxId",
+      "voucherApprovalRequired"
     ]
   },
   "ConsoleOrganizationsController_profile_Body": {
@@ -814,6 +818,29 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     },
     "required": [
       "revoked"
+    ]
+  },
+  "ConsoleOrganizationsController_settings_Body": {
+    "type": "object",
+    "properties": {
+      "voucherApprovalRequired": {
+        "description": "When on, a Business Developer submits a voucher for approval instead of activating it, and an\nAPI key asking for `ACTIVE` puts it in `PENDING_APPROVAL`. Owners never need approval. Turning\nit off leaves vouchers already waiting as they are.",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "voucherApprovalRequired"
+    ]
+  },
+  "ConsoleOrganizationsController_settings_Response": {
+    "type": "object",
+    "properties": {
+      "updated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "updated"
     ]
   },
   "ConsoleOrganizationsController_staffAccess_Body": {
@@ -995,6 +1022,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleRefundPolicyController_publish_Response": {
     "$ref": "#/components/schemas/VoucherRefundPolicyDto"
   },
+  "ConsoleRewardsController_approve_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
   "ConsoleRewardsController_create_Body": {
     "type": "object",
     "properties": {
@@ -1091,6 +1121,24 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "$ref": "#/components/schemas/VoucherDto"
     }
   },
+  "ConsoleRewardsController_reject_Body": {
+    "type": "object",
+    "properties": {
+      "reason": {
+        "description": "1–500 characters, shown to whoever submitted it.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "ConsoleRewardsController_reject_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleRewardsController_submit_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
   "ConsoleRewardsController_update_Body": {
     "type": "object",
     "properties": {
@@ -1174,6 +1222,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     }
   },
   "ConsoleRewardsController_update_Response": {
+    "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleRewardsController_withdraw_Response": {
     "$ref": "#/components/schemas/VoucherDto"
   },
   "ConsoleWebhooksController_disableEndpoint_Response": {
@@ -4082,6 +4133,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "VoucherApprovalStatus": {
+    "enum": [
+      "APPROVED",
+      "PENDING",
+      "REJECTED",
+      "WITHDRAWN"
+    ],
+    "type": "string"
+  },
   "VoucherOwnershipStatus": {
     "enum": [
       "AVAILABLE",
@@ -4103,12 +4163,14 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "VoucherStatus": {
+    "description": "`PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for\nit to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner\napproves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.",
     "enum": [
       "ACTIVE",
       "DEPLETED",
       "DRAFT",
       "EXPIRED",
-      "PAUSED"
+      "PAUSED",
+      "PENDING_APPROVAL"
     ],
     "type": "string"
   },
@@ -4661,6 +4723,73 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "updatedAt"
     ]
   },
+  "VoucherApprovalDto": {
+    "description": "The latest request to take a voucher live, when approval was needed.",
+    "type": "object",
+    "properties": {
+      "status": {
+        "$ref": "#/components/schemas/VoucherApprovalStatus"
+      },
+      "submittedBy": {
+        "description": "A console user (Business Developer) or an API key; `null` once that user or key is deleted.",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "API_CREDENTIAL",
+                  "USER"
+                ],
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "submittedAt": {
+        "type": "string"
+      },
+      "reviewedById": {
+        "description": "The Owner who approved or rejected it, or whoever withdrew it.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "reviewedAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "reason": {
+        "description": "Why an Owner rejected it.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "reason",
+      "reviewedAt",
+      "reviewedById",
+      "status",
+      "submittedAt",
+      "submittedBy"
+    ]
+  },
   "VoucherDto": {
     "type": "object",
     "properties": {
@@ -4770,6 +4899,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "anyOf": [
           {
             "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "approval": {
+        "description": "On every catalog response (not a member's vouchers): the latest approval request, `null` if there never was one.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/VoucherApprovalDto"
           },
           {
             "type": "null"

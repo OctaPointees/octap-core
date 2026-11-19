@@ -7,6 +7,7 @@ import type {
   ConsoleStaffAccessBodyDto,
   OrganizationApplicationBodyDto,
   OrganizationProfileBodyDto,
+  OrganizationSettingsBodyDto,
   ReviewDecisionBodyDto,
 } from '../dto/console.dto.js';
 
@@ -37,6 +38,14 @@ export class ConsoleOrganizationsController {
     @Body() body: OrganizationProfileBodyDto,
   ) {
     return this.organizations.profile(request.consoleIdentity.user.id, orgId, body);
+  }
+  @Patch('organizations/:organizationId/settings')
+  settings(
+    @Req() request: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Body() body: OrganizationSettingsBodyDto,
+  ) {
+    return this.organizations.settings(request.consoleIdentity.user.id, orgId, body);
   }
   @Get('organizations/:organizationId/staff')
   @Header('Cache-Control', 'no-store')

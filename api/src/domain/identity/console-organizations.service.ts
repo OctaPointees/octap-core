@@ -146,6 +146,21 @@ export class ConsoleOrganizationsService {
       return { updated: true };
     });
   }
+  /** Owner only. Only `voucherApprovalRequired` exists so far. */
+  settings(userId: string, orgId: string, input: Record<string, unknown>) {
+    if (
+      !input ||
+      typeof input.voucherApprovalRequired !== 'boolean' ||
+      Object.keys(input).some((key) => key !== 'voucherApprovalRequired')
+    )
+      throw new BadRequestException('Send voucherApprovalRequired as true or false');
+    return this.run(async () => {
+      await this.organizations.settings(userId, orgId, {
+        voucherApprovalRequired: input.voucherApprovalRequired as boolean,
+      });
+      return { updated: true };
+    });
+  }
   staff(userId: string, orgId: string) {
     return this.run(() => this.organizations.staff(userId, orgId));
   }

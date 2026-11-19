@@ -7,6 +7,8 @@ import type { CreditsRepository } from '#infra/db/repositories/credits.repositor
 import { stub } from '../../../helpers/stub.js';
 import { PROGRAMS_REPO, buildVoucher, programsRepoFor } from '../../../helpers/fixtures.js';
 
+const KEY = { role: 'CREDENTIAL', credentialId: 'cred-1' } as const;
+
 const sameOrgMember = stub<CreditsRepository>({
   findMemberOrganizationId: async () => 'org-1',
   findOperationForClaim: async () => undefined,
@@ -30,7 +32,11 @@ function ownership(overrides: Record<string, unknown> = {}) {
 
 function service(rewardsRepo: { [K in keyof RewardsRepository]?: unknown }, creditsRepo = sameOrgMember) {
   return new RewardsService(
-    stub<RewardsRepository>({ findVoucherById: async () => buildVoucher({ pointsCost: 0 }), ...rewardsRepo }),
+    stub<RewardsRepository>({
+      findVoucherById: async () => buildVoucher({ pointsCost: 0 }),
+      latestApprovals: async () => new Map(),
+      ...rewardsRepo,
+    }),
     creditsRepo,
     stub<PosRedemptionService>({}),
     PROGRAMS_REPO,
@@ -43,14 +49,18 @@ describe('RewardsService.createVoucher', () => {
       buildVoucher({ startsAt: new Date('2026-11-01T00:00:00Z'), expiresAt: new Date('2026-12-01T00:00:00Z') }),
     );
 
-    const dto = await service({ findVoucherByCode: async () => undefined, createVoucher }).createVoucher('org-1', {
-      code: 'DISCOUNT10',
-      title: '10% Off',
-      discountType: 'PERCENTAGE',
-      discountValue: '10.00',
-      startsAt: '2026-11-01T00:00:00Z',
-      expiresAt: '2026-12-01T00:00:00Z',
-    });
+    const dto = await service({ findVoucherByCode: async () => undefined, createVoucher }).createVoucher(
+      'org-1',
+      {
+        code: 'DISCOUNT10',
+        title: '10% Off',
+        discountType: 'PERCENTAGE',
+        discountValue: '10.00',
+        startsAt: '2026-11-01T00:00:00Z',
+        expiresAt: '2026-12-01T00:00:00Z',
+      },
+      KEY,
+    );
 
     expect(createVoucher).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -61,6 +71,7 @@ describe('RewardsService.createVoucher', () => {
       }),
       // No transaction of the caller's: the repository opens its own.
       undefined,
+      KEY,
     );
     expect(dto).toMatchObject({
       id: 'v-1',
@@ -74,29 +85,38 @@ describe('RewardsService.createVoucher', () => {
   it('leaves optional dates undefined and passes an explicit points cost through', async () => {
     const createVoucher = vi.fn(async () => buildVoucher());
 
-    const dto = await service({ findVoucherByCode: async () => undefined, createVoucher }).createVoucher('org-1', {
-      code: 'X',
-      title: 'X',
-      discountType: 'FIXED_AMOUNT',
-      discountValue: '10.00',
-      pointsCost: 25,
-    });
+    const dto = await service({ findVoucherByCode: async () => undefined, createVoucher }).createVoucher(
+      'org-1',
+      {
+        code: 'X',
+        title: 'X',
+        discountType: 'FIXED_AMOUNT',
+        discountValue: '10.00',
+        pointsCost: 25,
+      },
+      KEY,
+    );
 
     expect(createVoucher).toHaveBeenCalledWith(
       expect.objectContaining({ pointsCost: 25, startsAt: undefined, expiresAt: undefined }),
       undefined,
+      KEY,
     );
     expect(dto.startsAt).toBeNull();
     expect(dto.expiresAt).toBeNull();
   });
 
   it('rejects a duplicate code within the organization', async () => {
-    const create = service({ findVoucherByCode: async () => buildVoucher() }).createVoucher('org-1', {
-      code: 'DISCOUNT10',
-      title: 't',
-      discountType: 'PERCENTAGE',
-      discountValue: '10.00',
-    });
+    const create = service({ findVoucherByCode: async () => buildVoucher() }).createVoucher(
+      'org-1',
+      {
+        code: 'DISCOUNT10',
+        title: 't',
+        discountType: 'PERCENTAGE',
+        discountValue: '10.00',
+      },
+      KEY,
+    );
 
     await expect(create).rejects.toThrow(/already exists for this organization/);
   });
@@ -106,24 +126,65 @@ describe('RewardsService.createVoucher', () => {
     const svc = service({ findVoucherByCode: async () => undefined, createVoucher });
     const voucher = { code: 'C', title: 'T', discountType: 'FREE_ITEM' as const };
     for (const missing of ['code', 'title', 'discountType'] as const) {
-      await expect(svc.createVoucher('org-1', { ...voucher, [missing]: '' })).rejects.toThrow(
+      await expect(svc.createVoucher('org-1', { ...voucher, [missing]: '' }, KEY)).rejects.toThrow(
         /code, title, and either discountType or terms are required/,
       );
     }
-    await expect(svc.createVoucher('org-1', undefined as never)).rejects.toThrow(/are required/);
+    await expect(svc.createVoucher('org-1', undefined as never, KEY)).rejects.toThrow(/are required/);
     expect(createVoucher).not.toHaveBeenCalled();
   });
 
-  it('passes the caller transaction to the repository on create and update', async () => {
+  it('passes the caller transaction and actor to the repository on create and update', async () => {
     const tx = { tx: true } as never;
+    const owner = { role: 'OWNER', userId: 'user-1' } as const;
     const createVoucher = vi.fn(async () => buildVoucher());
     const updateVoucher = vi.fn(async () => buildVoucher());
-    const svc = service({ findVoucherByCode: async () => undefined, createVoucher, updateVoucher });
+    const latestApprovals = vi.fn(async () => new Map());
+    const svc = service({ findVoucherByCode: async () => undefined, createVoucher, updateVoucher, latestApprovals });
 
-    await svc.createVoucher('org-1', { code: 'C', title: 'T', discountType: 'FREE_ITEM', status: 'DRAFT' }, tx);
-    expect(createVoucher).toHaveBeenCalledWith(expect.objectContaining({ code: 'C' }), tx);
-    await svc.updateVoucher('org-1', 'v-1', { title: 'New' }, tx);
-    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx);
+    const created = await svc.createVoucher(
+      'org-1',
+      { code: 'C', title: 'T', discountType: 'FREE_ITEM', status: 'DRAFT' },
+      owner,
+      tx,
+    );
+    expect(createVoucher).toHaveBeenCalledWith(expect.objectContaining({ code: 'C' }), tx, owner);
+    // Its own approval request is read in the same transaction, before the write commits.
+    expect(latestApprovals).toHaveBeenCalledWith('org-1', ['v-1'], tx);
+    expect(created.approval).toBeNull();
+    await svc.updateVoucher('org-1', 'v-1', { title: 'New' }, owner, tx);
+    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx, owner);
+  });
+
+  it('maps approval requests, and a repository refusal to a 403', async () => {
+    const submittedAt = new Date('2026-11-18T00:00:00Z');
+    const request = {
+      id: 'req-1',
+      organizationId: 'org-1',
+      voucherId: 'v-1',
+      status: 'REJECTED',
+      submittedByUserId: null,
+      submittedByCredentialId: 'cred-1',
+      reviewedById: 'owner-1',
+      reason: 'Cap too high',
+      submittedAt,
+      reviewedAt: submittedAt,
+    };
+    const svc = service({
+      latestApprovals: async () => new Map([['v-1', request]]),
+      submitVoucher: async () => {
+        throw new RewardsRuleError('FORBIDDEN', 'no');
+      },
+    });
+    expect((await svc.getVoucher('org-1', 'v-1')).approval).toEqual({
+      status: 'REJECTED',
+      submittedBy: { type: 'API_CREDENTIAL', id: 'cred-1' },
+      submittedAt: '2026-11-18T00:00:00.000Z',
+      reviewedById: 'owner-1',
+      reviewedAt: '2026-11-18T00:00:00.000Z',
+      reason: 'Cap too high',
+    });
+    await expect(svc.submitVoucher('org-1', 'v-1', 'bd-1')).rejects.toMatchObject({ status: 403 });
   });
 });
 

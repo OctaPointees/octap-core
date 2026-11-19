@@ -5,7 +5,24 @@ Merchant vouchers: create, publish, list, edit, claim with points, grant, and us
 A voucher is a merchant's promise recorded for one customer. OctaP does not define what a voucher looks like: the form and the channel are the merchant's. The chain holds what was promised, who holds it, and whether it was used.
 
 - `rewards.service.ts`: voucher use cases. `createVoucher`/`updateVoucher` take an optional `tx` to join a caller's transaction.
-- `console-rewards.service.ts`: the catalog from the console session (OCT-236). Owner or Business Developer reads, Owner-only writes, checked in the same transaction as the write. A console create is always a `DRAFT`, activated with a separate PATCH, and requires `pointsCost`. The Owner check holds the organization FOR SHARE, because a claim locks the voucher first and the organization second.
+- `console-rewards.service.ts`: the catalog from the console session (OCT-236). Owner or Business Developer reads and writes drafts, checked in the same transaction as the write; only the Owner pauses or changes a published voucher. A console create is always a `DRAFT`, activated with a separate PATCH, and requires `pointsCost`. Every check holds the organization FOR SHARE, because a claim locks the voucher first and the organization second.
+
+## Optional approval (OCT-59)
+
+An Owner can require approval with `PATCH /v1/console/organizations/:id/settings { voucherApprovalRequired: true }` (off by default). Owners never need approval.
+
+| Who | Approval off | Approval on |
+|---|---|---|
+| Owner | Activates | Activates; approves or rejects what is waiting |
+| Business Developer | Activates a draft | `POST …/vouchers/:id/submit`; `…/withdraw` takes it back |
+| API key asking for `ACTIVE` (create or PATCH) | Publishes | `PENDING_APPROVAL`, submitted by the key |
+
+- `PENDING_APPROVAL` vouchers cannot be edited, claimed or activated. `approve` (Owner) starts publishing exactly as activating does, after the same checks made again then (24 hours of use left, a program configured); `reject { reason }` (Owner, 1–500 characters) and `withdraw` (Owner or Business Developer) return it to `DRAFT`.
+- Resuming a voucher that was already published needs no approval: its terms on-chain cannot change.
+- Turning approval off leaves vouchers already waiting as they are; they are still decided the same way.
+- Each request is a row of `voucher_approval_requests` (submitter is a user or an API key, at most one PENDING per voucher, RLS by organization). List and detail return the latest as `approval`.
+- The repository reads the setting after the voucher's lock, FOR SHARE, the order a claim takes them; changing it locks the organization FOR UPDATE, so a write in progress finishes under the old value.
+- No webhook fires for a submission yet.
 - `voucher-use.service.ts`: customer-signed use: prepare with an API key, finalize with the customer's signature.
 - `voucher-terms.ts`: the canonical bytes frozen on-chain as a voucher's promise.
 - `voucher-validation.ts`: runtime create/edit validation; merged edits are validated while the voucher row is locked.

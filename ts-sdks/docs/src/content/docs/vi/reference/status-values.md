@@ -37,6 +37,7 @@ description: Ý nghĩa của từng trạng thái giao dịch, voucher và webho
 | Trạng thái | Ý nghĩa |
 | --- | --- |
 | `DRAFT` | Chưa mở |
+| `PENDING_APPROVAL` | Đang chờ Owner duyệt, khi tổ chức bật yêu cầu duyệt. Không sửa hay claim được. Được duyệt thì được publish và thành `ACTIVE`; bị từ chối hoặc rút lại thì về `DRAFT`. |
 | `ACTIVE` | Có thể claim |
 | `PAUSED` | Tạm dừng claim |
 | `EXPIRED` | Đã qua ngày kết thúc |

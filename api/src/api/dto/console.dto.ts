@@ -12,10 +12,12 @@ import type {
   MemberTransactionQuery,
   OrganizationApplicationInput,
   OrganizationProfileInput,
+  OrganizationSettingsInput,
   PlatformOrganizationInput,
   PlatformOrganizationListQuery,
   ProvisionOrganizationInput,
   ReviewDecisionInput,
+  VoucherRejectInput,
 } from '@octap/contracts';
 
 // The same fields as `T`, as an anonymous object type. The console and platform services still take
@@ -32,6 +34,8 @@ export type GovernanceProposalBodyDto = Wire<GovernanceProposal>;
 export type GovernanceRequestListQueryDto = Wire<GovernanceRequestListQuery>;
 export type OrganizationApplicationBodyDto = Wire<OrganizationApplicationInput>;
 export type OrganizationProfileBodyDto = Wire<OrganizationProfileInput>;
+export type OrganizationSettingsBodyDto = Wire<OrganizationSettingsInput>;
+export type VoucherRejectBodyDto = Wire<VoucherRejectInput>;
 export type ConsoleStaffAccessBodyDto = Wire<ConsoleStaffAccessPatch>;
 export type ConsoleInvitationBodyDto = Wire<ConsoleInvitationInput>;
 export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;
