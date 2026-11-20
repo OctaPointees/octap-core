@@ -150,6 +150,9 @@ describe('MCP OAuth sign-in (OCT-293)', () => {
       .send({ status: 'BLOCKED' })
       .expect(403);
     await read(token, '/v1/platform/organization-requests').expect(403);
+    // Answers across all the user's organizations, so a token bound to one cannot read it.
+    await read(token, '/v1/console/organization-requests').expect(403);
+    await read('owner', '/v1/console/organization-requests').expect(200);
 
     // A code works once.
     const replay = await ctx
@@ -206,6 +209,13 @@ describe('MCP OAuth sign-in (OCT-293)', () => {
       .expect(400);
     expect(bad.text).toContain('Cannot sign in');
     expect(bad.text).not.toContain('evil.example');
+
+    const noResource = await ctx
+      .http()
+      .get('/oauth/authorize')
+      .query({ ...authorizeQuery(clientId), resource: '' })
+      .expect(400);
+    expect(noResource.text).toContain('resource is required');
 
     const { requestId: second } = JSON.parse(
       /<script id="config" type="application\/json">(.*?)<\/script>/.exec(

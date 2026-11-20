@@ -52,7 +52,7 @@ export function coreTokenVerifier(apiUrl: string): OAuthTokenVerifier {
         clientId: introspection.clientId,
         scopes: introspection.scopes,
         expiresAt: introspection.expiresAt,
-        ...(introspection.resource ? { resource: new URL(introspection.resource) } : {}),
+        resource: new URL(introspection.resource),
         extra,
       };
     },

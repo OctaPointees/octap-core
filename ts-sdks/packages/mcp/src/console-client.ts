@@ -14,7 +14,7 @@ export interface McpTokenIntrospection {
   userId: string;
   organizationId: string;
   persona: 'BUSINESS_OWNER' | 'BUSINESS_DEVELOPER';
-  resource: string | null;
+  resource: string;
   expiresAt: number;
 }
 

@@ -14,8 +14,8 @@ export interface McpTokenIntrospection {
   organizationId: string;
   /** The user's persona in that organization when the token was issued; Core rechecks it per request. */
   persona: OrganizationPersona;
-  /** The RFC 8707 resource (the MCP server URL) the token was issued for, or null when none was requested. */
-  resource: string | null;
+  /** The RFC 8707 resource (the MCP server URL) the token was issued for. */
+  resource: string;
   /** Expiry in seconds since the epoch. */
   expiresAt: number;
 }

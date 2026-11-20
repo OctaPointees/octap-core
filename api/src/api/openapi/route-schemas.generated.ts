@@ -515,11 +515,8 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "description": "The user's persona in that organization when the token was issued; Core rechecks it per request."
       },
       "resource": {
-        "description": "The RFC 8707 resource (the MCP server URL) the token was issued for, or null when none was requested.",
-        "type": [
-          "null",
-          "string"
-        ]
+        "description": "The RFC 8707 resource (the MCP server URL) the token was issued for.",
+        "type": "string"
       },
       "expiresAt": {
         "description": "Expiry in seconds since the epoch.",

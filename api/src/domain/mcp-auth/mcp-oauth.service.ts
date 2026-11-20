@@ -71,7 +71,7 @@ interface PendingAuthorization {
   redirectUri: string;
   codeChallenge: string;
   state: string | null;
-  resource: string | null;
+  resource: string;
   /** Set once Google sign-in succeeded and the user still has to pick an organization. */
   userId?: string;
 }
@@ -81,7 +81,7 @@ interface Grant {
   userId: string;
   organizationId: string;
   persona: OrganizationPersona;
-  resource: string | null;
+  resource: string;
 }
 
 interface AuthorizationCodeRecord extends Grant {
@@ -191,9 +191,14 @@ export class McpOAuthService {
     const scope = asString(params.scope);
     if (scope && !scope.split(' ').every((value) => value === MCP_SCOPE))
       throw new OAuthProtocolError('invalid_scope', `Only the ${MCP_SCOPE} scope is supported`);
-    const resource = asString(params.resource) ?? null;
-    if (resource !== null && !isHttpUrl(resource))
-      throw new OAuthProtocolError('invalid_target', 'resource must be an absolute http(s) URL');
+    // RFC 8707, required by the MCP spec: without it the token is bound to no MCP server, so any
+    // server would accept it.
+    const resource = asString(params.resource);
+    if (!resource || !isHttpUrl(resource))
+      throw new OAuthProtocolError(
+        'invalid_target',
+        'resource is required: the absolute http(s) URL of the MCP server',
+      );
     const state = asString(params.state) ?? null;
     if (state && state.length > 1024) throw new OAuthProtocolError('invalid_request', 'state is too long');
 
