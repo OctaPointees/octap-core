@@ -485,6 +485,55 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "warningThreshold"
     ]
   },
+  "ConsoleMcpTokenController_token_Response": {
+    "description": "`GET /v1/console/mcp/token`: what an MCP access token is bound to, for the MCP server (an OAuth\nresource server) to check on every request. Answered only for a live token; any other is a 401.",
+    "type": "object",
+    "properties": {
+      "active": {
+        "type": "boolean",
+        "const": true
+      },
+      "clientId": {
+        "description": "The MCP host's OAuth client id from dynamic registration.",
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "userId": {
+        "type": "string"
+      },
+      "organizationId": {
+        "description": "The one organization this token can read.",
+        "type": "string"
+      },
+      "persona": {
+        "$ref": "#/components/schemas/OrganizationPersona",
+        "description": "The user's persona in that organization when the token was issued; Core rechecks it per request."
+      },
+      "resource": {
+        "description": "The RFC 8707 resource (the MCP server URL) the token was issued for.",
+        "type": "string"
+      },
+      "expiresAt": {
+        "description": "Expiry in seconds since the epoch.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "active",
+      "clientId",
+      "expiresAt",
+      "organizationId",
+      "persona",
+      "resource",
+      "scopes",
+      "userId"
+    ]
+  },
   "ConsoleOrganizationsController_accept_Response": {
     "type": "object",
     "properties": {
@@ -2304,6 +2353,283 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "TRANSFER"
     ],
     "type": "string"
+  },
+  "McpOAuthController_authorize_Query": {
+    "type": "object",
+    "properties": {
+      "response_type": {},
+      "client_id": {},
+      "redirect_uri": {},
+      "code_challenge": {},
+      "code_challenge_method": {},
+      "state": {},
+      "scope": {},
+      "resource": {}
+    }
+  },
+  "McpOAuthController_authorize_Response": {
+    "type": "string"
+  },
+  "McpOAuthController_google_Body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string"
+      },
+      "credential": {
+        "type": "string"
+      }
+    }
+  },
+  "McpOAuthController_google_Response": {
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "redirectTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirectTo"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "persona": {
+                  "$ref": "#/components/schemas/OrganizationPersona"
+                }
+              },
+              "required": [
+                "name",
+                "organizationId",
+                "persona"
+              ]
+            }
+          }
+        },
+        "required": [
+          "organizations"
+        ]
+      }
+    ]
+  },
+  "McpOAuthController_metadata_Response": {
+    "type": "object",
+    "properties": {
+      "issuer": {
+        "type": "string"
+      },
+      "authorization_endpoint": {
+        "type": "string"
+      },
+      "token_endpoint": {
+        "type": "string"
+      },
+      "registration_endpoint": {
+        "type": "string"
+      },
+      "revocation_endpoint": {
+        "type": "string"
+      },
+      "response_types_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "grant_types_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "code_challenge_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "token_endpoint_auth_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "revocation_endpoint_auth_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "scopes_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "authorization_endpoint",
+      "code_challenge_methods_supported",
+      "grant_types_supported",
+      "issuer",
+      "registration_endpoint",
+      "response_types_supported",
+      "revocation_endpoint",
+      "revocation_endpoint_auth_methods_supported",
+      "scopes_supported",
+      "token_endpoint",
+      "token_endpoint_auth_methods_supported"
+    ]
+  },
+  "McpOAuthController_organization_Body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      }
+    }
+  },
+  "McpOAuthController_organization_Response": {
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "redirectTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirectTo"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "persona": {
+                  "$ref": "#/components/schemas/OrganizationPersona"
+                }
+              },
+              "required": [
+                "name",
+                "organizationId",
+                "persona"
+              ]
+            }
+          }
+        },
+        "required": [
+          "organizations"
+        ]
+      }
+    ]
+  },
+  "McpOAuthController_register_Body": {
+    "$ref": "#/components/schemas/Record_string_unknown"
+  },
+  "McpOAuthController_register_Response": {
+    "type": "object",
+    "properties": {
+      "client_id": {
+        "type": "string"
+      },
+      "client_id_issued_at": {
+        "type": "number"
+      },
+      "client_name": {
+        "type": "string"
+      },
+      "redirect_uris": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "grant_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "response_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "token_endpoint_auth_method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "client_id",
+      "client_id_issued_at",
+      "client_name",
+      "grant_types",
+      "redirect_uris",
+      "response_types",
+      "token_endpoint_auth_method"
+    ]
+  },
+  "McpOAuthController_revoke_Body": {
+    "$ref": "#/components/schemas/Record_string_unknown"
+  },
+  "McpOAuthController_revoke_Response": {
+    "type": "object",
+    "properties": {}
+  },
+  "McpOAuthController_token_Body": {
+    "$ref": "#/components/schemas/Record_string_unknown"
+  },
+  "McpOAuthController_token_Response": {
+    "type": "object",
+    "properties": {
+      "access_token": {
+        "type": "string"
+      },
+      "token_type": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "number"
+      },
+      "scope": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "access_token",
+      "expires_in",
+      "scope",
+      "token_type"
+    ]
   },
   "MembersController_detail_Response": {
     "type": "object",

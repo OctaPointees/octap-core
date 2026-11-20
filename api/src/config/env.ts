@@ -69,6 +69,13 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
     readBy: API,
     optionalFeature: 'CCCD storage',
   },
+  {
+    name: 'MCP_OAUTH_ISSUER_URL',
+    kind: { type: 'url', protocols: ['https:', 'http:'] },
+    readBy: API,
+    optionalFeature: 'MCP sign-in',
+  },
+  { name: 'MCP_OAUTH_SIGNING_KEY', kind: { type: 'base64Key32' }, readBy: API, optionalFeature: 'MCP sign-in' },
   // Worker tuning
   { name: 'CHAIN_SUBMIT_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'CHAIN_SUBMIT_BATCH_SIZE', kind: positive, readBy: WORKER },

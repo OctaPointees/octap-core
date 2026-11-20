@@ -77,6 +77,25 @@ On startup the server logs to stderr which URL it is using and whether each sett
 > **Do not use `npm run` in host launch commands:**
 > Tools like `npm run dev` or `npm run start` write lifecycle banners to `stdout`. Because MCP uses `stdout` for JSON-RPC messages, any extraneous console output will corrupt the protocol stream and cause the MCP client to disconnect. Launch the compiled script directly with `node`, or use `npx -y @octap/mcp`.
 
+## Remote server with console sign-in (`serve-http`)
+
+Instead of an API key, people can sign in with the Google account they use on the OctaP Console.
+Each sign-in is bound to one organization and the user's persona there, and lasts one hour. All
+tools stay read-only, and Core refuses the token once the user's access changes.
+
+```bash
+OCTAP_API_URL=https://api.octap.example OCTAP_MCP_PUBLIC_URL=https://mcp.octap.example OCTAP_MCP_PORT=4100 npx -y @octap/mcp serve-http
+```
+
+Point the host at `<OCTAP_MCP_PUBLIC_URL>/mcp` as a remote (Streamable HTTP) server. It discovers
+Core's sign-in from the 401 challenge, registers itself, and opens the sign-in page in a browser.
+Core must have `MCP_OAUTH_ISSUER_URL` and `MCP_OAUTH_SIGNING_KEY` set, and its origin must be an
+authorized JavaScript origin of the console's Google client.
+
+Locally: run Core on `http://localhost:3000` with `MCP_OAUTH_ISSUER_URL=http://localhost:3000`, then
+`OCTAP_API_URL=http://localhost:3000 octap-mcp serve-http` and connect MCP Inspector to
+`http://localhost:4100/mcp`.
+
 ## Programmatic Usage
 
 For applications that embed MCP within their own server or session lifecycle:
