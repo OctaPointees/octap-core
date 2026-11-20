@@ -283,12 +283,36 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
             },
             "persona": {
               "$ref": "#/components/schemas/OrganizationPersona"
+            },
+            "organizationType": {
+              "description": "The registered legal type, or null when the organization has none yet.",
+              "anyOf": [
+                {
+                  "enum": [
+                    "COMPANY",
+                    "INDIVIDUAL_HOUSEHOLD"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "representativeName": {
+              "description": "The registered legal representative, or null when the organization has none yet.",
+              "type": [
+                "null",
+                "string"
+              ]
             }
           },
           "required": [
             "name",
             "organizationId",
+            "organizationType",
             "persona",
+            "representativeName",
             "slug"
           ]
         }
@@ -353,12 +377,36 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
             },
             "persona": {
               "$ref": "#/components/schemas/OrganizationPersona"
+            },
+            "organizationType": {
+              "description": "The registered legal type, or null when the organization has none yet.",
+              "anyOf": [
+                {
+                  "enum": [
+                    "COMPANY",
+                    "INDIVIDUAL_HOUSEHOLD"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "representativeName": {
+              "description": "The registered legal representative, or null when the organization has none yet.",
+              "type": [
+                "null",
+                "string"
+              ]
             }
           },
           "required": [
             "name",
             "organizationId",
+            "organizationType",
             "persona",
+            "representativeName",
             "slug"
           ]
         }
