@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
-import { ConsoleAccessGuard, type ConsoleRequest } from '#api/rest/console-access.guard.js';
+import {
+  ConsoleAccessGuard,
+  MCP_WITHOUT_ORGANIZATION_KEY,
+  PLATFORM_ADMIN_ONLY_KEY,
+  type ConsoleRequest,
+} from '#api/rest/console-access.guard.js';
 import type { ConsoleIdentityService } from '#domain/identity/console-identity.service.js';
 import type { McpOAuthService } from '#domain/mcp-auth/mcp-oauth.service.js';
 
@@ -9,10 +14,14 @@ const googleIdentity = { user: { id: 'u', systemRole: 'SYSTEM_ADMIN' }, organiza
 const mcpIdentity = { user: { id: 'u', systemRole: 'SYSTEM_ADMIN' }, organizations: [{ organizationId: 'org-a' }] };
 const mcpToken = { active: true, organizationId: 'org-a', persona: 'BUSINESS_OWNER' };
 
-function setup(platformAdminOnly = false) {
+function setup(platformAdminOnly = false, mcpWithoutOrganization = false) {
   const identity = { authenticate: vi.fn(async () => googleIdentity) };
   const mcp = { authenticate: vi.fn(async () => ({ identity: mcpIdentity, token: mcpToken })) };
-  const reflector = { getAllAndOverride: vi.fn(() => platformAdminOnly) };
+  const metadata: Record<string, boolean> = {
+    [PLATFORM_ADMIN_ONLY_KEY]: platformAdminOnly,
+    [MCP_WITHOUT_ORGANIZATION_KEY]: mcpWithoutOrganization,
+  };
+  const reflector = { getAllAndOverride: vi.fn((key: string) => metadata[key]) };
   const guard = new ConsoleAccessGuard(
     identity as unknown as ConsoleIdentityService,
     mcp as unknown as McpOAuthService,
@@ -68,5 +77,17 @@ describe('ConsoleAccessGuard', () => {
     ).rejects.toThrow('another organization');
     // Even for a System Admin: platform administration needs the Google sign-in.
     await expect(setup(true).run({ method: 'GET', headers: token }).result).rejects.toThrow('platform administration');
+  });
+
+  it('keeps an MCP token off routes without an organization unless the route opts in', async () => {
+    const token = bearer('octap_mcp_token');
+    // e.g. `organization-requests`, which answers across all the user's organizations.
+    await expect(setup().run({ method: 'GET', headers: token }).result).rejects.toThrow('its own organization');
+    await expect(setup().run({ method: 'GET', params: {}, headers: token }).result).rejects.toThrow(
+      'its own organization',
+    );
+    await expect(setup(false, true).run({ method: 'GET', headers: token }).result).resolves.toBe(true);
+    // A Google ID token is unaffected.
+    await expect(setup().run({ method: 'GET', headers: bearer('google-id-token') }).result).resolves.toBe(true);
   });
 });

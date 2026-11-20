@@ -21,6 +21,12 @@ export interface ConsoleRequest {
 }
 export const PLATFORM_ADMIN_ONLY_KEY = 'console.platform-admin';
 export const PlatformAdminOnly = () => SetMetadata(PLATFORM_ADMIN_ONLY_KEY, true);
+export const MCP_WITHOUT_ORGANIZATION_KEY = 'console.mcp-without-organization';
+/**
+ * Lets an MCP access token reach a route that has no `:organizationId`. Only for routes that answer
+ * from the token itself, never from the user's other organizations.
+ */
+export const McpWithoutOrganization = () => SetMetadata(MCP_WITHOUT_ORGANIZATION_KEY, true);
 
 @Injectable()
 export class ConsoleAccessGuard implements CanActivate {
@@ -44,8 +50,16 @@ export class ConsoleAccessGuard implements CanActivate {
       if (request.method !== 'GET' && request.method !== 'HEAD')
         throw new ForbiddenException('MCP access is read-only');
       if (platformAdminOnly) throw new ForbiddenException('MCP access cannot reach platform administration');
+      // Deny by default: a route without `:organizationId` can answer across all the user's
+      // organizations (e.g. `organization-requests`), which a token bound to one must not read.
       const organizationId = request.params?.organizationId;
-      if (organizationId !== undefined && organizationId !== token.organizationId)
+      if (organizationId === undefined) {
+        const allowed = this.reflector.getAllAndOverride<boolean>(MCP_WITHOUT_ORGANIZATION_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!allowed) throw new ForbiddenException('MCP access only reaches routes of its own organization');
+      } else if (organizationId !== token.organizationId)
         throw new ForbiddenException('This MCP access token is for another organization');
       request.consoleIdentity = identity;
       request.mcpToken = token;

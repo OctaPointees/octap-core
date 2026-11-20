@@ -8,7 +8,7 @@ import {
   type AuthorizationParams,
   type AuthorizationStep,
 } from '#domain/mcp-auth/mcp-oauth.service.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWithoutOrganization, type ConsoleRequest } from './console-access.guard.js';
 import { renderAuthorizationError, renderAuthorizationPage } from './mcp-oauth.page.js';
 
 /** The part of Express's response the sign-in page sets its status through. */
@@ -97,6 +97,7 @@ export class McpOAuthController {
 @Controller('v1/console/mcp')
 export class ConsoleMcpTokenController {
   @Get('token')
+  @McpWithoutOrganization()
   @Header('Cache-Control', 'no-store')
   token(@Req() request: ConsoleRequest): McpTokenIntrospection {
     if (!request.mcpToken) throw new OAuthProtocolError('invalid_token', 'An MCP access token is required', 401);
