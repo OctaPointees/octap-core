@@ -31,6 +31,13 @@ persona and organization status inside its database transaction. Platform reques
 review requires SYSTEM_ADMIN in both the route guard and the transaction; a platform
 administrator receives no implicit tenant membership.
 
+## MCP access tokens (OCT-293)
+
+An MCP host signs a user in through Core's OAuth flow (`/oauth/*`, see `api/src/domain/mcp-auth/README.md`)
+and receives an `octap_mcp_…` access token. ConsoleAccessGuard accepts it like a Google ID token, but only
+for GET requests, only on the organization it was issued for, and never on platform routes. Each request
+reloads the user's memberships; a suspended membership or changed persona invalidates the token.
+
 ## Organization onboarding
 
 - POST/GET `/v1/console/organization-requests`: submit a validated name/slug/profile

@@ -7,6 +7,8 @@ export interface VerifiedGoogleIdentity {
   fullName: string;
   avatarUrl: string | null;
   expiresAt: number;
+  /** The `nonce` claim, when the sign-in that minted the token set one. */
+  nonce?: string;
 }
 
 /** Google library owns signature/JWKS caching, rotation, issuer, audience and expiry checks. */
@@ -39,6 +41,7 @@ export class GoogleIdentityClient {
         fullName: claims.name || claims.email,
         avatarUrl: claims.picture ?? null,
         expiresAt: claims.exp,
+        ...(typeof claims.nonce === 'string' ? { nonce: claims.nonce } : {}),
       };
     } catch (error) {
       // google-auth-library prefixes certificate transport failures before rethrowing.

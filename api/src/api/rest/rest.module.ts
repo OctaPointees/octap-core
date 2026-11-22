@@ -13,6 +13,7 @@ import {
   PlatformOrganizationOwnersController,
 } from './console-organizations.controller.js';
 import { ConsoleAccessGuard } from './console-access.guard.js';
+import { ConsoleMcpTokenController, McpOAuthController } from './mcp-oauth.controller.js';
 import { MembersController } from './members.controller.js';
 import { ConsoleRewardsController } from './console-rewards.controller.js';
 import { ConsoleRefundPolicyController } from './console-refund-policy.controller.js';
@@ -28,6 +29,8 @@ import { HealthController, PlatformHealthController } from './health.controller.
   controllers: [
     HealthController,
     PlatformHealthController,
+    McpOAuthController,
+    ConsoleMcpTokenController,
     PlatformOrganizationsController,
     OrganizationResolutionController,
     ConsoleIssuanceBudgetController,

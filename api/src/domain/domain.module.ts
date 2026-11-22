@@ -6,6 +6,7 @@ import { IdentityModule } from './identity/identity.module.js';
 import { MembersModule } from './members/members.module.js';
 import { AdministrationModule } from './administration/administration.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
+import { McpAuthModule } from './mcp-auth/mcp-auth.module.js';
 const featureModules = [
   OrganizationsModule,
   AdministrationModule,
@@ -14,6 +15,7 @@ const featureModules = [
   RewardsModule,
   WebhooksModule,
   IdentityModule,
+  McpAuthModule,
 ];
 @Module({ imports: featureModules, exports: featureModules })
 export class DomainModule {}
