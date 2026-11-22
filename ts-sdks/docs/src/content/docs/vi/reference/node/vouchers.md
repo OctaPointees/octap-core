@@ -28,7 +28,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Mặc định là `ACTIVE`, tức publish điều khoản lên chain trước. Nếu tổ chức bật yêu cầu duyệt, `ACTIVE` đưa voucher vào `PENDING_APPROVAL` cho đến khi Owner duyệt trong console. Mở lại voucher đã publish thì không cần duyệt. |
 
-`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `createdAt` và `updatedAt`. `approval` là yêu cầu duyệt gần nhất, `null` nếu chưa từng có. `submittedBy` là `null` khi user hoặc key đó đã bị xoá. Các field: `status` (`PENDING`, `APPROVED`, `REJECTED` hoặc `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` và `reason` (lý do từ chối).
+`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `createdAt` và `updatedAt`. `approval` là yêu cầu duyệt gần nhất, `null` nếu chưa từng có. `submittedBy` là `null` khi user hoặc key đó đã bị xoá. Các field: `status` (`PENDING`, `APPROVED`, `REJECTED` hoặc `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` và `reason` (lý do từ chối).
 
 ## updateVoucher
 
@@ -55,6 +55,82 @@ listVouchers(options?): Promise<VoucherDto[]>
 ```ts
 getVoucher(voucherId: string, options?): Promise<VoucherDto>
 ```
+
+## createVouchers
+
+`POST /v1/rewards/voucher-batches` · Scope: `write`
+
+```ts
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean }, options?): Promise<CreateVoucherBatchResponse>
+```
+
+Tạo tối đa 100 voucher thành một lô **DRAFT**. Chưa voucher nào live cho đến khi gọi `activateVoucherBatch`. Mỗi item nhận các field của `createVoucher`, trừ `status`; gửi `status` thì item đó lỗi. Không có item nào hoặc quá 100 item thì cả request trả 400.
+
+Với `dryRun: true`, Core chạy mọi kiểm tra và trả kết quả từng item nhưng không ghi gì: dùng để xem trước một file.
+
+Mỗi item được xử lý riêng, và `items[i]` của response mô tả `items[i]`. `code` là khoá:
+
+| Voucher đang giữ `code` | Giá trị giống hệt | Giá trị khác |
+| --- | --- | --- |
+| Chưa có | `created` | `created` |
+| Đã publish, đang publish hoặc đang chờ duyệt | `unchanged` | `conflict`: giữ nguyên |
+| Nháp của lô đang mở, hoặc tạo lẻ | `unchanged` | `conflict`: giữ nguyên |
+| Nháp chưa từng publish của lô đã archive | `unchanged`, chuyển sang lô này (`movedToBatch: true`) | `replaced`: nhận giá trị mới, chuyển sang lô này |
+
+`error` nghĩa là item không được ghi: `error.code` là `INVALID` (kèm `field`) hoặc `DUPLICATE_IN_BATCH` (cùng `code` với một item trước đó trong request). `conflict` và `replaced` trả `differences: [{ field, stored, sent }]`.
+
+Giá trị được so sau khi chuẩn hoá: field không gửi coi như giá trị mặc định, ngày so theo thời điểm (`…Z` bằng `…+07:00` nếu cùng một lúc), `"20"` bằng `"20.00"`, và key của object theo thứ tự nào cũng được. Vì vậy gửi lại nguyên danh sách vẫn an toàn: chỉ item mới được tạo. Muốn đổi điều khoản của một `code` đã live thì dùng `code` mới.
+
+`batch` là `null` khi dry run, và khi không item nào vào lô (toàn `unchanged`, `conflict` hoặc `error`).
+
+## listVoucherBatches
+
+`GET /v1/rewards/voucher-batches` · Scope: `read`
+
+```ts
+listVoucherBatches(query?: { includeArchived?: boolean }, options?): Promise<VoucherBatchDto[]>
+```
+
+Mới nhất trước. Chỉ có lô đã archive khi truyền `includeArchived: true`. Mỗi lô có `source` (`API` hoặc `CONSOLE`), `createdBy`, `archivedAt` và `statusCounts` (ví dụ `{ DRAFT: 98, ACTIVE: 2 }`).
+
+## getVoucherBatch
+
+`GET /v1/rewards/voucher-batches/:batchId` · Scope: `read`
+
+```ts
+getVoucherBatch(batchId: string, options?): Promise<VoucherBatchDetailDto>
+```
+
+Lô kèm danh sách voucher. Lô của tổ chức khác trả 404.
+
+## activateVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/activate` · Scope: `write`
+
+```ts
+activateVoucherBatch(batchId: string, options?): Promise<ActivateVoucherBatchResponse>
+```
+
+Activate mọi nháp trong lô, mỗi voucher qua đúng các kiểm tra như khi activate riêng, chạy lại tại thời điểm gọi. `outcome` của từng voucher:
+
+| `outcome` | Ý nghĩa |
+| --- | --- |
+| `publishing` | Điều khoản đang được đưa lên chain; thành `ACTIVE` khi chain xác nhận |
+| `pendingApproval` | Tổ chức của bạn bật yêu cầu duyệt: voucher chờ Owner duyệt trong console |
+| `skipped` | Đã publish, đang publish hoặc đang chờ, nên gọi lại vẫn an toàn |
+| `failed` | Vẫn là `DRAFT`; `reason` cho biết lý do (ví dụ còn dưới 24 giờ tới `expiresAt`) |
+
+Chưa có loyalty program trên chain thì trả 422; lô đã archive thì trả 409. Việc publish chạy vài voucher mỗi lượt, nên lô lớn mất vài phút mới live hết.
+
+## archiveVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/archive` · Scope: `write`
+
+```ts
+archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchDto>
+```
+
+Dành cho lô bạn không dùng nữa (nhầm file, huỷ đợt khuyến mãi). Lô bị ẩn khỏi `listVoucherBatches` và không activate được nữa. Voucher đã live trong lô vẫn live; `code` của các nháp trong lô có thể được một lô sau dùng lại. Không có un-archive.
 
 ## claimVoucher
 

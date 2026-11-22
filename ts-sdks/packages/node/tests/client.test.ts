@@ -435,3 +435,39 @@ describe('merchant route coverage and cancellation', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('voucher batches SDK (OCT-303)', () => {
+  it('creates, lists, reads, activates and archives a batch', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({}));
+    const client = createOctaPointClient({ credentials: { apiKey: 'writer' }, fetchFn });
+    const items = [{ code: 'A', title: 'A', discountType: 'FREE_ITEM' as const }];
+
+    await client.createVouchers(items);
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:3000/v1/rewards/voucher-batches',
+      body: { items },
+    });
+    expect(last().body).not.toHaveProperty('dryRun');
+    await client.createVouchers(items, { dryRun: true }, { organizationId: 'org' });
+    expect(last()).toMatchObject({ body: { items, dryRun: true }, headers: { 'x-organization-id': 'org' } });
+
+    await client.listVoucherBatches();
+    expect(last()).toMatchObject({ method: 'GET', url: 'http://localhost:3000/v1/rewards/voucher-batches' });
+    await client.listVoucherBatches({ includeArchived: true });
+    expect(last().url).toBe('http://localhost:3000/v1/rewards/voucher-batches?includeArchived=true');
+
+    await client.getVoucherBatch('b/1');
+    expect(last()).toMatchObject({ method: 'GET', url: 'http://localhost:3000/v1/rewards/voucher-batches/b%2F1' });
+    await client.activateVoucherBatch('b-1');
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:3000/v1/rewards/voucher-batches/b-1/activate',
+    });
+    await client.archiveVoucherBatch('b-1');
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:3000/v1/rewards/voucher-batches/b-1/archive',
+    });
+  });
+});

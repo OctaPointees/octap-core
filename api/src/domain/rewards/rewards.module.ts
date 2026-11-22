@@ -7,8 +7,9 @@ import { CreditsModule } from '../credits/credits.module.js';
 import { RewardsService } from './rewards.service.js';
 import { RefundPolicyService } from './refund-policy.service.js';
 import { VoucherUseService } from './voucher-use.service.js';
-import { ConsoleRewardsService } from './console-rewards.service.js';
+import { ConsoleRewardsService, ConsoleVoucherBatchService } from './console-rewards.service.js';
 import { ConsoleRefundPolicyService } from './console-refund-policy.service.js';
+import { VoucherBatchService } from './voucher-batch.service.js';
 
 @Module({
   imports: [PostgresModule, CreditsModule, CacheModule, SuiTransactionBuilderModule, IdentityModule],
@@ -18,7 +19,17 @@ import { ConsoleRefundPolicyService } from './console-refund-policy.service.js';
     VoucherUseService,
     ConsoleRewardsService,
     ConsoleRefundPolicyService,
+    VoucherBatchService,
+    ConsoleVoucherBatchService,
   ],
-  exports: [RewardsService, RefundPolicyService, VoucherUseService, ConsoleRewardsService, ConsoleRefundPolicyService],
+  exports: [
+    RewardsService,
+    RefundPolicyService,
+    VoucherUseService,
+    ConsoleRewardsService,
+    ConsoleRefundPolicyService,
+    VoucherBatchService,
+    ConsoleVoucherBatchService,
+  ],
 })
 export class RewardsModule {}

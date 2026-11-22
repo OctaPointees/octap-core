@@ -23,12 +23,36 @@ An Owner can require approval with `PATCH /v1/console/organizations/:id/settings
 - Each request is a row of `voucher_approval_requests` (submitter is a user or an API key, at most one PENDING per voucher, RLS by organization). List and detail return the latest as `approval`.
 - The repository reads the setting after the voucher's lock, FOR SHARE, the order a claim takes them; changing it locks the organization FOR UPDATE, so a write in progress finishes under the old value.
 - No webhook fires for a submission yet.
+
+## Voucher batches (OCT-303)
+
+Many vouchers created as one batch, always as `DRAFT`, reviewed, then activated or archived together. Routes: `POST|GET /v1/rewards/voucher-batches`, `GET …/:batchId`, `POST …/:batchId/activate`, `POST …/:batchId/archive` with an API key (`write` to change, `read` to look), and the same under `/v1/console/organizations/:id/voucher-batches` for the Owner and a Business Developer.
+
+```
+ preview (dryRun) → create batch (DRAFT) → edit (PATCH, as usual) → activate batch   or   archive batch
+```
+
+- `voucher-batch.ts`: request and item checks, normalization and comparison (pure, unit-tested). `voucher-batch.service.ts`: the use cases, shared by both route sets. `ConsoleVoucherBatchService` (in `console-rewards.service.ts`): the console's access checks.
+- **Create:** 1 to `VOUCHER_BATCH_MAX_ITEMS` (100) items, each `createVoucher`'s fields without `status`. A bad request (no items, too many, not an object) is a 400; each item is otherwise checked and written on its own, in one transaction with a savepoint per item, in `code` order (two batches touching the same codes lock them in the same order). `dryRun` reads and classifies, writes nothing. No batch row is kept when no item landed in it.
+- **Per item**, by `code` (unique per organization):
+
+  | Voucher holding the `code` | Same values | Other values |
+  |---|---|---|
+  | none | `created` | `created` |
+  | published, publishing or waiting for approval | `unchanged` | `conflict` (kept) |
+  | DRAFT of an open batch, or created on its own | `unchanged` | `conflict` (kept) |
+  | never-published DRAFT of an archived batch | `unchanged`, moved to this batch | `replaced`, moved to this batch |
+
+  `error` (`INVALID` with the `field`, or `DUPLICATE_IN_BATCH` for a code used twice in one request) writes nothing. Values are compared after normalizing both sides: a missing field is its default, dates as instants, `discountValue` as an amount (`"20"` = `"20.00"`), `terms` and `metadata` with sorted keys. `conflict` and `replaced` list `differences: [{ field, stored, sent }]`. A concurrent insert of the same code is classified the same way, never a 500.
+- **Activate:** the program check is made once (422 for the whole call); an archived batch is a 409. Then each voucher, in its own savepoint, with the checks of a single activation made now: `publishing`, `pendingApproval` (approval required and the caller is not an Owner, OCT-59: a Business Developer's batch activation is its submission), `skipped` (already published, publishing or waiting: calling it again is safe) or `failed` with a `reason` (under 24 hours left, no supply). The batch row is locked first, so an archive cannot race it. The worker publishes a few vouchers per poll (`CHAIN_SUBMIT_BATCH_SIZE`), so a 100-voucher batch takes minutes to be live.
+- **Archive:** one-way (no un-archive). Hidden from `GET` unless `?includeArchived=true`, can't be activated, and its never-published drafts' codes may be taken over by a later batch. Its live vouchers are not affected.
+- `voucher_import_batches` (source `CONSOLE`/`API`, created by a user or an API key, `archived_at`, RLS by organization); `vouchers.import_batch_id` is a composite key with `organization_id`, so a voucher can only belong to a batch of its own organization. `VoucherDto.batchId` shows it.
 - `voucher-use.service.ts`: customer-signed use: prepare with an API key, finalize with the customer's signature.
 - `voucher-terms.ts`: the canonical bytes frozen on-chain as a voucher's promise.
 - `voucher-validation.ts`: runtime create/edit validation; merged edits are validated while the voucher row is locked.
 - `rewards.module.ts`: Nest provider composition.
 
-Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` (API key) and `api/rest/console-rewards.controller.ts` (console session).
+Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` and `api/rest/voucher-batches.controller.ts` (API key), `api/rest/console-rewards.controller.ts` and `api/rest/console-voucher-batches.controller.ts` (console session).
 Every repository method runs under an organization's RLS context (`withTenant`), so Postgres hides other organizations' `vouchers` and `voucher_ownerships`. Request paths pass the authenticated organization (`findVoucherById(organizationId, id)`, …); only worker and indexer callbacks that start from an id read that row's organization first. The organization and member check of a claim or use runs as the connection's own role at its usual point (`asOwnRole`), since the tenant role cannot read `organizations` (OCT-289).
 
 ## What lives where

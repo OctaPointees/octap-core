@@ -28,7 +28,7 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. If your organization requires approval, `ACTIVE` puts the voucher in `PENDING_APPROVAL` until an Owner approves it in the console. Resuming a published voucher needs no approval. |
 
-A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `createdAt` and `updatedAt`. `approval` is the latest approval request, `null` if there never was one. `submittedBy` is `null` once that user or key is deleted. Fields: `status` (`PENDING`, `APPROVED`, `REJECTED` or `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` and `reason` (why it was rejected).
+A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `createdAt` and `updatedAt`. `approval` is the latest approval request, `null` if there never was one. `submittedBy` is `null` once that user or key is deleted. Fields: `status` (`PENDING`, `APPROVED`, `REJECTED` or `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt` and `reason` (why it was rejected).
 
 ## updateVoucher
 
@@ -55,6 +55,82 @@ listVouchers(options?): Promise<VoucherDto[]>
 ```ts
 getVoucher(voucherId: string, options?): Promise<VoucherDto>
 ```
+
+## createVouchers
+
+`POST /v1/rewards/voucher-batches` · Scope: `write`
+
+```ts
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean }, options?): Promise<CreateVoucherBatchResponse>
+```
+
+Creates up to 100 vouchers as one **DRAFT** batch. Nothing goes live until `activateVoucherBatch`. Each item takes `createVoucher`'s fields except `status`; sending `status` makes that item an error. More than 100 items, or none, is a 400 for the whole call.
+
+With `dryRun: true`, every check runs and each item's result is returned, but nothing is written: use it to preview a file.
+
+Each item is handled on its own, and `items[i]` of the response describes `items[i]`. `code` is the key:
+
+| Voucher already holding the `code` | Same values | Other values |
+| --- | --- | --- |
+| None | `created` | `created` |
+| Published, publishing or waiting for approval | `unchanged` | `conflict`: kept as it is |
+| A draft of an open batch, or created on its own | `unchanged` | `conflict`: kept as it is |
+| A never-published draft of an archived batch | `unchanged`, moved to this batch (`movedToBatch: true`) | `replaced`: now holds the sent values, in this batch |
+
+`error` means the item was not written: `error.code` is `INVALID` (with the `field`) or `DUPLICATE_IN_BATCH` (the same `code` earlier in the request). `conflict` and `replaced` list `differences: [{ field, stored, sent }]`.
+
+Values are compared after normalizing: a field left out is its default, dates compare as instants (`…Z` equals `…+07:00` at the same moment), `"20"` equals `"20.00"`, and object keys can come in any order. So sending the same list again is safe: only new items are created. To offer different terms under a live `code`, use a new `code`.
+
+`batch` is `null` on a dry run, and when no item landed in the batch (all `unchanged`, `conflict` or `error`).
+
+## listVoucherBatches
+
+`GET /v1/rewards/voucher-batches` · Scope: `read`
+
+```ts
+listVoucherBatches(query?: { includeArchived?: boolean }, options?): Promise<VoucherBatchDto[]>
+```
+
+Newest first. Archived batches only with `includeArchived: true`. Each batch has `source` (`API` or `CONSOLE`), `createdBy`, `archivedAt` and `statusCounts` (for example `{ DRAFT: 98, ACTIVE: 2 }`).
+
+## getVoucherBatch
+
+`GET /v1/rewards/voucher-batches/:batchId` · Scope: `read`
+
+```ts
+getVoucherBatch(batchId: string, options?): Promise<VoucherBatchDetailDto>
+```
+
+The batch with its vouchers. Another organization's batch is a 404.
+
+## activateVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/activate` · Scope: `write`
+
+```ts
+activateVoucherBatch(batchId: string, options?): Promise<ActivateVoucherBatchResponse>
+```
+
+Activates every draft of the batch, each one with the same checks as activating it on its own, made now. Each voucher's `outcome`:
+
+| `outcome` | Meaning |
+| --- | --- |
+| `publishing` | Its terms are on the way on-chain; it becomes `ACTIVE` once the chain confirms |
+| `pendingApproval` | Your organization requires approval: it waits for an Owner in the console |
+| `skipped` | Already published, publishing or waiting, so calling this again is safe |
+| `failed` | It stays `DRAFT`; `reason` says why (for example less than 24 hours left before `expiresAt`) |
+
+No loyalty program on-chain is a 422; an archived batch is a 409. Publishing runs a few vouchers at a time, so a large batch takes a few minutes to be fully live.
+
+## archiveVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/archive` · Scope: `write`
+
+```ts
+archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchDto>
+```
+
+For a batch you won't use (a wrong file, a cancelled campaign). It is hidden from `listVoucherBatches` and can no longer be activated. Its live vouchers stay live; its drafts' codes can be taken over by a later batch. There is no un-archive.
 
 ## claimVoucher
 

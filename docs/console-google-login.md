@@ -60,6 +60,9 @@ administrator receives no implicit tenant membership.
   nothing directly: POST `/:id/vouchers/:voucherId/submit` (Developer) puts a draft in
   `PENDING_APPROVAL`, `/withdraw` (Owner/Developer) takes it back, and `/approve` or `/reject`
   (`{ reason }`) are the Owner's. An API key asking for `ACTIVE` is queued the same way (OCT-59).
+- POST/GET `/:id/voucher-batches`, GET `/:id/voucher-batches/:batchId`, POST `…/:batchId/activate` and
+  `…/:batchId/archive`: Owner/Developer, with the same rules as single vouchers. Activating as a
+  Developer while approval is required sends the batch's drafts to `PENDING_APPROVAL` (OCT-303).
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
 Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.

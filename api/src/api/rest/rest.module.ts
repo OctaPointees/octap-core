@@ -15,6 +15,8 @@ import {
 import { ConsoleAccessGuard } from './console-access.guard.js';
 import { MembersController } from './members.controller.js';
 import { ConsoleRewardsController } from './console-rewards.controller.js';
+import { ConsoleVoucherBatchesController } from './console-voucher-batches.controller.js';
+import { VoucherBatchesController } from './voucher-batches.controller.js';
 import { ConsoleRefundPolicyController } from './console-refund-policy.controller.js';
 import { ConsoleWebhooksController } from './console-webhooks.controller.js';
 import { ConsoleApiCredentialsController } from './console-api-credentials.controller.js';
@@ -36,11 +38,13 @@ import { HealthController, PlatformHealthController } from './health.controller.
     PlatformChangeRequestsController,
     MembersController,
     ConsoleRewardsController,
+    ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,
     ConsoleWebhooksController,
     ConsoleApiCredentialsController,
     CreditsController,
     RewardsController,
+    VoucherBatchesController,
     WebhooksController,
     IdentityController,
     CustomerVerificationController,

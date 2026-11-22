@@ -27,6 +27,12 @@ import type {
   ReverseTransactionResponse,
   WebhookEndpointDto,
   WebhookDeliveryDto,
+  ActivateVoucherBatchResponse,
+  CreateVoucherBatchResponse,
+  ListVoucherBatchesRequest,
+  VoucherBatchDetailDto,
+  VoucherBatchDto,
+  VoucherBatchItem,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
@@ -298,6 +304,75 @@ export class OctaPointClient {
    */
   async getVoucher(voucherId: string, options?: RequestOptions): Promise<VoucherDto> {
     return this.request<VoucherDto>(`/v1/rewards/vouchers/${encodeURIComponent(voucherId)}`, 'GET', undefined, options);
+  }
+
+  /**
+   * Creates up to `VOUCHER_BATCH_MAX_ITEMS` vouchers as one DRAFT batch (OCT-303). Each item is
+   * checked and written on its own, and `items[i]` of the response says what happened to `items[i]`:
+   * `created`, `unchanged` (already there with the same values, so sending the same list again is
+   * safe), `conflict` (that `code` holds other values and is kept), `replaced` (a draft of an archived
+   * batch now holds these values) or `error`. With `dryRun`, nothing is written: use it to preview.
+   * Nothing goes live until `activateVoucherBatch`.
+   */
+  async createVouchers(
+    items: VoucherBatchItem[],
+    batchOptions: { dryRun?: boolean } = {},
+    options?: RequestOptions,
+  ): Promise<CreateVoucherBatchResponse> {
+    return this.request<CreateVoucherBatchResponse>(
+      '/v1/rewards/voucher-batches',
+      'POST',
+      { items, ...(batchOptions.dryRun !== undefined ? { dryRun: batchOptions.dryRun } : {}) },
+      options,
+    );
+  }
+
+  /** Batches, newest first; archived ones only with `includeArchived`. */
+  async listVoucherBatches(
+    query: ListVoucherBatchesRequest = {},
+    options?: RequestOptions,
+  ): Promise<VoucherBatchDto[]> {
+    return this.request<VoucherBatchDto[]>('/v1/rewards/voucher-batches', 'GET', undefined, options, {
+      includeArchived: query.includeArchived === undefined ? undefined : String(query.includeArchived),
+    });
+  }
+
+  /** A batch with its vouchers. */
+  async getVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchDetailDto> {
+    return this.request<VoucherBatchDetailDto>(
+      `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}`,
+      'GET',
+      undefined,
+      options,
+    );
+  }
+
+  /**
+   * Activates every DRAFT voucher of the batch: each one starts publishing on-chain, or waits for an
+   * Owner when the organization requires approval. A voucher that can't go live stays DRAFT, with a
+   * `reason`; one already published or waiting is `skipped`, so calling it again is safe. Publishing
+   * is done by a worker a few vouchers at a time, so a large batch takes minutes to be fully live.
+   */
+  async activateVoucherBatch(batchId: string, options?: RequestOptions): Promise<ActivateVoucherBatchResponse> {
+    return this.request<ActivateVoucherBatchResponse>(
+      `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/activate`,
+      'POST',
+      undefined,
+      options,
+    );
+  }
+
+  /**
+   * Hides the batch and refuses to activate it again. Its vouchers that are live stay live; its drafts'
+   * codes may be taken over by a later batch. There is no un-archive.
+   */
+  async archiveVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchDto> {
+    return this.request<VoucherBatchDto>(
+      `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/archive`,
+      'POST',
+      undefined,
+      options,
+    );
   }
 
   /**

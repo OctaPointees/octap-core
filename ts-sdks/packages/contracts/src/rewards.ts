@@ -134,6 +134,8 @@ export interface VoucherDto {
   metadata?: Record<string, unknown> | null;
   /** On every catalog response (not a member's vouchers): the latest approval request, `null` if there never was one. */
   approval?: VoucherApprovalDto | null;
+  /** The batch it was created or last imported in (`createVoucherBatch`), `null` if created on its own. */
+  batchId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -229,4 +231,123 @@ export interface VoucherOwnershipDto {
    */
   expiresAt?: string | null;
   voucher?: VoucherDto;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Voucher batches (OCT-303): create many vouchers as one DRAFT batch, review them, then activate the
+// whole batch at once, or archive it.
+// ---------------------------------------------------------------------------------------------------
+
+/** The most items one `createVoucherBatch` call takes; more is a 400 for the whole request. */
+export const VOUCHER_BATCH_MAX_ITEMS = 100;
+
+/** Where a batch came from: the console, or a merchant API key. */
+export type VoucherBatchSource = 'CONSOLE' | 'API';
+
+/**
+ * One voucher of a batch: what `createVoucher` takes, without `status`. A batch is always DRAFT; it
+ * goes live with `activateVoucherBatch`. Sending `status` makes that item an `INVALID` error.
+ */
+export type VoucherBatchItem = Omit<CreateVoucherRequest, 'status'>;
+
+export interface CreateVoucherBatchRequest {
+  /** 1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone. */
+  items: VoucherBatchItem[];
+  /** Run every check and report each item's result, but write nothing. */
+  dryRun?: boolean;
+}
+
+/** Machine-readable reason an item was not written. */
+export type VoucherBatchItemErrorCode =
+  /** A field is wrong; `field` names it when Core can tell which one. */
+  | 'INVALID'
+  /** An earlier item of the same request has the same `code`. */
+  | 'DUPLICATE_IN_BATCH';
+
+/** One field where the stored voucher and the sent item differ, after normalizing both. */
+export interface VoucherFieldDifference {
+  field: string;
+  stored: unknown;
+  sent: unknown;
+}
+
+/**
+ * What happened to one item, matched by its `index` in `items`. `code` is the natural key, unique
+ * per organization:
+ * - `created`: a new DRAFT voucher (`voucherId` is `null` on a dry run).
+ * - `unchanged`: a voucher with this `code` already holds exactly these values; nothing is written.
+ *   `movedToBatch` is `true` when it was a DRAFT of an archived batch and now belongs to this one.
+ * - `conflict`: a voucher with this `code` holds other values and may not be overwritten (it is or
+ *   was live, it is a DRAFT of an open batch, or a DRAFT created on its own). Nothing is written; use
+ *   a new `code` to offer different terms.
+ * - `replaced`: it was a DRAFT of an archived batch: it now holds the sent values and belongs to
+ *   this batch.
+ * - `error`: the item was not written; see `error`.
+ */
+export type VoucherBatchItemResult =
+  | { index: number; code: string; status: 'created'; voucherId: string | null }
+  | { index: number; code: string; status: 'unchanged'; voucherId: string; movedToBatch: boolean }
+  | { index: number; code: string; status: 'conflict'; voucherId: string; differences: VoucherFieldDifference[] }
+  | { index: number; code: string; status: 'replaced'; voucherId: string | null; differences: VoucherFieldDifference[] }
+  | {
+      index: number;
+      /** `null` when the item has no usable `code`. */
+      code: string | null;
+      status: 'error';
+      error: { code: VoucherBatchItemErrorCode; field: string | null; message: string };
+    };
+
+export interface VoucherBatchDto {
+  id: string;
+  organizationId: string;
+  source: VoucherBatchSource;
+  /** A console user or an API key; `null` once that user or key is deleted. */
+  createdBy: { type: 'USER' | 'API_CREDENTIAL'; id: string } | null;
+  createdAt: string;
+  /** Set once archived: the batch is hidden from the default list and can no longer be activated. */
+  archivedAt: string | null;
+  /** How many of its vouchers are in each status, e.g. `{ DRAFT: 98, ACTIVE: 2 }`. */
+  statusCounts: Partial<Record<VoucherStatus, number>>;
+}
+
+/** A batch with its vouchers. */
+export interface VoucherBatchDetailDto extends VoucherBatchDto {
+  vouchers: VoucherDto[];
+}
+
+export interface CreateVoucherBatchResponse {
+  dryRun: boolean;
+  /** `null` on a dry run, and when no item landed in the batch (all unchanged, conflict or error). */
+  batch: VoucherBatchDto | null;
+  items: VoucherBatchItemResult[];
+}
+
+export interface ListVoucherBatchesRequest {
+  /** Include archived batches. Defaults to `false`. */
+  includeArchived?: boolean;
+}
+
+/**
+ * What activating did to one voucher of the batch:
+ * - `publishing`: its terms are on the way on-chain; it becomes ACTIVE once the chain confirms.
+ * - `pendingApproval`: the organization requires approval and the caller is not an Owner, so it waits
+ *   for an Owner (OCT-59).
+ * - `skipped`: nothing to do: it is already published, publishing or waiting for approval. Calling
+ *   activate again is safe.
+ * - `failed`: it stays DRAFT; `reason` says why (for example less than 24 hours left before
+ *   `expiresAt`, or no supply left).
+ */
+export type VoucherBatchActivationOutcome = 'publishing' | 'pendingApproval' | 'skipped' | 'failed';
+
+export interface VoucherBatchActivationResult {
+  voucherId: string;
+  code: string;
+  outcome: VoucherBatchActivationOutcome;
+  /** Set when `outcome` is `failed`. */
+  reason: string | null;
+}
+
+export interface ActivateVoucherBatchResponse {
+  batch: VoucherBatchDto;
+  vouchers: VoucherBatchActivationResult[];
 }

@@ -3,6 +3,7 @@ import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
 import {
   bigint,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -43,6 +44,46 @@ export const voucherOwnershipStatusEnum = pgEnum('voucher_ownership_status', [
   'EXPIRED',
   'CANCELLED',
 ]);
+
+/** Where a voucher batch came from (OCT-303). */
+export const voucherBatchSourceEnum = pgEnum('voucher_batch_source', ['CONSOLE', 'API']);
+
+/**
+ * VOUCHER IMPORT BATCH: vouchers created together by one `createVoucherBatch` call, always as DRAFT,
+ * then activated or archived together (OCT-303). An archived batch is hidden from the default list,
+ * can no longer be activated, and its DRAFT vouchers' codes may be taken over by a later batch.
+ */
+export const voucherImportBatches = pgTable(
+  'voucher_import_batches',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    source: voucherBatchSourceEnum('source').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    createdByCredentialId: uuid('created_by_credential_id').references(() => apiCredentials.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('voucher_import_batches_org_created_idx').on(t.organizationId, t.createdAt),
+    // Target of the vouchers' (organization_id, import_batch_id) key: a voucher's batch is its own organization's.
+    uniqueIndex('voucher_import_batches_org_id_idx').on(t.organizationId, t.id),
+    // Never both. The repository always sets one; either may become null when its user or key is deleted.
+    check(
+      'voucher_import_batches_one_creator',
+      sql`num_nonnulls(${t.createdByUserId}, ${t.createdByCredentialId}) <= 1`,
+    ),
+    pgPolicy('tenant_manage_voucher_import_batches', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
+    }),
+  ],
+);
 
 /**
  * VOUCHER: Campaign / reward catalog definitions created by an Organization.
@@ -90,11 +131,20 @@ export const vouchers = pgTable(
     startsAt: timestamp('starts_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     metadata: jsonb('metadata').default({}),
+    /** The batch it was created or last imported in (OCT-303); null when created on its own. */
+    importBatchId: uuid('import_batch_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('voucher_org_code_idx').on(t.organizationId, t.code),
+    index('vouchers_import_batch_idx').on(t.importBatchId),
+    // Composite, so a voucher can only point at a batch of its own organization.
+    foreignKey({
+      name: 'vouchers_import_batch_fk',
+      columns: [t.organizationId, t.importBatchId],
+      foreignColumns: [voucherImportBatches.organizationId, voucherImportBatches.id],
+    }),
     pgPolicy('tenant_manage_vouchers', {
       for: 'all',
       to: authenticatedRole,

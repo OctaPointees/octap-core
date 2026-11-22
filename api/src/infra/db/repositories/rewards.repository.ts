@@ -1,16 +1,22 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { eq, desc, and, sql, ne, isNull, count, inArray } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, ne, isNull, count, inArray } from 'drizzle-orm';
 import {
   DEFAULT_VOUCHER_REFUND_POLICY,
   VOUCHER_MIN_USE_WINDOW_MS,
   voucherUseDeadline,
   type ClaimVoucherResponse,
   type CreateVoucherRequest,
+  type VoucherFieldDifference,
 } from '@octap/contracts';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
-import { vouchers, voucherApprovalRequests, voucherOwnerships } from '../schema/rewards.schema.js';
+import {
+  vouchers,
+  voucherApprovalRequests,
+  voucherImportBatches,
+  voucherOwnerships,
+} from '../schema/rewards.schema.js';
 import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.js';
 import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
@@ -115,6 +121,46 @@ export type VoucherActor =
   | { role: 'CREDENTIAL'; credentialId: string };
 const OWNER: VoucherActor = { role: 'OWNER' };
 type VoucherApprovalRequest = typeof voucherApprovalRequests.$inferSelect;
+export type VoucherBatch = typeof voucherImportBatches.$inferSelect;
+
+/** Every field a batch item sets, normalized: what a voucher created from it holds (OCT-303). */
+export type VoucherBatchValues = Pick<
+  typeof vouchers.$inferInsert,
+  | 'title'
+  | 'description'
+  | 'pointsCost'
+  | 'discountType'
+  | 'discountValue'
+  | 'terms'
+  | 'totalSupply'
+  | 'perMemberLimit'
+  | 'startsAt'
+  | 'expiresAt'
+  | 'validForDays'
+  | 'metadata'
+>;
+
+/** One item that passed validation, ready to write. `compare` lists how a stored voucher differs. */
+export interface VoucherBatchWrite {
+  index: number;
+  code: string;
+  values: VoucherBatchValues;
+  compare: (stored: Voucher) => VoucherFieldDifference[];
+}
+
+/** What writing one item did; the service turns it into a `VoucherBatchItemResult`. */
+export type VoucherBatchWriteResult =
+  | { index: number; kind: 'created'; voucher: Voucher | null }
+  | { index: number; kind: 'unchanged'; voucher: Voucher; moved: boolean }
+  | { index: number; kind: 'conflict' | 'replaced'; voucher: Voucher; differences: VoucherFieldDifference[] };
+
+export type VoucherBatchActivation =
+  | { voucher: Voucher; outcome: 'publishing' | 'pendingApproval' | 'skipped'; reason: null }
+  | { voucher: Voucher; outcome: 'failed'; reason: string };
+
+/** Never published: its terms never reached the chain, so it may still be replaced or activated. */
+const neverPublished = (voucher: Voucher): boolean =>
+  voucher.status === 'DRAFT' && (voucher.publishStatus === 'NOT_PUBLISHED' || voucher.publishStatus === 'FAILED');
 
 /**
  * Every method runs under the voucher's organization's RLS context (`withTenant`), so Postgres itself
@@ -985,5 +1031,255 @@ export class RewardsRepository {
         orderBy: [desc(voucherOwnerships.claimedAt)],
       }),
     );
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Voucher batches (OCT-303)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Writes a batch's items in one transaction, each in its own savepoint, so a rule error fails one
+   * item alone and a crash leaves no half batch. Items run in `code` order, so two batches touching
+   * the same codes lock them in the same order and cannot deadlock. The batch row is written first
+   * (the vouchers' key needs it) and removed again when no item landed in it, so a sync that brings
+   * nothing new leaves no empty batch. `dryRun` reads and classifies, but writes nothing.
+   */
+  async createVoucherBatch(
+    organizationId: string,
+    items: VoucherBatchWrite[],
+    creator: VoucherActor,
+    dryRun: boolean,
+    db: DrizzleDb = this.db,
+  ): Promise<{ batch: VoucherBatch | null; results: VoucherBatchWriteResult[] }> {
+    return withTenant(db, organizationId, async (tx) => {
+      let batch: VoucherBatch | null = null;
+      if (!dryRun) {
+        [batch] = await tx
+          .insert(voucherImportBatches)
+          .values({
+            organizationId,
+            source: creator.role === 'CREDENTIAL' ? 'API' : 'CONSOLE',
+            createdByUserId: creator.role === 'CREDENTIAL' ? null : (creator.userId ?? null),
+            createdByCredentialId: creator.role === 'CREDENTIAL' ? creator.credentialId : null,
+          })
+          .returning();
+      }
+      const results: VoucherBatchWriteResult[] = [];
+      for (const item of [...items].sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))) {
+        results.push(await tx.transaction((sp) => this.writeBatchItem(sp, organizationId, item, batch)));
+      }
+      results.sort((a, b) => a.index - b.index);
+      const landed = results.some(
+        (r) => r.kind === 'created' || r.kind === 'replaced' || (r.kind === 'unchanged' && r.moved),
+      );
+      if (batch && !landed) {
+        await tx.delete(voucherImportBatches).where(eq(voucherImportBatches.id, batch.id));
+        batch = null;
+      }
+      return { batch, results };
+    });
+  }
+
+  private async writeBatchItem(
+    tx: DrizzleDb,
+    organizationId: string,
+    item: VoucherBatchWrite,
+    batch: VoucherBatch | null,
+  ): Promise<VoucherBatchWriteResult> {
+    // No batch row means a dry run: read and classify, write nothing.
+    let stored = await this.voucherByCode(tx, organizationId, item.code, batch !== null);
+    if (!stored) {
+      if (!batch) return { index: item.index, kind: 'created', voucher: null };
+      const [created] = await tx
+        .insert(vouchers)
+        .values({ ...item.values, organizationId, code: item.code, status: 'DRAFT', importBatchId: batch.id })
+        .onConflictDoNothing({ target: [vouchers.organizationId, vouchers.code] })
+        .returning();
+      if (created) return { index: item.index, kind: 'created', voucher: created };
+      // Another batch inserted this code since the read above: classify against its voucher.
+      stored = await this.voucherByCode(tx, organizationId, item.code, true);
+      if (!stored) throw conflict(`Voucher code ${item.code} changed while the batch was written; try again`);
+    }
+    const differences = item.compare(stored);
+    // Only a never-published DRAFT of an archived batch gives its code up to a new batch.
+    const released = neverPublished(stored) && (await this.inArchivedBatch(tx, stored));
+    if (!released) {
+      return differences.length
+        ? { index: item.index, kind: 'conflict', voucher: stored, differences }
+        : { index: item.index, kind: 'unchanged', voucher: stored, moved: false };
+    }
+    if (!batch) {
+      return differences.length
+        ? { index: item.index, kind: 'replaced', voucher: stored, differences }
+        : { index: item.index, kind: 'unchanged', voucher: stored, moved: true };
+    }
+    const [updated] = await tx
+      .update(vouchers)
+      .set({
+        ...(differences.length
+          ? // The terms never reached the chain, so nothing of the old attempt is kept.
+            { ...item.values, publishStatus: 'NOT_PUBLISHED' as const, refundPolicySnapshot: null, suiTermsId: null }
+          : {}),
+        importBatchId: batch.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(vouchers.id, stored.id))
+      .returning();
+    return differences.length
+      ? { index: item.index, kind: 'replaced', voucher: updated, differences }
+      : { index: item.index, kind: 'unchanged', voucher: updated, moved: true };
+  }
+
+  private async voucherByCode(tx: DrizzleDb, organizationId: string, code: string, lock: boolean) {
+    const query = tx
+      .select()
+      .from(vouchers)
+      .where(and(eq(vouchers.organizationId, organizationId), eq(vouchers.code, code)));
+    const [row] = lock ? await query.for('update') : await query;
+    return row;
+  }
+
+  /** Archiving is one-way (there is no un-archive), so this needs no lock on the batch. */
+  private async inArchivedBatch(tx: DrizzleDb, voucher: Voucher): Promise<boolean> {
+    if (!voucher.importBatchId) return false;
+    const [row] = await tx
+      .select({ archivedAt: voucherImportBatches.archivedAt })
+      .from(voucherImportBatches)
+      .where(eq(voucherImportBatches.id, voucher.importBatchId));
+    return row?.archivedAt != null;
+  }
+
+  /**
+   * Activates every voucher of the batch that can be: each one in its own savepoint, with the same
+   * checks and the same paths as activating it on its own (`queuePublish`, or `queueApproval` when the
+   * organization requires approval and `actor` is not an Owner). The batch row is locked first, so an
+   * archive cannot race it. Vouchers already published, publishing or waiting are `skipped`, which
+   * makes calling it again safe. The program check belongs to the caller (a 422 for the whole call).
+   */
+  async activateVoucherBatch(
+    organizationId: string,
+    batchId: string,
+    actor: VoucherActor,
+    db: DrizzleDb = this.db,
+  ): Promise<{ batch: VoucherBatch; results: VoucherBatchActivation[] }> {
+    return withTenant(db, organizationId, async (tx) => {
+      const batch = await this.lockBatch(tx, organizationId, batchId);
+      if (batch.archivedAt) throw conflict('This batch is archived and can no longer be activated');
+      const members = await tx
+        .select({ id: vouchers.id })
+        .from(vouchers)
+        .where(and(eq(vouchers.organizationId, organizationId), eq(vouchers.importBatchId, batchId)))
+        .orderBy(asc(vouchers.code));
+      const results: VoucherBatchActivation[] = [];
+      for (const { id } of members) {
+        results.push(await tx.transaction((sp) => this.activateBatchVoucher(sp, organizationId, id, actor)));
+      }
+      return { batch, results };
+    });
+  }
+
+  private async activateBatchVoucher(
+    tx: DrizzleDb,
+    organizationId: string,
+    id: string,
+    actor: VoucherActor,
+  ): Promise<VoucherBatchActivation> {
+    const current = await this.lockVoucher(tx, organizationId, id);
+    if (!neverPublished(current)) return { voucher: current, outcome: 'skipped', reason: null };
+    if (expiresTooSoon(current))
+      return {
+        voucher: current,
+        outcome: 'failed',
+        reason: 'A voucher must stay valid for at least 24 hours to be activated',
+      };
+    if (current.totalSupply !== null && current.claimedCount >= current.totalSupply)
+      return { voucher: current, outcome: 'failed', reason: 'An exhausted voucher cannot be activated' };
+    // Like `activation`, but a Business Developer is queued, not refused: a batch's activation is its
+    // submission when approval is required (OCT-59).
+    const queue = actor.role !== 'OWNER' && (await this.approvalRequired(tx, organizationId));
+    return queue
+      ? { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null }
+      : { voucher: await this.queuePublish(tx, current), outcome: 'publishing', reason: null };
+  }
+
+  /** One-way: hides the batch from the default list, refuses activating it, and releases its drafts' codes. */
+  async archiveVoucherBatch(organizationId: string, batchId: string, db: DrizzleDb = this.db): Promise<VoucherBatch> {
+    return withTenant(db, organizationId, async (tx) => {
+      const batch = await this.lockBatch(tx, organizationId, batchId);
+      if (batch.archivedAt) return batch;
+      const [archived] = await tx
+        .update(voucherImportBatches)
+        .set({ archivedAt: new Date() })
+        .where(eq(voucherImportBatches.id, batchId))
+        .returning();
+      return archived;
+    });
+  }
+
+  private async lockBatch(tx: DrizzleDb, organizationId: string, batchId: string): Promise<VoucherBatch> {
+    const [batch] = await tx
+      .select()
+      .from(voucherImportBatches)
+      .where(and(eq(voucherImportBatches.id, batchId), eq(voucherImportBatches.organizationId, organizationId)))
+      .for('update');
+    if (!batch) throw notFound('Voucher batch not found');
+    return batch;
+  }
+
+  /** Newest first; archived batches only when asked for. */
+  async listVoucherBatches(organizationId: string, includeArchived: boolean, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, (tx) =>
+      tx
+        .select()
+        .from(voucherImportBatches)
+        .where(
+          and(
+            eq(voucherImportBatches.organizationId, organizationId),
+            includeArchived ? undefined : isNull(voucherImportBatches.archivedAt),
+          ),
+        )
+        .orderBy(desc(voucherImportBatches.createdAt)),
+    );
+  }
+
+  /** Another organization's batch is not found. Its vouchers in `code` order. */
+  async findVoucherBatch(organizationId: string, batchId: string, db: DrizzleDb = this.db) {
+    return withTenant(db, organizationId, async (tx) => {
+      const [batch] = await tx
+        .select()
+        .from(voucherImportBatches)
+        .where(and(eq(voucherImportBatches.id, batchId), eq(voucherImportBatches.organizationId, organizationId)));
+      if (!batch) return null;
+      const members = await tx
+        .select()
+        .from(vouchers)
+        .where(and(eq(vouchers.organizationId, organizationId), eq(vouchers.importBatchId, batchId)))
+        .orderBy(asc(vouchers.code));
+      return { batch, vouchers: members };
+    });
+  }
+
+  /** How many vouchers of each batch are in each status, by batch id. */
+  async voucherBatchStatusCounts(
+    organizationId: string,
+    batchIds: string[],
+    db: DrizzleDb = this.db,
+  ): Promise<Map<string, Partial<Record<Voucher['status'], number>>>> {
+    const counts = new Map<string, Partial<Record<Voucher['status'], number>>>();
+    if (!batchIds.length) return counts;
+    const rows = await withTenant(db, organizationId, (tx) =>
+      tx
+        .select({ batchId: vouchers.importBatchId, status: vouchers.status, total: count() })
+        .from(vouchers)
+        .where(and(eq(vouchers.organizationId, organizationId), inArray(vouchers.importBatchId, batchIds)))
+        .groupBy(vouchers.importBatchId, vouchers.status),
+    );
+    for (const row of rows) {
+      if (!row.batchId) continue;
+      const entry = counts.get(row.batchId) ?? {};
+      entry[row.status] = Number(row.total);
+      counts.set(row.batchId, entry);
+    }
+    return counts;
   }
 }
