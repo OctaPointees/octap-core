@@ -4,8 +4,12 @@ import type { VoucherRefundPolicySnapshot } from './voucher-refunds.js';
  * `PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for
  * it to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner
  * approves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.
+ *
+ * `ARCHIVED`: a draft (or one waiting for approval) of a batch that was archived (OCT-303). It never
+ * went live and can't be edited, submitted, approved or claimed. Importing its `code` again in a new
+ * batch brings it back as a `DRAFT` there.
  */
-export type VoucherStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED';
+export type VoucherStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED' | 'ARCHIVED';
 export type VoucherApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
 
 /** The latest request to take a voucher live, when approval was needed. */
@@ -332,6 +336,7 @@ export interface VoucherBatchStatusCounts {
   PAUSED?: number;
   EXPIRED?: number;
   DEPLETED?: number;
+  ARCHIVED?: number;
 }
 
 /** A batch with its vouchers. */
@@ -354,18 +359,20 @@ export interface ListVoucherBatchesRequest {
 /**
  * What a batch action did to one voucher of the batch. Every action handles each voucher on its own,
  * with the checks of the same action on a single voucher, made now.
- * - `publishing`: activate or approve: its terms are on the way on-chain; ACTIVE once confirmed.
+ * - `publishing`: activate: its terms are on the way on-chain; ACTIVE once confirmed. An Owner's
+ *   activation also approves the vouchers waiting for approval (OCT-59).
  * - `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,
- *   so it waits for an Owner (OCT-59).
- * - `rejected`: reject: back to DRAFT, with the reason.
+ *   so it waits for an Owner.
  * - `paused` / `resumed`: pause or resume took effect.
- * - `skipped`: nothing to do for this action, such as activating one already published, approving
- *   one that isn't waiting, or pausing a draft. Calling the action again is safe.
+ * - `archived`: archive: a draft, or one waiting for approval (its request is withdrawn), is now
+ *   `ARCHIVED`.
+ * - `skipped`: nothing to do for this action, such as activating one already published, archiving
+ *   one that is live, or pausing a draft. `status` says where it is. Calling the action again is safe.
  * - `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left
  *   before `expiresAt`, or no supply left).
  */
 export type VoucherBatchOutcome =
-  'publishing' | 'pendingApproval' | 'rejected' | 'paused' | 'resumed' | 'skipped' | 'failed';
+  'publishing' | 'pendingApproval' | 'paused' | 'resumed' | 'archived' | 'skipped' | 'failed';
 
 /** The outcomes `activateVoucherBatch` can report. */
 export type VoucherBatchActivationOutcome = 'publishing' | 'pendingApproval' | 'skipped' | 'failed';
@@ -374,18 +381,14 @@ export interface VoucherBatchActionResult {
   voucherId: string;
   code: string;
   outcome: VoucherBatchOutcome;
+  /** The voucher's status after the action, e.g. why a `skipped` one was skipped. */
+  status: VoucherStatus;
   /** Set when `outcome` is `failed`. */
   reason: string | null;
 }
 
-/** The result of activate, approve, reject, pause or resume on a batch. */
+/** The result of activate, pause, resume or archive on a batch. */
 export interface VoucherBatchActionResponse {
   batch: VoucherBatchDto;
   vouchers: VoucherBatchActionResult[];
-}
-
-/** Rejecting a batch sends every voucher waiting for approval back to DRAFT with this reason. */
-export interface RejectVoucherBatchRequest {
-  /** 1 to 500 characters, as for a single voucher. */
-  reason: string;
 }

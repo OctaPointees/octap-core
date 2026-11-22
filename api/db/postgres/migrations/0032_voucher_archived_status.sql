@@ -1,0 +1,1 @@
+ALTER TYPE "public"."voucher_status" ADD VALUE 'ARCHIVED';

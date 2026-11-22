@@ -1325,26 +1325,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "$ref": "#/components/schemas/VoucherDto"
   },
   "ConsoleVoucherBatchesController_activate_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
-    "type": "object",
-    "properties": {
-      "batch": {
-        "$ref": "#/components/schemas/VoucherBatchDto"
-      },
-      "vouchers": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/VoucherBatchActionResult"
-        }
-      }
-    },
-    "required": [
-      "batch",
-      "vouchers"
-    ]
-  },
-  "ConsoleVoucherBatchesController_approve_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -1363,7 +1344,23 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ConsoleVoucherBatchesController_archive_Response": {
-    "$ref": "#/components/schemas/VoucherBatchDto"
+    "description": "The result of activate, pause, resume or archive on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
   },
   "ConsoleVoucherBatchesController_create_Body": {
     "type": "object",
@@ -1517,39 +1514,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     }
   },
   "ConsoleVoucherBatchesController_pause_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
-    "type": "object",
-    "properties": {
-      "batch": {
-        "$ref": "#/components/schemas/VoucherBatchDto"
-      },
-      "vouchers": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/VoucherBatchActionResult"
-        }
-      }
-    },
-    "required": [
-      "batch",
-      "vouchers"
-    ]
-  },
-  "ConsoleVoucherBatchesController_reject_Body": {
-    "description": "Rejecting a batch sends every voucher waiting for approval back to DRAFT with this reason.",
-    "type": "object",
-    "properties": {
-      "reason": {
-        "description": "1 to 500 characters, as for a single voucher.",
-        "type": "string"
-      }
-    },
-    "required": [
-      "reason"
-    ]
-  },
-  "ConsoleVoucherBatchesController_reject_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -1568,7 +1533,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ConsoleVoucherBatchesController_resume_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -4787,13 +4752,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "VoucherBatchOutcome": {
-    "description": "What a batch action did to one voucher of the batch. Every action handles each voucher on its own,\nwith the checks of the same action on a single voucher, made now.\n- `publishing`: activate or approve: its terms are on the way on-chain; ACTIVE once confirmed.\n- `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,\n  so it waits for an Owner (OCT-59).\n- `rejected`: reject: back to DRAFT, with the reason.\n- `paused` / `resumed`: pause or resume took effect.\n- `skipped`: nothing to do for this action, such as activating one already published, approving\n  one that isn't waiting, or pausing a draft. Calling the action again is safe.\n- `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left\n  before `expiresAt`, or no supply left).",
+    "description": "What a batch action did to one voucher of the batch. Every action handles each voucher on its own,\nwith the checks of the same action on a single voucher, made now.\n- `publishing`: activate: its terms are on the way on-chain; ACTIVE once confirmed. An Owner's\n  activation also approves the vouchers waiting for approval (OCT-59).\n- `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,\n  so it waits for an Owner.\n- `paused` / `resumed`: pause or resume took effect.\n- `archived`: archive: a draft, or one waiting for approval (its request is withdrawn), is now\n  `ARCHIVED`.\n- `skipped`: nothing to do for this action, such as activating one already published, archiving\n  one that is live, or pausing a draft. `status` says where it is. Calling the action again is safe.\n- `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left\n  before `expiresAt`, or no supply left).",
     "enum": [
+      "archived",
       "failed",
       "paused",
       "pendingApproval",
       "publishing",
-      "rejected",
       "resumed",
       "skipped"
     ],
@@ -4808,7 +4773,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "VoucherBatchesController_activate_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -4827,7 +4792,23 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "VoucherBatchesController_archive_Response": {
-    "$ref": "#/components/schemas/VoucherBatchDto"
+    "description": "The result of activate, pause, resume or archive on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
   },
   "VoucherBatchesController_create_Body": {
     "type": "object",
@@ -4981,7 +4962,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     }
   },
   "VoucherBatchesController_pause_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -5000,7 +4981,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "VoucherBatchesController_resume_Response": {
-    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "description": "The result of activate, pause, resume or archive on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -5039,9 +5020,10 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "VoucherStatus": {
-    "description": "`PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for\nit to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner\napproves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.",
+    "description": "`PENDING_APPROVAL`: the organization requires approval and someone other than an Owner asked for\nit to go live (a Business Developer's submission, or an API key asking for `ACTIVE`). An Owner\napproves it (publishing starts) or rejects it (back to `DRAFT`); it cannot be edited meanwhile.\n\n`ARCHIVED`: a draft (or one waiting for approval) of a batch that was archived (OCT-303). It never\nwent live and can't be edited, submitted, approved or claimed. Importing its `code` again in a new\nbatch brings it back as a `DRAFT` there.",
     "enum": [
       "ACTIVE",
+      "ARCHIVED",
       "DEPLETED",
       "DRAFT",
       "EXPIRED",
@@ -5678,6 +5660,10 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "outcome": {
         "$ref": "#/components/schemas/VoucherBatchOutcome"
       },
+      "status": {
+        "$ref": "#/components/schemas/VoucherStatus",
+        "description": "The voucher's status after the action, e.g. why a `skipped` one was skipped."
+      },
       "reason": {
         "description": "Set when `outcome` is `failed`.",
         "type": [
@@ -5690,6 +5676,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "code",
       "outcome",
       "reason",
+      "status",
       "voucherId"
     ]
   },
@@ -6036,6 +6023,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "number"
       },
       "DEPLETED": {
+        "type": "number"
+      },
+      "ARCHIVED": {
         "type": "number"
       }
     }

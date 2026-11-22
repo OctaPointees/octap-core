@@ -62,7 +62,6 @@ export type {
   VoucherBatchActivationOutcome,
   VoucherBatchActionResult,
   VoucherBatchActionResponse,
-  RejectVoucherBatchRequest,
   WebhookEndpointStatus,
   WebhookDeliveryStatus,
   WebhookEndpointDto,

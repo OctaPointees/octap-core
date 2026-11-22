@@ -75,7 +75,7 @@ Mỗi item được xử lý riêng, và `items[i]` của response mô tả `ite
 | Chưa có | `created` | `created` |
 | Đã publish, đang publish hoặc đang chờ duyệt | `unchanged` | `conflict`: giữ nguyên |
 | Nháp của lô đang mở, hoặc tạo lẻ | `unchanged` | `conflict`: giữ nguyên |
-| Nháp chưa từng publish của lô đã archive | `unchanged`, chuyển sang lô này (`movedToBatch: true`) | `replaced`: nhận giá trị mới, chuyển sang lô này |
+| `ARCHIVED` (nháp của lô đã archive) | `unchanged`, về lại `DRAFT` ở lô này (`movedToBatch: true`) | `replaced`: nhận giá trị mới, thành `DRAFT` ở lô này |
 
 `error` nghĩa là item không được ghi: `error.code` là `INVALID` (kèm `field`) hoặc `DUPLICATE_IN_BATCH` (cùng `code` với một item trước đó trong request). `conflict` và `replaced` trả `differences: [{ field, stored, sent }]`.
 
@@ -111,13 +111,13 @@ Lô kèm danh sách voucher. Lô của tổ chức khác trả 404.
 activateVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
-Activate mọi nháp trong lô, mỗi voucher qua đúng các kiểm tra như khi activate riêng, chạy lại tại thời điểm gọi. `outcome` của từng voucher:
+Activate mọi nháp trong lô, mỗi voucher qua đúng các kiểm tra như khi activate riêng, chạy lại tại thời điểm gọi. Kết quả từng voucher có `outcome` và `status` sau khi gọi:
 
 | `outcome` | Ý nghĩa |
 | --- | --- |
 | `publishing` | Điều khoản đang được đưa lên chain; thành `ACTIVE` khi chain xác nhận |
 | `pendingApproval` | Tổ chức của bạn bật yêu cầu duyệt: voucher chờ Owner duyệt trong console |
-| `skipped` | Đã publish, đang publish hoặc đang chờ, nên gọi lại vẫn an toàn |
+| `skipped` | Đã publish, đang publish, hoặc đang chờ Owner duyệt, nên gọi lại vẫn an toàn; `status` cho biết là trường hợp nào |
 | `failed` | Vẫn là `DRAFT`; `reason` cho biết lý do (ví dụ còn dưới 24 giờ tới `expiresAt`) |
 
 Chưa có loyalty program trên chain thì trả 422; lô đã archive thì trả 409. Việc publish chạy vài voucher mỗi lượt, nên lô lớn mất vài phút mới live hết.
@@ -149,10 +149,10 @@ Duyệt hoặc từ chối cả lô là việc của Owner, chỉ làm trong con
 `POST /v1/rewards/voucher-batches/:batchId/archive` · Scope: `write`
 
 ```ts
-archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchDto>
+archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
-Dành cho lô bạn không dùng nữa (nhầm file, huỷ đợt khuyến mãi). Lô bị ẩn khỏi `listVoucherBatches` và không activate được nữa. Voucher đã live trong lô vẫn live; `code` của các nháp trong lô có thể được một lô sau dùng lại. Không có un-archive.
+Dành cho lô bạn không dùng nữa (nhầm file, huỷ đợt khuyến mãi). Lô bị ẩn khỏi `listVoucherBatches` và không activate được nữa. Mọi voucher chưa từng live trong lô thành `ARCHIVED` (`outcome: "archived"`; voucher đang chờ duyệt thì yêu cầu duyệt bị rút lại): không sửa, gửi duyệt hay live được nữa. Import lại `code` của nó thì nó về lại `DRAFT` ở lô mới. Voucher đã live vẫn live (`skipped`): muốn dừng claim thì tạm dừng lô. Không có un-archive.
 
 ## claimVoucher
 

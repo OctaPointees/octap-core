@@ -70,7 +70,8 @@ reloads the user's memberships; a suspended membership or changed persona invali
 - POST/GET `/:id/voucher-batches`, GET `/:id/voucher-batches/:batchId`, POST `…/:batchId/activate` and
   `…/:batchId/archive`: Owner/Developer, with the same rules as single vouchers. Activating as a
   Developer while approval is required sends the batch's drafts to `PENDING_APPROVAL` (OCT-303).
-  POST `…/:batchId/approve`, `…/reject` (`{ reason }`), `…/pause` and `…/resume`: Owner only.
+  The Owner's activation also approves what waits for approval. POST `…/:batchId/pause` and
+  `…/resume`: Owner only. Archiving makes the batch's never-live vouchers `ARCHIVED`.
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.
 Worker-backed program provisioning and member directory are implemented in OCT-36/OCT-71.

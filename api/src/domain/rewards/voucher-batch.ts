@@ -56,15 +56,6 @@ export function parseBatchRequest(body: unknown): { items: unknown[]; dryRun: bo
   return { items, dryRun: dryRun ?? false, name: label || null };
 }
 
-/** A reject's reason, checked like a single voucher's (1 to 500 characters, nothing else in the body). */
-export function parseRejectReason(body: unknown): string {
-  const input = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
-  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
-  if (!reason || reason.length > 500 || Object.keys(input).some((key) => key !== 'reason'))
-    throw new BadRequestException('A rejection reason is required (up to 500 characters)');
-  return reason;
-}
-
 const FIELD_NAMES = new Set<string>([...BATCH_COMPARED_FIELDS, 'code', 'status']);
 
 /**

@@ -391,11 +391,14 @@ export class OctaPointClient {
   }
 
   /**
-   * Hides the batch and refuses to activate it again. Its vouchers that are live stay live; its drafts'
-   * codes may be taken over by a later batch. There is no un-archive.
+   * For a batch you won't use (a wrong file, a cancelled campaign). The batch is hidden and can't be
+   * activated again, and each of its vouchers that never went live becomes `ARCHIVED` (one waiting
+   * for approval is withdrawn): it can't be edited or go live any more. Live vouchers stay live;
+   * pause the batch to stop claims. Importing an archived voucher's code again brings it back as a
+   * DRAFT in the new batch. There is no un-archive.
    */
-  async archiveVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchDto> {
-    return this.request<VoucherBatchDto>(
+  async archiveVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchActionResponse> {
+    return this.request<VoucherBatchActionResponse>(
       `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/archive`,
       'POST',
       undefined,

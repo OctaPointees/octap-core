@@ -90,6 +90,10 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
     ] as const) {
       expect((await send(body).expect(400)).body.message).toMatch(message);
     }
+    // Exactly the limit is fine.
+    const full = (await send({ items: Array.from({ length: 100 }, (_, i) => item(`full-${i}`)) }).expect(201)).body;
+    expect(full.items).toHaveLength(100);
+    expect(full.batch.statusCounts).toEqual({ DRAFT: 100 });
     const readOnly = {
       Authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read'] })).rawKey}`,
     };
@@ -239,15 +243,30 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
     });
   });
 
-  it("archives a batch: hidden, can't be activated, and its drafts' codes go to the next batch", async () => {
+  it('archives a batch: hidden, its drafts ARCHIVED and frozen, and their codes go to the next batch', async () => {
     const old = (await send({ items: [item('KEEP'), item('EDIT')] }).expect(201)).body.batch;
-    expect((await archive(old.id).expect(201)).body.archivedAt).toEqual(expect.any(String));
-    // Archiving twice changes nothing.
-    expect((await archive(old.id).expect(201)).body.archivedAt).toEqual(expect.any(String));
+    const archived = (await archive(old.id).expect(201)).body;
+    expect(archived.batch.archivedAt).toEqual(expect.any(String));
+    expect(archived.batch.statusCounts).toEqual({ ARCHIVED: 2 });
+    expect(archived.vouchers).toEqual([
+      { voucherId: expect.any(String), code: 'EDIT', outcome: 'archived', status: 'ARCHIVED', reason: null },
+      { voucherId: expect.any(String), code: 'KEEP', outcome: 'archived', status: 'ARCHIVED', reason: null },
+    ]);
+    // Archiving twice only reports.
+    const again = (await archive(old.id).expect(201)).body;
+    expect(again.batch.archivedAt).toBe(archived.batch.archivedAt);
+    expect(again.vouchers.map((v: { outcome: string }) => v.outcome)).toEqual(['skipped', 'skipped']);
     expect((await activate(old.id).expect(409)).body.message).toMatch(/archived/);
     expect((await ctx.http().get(api).set(key).expect(200)).body).toHaveLength(0);
     expect((await ctx.http().get(`${api}?includeArchived=true`).set(key).expect(200)).body).toHaveLength(1);
     await ctx.http().get(`${api}?includeArchived=maybe`).set(key).expect(400);
+
+    // An ARCHIVED voucher can't be edited or go live on its own any more.
+    const keep = await voucherByCode('KEEP');
+    for (const body of [{ title: 'New' }, { status: 'ACTIVE' }])
+      expect(
+        (await ctx.http().patch(`/v1/rewards/vouchers/${keep.id}`).set(key).send(body).expect(409)).body.message,
+      ).toMatch(/archived; import its code again/);
 
     const next = (await send({ items: [item('KEEP'), item('EDIT', { pointsCost: 250 })] }).expect(201)).body;
     expect(next.items[0]).toMatchObject({ status: 'unchanged', movedToBatch: true });
@@ -256,7 +275,12 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       differences: [{ field: 'pointsCost', stored: 100, sent: 250 }],
     });
     expect(next.batch.statusCounts).toEqual({ DRAFT: 2 });
-    expect(await voucherByCode('EDIT')).toMatchObject({ pointsCost: 250, importBatchId: next.batch.id });
+    expect(await voucherByCode('EDIT')).toMatchObject({
+      status: 'DRAFT',
+      pointsCost: 250,
+      importBatchId: next.batch.id,
+    });
+    expect(await voucherByCode('KEEP')).toMatchObject({ status: 'DRAFT', importBatchId: next.batch.id });
 
     const detail = (await ctx.http().get(`${api}/${next.batch.id}`).set(key).expect(200)).body;
     expect(detail.vouchers.map((v: { code: string }) => v.code)).toEqual(['EDIT', 'KEEP']);
@@ -266,11 +290,12 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
     const { batch } = (await send({ items: [item('OK'), item('SOON', { expiresAt: later(2) })] }).expect(201)).body;
     const first = (await activate(batch.id).expect(201)).body;
     expect(first.vouchers).toEqual([
-      { voucherId: expect.any(String), code: 'OK', outcome: 'publishing', reason: null },
+      { voucherId: expect.any(String), code: 'OK', outcome: 'publishing', status: 'DRAFT', reason: null },
       {
         voucherId: expect.any(String),
         code: 'SOON',
         outcome: 'failed',
+        status: 'DRAFT',
         reason: expect.stringMatching(/at least 24 hours/),
       },
     ]);
@@ -388,7 +413,7 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       expect((await ctx.http().get(`${api}/${named.id}`).set(key).expect(200)).body.name).toBe('catalog-11-11.csv');
     });
 
-    it("lets the Owner approve a Developer's whole batch, each voucher with its own checks", async () => {
+    it("approves what waits when the Owner activates a Developer's batch, each voucher with its own checks", async () => {
       await requireApproval();
       const created = (
         await ctx
@@ -400,7 +425,14 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       ).body.batch;
       const submitted = (await consoleAction('developer', created.id, 'activate').expect(201)).body;
       expect(outcomes(submitted)).toEqual({ A1: 'pendingApproval', A2: 'pendingApproval', A3: 'pendingApproval' });
-      // Days pass: A2 is now too close to its end to go live. A3 is withdrawn.
+      // A Developer activating again changes nothing: it still waits for an Owner.
+      const repeat = (await consoleAction('developer', created.id, 'activate').expect(201)).body;
+      expect(repeat.vouchers.map((v: { outcome: string; status: string }) => [v.outcome, v.status])).toEqual([
+        ['skipped', 'PENDING_APPROVAL'],
+        ['skipped', 'PENDING_APPROVAL'],
+        ['skipped', 'PENDING_APPROVAL'],
+      ]);
+      // Days pass: A2 is now too close to its end to go live. A3 is withdrawn, so it is a draft again.
       await ctx.db
         .update(schema.vouchers)
         .set({ expiresAt: new Date(Date.now() + 2 * 3600_000) })
@@ -411,46 +443,51 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
         .set(as('developer'))
         .expect(201);
 
-      await consoleAction('developer', created.id, 'approve').expect(403);
-      await ctx.http().post(`${api}/${created.id}/approve`).set(key).expect(404);
-      const approved = (await consoleAction('owner', created.id, 'approve').expect(201)).body;
-      expect(outcomes(approved)).toEqual({ A1: 'publishing', A2: 'failed', A3: 'skipped' });
-      expect(approved.vouchers.find((v: { code: string }) => v.code === 'A2').reason).toMatch(/24 hours/);
-      expect(await voucherByCode('A1')).toMatchObject({ status: 'DRAFT', publishStatus: 'PUBLISHING' });
-      expect((await voucherByCode('A2')).status).toBe('PENDING_APPROVAL');
-      // Approving again only finds what is still waiting.
-      expect(outcomes((await consoleAction('owner', created.id, 'approve').expect(201)).body)).toEqual({
-        A1: 'skipped',
-        A2: 'failed',
-        A3: 'skipped',
+      const approved = (await consoleAction('owner', created.id, 'activate').expect(201)).body;
+      expect(outcomes(approved)).toEqual({ A1: 'publishing', A2: 'failed', A3: 'publishing' });
+      expect(approved.vouchers.find((v: { code: string }) => v.code === 'A2')).toMatchObject({
+        status: 'PENDING_APPROVAL',
+        reason: expect.stringMatching(/24 hours/),
       });
-    });
-
-    it('lets the Owner reject a whole batch with one reason, and approving an archived batch is a 409', async () => {
-      await requireApproval();
-      const { batch } = (await send({ items: [item('R1'), item('R2')] }).expect(201)).body;
-      await activate(batch.id).expect(201);
-      for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', more: 1 }])
-        await consoleAction('owner', batch.id, 'reject', body).expect(400);
-      const rejected = (await consoleAction('owner', batch.id, 'reject', { reason: ' Cap too high ' }).expect(201))
-        .body;
-      expect(outcomes(rejected)).toEqual({ R1: 'rejected', R2: 'rejected' });
-      const r1 = await voucherByCode('R1');
-      expect(r1.status).toBe('DRAFT');
+      expect(await voucherByCode('A1')).toMatchObject({ status: 'DRAFT', publishStatus: 'PUBLISHING' });
       const [request] = await ctx.db
         .select()
         .from(schema.voucherApprovalRequests)
-        .where(eq(schema.voucherApprovalRequests.voucherId, r1.id));
-      expect(request).toMatchObject({ status: 'REJECTED', reason: 'Cap too high', reviewedById: ids.owner });
+        .where(eq(schema.voucherApprovalRequests.voucherId, (await voucherByCode('A1')).id));
+      expect(request).toMatchObject({ status: 'APPROVED', reviewedById: ids.owner });
+      // No separate batch approve or reject: activating is the approval, rejecting stays per voucher.
+      await consoleAction('owner', created.id, 'approve').expect(404);
+      await consoleAction('owner', created.id, 'reject', { reason: 'x' }).expect(404);
+    });
 
+    it('archives what waits for approval too: the request is withdrawn and the voucher frozen', async () => {
+      await requireApproval();
+      const { batch } = (await send({ items: [item('W1'), item('W2')] }).expect(201)).body;
       await activate(batch.id).expect(201);
-      await archive(batch.id).expect(201);
-      expect((await consoleAction('owner', batch.id, 'approve').expect(409)).body.message).toMatch(/archived/);
-      // Rejecting what an archived batch still has waiting stays possible.
-      expect(outcomes((await consoleAction('owner', batch.id, 'reject', { reason: 'Old' }).expect(201)).body)).toEqual({
-        R1: 'rejected',
-        R2: 'rejected',
-      });
+      const archived = (await consoleAction('developer', batch.id, 'archive').expect(201)).body;
+      expect(outcomes(archived)).toEqual({ W1: 'archived', W2: 'archived' });
+      const w1 = await voucherByCode('W1');
+      expect(w1.status).toBe('ARCHIVED');
+      const [request] = await ctx.db
+        .select()
+        .from(schema.voucherApprovalRequests)
+        .where(eq(schema.voucherApprovalRequests.voucherId, w1.id));
+      expect(request).toMatchObject({ status: 'WITHDRAWN', reason: 'Batch archived', reviewedById: ids.developer });
+      // Neither an Owner's approval nor a submission can take it live now.
+      await ctx
+        .http()
+        .post(`/v1/console/organizations/${orgId}/vouchers/${w1.id}/approve`)
+        .set(as('owner'))
+        .expect(409);
+      expect(
+        (
+          await ctx
+            .http()
+            .post(`/v1/console/organizations/${orgId}/vouchers/${w1.id}/submit`)
+            .set(as('developer'))
+            .expect(409)
+        ).body.message,
+      ).toMatch(/archived/);
     });
 
     it('pauses and resumes the live vouchers of a batch, even archived, and skips the rest', async () => {

@@ -13,8 +13,7 @@ import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
 
 /**
  * Voucher batches with a merchant API key (OCT-303): create many vouchers as one DRAFT batch (with
- * `dryRun` to preview), then activate, pause, resume or archive the batch. Approving or rejecting a
- * batch is the Owner's, in the console only, as for a single voucher. The console has the same routes for the
+ * `dryRun` to preview), then activate, pause, resume or archive the batch. The console has the same routes for the
  * Owner and a Business Developer (`ConsoleVoucherBatchesController`).
  */
 @Controller('v1/rewards/voucher-batches')
@@ -65,8 +64,11 @@ export class VoucherBatchesController {
   archive(
     @Tenant() tenant: TenantContext,
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
-  ): Promise<VoucherBatchDto> {
-    return this.batches.archive(tenant.organizationId, batchId);
+  ): Promise<VoucherBatchActionResponse> {
+    return this.batches.archive(tenant.organizationId, batchId, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
   }
 
   /** Pauses every voucher of the batch that is on-chain, as `PATCH { status: 'PAUSED' }` does for one. */

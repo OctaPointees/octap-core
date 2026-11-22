@@ -5,7 +5,6 @@ import {
   checkBatchItems,
   errorField,
   parseBatchRequest,
-  parseRejectReason,
   toBatchValues,
   voucherDifferences,
 } from '#domain/rewards/voucher-batch.js';
@@ -184,21 +183,5 @@ describe('voucherDifferences', () => {
 
   it('compares every field a batch item can set', () => {
     expect([...BATCH_COMPARED_FIELDS].sort()).toEqual(Object.keys(toBatchValues(item)).sort());
-  });
-});
-
-describe('parseRejectReason', () => {
-  it('takes a trimmed reason of 1 to 500 characters and nothing else', () => {
-    expect(parseRejectReason({ reason: '  Cap too high ' })).toBe('Cap too high');
-    for (const body of [
-      null,
-      [],
-      {},
-      { reason: '  ' },
-      { reason: 5 },
-      { reason: 'x'.repeat(501) },
-      { reason: 'ok', more: 1 },
-    ])
-      expect(() => parseRejectReason(body)).toThrow(/rejection reason is required/);
   });
 });

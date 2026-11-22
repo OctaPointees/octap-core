@@ -29,6 +29,7 @@ export const voucherStatusEnum = pgEnum('voucher_status', [
   'EXPIRED',
   'DEPLETED',
   'PENDING_APPROVAL',
+  'ARCHIVED',
 ]);
 export const voucherApprovalStatusEnum = pgEnum('voucher_approval_status', [
   'PENDING',

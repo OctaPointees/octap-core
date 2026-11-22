@@ -38,6 +38,7 @@ description: What each transaction, voucher and webhook status means.
 | --- | --- |
 | `DRAFT` | Not offered yet |
 | `PENDING_APPROVAL` | Waiting for an Owner's approval, when the organization requires it. It can't be edited or claimed. Approved, it is published and becomes `ACTIVE`; rejected or withdrawn, it is `DRAFT` again. |
+| `ARCHIVED` | A draft (or one waiting for approval) of an archived batch. It never went live and can't be edited, submitted or claimed. Importing its `code` again in a new batch makes it a `DRAFT` there. |
 | `ACTIVE` | Can be claimed |
 | `PAUSED` | Claims are paused |
 | `EXPIRED` | Past its end date |

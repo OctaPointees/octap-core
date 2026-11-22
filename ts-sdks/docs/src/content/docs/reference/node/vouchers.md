@@ -75,7 +75,7 @@ Each item is handled on its own, and `items[i]` of the response describes `items
 | None | `created` | `created` |
 | Published, publishing or waiting for approval | `unchanged` | `conflict`: kept as it is |
 | A draft of an open batch, or created on its own | `unchanged` | `conflict`: kept as it is |
-| A never-published draft of an archived batch | `unchanged`, moved to this batch (`movedToBatch: true`) | `replaced`: now holds the sent values, in this batch |
+| `ARCHIVED` (a draft of an archived batch) | `unchanged`, back to `DRAFT` in this batch (`movedToBatch: true`) | `replaced`: now holds the sent values, as a `DRAFT` in this batch |
 
 `error` means the item was not written: `error.code` is `INVALID` (with the `field`) or `DUPLICATE_IN_BATCH` (the same `code` earlier in the request). `conflict` and `replaced` list `differences: [{ field, stored, sent }]`.
 
@@ -111,13 +111,13 @@ The batch with its vouchers. Another organization's batch is a 404.
 activateVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
-Activates every draft of the batch, each one with the same checks as activating it on its own, made now. Each voucher's `outcome`:
+Activates every draft of the batch, each one with the same checks as activating it on its own, made now. Each voucher's result has its `outcome` and its `status` after the call:
 
 | `outcome` | Meaning |
 | --- | --- |
 | `publishing` | Its terms are on the way on-chain; it becomes `ACTIVE` once the chain confirms |
 | `pendingApproval` | Your organization requires approval: it waits for an Owner in the console |
-| `skipped` | Already published, publishing or waiting, so calling this again is safe |
+| `skipped` | Already published or publishing, or waiting for an Owner, so calling this again is safe; `status` says which |
 | `failed` | It stays `DRAFT`; `reason` says why (for example less than 24 hours left before `expiresAt`) |
 
 No loyalty program on-chain is a 422; an archived batch is a 409. Publishing runs a few vouchers at a time, so a large batch takes a few minutes to be fully live.
@@ -149,10 +149,10 @@ Approving or rejecting a whole batch is the Owner's, in the console only, as for
 `POST /v1/rewards/voucher-batches/:batchId/archive` · Scope: `write`
 
 ```ts
-archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchDto>
+archiveVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
-For a batch you won't use (a wrong file, a cancelled campaign). It is hidden from `listVoucherBatches` and can no longer be activated. Its live vouchers stay live; its drafts' codes can be taken over by a later batch. There is no un-archive.
+For a batch you won't use (a wrong file, a cancelled campaign). It is hidden from `listVoucherBatches` and can no longer be activated. Each of its vouchers that never went live becomes `ARCHIVED` (`outcome: "archived"`; one waiting for approval is withdrawn): it can't be edited, submitted or go live any more. Importing its code again brings it back as a `DRAFT` in the new batch. Its live vouchers stay live (`skipped`): pause the batch to stop claims. There is no un-archive.
 
 ## claimVoucher
 

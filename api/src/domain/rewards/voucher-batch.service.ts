@@ -17,7 +17,7 @@ import {
 } from '#infra/db/repositories/rewards.repository.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { toHttpError, toVoucherDto } from './rewards.service.js';
-import { checkBatchItems, parseBatchRequest, parseRejectReason, voucherDifferences } from './voucher-batch.js';
+import { checkBatchItems, parseBatchRequest, voucherDifferences } from './voucher-batch.js';
 
 async function mapErrors<T>(work: Promise<T>): Promise<T> {
   try {
@@ -117,39 +117,6 @@ export class VoucherBatchService {
     );
   }
 
-  /** An Owner approves every voucher of the batch waiting for approval: each one starts publishing. */
-  async approve(
-    organizationId: string,
-    batchId: string,
-    ownerId: string,
-    tx?: DrizzleDb,
-  ): Promise<VoucherBatchActionResponse> {
-    await this.requireProgram(organizationId, tx);
-    return this.actionResponse(
-      organizationId,
-      await mapErrors(this.rewardsRepo.reviewVoucherBatch(organizationId, batchId, ownerId, { approve: true }, tx)),
-      tx,
-    );
-  }
-
-  /** An Owner sends every voucher of the batch waiting for approval back to DRAFT, with one reason. */
-  async reject(
-    organizationId: string,
-    batchId: string,
-    ownerId: string,
-    body: unknown,
-    tx?: DrizzleDb,
-  ): Promise<VoucherBatchActionResponse> {
-    const reason = parseRejectReason(body);
-    return this.actionResponse(
-      organizationId,
-      await mapErrors(
-        this.rewardsRepo.reviewVoucherBatch(organizationId, batchId, ownerId, { approve: false, reason }, tx),
-      ),
-      tx,
-    );
-  }
-
   /** Pauses (`paused: true`) or resumes every voucher of the batch that is on-chain. */
   async setPaused(
     organizationId: string,
@@ -184,15 +151,27 @@ export class VoucherBatchService {
         voucherId: voucher.id,
         code: voucher.code,
         outcome,
+        status: voucher.status,
         reason,
       })),
     };
   }
 
-  /** Archiving an archived batch changes nothing. */
-  async archive(organizationId: string, batchId: string, tx?: DrizzleDb): Promise<VoucherBatchDto> {
-    const batch = await mapErrors(this.rewardsRepo.archiveVoucherBatch(organizationId, batchId, tx));
-    return this.batchDto(organizationId, batch, tx);
+  /**
+   * Archives the batch: its vouchers that never went live become `ARCHIVED` (one waiting for approval
+   * has its request withdrawn); live ones are untouched. Archiving again only reports.
+   */
+  async archive(
+    organizationId: string,
+    batchId: string,
+    actor: VoucherActor,
+    tx?: DrizzleDb,
+  ): Promise<VoucherBatchActionResponse> {
+    return this.actionResponse(
+      organizationId,
+      await mapErrors(this.rewardsRepo.archiveVoucherBatch(organizationId, batchId, actor, tx)),
+      tx,
+    );
   }
 
   private async batchDto(organizationId: string, batch: VoucherBatch, tx?: DrizzleDb): Promise<VoucherBatchDto> {

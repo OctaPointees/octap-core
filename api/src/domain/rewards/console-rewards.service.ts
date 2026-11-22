@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type {
-  RejectVoucherBatchRequest,
   VoucherBatchActionResponse,
   ConsoleVoucherInput,
   CreateVoucherBatchRequest,
@@ -132,7 +131,8 @@ export class ConsoleRewardsService {
 /**
  * Voucher batches from the console (OCT-303), with the same access as single vouchers: the Owner and a
  * Business Developer read, create, activate and archive them. Activating as a Business Developer while
- * the organization requires approval sends the batch to an Owner, as a single voucher's submission does.
+ * the organization requires approval sends the batch to an Owner, as a single voucher's submission
+ * does; the Owner's activation then approves it. Only the Owner pauses or resumes a batch.
  */
 @Injectable()
 export class ConsoleVoucherBatchService {
@@ -180,27 +180,11 @@ export class ConsoleVoucherBatchService {
     );
   }
 
-  archive(userId: string, orgId: string, batchId: string): Promise<VoucherBatchDto> {
+  archive(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
     return this.run(WRITE_DENIED, () =>
-      this.organizations.withEditorAccess(userId, orgId, (tx) => this.batches.archive(orgId, batchId, tx)),
-    );
-  }
-
-  /** The Owner's decision on everything the batch has waiting for approval. */
-  approve(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
-    return this.run(REVIEW_DENIED, () =>
-      this.organizations.withOwnerAccess(userId, orgId, (tx) => this.batches.approve(orgId, batchId, userId, tx)),
-    );
-  }
-
-  reject(
-    userId: string,
-    orgId: string,
-    batchId: string,
-    input: RejectVoucherBatchRequest,
-  ): Promise<VoucherBatchActionResponse> {
-    return this.run(REVIEW_DENIED, () =>
-      this.organizations.withOwnerAccess(userId, orgId, (tx) => this.batches.reject(orgId, batchId, userId, input, tx)),
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.batches.archive(orgId, batchId, actorOf(userId, role), tx),
+      ),
     );
   }
 
