@@ -55,6 +55,7 @@ export type {
   VoucherBatchItemResult,
   VoucherFieldDifference,
   VoucherBatchDto,
+  VoucherBatchStatusCounts,
   VoucherBatchDetailDto,
   ListVoucherBatchesRequest,
   VoucherBatchActivationOutcome,

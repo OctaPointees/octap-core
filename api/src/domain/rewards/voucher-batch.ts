@@ -1,10 +1,23 @@
 import { BadRequestException } from '@nestjs/common';
-import { VOUCHER_BATCH_MAX_ITEMS, type VoucherBatchItem, type VoucherFieldDifference } from '@octap/contracts';
+import {
+  VOUCHER_BATCH_MAX_ITEMS,
+  type VoucherBatchItem,
+  type VoucherBatchStatusCounts,
+  type VoucherFieldDifference,
+  type VoucherStatus,
+} from '@octap/contracts';
 import type { VoucherBatchValues } from '#infra/db/repositories/rewards.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
 import { validateVoucher } from './voucher-validation.js';
 
 type Voucher = typeof vouchers.$inferSelect;
+
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/**
+ * Fails to compile when `VoucherBatchStatusCounts` (spelled out for the OpenAPI generator) stops
+ * listing exactly the `VoucherStatus` values, e.g. after a new status is added.
+ */
+export const STATUS_COUNTS_LIST_EVERY_STATUS: Same<keyof VoucherBatchStatusCounts, VoucherStatus> = true;
 
 /**
  * The fields a batch item sets, in the order differences are reported. `code` is the key, so it is

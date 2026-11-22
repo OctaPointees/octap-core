@@ -1402,7 +1402,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "statusCounts": {
-        "$ref": "#/components/schemas/Partial_Record_import_Users_dev_trungnhan_Downloads_Report5_octap_core_303_ts_sdks_packages_contracts_dist_rewards_with_resolution_mode_import_VoucherStatus_number",
+        "$ref": "#/components/schemas/VoucherBatchStatusCounts",
         "description": "How many of its vouchers are in each status, e.g. `{ DRAFT: 98, ACTIVE: 2 }`."
       }
     },
@@ -2720,29 +2720,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "INDIVIDUAL_HOUSEHOLD"
     ],
     "type": "string"
-  },
-  "Partial_Record_import_Users_dev_trungnhan_Downloads_Report5_octap_core_303_ts_sdks_packages_contracts_dist_rewards_with_resolution_mode_import_VoucherStatus_number": {
-    "type": "object",
-    "properties": {
-      "DRAFT": {
-        "type": "number"
-      },
-      "PENDING_APPROVAL": {
-        "type": "number"
-      },
-      "ACTIVE": {
-        "type": "number"
-      },
-      "PAUSED": {
-        "type": "number"
-      },
-      "EXPIRED": {
-        "type": "number"
-      },
-      "DEPLETED": {
-        "type": "number"
-      }
-    }
   },
   "PlatformChangeRequestsController_approve_Body": {
     "type": "object",
@@ -4526,7 +4503,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "statusCounts": {
-        "$ref": "#/components/schemas/Partial_Record_import_Users_dev_trungnhan_Downloads_Report5_octap_core_303_ts_sdks_packages_contracts_dist_rewards_with_resolution_mode_import_VoucherStatus_number",
+        "$ref": "#/components/schemas/VoucherBatchStatusCounts",
         "description": "How many of its vouchers are in each status, e.g. `{ DRAFT: 98, ACTIVE: 2 }`."
       }
     },
@@ -5284,7 +5261,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       },
       "statusCounts": {
-        "$ref": "#/components/schemas/Partial_Record_import_Users_dev_trungnhan_Downloads_Report5_octap_core_303_ts_sdks_packages_contracts_dist_rewards_with_resolution_mode_import_VoucherStatus_number",
+        "$ref": "#/components/schemas/VoucherBatchStatusCounts",
         "description": "How many of its vouchers are in each status, e.g. `{ DRAFT: 98, ACTIVE: 2 }`."
       }
     },
@@ -5548,6 +5525,30 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         ]
       }
     ]
+  },
+  "VoucherBatchStatusCounts": {
+    "description": "How many of a batch's vouchers are in each status; a status with none is left out. A named type,\nnot `Partial<Record<VoucherStatus, number>>`: the OpenAPI generator names an inline generic after the\nfile's absolute path, which differs per machine.",
+    "type": "object",
+    "properties": {
+      "DRAFT": {
+        "type": "number"
+      },
+      "PENDING_APPROVAL": {
+        "type": "number"
+      },
+      "ACTIVE": {
+        "type": "number"
+      },
+      "PAUSED": {
+        "type": "number"
+      },
+      "EXPIRED": {
+        "type": "number"
+      },
+      "DEPLETED": {
+        "type": "number"
+      }
+    }
   },
   "VoucherDto": {
     "type": "object",

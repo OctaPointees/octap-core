@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BATCH_COMPARED_FIELDS,
+  STATUS_COUNTS_LIST_EVERY_STATUS,
   checkBatchItems,
   errorField,
   parseBatchRequest,
@@ -165,6 +166,10 @@ describe('voucherDifferences', () => {
       { field: 'totalSupply', stored: null, sent: 10 },
       { field: 'expiresAt', stored: '2027-01-01T00:00:00.000Z', sent: '2027-02-01T00:00:00.000Z' },
     ]);
+  });
+
+  it('keeps the status counts type in step with the voucher statuses', () => {
+    expect(STATUS_COUNTS_LIST_EVERY_STATUS).toBe(true);
   });
 
   it('compares every field a batch item can set', () => {

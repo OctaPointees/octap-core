@@ -307,7 +307,21 @@ export interface VoucherBatchDto {
   /** Set once archived: the batch is hidden from the default list and can no longer be activated. */
   archivedAt: string | null;
   /** How many of its vouchers are in each status, e.g. `{ DRAFT: 98, ACTIVE: 2 }`. */
-  statusCounts: Partial<Record<VoucherStatus, number>>;
+  statusCounts: VoucherBatchStatusCounts;
+}
+
+/**
+ * How many of a batch's vouchers are in each status; a status with none is left out. A named type,
+ * not `Partial<Record<VoucherStatus, number>>`: the OpenAPI generator names an inline generic after the
+ * file's absolute path, which differs per machine.
+ */
+export interface VoucherBatchStatusCounts {
+  DRAFT?: number;
+  PENDING_APPROVAL?: number;
+  ACTIVE?: number;
+  PAUSED?: number;
+  EXPIRED?: number;
+  DEPLETED?: number;
 }
 
 /** A batch with its vouchers. */
