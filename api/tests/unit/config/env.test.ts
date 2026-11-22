@@ -14,6 +14,8 @@ describe('validateEnv', () => {
         'zkLogin and sponsored transactions (ENOKI_API_KEY)',
         'console Google sign-in (CONSOLE_GOOGLE_CLIENT_ID)',
         'CCCD storage (ORGANIZATION_IDENTITY_ENCRYPTION_KEY)',
+        'MCP sign-in (MCP_OAUTH_ISSUER_URL)',
+        'MCP sign-in (MCP_OAUTH_SIGNING_KEY)',
       ],
     });
   });
@@ -99,6 +101,8 @@ describe('validateEnv', () => {
         ENOKI_API_KEY: 'enoki',
         CONSOLE_GOOGLE_CLIENT_ID: 'google',
         ORGANIZATION_IDENTITY_ENCRYPTION_KEY: KEY_32,
+        MCP_OAUTH_ISSUER_URL: 'https://api.octap.example',
+        MCP_OAUTH_SIGNING_KEY: KEY_32,
       }),
     ).toEqual({ errors: [], disabledFeatures: [] });
   });
@@ -169,6 +173,8 @@ describe('assertValidEnv', () => {
   it('returns the disabled features when the environment is valid', () => {
     expect(assertValidEnv('api', { ...DB, ENOKI_API_KEY: 'e', CONSOLE_GOOGLE_CLIENT_ID: 'g' })).toEqual([
       'CCCD storage (ORGANIZATION_IDENTITY_ENCRYPTION_KEY)',
+      'MCP sign-in (MCP_OAUTH_ISSUER_URL)',
+      'MCP sign-in (MCP_OAUTH_SIGNING_KEY)',
     ]);
   });
 });
