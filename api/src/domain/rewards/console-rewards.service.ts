@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type {
-  ActivateVoucherBatchResponse,
+  RejectVoucherBatchRequest,
+  VoucherBatchActionResponse,
   ConsoleVoucherInput,
   CreateVoucherBatchRequest,
   CreateVoucherBatchResponse,
@@ -171,7 +172,7 @@ export class ConsoleVoucherBatchService {
     );
   }
 
-  activate(userId: string, orgId: string, batchId: string): Promise<ActivateVoucherBatchResponse> {
+  activate(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
     return this.run(WRITE_DENIED, () =>
       this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
         this.batches.activate(orgId, batchId, actorOf(userId, role), tx),
@@ -184,6 +185,33 @@ export class ConsoleVoucherBatchService {
       this.organizations.withEditorAccess(userId, orgId, (tx) => this.batches.archive(orgId, batchId, tx)),
     );
   }
+
+  /** The Owner's decision on everything the batch has waiting for approval. */
+  approve(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
+    return this.run(REVIEW_DENIED, () =>
+      this.organizations.withOwnerAccess(userId, orgId, (tx) => this.batches.approve(orgId, batchId, userId, tx)),
+    );
+  }
+
+  reject(
+    userId: string,
+    orgId: string,
+    batchId: string,
+    input: RejectVoucherBatchRequest,
+  ): Promise<VoucherBatchActionResponse> {
+    return this.run(REVIEW_DENIED, () =>
+      this.organizations.withOwnerAccess(userId, orgId, (tx) => this.batches.reject(orgId, batchId, userId, input, tx)),
+    );
+  }
+
+  /** Only the Owner pauses or resumes, as for a single voucher. */
+  setPaused(userId: string, orgId: string, batchId: string, paused: boolean): Promise<VoucherBatchActionResponse> {
+    return this.run(PAUSE_DENIED, () =>
+      this.organizations.withOwnerAccess(userId, orgId, (tx) =>
+        this.batches.setPaused(orgId, batchId, paused, actorOf(userId, 'OWNER'), tx),
+      ),
+    );
+  }
 }
 
 function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {
@@ -193,4 +221,5 @@ function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherA
 const READ_DENIED = 'Only an active Owner or Business Developer of an active organization can view its rewards';
 const WRITE_DENIED =
   'Only an active Owner or Business Developer of an active organization can create or change its rewards';
+const PAUSE_DENIED = 'Only an active Owner of an active organization can pause or resume its rewards';
 const REVIEW_DENIED = 'Only an active Owner of an active organization can approve or reject its rewards';

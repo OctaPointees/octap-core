@@ -1325,6 +1325,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "$ref": "#/components/schemas/VoucherDto"
   },
   "ConsoleVoucherBatchesController_activate_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -1333,7 +1334,26 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "vouchers": {
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/VoucherBatchActivationResult"
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
+  },
+  "ConsoleVoucherBatchesController_approve_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
         }
       }
     },
@@ -1348,6 +1368,10 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleVoucherBatchesController_create_Body": {
     "type": "object",
     "properties": {
+      "name": {
+        "description": "A label to tell batches apart, such as the CSV file's name or \"nightly-sync 2026-11-22\". Up to\n`VOUCHER_BATCH_MAX_NAME_LENGTH` characters; it doesn't have to be unique. Left out or blank: none.",
+        "type": "string"
+      },
       "items": {
         "description": "1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone.",
         "type": "array",
@@ -1410,6 +1434,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationId": {
         "type": "string"
       },
+      "name": {
+        "description": "`null` when it was created without one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "source": {
         "$ref": "#/components/schemas/VoucherBatchSource"
       },
@@ -1460,6 +1491,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "createdBy",
       "id",
+      "name",
       "organizationId",
       "source",
       "statusCounts",
@@ -1483,6 +1515,76 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "items": {
       "$ref": "#/components/schemas/VoucherBatchDto"
     }
+  },
+  "ConsoleVoucherBatchesController_pause_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
+  },
+  "ConsoleVoucherBatchesController_reject_Body": {
+    "description": "Rejecting a batch sends every voucher waiting for approval back to DRAFT with this reason.",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "description": "1 to 500 characters, as for a single voucher.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "ConsoleVoucherBatchesController_reject_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
+  },
+  "ConsoleVoucherBatchesController_resume_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
   },
   "ConsoleWebhooksController_disableEndpoint_Response": {
     "type": "object",
@@ -4676,21 +4778,24 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
-  "VoucherBatchActivationOutcome": {
-    "description": "What activating did to one voucher of the batch:\n- `publishing`: its terms are on the way on-chain; it becomes ACTIVE once the chain confirms.\n- `pendingApproval`: the organization requires approval and the caller is not an Owner, so it waits\n  for an Owner (OCT-59).\n- `skipped`: nothing to do: it is already published, publishing or waiting for approval. Calling\n  activate again is safe.\n- `failed`: it stays DRAFT; `reason` says why (for example less than 24 hours left before\n  `expiresAt`, or no supply left).",
-    "enum": [
-      "failed",
-      "pendingApproval",
-      "publishing",
-      "skipped"
-    ],
-    "type": "string"
-  },
   "VoucherBatchItemErrorCode": {
     "description": "Machine-readable reason an item was not written.",
     "enum": [
       "DUPLICATE_IN_BATCH",
       "INVALID"
+    ],
+    "type": "string"
+  },
+  "VoucherBatchOutcome": {
+    "description": "What a batch action did to one voucher of the batch. Every action handles each voucher on its own,\nwith the checks of the same action on a single voucher, made now.\n- `publishing`: activate or approve: its terms are on the way on-chain; ACTIVE once confirmed.\n- `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,\n  so it waits for an Owner (OCT-59).\n- `rejected`: reject: back to DRAFT, with the reason.\n- `paused` / `resumed`: pause or resume took effect.\n- `skipped`: nothing to do for this action, such as activating one already published, approving\n  one that isn't waiting, or pausing a draft. Calling the action again is safe.\n- `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left\n  before `expiresAt`, or no supply left).",
+    "enum": [
+      "failed",
+      "paused",
+      "pendingApproval",
+      "publishing",
+      "rejected",
+      "resumed",
+      "skipped"
     ],
     "type": "string"
   },
@@ -4703,6 +4808,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "VoucherBatchesController_activate_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
     "type": "object",
     "properties": {
       "batch": {
@@ -4711,7 +4817,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "vouchers": {
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/VoucherBatchActivationResult"
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
         }
       }
     },
@@ -4726,6 +4832,10 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "VoucherBatchesController_create_Body": {
     "type": "object",
     "properties": {
+      "name": {
+        "description": "A label to tell batches apart, such as the CSV file's name or \"nightly-sync 2026-11-22\". Up to\n`VOUCHER_BATCH_MAX_NAME_LENGTH` characters; it doesn't have to be unique. Left out or blank: none.",
+        "type": "string"
+      },
       "items": {
         "description": "1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone.",
         "type": "array",
@@ -4788,6 +4898,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationId": {
         "type": "string"
       },
+      "name": {
+        "description": "`null` when it was created without one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "source": {
         "$ref": "#/components/schemas/VoucherBatchSource"
       },
@@ -4838,6 +4955,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "createdBy",
       "id",
+      "name",
       "organizationId",
       "source",
       "statusCounts",
@@ -4861,6 +4979,44 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "items": {
       "$ref": "#/components/schemas/VoucherBatchDto"
     }
+  },
+  "VoucherBatchesController_pause_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
+  },
+  "VoucherBatchesController_resume_Response": {
+    "description": "The result of activate, approve, reject, pause or resume on a batch.",
+    "type": "object",
+    "properties": {
+      "batch": {
+        "$ref": "#/components/schemas/VoucherBatchDto"
+      },
+      "vouchers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherBatchActionResult"
+        }
+      }
+    },
+    "required": [
+      "batch",
+      "vouchers"
+    ]
   },
   "VoucherOwnershipStatus": {
     "enum": [
@@ -5510,7 +5666,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "submittedBy"
     ]
   },
-  "VoucherBatchActivationResult": {
+  "VoucherBatchActionResult": {
     "type": "object",
     "properties": {
       "voucherId": {
@@ -5520,7 +5676,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "outcome": {
-        "$ref": "#/components/schemas/VoucherBatchActivationOutcome"
+        "$ref": "#/components/schemas/VoucherBatchOutcome"
       },
       "reason": {
         "description": "Set when `outcome` is `failed`.",
@@ -5545,6 +5701,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       },
       "organizationId": {
         "type": "string"
+      },
+      "name": {
+        "description": "`null` when it was created without one.",
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "source": {
         "$ref": "#/components/schemas/VoucherBatchSource"
@@ -5596,6 +5759,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "createdBy",
       "id",
+      "name",
       "organizationId",
       "source",
       "statusCounts"

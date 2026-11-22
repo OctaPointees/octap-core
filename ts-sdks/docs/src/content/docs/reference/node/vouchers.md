@@ -61,12 +61,12 @@ getVoucher(voucherId: string, options?): Promise<VoucherDto>
 `POST /v1/rewards/voucher-batches` · Scope: `write`
 
 ```ts
-createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean }, options?): Promise<CreateVoucherBatchResponse>
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string }, options?): Promise<CreateVoucherBatchResponse>
 ```
 
 Creates up to 100 vouchers as one **DRAFT** batch. Nothing goes live until `activateVoucherBatch`. Each item takes `createVoucher`'s fields except `status`; sending `status` makes that item an error. More than 100 items, or none, is a 400 for the whole call.
 
-With `dryRun: true`, every check runs and each item's result is returned, but nothing is written: use it to preview a file.
+With `dryRun: true`, every check runs and each item's result is returned, but nothing is written: use it to preview a file. `name` labels the batch, for example the file's name (up to 120 characters, not unique).
 
 Each item is handled on its own, and `items[i]` of the response describes `items[i]`. `code` is the key:
 
@@ -91,7 +91,7 @@ Values are compared after normalizing: a field left out is its default, dates co
 listVoucherBatches(query?: { includeArchived?: boolean }, options?): Promise<VoucherBatchDto[]>
 ```
 
-Newest first. Archived batches only with `includeArchived: true`. Each batch has `source` (`API` or `CONSOLE`), `createdBy`, `archivedAt` and `statusCounts` (for example `{ DRAFT: 98, ACTIVE: 2 }`).
+Newest first. Archived batches only with `includeArchived: true`. Each batch has `name`, `source` (`API` or `CONSOLE`), `createdBy`, `archivedAt` and `statusCounts` (for example `{ DRAFT: 98, ACTIVE: 2 }`).
 
 ## getVoucherBatch
 
@@ -108,7 +108,7 @@ The batch with its vouchers. Another organization's batch is a 404.
 `POST /v1/rewards/voucher-batches/:batchId/activate` · Scope: `write`
 
 ```ts
-activateVoucherBatch(batchId: string, options?): Promise<ActivateVoucherBatchResponse>
+activateVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
 Activates every draft of the batch, each one with the same checks as activating it on its own, made now. Each voucher's `outcome`:
@@ -121,6 +121,28 @@ Activates every draft of the batch, each one with the same checks as activating 
 | `failed` | It stays `DRAFT`; `reason` says why (for example less than 24 hours left before `expiresAt`) |
 
 No loyalty program on-chain is a 422; an archived batch is a 409. Publishing runs a few vouchers at a time, so a large batch takes a few minutes to be fully live.
+
+## pauseVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/pause` · Scope: `write`
+
+```ts
+pauseVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
+```
+
+Pauses every voucher of the batch that is live or still publishing (`outcome: "paused"`): members can't claim them any more, and the vouchers they already hold stay usable. Drafts and vouchers waiting for approval are `skipped`. Use this to stop a campaign: archiving a batch doesn't stop claims. It works on an archived batch too.
+
+## resumeVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/resume` · Scope: `write`
+
+```ts
+resumeVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
+```
+
+Resumes every paused voucher of the batch that is published (`outcome: "resumed"`). Resuming needs no approval, since the terms on-chain can't change. One that can't be resumed (for example its claims have closed) is `failed`, with a `reason`.
+
+Approving or rejecting a whole batch is the Owner's, in the console only, as for a single voucher.
 
 ## archiveVoucherBatch
 

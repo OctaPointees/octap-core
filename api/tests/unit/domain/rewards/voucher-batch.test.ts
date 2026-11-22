@@ -5,6 +5,7 @@ import {
   checkBatchItems,
   errorField,
   parseBatchRequest,
+  parseRejectReason,
   toBatchValues,
   voucherDifferences,
 } from '#domain/rewards/voucher-batch.js';
@@ -46,9 +47,18 @@ function stored(overrides: Partial<Voucher> = {}): Voucher {
 
 describe('parseBatchRequest', () => {
   it('takes 1 to 100 items and an optional boolean dryRun', () => {
-    expect(parseBatchRequest({ items: [item] })).toEqual({ items: [item], dryRun: false });
+    expect(parseBatchRequest({ items: [item] })).toEqual({ items: [item], dryRun: false, name: null });
     expect(parseBatchRequest({ items: [item], dryRun: true }).dryRun).toBe(true);
     expect(parseBatchRequest({ items: Array(100).fill(item) }).items).toHaveLength(100);
+  });
+
+  it('trims the name, makes a blank one null, and refuses one too long or not a string', () => {
+    expect(parseBatchRequest({ items: [item], name: '  catalog.csv ' }).name).toBe('catalog.csv');
+    expect(parseBatchRequest({ items: [item], name: '   ' }).name).toBeNull();
+    expect(parseBatchRequest({ items: [item], name: null }).name).toBeNull();
+    expect(parseBatchRequest({ items: [item], name: 'x'.repeat(120) }).name).toHaveLength(120);
+    expect(() => parseBatchRequest({ items: [item], name: 'x'.repeat(121) })).toThrow(/at most 120/);
+    expect(() => parseBatchRequest({ items: [item], name: 5 })).toThrow(/name must be a string/);
   });
 
   it('refuses the whole request when its shape is wrong', () => {
@@ -174,5 +184,21 @@ describe('voucherDifferences', () => {
 
   it('compares every field a batch item can set', () => {
     expect([...BATCH_COMPARED_FIELDS].sort()).toEqual(Object.keys(toBatchValues(item)).sort());
+  });
+});
+
+describe('parseRejectReason', () => {
+  it('takes a trimmed reason of 1 to 500 characters and nothing else', () => {
+    expect(parseRejectReason({ reason: '  Cap too high ' })).toBe('Cap too high');
+    for (const body of [
+      null,
+      [],
+      {},
+      { reason: '  ' },
+      { reason: 5 },
+      { reason: 'x'.repeat(501) },
+      { reason: 'ok', more: 1 },
+    ])
+      expect(() => parseRejectReason(body)).toThrow(/rejection reason is required/);
   });
 });

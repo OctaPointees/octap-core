@@ -2357,6 +2357,248 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/voucher-batches/{batchId}/approve": {
+      "post": {
+        "operationId": "ConsoleVoucherBatchesController_approve",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleVoucherBatchesController_approve_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Voucher Batches"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/voucher-batches/{batchId}/reject": {
+      "post": {
+        "operationId": "ConsoleVoucherBatchesController_reject",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleVoucherBatchesController_reject_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Voucher Batches"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleVoucherBatchesController_reject_Body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}/voucher-batches/{batchId}/pause": {
+      "post": {
+        "operationId": "ConsoleVoucherBatchesController_pause",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleVoucherBatchesController_pause_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Voucher Batches"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/voucher-batches/{batchId}/resume": {
+      "post": {
+        "operationId": "ConsoleVoucherBatchesController_resume",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleVoucherBatchesController_resume_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Voucher Batches"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/refund-policy": {
       "get": {
         "operationId": "ConsoleRefundPolicyController_current",
@@ -4481,6 +4723,116 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VoucherBatchDto"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Voucher Batches"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/voucher-batches/{batchId}/pause": {
+      "post": {
+        "operationId": "VoucherBatchesController_pause",
+        "parameters": [
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherBatchesController_pause_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Voucher Batches"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "write"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
+      }
+    },
+    "/v1/rewards/voucher-batches/{batchId}/resume": {
+      "post": {
+        "operationId": "VoucherBatchesController_resume",
+        "parameters": [
+          {
+            "name": "batchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherBatchesController_resume_Response"
                 }
               }
             }
@@ -7193,6 +7545,7 @@
         "$ref": "#/components/schemas/VoucherDto"
       },
       "ConsoleVoucherBatchesController_activate_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
         "type": "object",
         "properties": {
           "batch": {
@@ -7201,7 +7554,26 @@
           "vouchers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/VoucherBatchActivationResult"
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
+      },
+      "ConsoleVoucherBatchesController_approve_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
             }
           }
         },
@@ -7216,6 +7588,10 @@
       "ConsoleVoucherBatchesController_create_Body": {
         "type": "object",
         "properties": {
+          "name": {
+            "description": "A label to tell batches apart, such as the CSV file's name or \"nightly-sync 2026-11-22\". Up to\n`VOUCHER_BATCH_MAX_NAME_LENGTH` characters; it doesn't have to be unique. Left out or blank: none.",
+            "type": "string"
+          },
           "items": {
             "description": "1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone.",
             "type": "array",
@@ -7278,6 +7654,13 @@
           "organizationId": {
             "type": "string"
           },
+          "name": {
+            "description": "`null` when it was created without one.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/VoucherBatchSource"
           },
@@ -7328,6 +7711,7 @@
           "createdAt",
           "createdBy",
           "id",
+          "name",
           "organizationId",
           "source",
           "statusCounts",
@@ -7351,6 +7735,76 @@
         "items": {
           "$ref": "#/components/schemas/VoucherBatchDto"
         }
+      },
+      "ConsoleVoucherBatchesController_pause_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
+      },
+      "ConsoleVoucherBatchesController_reject_Body": {
+        "description": "Rejecting a batch sends every voucher waiting for approval back to DRAFT with this reason.",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "1 to 500 characters, as for a single voucher.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ConsoleVoucherBatchesController_reject_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
+      },
+      "ConsoleVoucherBatchesController_resume_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
       },
       "ConsoleWebhooksController_disableEndpoint_Response": {
         "type": "object",
@@ -10544,21 +10998,24 @@
         ],
         "type": "string"
       },
-      "VoucherBatchActivationOutcome": {
-        "description": "What activating did to one voucher of the batch:\n- `publishing`: its terms are on the way on-chain; it becomes ACTIVE once the chain confirms.\n- `pendingApproval`: the organization requires approval and the caller is not an Owner, so it waits\n  for an Owner (OCT-59).\n- `skipped`: nothing to do: it is already published, publishing or waiting for approval. Calling\n  activate again is safe.\n- `failed`: it stays DRAFT; `reason` says why (for example less than 24 hours left before\n  `expiresAt`, or no supply left).",
-        "enum": [
-          "failed",
-          "pendingApproval",
-          "publishing",
-          "skipped"
-        ],
-        "type": "string"
-      },
       "VoucherBatchItemErrorCode": {
         "description": "Machine-readable reason an item was not written.",
         "enum": [
           "DUPLICATE_IN_BATCH",
           "INVALID"
+        ],
+        "type": "string"
+      },
+      "VoucherBatchOutcome": {
+        "description": "What a batch action did to one voucher of the batch. Every action handles each voucher on its own,\nwith the checks of the same action on a single voucher, made now.\n- `publishing`: activate or approve: its terms are on the way on-chain; ACTIVE once confirmed.\n- `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,\n  so it waits for an Owner (OCT-59).\n- `rejected`: reject: back to DRAFT, with the reason.\n- `paused` / `resumed`: pause or resume took effect.\n- `skipped`: nothing to do for this action, such as activating one already published, approving\n  one that isn't waiting, or pausing a draft. Calling the action again is safe.\n- `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left\n  before `expiresAt`, or no supply left).",
+        "enum": [
+          "failed",
+          "paused",
+          "pendingApproval",
+          "publishing",
+          "rejected",
+          "resumed",
+          "skipped"
         ],
         "type": "string"
       },
@@ -10571,6 +11028,7 @@
         "type": "string"
       },
       "VoucherBatchesController_activate_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
         "type": "object",
         "properties": {
           "batch": {
@@ -10579,7 +11037,7 @@
           "vouchers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/VoucherBatchActivationResult"
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
             }
           }
         },
@@ -10594,6 +11052,10 @@
       "VoucherBatchesController_create_Body": {
         "type": "object",
         "properties": {
+          "name": {
+            "description": "A label to tell batches apart, such as the CSV file's name or \"nightly-sync 2026-11-22\". Up to\n`VOUCHER_BATCH_MAX_NAME_LENGTH` characters; it doesn't have to be unique. Left out or blank: none.",
+            "type": "string"
+          },
           "items": {
             "description": "1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone.",
             "type": "array",
@@ -10656,6 +11118,13 @@
           "organizationId": {
             "type": "string"
           },
+          "name": {
+            "description": "`null` when it was created without one.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/VoucherBatchSource"
           },
@@ -10706,6 +11175,7 @@
           "createdAt",
           "createdBy",
           "id",
+          "name",
           "organizationId",
           "source",
           "statusCounts",
@@ -10729,6 +11199,44 @@
         "items": {
           "$ref": "#/components/schemas/VoucherBatchDto"
         }
+      },
+      "VoucherBatchesController_pause_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
+      },
+      "VoucherBatchesController_resume_Response": {
+        "description": "The result of activate, approve, reject, pause or resume on a batch.",
+        "type": "object",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/VoucherBatchDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "batch",
+          "vouchers"
+        ]
       },
       "VoucherOwnershipStatus": {
         "enum": [
@@ -11378,7 +11886,7 @@
           "submittedBy"
         ]
       },
-      "VoucherBatchActivationResult": {
+      "VoucherBatchActionResult": {
         "type": "object",
         "properties": {
           "voucherId": {
@@ -11388,7 +11896,7 @@
             "type": "string"
           },
           "outcome": {
-            "$ref": "#/components/schemas/VoucherBatchActivationOutcome"
+            "$ref": "#/components/schemas/VoucherBatchOutcome"
           },
           "reason": {
             "description": "Set when `outcome` is `failed`.",
@@ -11413,6 +11921,13 @@
           },
           "organizationId": {
             "type": "string"
+          },
+          "name": {
+            "description": "`null` when it was created without one.",
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/VoucherBatchSource"
@@ -11464,6 +11979,7 @@
           "createdAt",
           "createdBy",
           "id",
+          "name",
           "organizationId",
           "source",
           "statusCounts"

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
-  ActivateVoucherBatchResponse,
   CreateVoucherBatchResponse,
+  VoucherBatchActionResponse,
   VoucherBatchDetailDto,
   VoucherBatchDto,
   VoucherBatchItemResult,
@@ -12,11 +12,12 @@ import {
   RewardsRepository,
   type VoucherActor,
   type VoucherBatch,
+  type VoucherBatchActionRow,
   type VoucherBatchWriteResult,
 } from '#infra/db/repositories/rewards.repository.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { toHttpError, toVoucherDto } from './rewards.service.js';
-import { checkBatchItems, parseBatchRequest, voucherDifferences } from './voucher-batch.js';
+import { checkBatchItems, parseBatchRequest, parseRejectReason, voucherDifferences } from './voucher-batch.js';
 
 async function mapErrors<T>(work: Promise<T>): Promise<T> {
   try {
@@ -49,7 +50,7 @@ export class VoucherBatchService {
     actor: VoucherActor,
     tx?: DrizzleDb,
   ): Promise<CreateVoucherBatchResponse> {
-    const { items, dryRun } = parseBatchRequest(body);
+    const { items, dryRun, name } = parseBatchRequest(body);
     const { valid, invalid } = checkBatchItems(items);
     const written = await mapErrors(
       this.rewardsRepo.createVoucherBatch(
@@ -57,6 +58,7 @@ export class VoucherBatchService {
         valid.map((item) => ({ ...item, compare: (stored) => voucherDifferences(stored, item.values) })),
         actor,
         dryRun,
+        name,
         tx,
       ),
     );
@@ -106,14 +108,76 @@ export class VoucherBatchService {
     batchId: string,
     actor: VoucherActor,
     tx?: DrizzleDb,
-  ): Promise<ActivateVoucherBatchResponse> {
+  ): Promise<VoucherBatchActionResponse> {
+    await this.requireProgram(organizationId, tx);
+    return this.actionResponse(
+      organizationId,
+      await mapErrors(this.rewardsRepo.activateVoucherBatch(organizationId, batchId, actor, tx)),
+      tx,
+    );
+  }
+
+  /** An Owner approves every voucher of the batch waiting for approval: each one starts publishing. */
+  async approve(
+    organizationId: string,
+    batchId: string,
+    ownerId: string,
+    tx?: DrizzleDb,
+  ): Promise<VoucherBatchActionResponse> {
+    await this.requireProgram(organizationId, tx);
+    return this.actionResponse(
+      organizationId,
+      await mapErrors(this.rewardsRepo.reviewVoucherBatch(organizationId, batchId, ownerId, { approve: true }, tx)),
+      tx,
+    );
+  }
+
+  /** An Owner sends every voucher of the batch waiting for approval back to DRAFT, with one reason. */
+  async reject(
+    organizationId: string,
+    batchId: string,
+    ownerId: string,
+    body: unknown,
+    tx?: DrizzleDb,
+  ): Promise<VoucherBatchActionResponse> {
+    const reason = parseRejectReason(body);
+    return this.actionResponse(
+      organizationId,
+      await mapErrors(
+        this.rewardsRepo.reviewVoucherBatch(organizationId, batchId, ownerId, { approve: false, reason }, tx),
+      ),
+      tx,
+    );
+  }
+
+  /** Pauses (`paused: true`) or resumes every voucher of the batch that is on-chain. */
+  async setPaused(
+    organizationId: string,
+    batchId: string,
+    paused: boolean,
+    actor: VoucherActor,
+    tx?: DrizzleDb,
+  ): Promise<VoucherBatchActionResponse> {
+    return this.actionResponse(
+      organizationId,
+      await mapErrors(this.rewardsRepo.setVoucherBatchPaused(organizationId, batchId, paused, actor, tx)),
+      tx,
+    );
+  }
+
+  private async requireProgram(organizationId: string, tx?: DrizzleDb) {
     await requireProgramConfig(
       { findByOrganization: (id: string) => this.programsRepo.findByOrganization(id, tx) },
       organizationId,
     );
-    const { batch, results } = await mapErrors(
-      this.rewardsRepo.activateVoucherBatch(organizationId, batchId, actor, tx),
-    );
+  }
+
+  /** The batch, with its counts read after the action, and each voucher's outcome. */
+  private async actionResponse(
+    organizationId: string,
+    { batch, results }: { batch: VoucherBatch; results: VoucherBatchActionRow[] },
+    tx?: DrizzleDb,
+  ): Promise<VoucherBatchActionResponse> {
     return {
       batch: await this.batchDto(organizationId, batch, tx),
       vouchers: results.map(({ voucher, outcome, reason }) => ({
@@ -165,6 +229,7 @@ function toBatchDto(batch: VoucherBatch, statusCounts: VoucherBatchDto['statusCo
   return {
     id: batch.id,
     organizationId: batch.organizationId,
+    name: batch.name,
     source: batch.source,
     createdBy: batch.createdByCredentialId
       ? { type: 'API_CREDENTIAL', id: batch.createdByCredentialId }

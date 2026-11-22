@@ -61,12 +61,12 @@ getVoucher(voucherId: string, options?): Promise<VoucherDto>
 `POST /v1/rewards/voucher-batches` · Scope: `write`
 
 ```ts
-createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean }, options?): Promise<CreateVoucherBatchResponse>
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string }, options?): Promise<CreateVoucherBatchResponse>
 ```
 
 Tạo tối đa 100 voucher thành một lô **DRAFT**. Chưa voucher nào live cho đến khi gọi `activateVoucherBatch`. Mỗi item nhận các field của `createVoucher`, trừ `status`; gửi `status` thì item đó lỗi. Không có item nào hoặc quá 100 item thì cả request trả 400.
 
-Với `dryRun: true`, Core chạy mọi kiểm tra và trả kết quả từng item nhưng không ghi gì: dùng để xem trước một file.
+Với `dryRun: true`, Core chạy mọi kiểm tra và trả kết quả từng item nhưng không ghi gì: dùng để xem trước một file. `name` đặt tên cho lô, ví dụ tên file (tối đa 120 ký tự, không cần duy nhất).
 
 Mỗi item được xử lý riêng, và `items[i]` của response mô tả `items[i]`. `code` là khoá:
 
@@ -91,7 +91,7 @@ Giá trị được so sau khi chuẩn hoá: field không gửi coi như giá tr
 listVoucherBatches(query?: { includeArchived?: boolean }, options?): Promise<VoucherBatchDto[]>
 ```
 
-Mới nhất trước. Chỉ có lô đã archive khi truyền `includeArchived: true`. Mỗi lô có `source` (`API` hoặc `CONSOLE`), `createdBy`, `archivedAt` và `statusCounts` (ví dụ `{ DRAFT: 98, ACTIVE: 2 }`).
+Mới nhất trước. Chỉ có lô đã archive khi truyền `includeArchived: true`. Mỗi lô có `name`, `source` (`API` hoặc `CONSOLE`), `createdBy`, `archivedAt` và `statusCounts` (ví dụ `{ DRAFT: 98, ACTIVE: 2 }`).
 
 ## getVoucherBatch
 
@@ -108,7 +108,7 @@ Lô kèm danh sách voucher. Lô của tổ chức khác trả 404.
 `POST /v1/rewards/voucher-batches/:batchId/activate` · Scope: `write`
 
 ```ts
-activateVoucherBatch(batchId: string, options?): Promise<ActivateVoucherBatchResponse>
+activateVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
 ```
 
 Activate mọi nháp trong lô, mỗi voucher qua đúng các kiểm tra như khi activate riêng, chạy lại tại thời điểm gọi. `outcome` của từng voucher:
@@ -121,6 +121,28 @@ Activate mọi nháp trong lô, mỗi voucher qua đúng các kiểm tra như kh
 | `failed` | Vẫn là `DRAFT`; `reason` cho biết lý do (ví dụ còn dưới 24 giờ tới `expiresAt`) |
 
 Chưa có loyalty program trên chain thì trả 422; lô đã archive thì trả 409. Việc publish chạy vài voucher mỗi lượt, nên lô lớn mất vài phút mới live hết.
+
+## pauseVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/pause` · Scope: `write`
+
+```ts
+pauseVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
+```
+
+Tạm dừng mọi voucher của lô đang live hoặc đang publish (`outcome: "paused"`): thành viên không claim được nữa, còn voucher họ đã giữ vẫn dùng được. Nháp và voucher đang chờ duyệt thì `skipped`. Dùng hàm này để dừng một đợt khuyến mãi: archive lô không dừng được claim. Lô đã archive cũng tạm dừng được.
+
+## resumeVoucherBatch
+
+`POST /v1/rewards/voucher-batches/:batchId/resume` · Scope: `write`
+
+```ts
+resumeVoucherBatch(batchId: string, options?): Promise<VoucherBatchActionResponse>
+```
+
+Chạy lại mọi voucher đang tạm dừng của lô đã publish (`outcome: "resumed"`). Chạy lại không cần duyệt, vì điều khoản trên chain không đổi. Voucher không chạy lại được (ví dụ đã hết hạn claim) thì `failed`, kèm `reason`.
+
+Duyệt hoặc từ chối cả lô là việc của Owner, chỉ làm trong console, giống voucher lẻ.
 
 ## archiveVoucherBatch
 

@@ -241,6 +241,9 @@ export interface VoucherOwnershipDto {
 /** The most items one `createVoucherBatch` call takes; more is a 400 for the whole request. */
 export const VOUCHER_BATCH_MAX_ITEMS = 100;
 
+/** The longest batch `name`, after trimming. */
+export const VOUCHER_BATCH_MAX_NAME_LENGTH = 120;
+
 /** Where a batch came from: the console, or a merchant API key. */
 export type VoucherBatchSource = 'CONSOLE' | 'API';
 
@@ -251,6 +254,11 @@ export type VoucherBatchSource = 'CONSOLE' | 'API';
 export type VoucherBatchItem = Omit<CreateVoucherRequest, 'status'>;
 
 export interface CreateVoucherBatchRequest {
+  /**
+   * A label to tell batches apart, such as the CSV file's name or "nightly-sync 2026-11-22". Up to
+   * `VOUCHER_BATCH_MAX_NAME_LENGTH` characters; it doesn't have to be unique. Left out or blank: none.
+   */
+  name?: string;
   /** 1 to `VOUCHER_BATCH_MAX_ITEMS` items. Each one is handled on its own: a bad item fails alone. */
   items: VoucherBatchItem[];
   /** Run every check and report each item's result, but write nothing. */
@@ -300,6 +308,8 @@ export type VoucherBatchItemResult =
 export interface VoucherBatchDto {
   id: string;
   organizationId: string;
+  /** `null` when it was created without one. */
+  name: string | null;
   source: VoucherBatchSource;
   /** A console user or an API key; `null` once that user or key is deleted. */
   createdBy: { type: 'USER' | 'API_CREDENTIAL'; id: string } | null;
@@ -342,26 +352,40 @@ export interface ListVoucherBatchesRequest {
 }
 
 /**
- * What activating did to one voucher of the batch:
- * - `publishing`: its terms are on the way on-chain; it becomes ACTIVE once the chain confirms.
- * - `pendingApproval`: the organization requires approval and the caller is not an Owner, so it waits
- *   for an Owner (OCT-59).
- * - `skipped`: nothing to do: it is already published, publishing or waiting for approval. Calling
- *   activate again is safe.
- * - `failed`: it stays DRAFT; `reason` says why (for example less than 24 hours left before
- *   `expiresAt`, or no supply left).
+ * What a batch action did to one voucher of the batch. Every action handles each voucher on its own,
+ * with the checks of the same action on a single voucher, made now.
+ * - `publishing`: activate or approve: its terms are on the way on-chain; ACTIVE once confirmed.
+ * - `pendingApproval`: activate: the organization requires approval and the caller is not an Owner,
+ *   so it waits for an Owner (OCT-59).
+ * - `rejected`: reject: back to DRAFT, with the reason.
+ * - `paused` / `resumed`: pause or resume took effect.
+ * - `skipped`: nothing to do for this action, such as activating one already published, approving
+ *   one that isn't waiting, or pausing a draft. Calling the action again is safe.
+ * - `failed`: the action didn't apply to it; `reason` says why (for example less than 24 hours left
+ *   before `expiresAt`, or no supply left).
  */
+export type VoucherBatchOutcome =
+  'publishing' | 'pendingApproval' | 'rejected' | 'paused' | 'resumed' | 'skipped' | 'failed';
+
+/** The outcomes `activateVoucherBatch` can report. */
 export type VoucherBatchActivationOutcome = 'publishing' | 'pendingApproval' | 'skipped' | 'failed';
 
-export interface VoucherBatchActivationResult {
+export interface VoucherBatchActionResult {
   voucherId: string;
   code: string;
-  outcome: VoucherBatchActivationOutcome;
+  outcome: VoucherBatchOutcome;
   /** Set when `outcome` is `failed`. */
   reason: string | null;
 }
 
-export interface ActivateVoucherBatchResponse {
+/** The result of activate, approve, reject, pause or resume on a batch. */
+export interface VoucherBatchActionResponse {
   batch: VoucherBatchDto;
-  vouchers: VoucherBatchActivationResult[];
+  vouchers: VoucherBatchActionResult[];
+}
+
+/** Rejecting a batch sends every voucher waiting for approval back to DRAFT with this reason. */
+export interface RejectVoucherBatchRequest {
+  /** 1 to 500 characters, as for a single voucher. */
+  reason: string;
 }

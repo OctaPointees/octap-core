@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   VOUCHER_BATCH_MAX_ITEMS,
+  VOUCHER_BATCH_MAX_NAME_LENGTH,
   type VoucherBatchItem,
   type VoucherBatchStatusCounts,
   type VoucherFieldDifference,
@@ -39,15 +40,29 @@ export const BATCH_COMPARED_FIELDS = [
 ] as const satisfies readonly (keyof VoucherBatchValues)[];
 
 /** The request body checks that fail the whole call (400); each item is checked on its own later. */
-export function parseBatchRequest(body: unknown): { items: unknown[]; dryRun: boolean } {
+export function parseBatchRequest(body: unknown): { items: unknown[]; dryRun: boolean; name: string | null } {
   if (!body || typeof body !== 'object' || Array.isArray(body))
     throw new BadRequestException('Batch body must be an object');
-  const { items, dryRun, ...rest } = body as { items?: unknown; dryRun?: unknown };
+  const { items, dryRun, name, ...rest } = body as { items?: unknown; dryRun?: unknown; name?: unknown };
   if (Object.keys(rest).length) throw new BadRequestException('Batch body contains unsupported fields');
   if (!Array.isArray(items) || items.length < 1 || items.length > VOUCHER_BATCH_MAX_ITEMS)
     throw new BadRequestException(`items must be an array of 1 to ${VOUCHER_BATCH_MAX_ITEMS} vouchers`);
   if (dryRun !== undefined && typeof dryRun !== 'boolean') throw new BadRequestException('dryRun must be a boolean');
-  return { items, dryRun: dryRun ?? false };
+  if (name !== undefined && name !== null && typeof name !== 'string')
+    throw new BadRequestException('name must be a string');
+  const label = typeof name === 'string' ? name.trim() : '';
+  if (label.length > VOUCHER_BATCH_MAX_NAME_LENGTH)
+    throw new BadRequestException(`name must be at most ${VOUCHER_BATCH_MAX_NAME_LENGTH} characters`);
+  return { items, dryRun: dryRun ?? false, name: label || null };
+}
+
+/** A reject's reason, checked like a single voucher's (1 to 500 characters, nothing else in the body). */
+export function parseRejectReason(body: unknown): string {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (!reason || reason.length > 500 || Object.keys(input).some((key) => key !== 'reason'))
+    throw new BadRequestException('A rejection reason is required (up to 500 characters)');
+  return reason;
 }
 
 const FIELD_NAMES = new Set<string>([...BATCH_COMPARED_FIELDS, 'code', 'status']);

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import type {
-  ActivateVoucherBatchResponse,
   CreateVoucherBatchResponse,
+  VoucherBatchActionResponse,
   VoucherBatchDetailDto,
   VoucherBatchDto,
 } from '@octap/contracts';
@@ -13,7 +13,8 @@ import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
 
 /**
  * Voucher batches with a merchant API key (OCT-303): create many vouchers as one DRAFT batch (with
- * `dryRun` to preview), then activate or archive the batch. The console has the same routes for the
+ * `dryRun` to preview), then activate, pause, resume or archive the batch. Approving or rejecting a
+ * batch is the Owner's, in the console only, as for a single voucher. The console has the same routes for the
  * Owner and a Business Developer (`ConsoleVoucherBatchesController`).
  */
 @Controller('v1/rewards/voucher-batches')
@@ -52,7 +53,7 @@ export class VoucherBatchesController {
   activate(
     @Tenant() tenant: TenantContext,
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
-  ): Promise<ActivateVoucherBatchResponse> {
+  ): Promise<VoucherBatchActionResponse> {
     return this.batches.activate(tenant.organizationId, batchId, {
       role: 'CREDENTIAL',
       credentialId: tenant.credentialId,
@@ -66,5 +67,31 @@ export class VoucherBatchesController {
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
   ): Promise<VoucherBatchDto> {
     return this.batches.archive(tenant.organizationId, batchId);
+  }
+
+  /** Pauses every voucher of the batch that is on-chain, as `PATCH { status: 'PAUSED' }` does for one. */
+  @Post(':batchId/pause')
+  @Scopes('write')
+  pause(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', new ParseUUIDPipe()) batchId: string,
+  ): Promise<VoucherBatchActionResponse> {
+    return this.batches.setPaused(tenant.organizationId, batchId, true, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
+  }
+
+  /** Resumes every paused voucher of the batch that is published; resuming needs no approval. */
+  @Post(':batchId/resume')
+  @Scopes('write')
+  resume(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', new ParseUUIDPipe()) batchId: string,
+  ): Promise<VoucherBatchActionResponse> {
+    return this.batches.setPaused(tenant.organizationId, batchId, false, {
+      role: 'CREDENTIAL',
+      credentialId: tenant.credentialId,
+    });
   }
 }

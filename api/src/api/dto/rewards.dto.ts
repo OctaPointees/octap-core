@@ -5,6 +5,7 @@ import type {
   PrepareVoucherUseRequest,
   FinalizeVoucherUseRequest,
   CreateVoucherBatchRequest,
+  RejectVoucherBatchRequest,
 } from '@octap/contracts';
 
 export type CreateVoucherBodyDto = CreateVoucherRequest;
@@ -20,3 +21,4 @@ export type PrepareVoucherUseBodyDto = PrepareVoucherUseRequest;
 export type FinalizeVoucherUseBodyDto = FinalizeVoucherUseRequest;
 
 export type CreateVoucherBatchBodyDto = CreateVoucherBatchRequest;
+export type RejectVoucherBatchBodyDto = RejectVoucherBatchRequest;

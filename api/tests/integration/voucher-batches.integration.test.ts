@@ -369,4 +369,118 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
     expect(statuses.filter((s) => s === 'unchanged')).toHaveLength(4);
     expect(await ctx.db.select().from(schema.vouchers)).toHaveLength(2);
   });
+
+  describe('names, batch review, and pausing a whole batch (OCT-303 scope, 22/11)', () => {
+    const consoleAction = (actor: Actor, batchId: string, name: string, body: Record<string, unknown> = {}) =>
+      ctx.http().post(`${consolePath()}/${batchId}/${name}`).set(as(actor)).send(body);
+    const outcomes = (body: { vouchers: { code: string; outcome: string }[] }) =>
+      Object.fromEntries(body.vouchers.map((v) => [v.code, v.outcome]));
+    const publish = (code: string) =>
+      voucherByCode(code).then((v) => ctx.app.get(RewardsRepository).markVoucherPublished(v.id, `0xterms-${code}`));
+
+    it('keeps a trimmed name, none when blank, and refuses one too long or not a string', async () => {
+      const named = (await send({ name: '  catalog-11-11.csv ', items: [item('N1')] }).expect(201)).body.batch;
+      expect(named.name).toBe('catalog-11-11.csv');
+      expect((await send({ name: '   ', items: [item('N2')] }).expect(201)).body.batch.name).toBeNull();
+      expect((await send({ items: [item('N3')] }).expect(201)).body.batch.name).toBeNull();
+      await send({ name: 'x'.repeat(121), items: [item('N4')] }).expect(400);
+      await send({ name: 12, items: [item('N5')] }).expect(400);
+      expect((await ctx.http().get(`${api}/${named.id}`).set(key).expect(200)).body.name).toBe('catalog-11-11.csv');
+    });
+
+    it("lets the Owner approve a Developer's whole batch, each voucher with its own checks", async () => {
+      await requireApproval();
+      const created = (
+        await ctx
+          .http()
+          .post(consolePath())
+          .set(as('developer'))
+          .send({ items: [item('A1'), item('A2', { expiresAt: later(30) }), item('A3')] })
+          .expect(201)
+      ).body.batch;
+      const submitted = (await consoleAction('developer', created.id, 'activate').expect(201)).body;
+      expect(outcomes(submitted)).toEqual({ A1: 'pendingApproval', A2: 'pendingApproval', A3: 'pendingApproval' });
+      // Days pass: A2 is now too close to its end to go live. A3 is withdrawn.
+      await ctx.db
+        .update(schema.vouchers)
+        .set({ expiresAt: new Date(Date.now() + 2 * 3600_000) })
+        .where(eq(schema.vouchers.code, 'A2'));
+      await ctx
+        .http()
+        .post(`/v1/console/organizations/${orgId}/vouchers/${(await voucherByCode('A3')).id}/withdraw`)
+        .set(as('developer'))
+        .expect(201);
+
+      await consoleAction('developer', created.id, 'approve').expect(403);
+      await ctx.http().post(`${api}/${created.id}/approve`).set(key).expect(404);
+      const approved = (await consoleAction('owner', created.id, 'approve').expect(201)).body;
+      expect(outcomes(approved)).toEqual({ A1: 'publishing', A2: 'failed', A3: 'skipped' });
+      expect(approved.vouchers.find((v: { code: string }) => v.code === 'A2').reason).toMatch(/24 hours/);
+      expect(await voucherByCode('A1')).toMatchObject({ status: 'DRAFT', publishStatus: 'PUBLISHING' });
+      expect((await voucherByCode('A2')).status).toBe('PENDING_APPROVAL');
+      // Approving again only finds what is still waiting.
+      expect(outcomes((await consoleAction('owner', created.id, 'approve').expect(201)).body)).toEqual({
+        A1: 'skipped',
+        A2: 'failed',
+        A3: 'skipped',
+      });
+    });
+
+    it('lets the Owner reject a whole batch with one reason, and approving an archived batch is a 409', async () => {
+      await requireApproval();
+      const { batch } = (await send({ items: [item('R1'), item('R2')] }).expect(201)).body;
+      await activate(batch.id).expect(201);
+      for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', more: 1 }])
+        await consoleAction('owner', batch.id, 'reject', body).expect(400);
+      const rejected = (await consoleAction('owner', batch.id, 'reject', { reason: ' Cap too high ' }).expect(201))
+        .body;
+      expect(outcomes(rejected)).toEqual({ R1: 'rejected', R2: 'rejected' });
+      const r1 = await voucherByCode('R1');
+      expect(r1.status).toBe('DRAFT');
+      const [request] = await ctx.db
+        .select()
+        .from(schema.voucherApprovalRequests)
+        .where(eq(schema.voucherApprovalRequests.voucherId, r1.id));
+      expect(request).toMatchObject({ status: 'REJECTED', reason: 'Cap too high', reviewedById: ids.owner });
+
+      await activate(batch.id).expect(201);
+      await archive(batch.id).expect(201);
+      expect((await consoleAction('owner', batch.id, 'approve').expect(409)).body.message).toMatch(/archived/);
+      // Rejecting what an archived batch still has waiting stays possible.
+      expect(outcomes((await consoleAction('owner', batch.id, 'reject', { reason: 'Old' }).expect(201)).body)).toEqual({
+        R1: 'rejected',
+        R2: 'rejected',
+      });
+    });
+
+    it('pauses and resumes the live vouchers of a batch, even archived, and skips the rest', async () => {
+      const { batch } = (
+        await send({ items: [item('P1'), item('P2'), item('P3', { expiresAt: later(2) })] }).expect(201)
+      ).body;
+      await activate(batch.id).expect(201);
+      await publish('P1');
+      // P2 is still publishing, P3 stayed a draft (under 24 hours left).
+
+      const paused = (await ctx.http().post(`${api}/${batch.id}/pause`).set(key).expect(201)).body;
+      expect(outcomes(paused)).toEqual({ P1: 'paused', P2: 'paused', P3: 'skipped' });
+      expect((await voucherByCode('P1')).status).toBe('PAUSED');
+      // Paused while publishing stays paused once the chain confirms it.
+      await publish('P2');
+      expect(await voucherByCode('P2')).toMatchObject({ status: 'PAUSED', publishStatus: 'PUBLISHED' });
+
+      await consoleAction('developer', batch.id, 'pause').expect(403);
+      await consoleAction('developer', batch.id, 'resume').expect(403);
+      await archive(batch.id).expect(201);
+      // Archiving doesn't stop claims, so pausing and resuming still work on an archived batch.
+      const resumed = (await consoleAction('owner', batch.id, 'resume').expect(201)).body;
+      expect(outcomes(resumed)).toEqual({ P1: 'resumed', P2: 'resumed', P3: 'skipped' });
+      expect((await voucherByCode('P1')).status).toBe('ACTIVE');
+      expect(outcomes((await ctx.http().post(`${api}/${batch.id}/resume`).set(key).expect(201)).body)).toEqual({
+        P1: 'skipped',
+        P2: 'skipped',
+        P3: 'skipped',
+      });
+      await ctx.http().post(`${api}/${batch.id}/pause`).set(otherKey).expect(404);
+    });
+  });
 });

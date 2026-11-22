@@ -27,7 +27,7 @@ import type {
   ReverseTransactionResponse,
   WebhookEndpointDto,
   WebhookDeliveryDto,
-  ActivateVoucherBatchResponse,
+  VoucherBatchActionResponse,
   CreateVoucherBatchResponse,
   ListVoucherBatchesRequest,
   VoucherBatchDetailDto,
@@ -312,17 +312,21 @@ export class OctaPointClient {
    * `created`, `unchanged` (already there with the same values, so sending the same list again is
    * safe), `conflict` (that `code` holds other values and is kept), `replaced` (a draft of an archived
    * batch now holds these values) or `error`. With `dryRun`, nothing is written: use it to preview.
-   * Nothing goes live until `activateVoucherBatch`.
+   * Nothing goes live until `activateVoucherBatch`. `name` labels the batch (up to 120 characters).
    */
   async createVouchers(
     items: VoucherBatchItem[],
-    batchOptions: { dryRun?: boolean } = {},
+    batchOptions: { dryRun?: boolean; name?: string } = {},
     options?: RequestOptions,
   ): Promise<CreateVoucherBatchResponse> {
     return this.request<CreateVoucherBatchResponse>(
       '/v1/rewards/voucher-batches',
       'POST',
-      { items, ...(batchOptions.dryRun !== undefined ? { dryRun: batchOptions.dryRun } : {}) },
+      {
+        items,
+        ...(batchOptions.dryRun !== undefined ? { dryRun: batchOptions.dryRun } : {}),
+        ...(batchOptions.name !== undefined ? { name: batchOptions.name } : {}),
+      },
       options,
     );
   }
@@ -353,9 +357,33 @@ export class OctaPointClient {
    * `reason`; one already published or waiting is `skipped`, so calling it again is safe. Publishing
    * is done by a worker a few vouchers at a time, so a large batch takes minutes to be fully live.
    */
-  async activateVoucherBatch(batchId: string, options?: RequestOptions): Promise<ActivateVoucherBatchResponse> {
-    return this.request<ActivateVoucherBatchResponse>(
+  async activateVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchActionResponse> {
+    return this.request<VoucherBatchActionResponse>(
       `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/activate`,
+      'POST',
+      undefined,
+      options,
+    );
+  }
+
+  /**
+   * Pauses every voucher of the batch that is on-chain: members can't claim them any more, and the
+   * vouchers they hold stay usable. Drafts and vouchers waiting for approval are `skipped`. Archiving
+   * a batch doesn't stop claims; this does.
+   */
+  async pauseVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchActionResponse> {
+    return this.request<VoucherBatchActionResponse>(
+      `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/pause`,
+      'POST',
+      undefined,
+      options,
+    );
+  }
+
+  /** Resumes every paused voucher of the batch that is published. Resuming needs no approval. */
+  async resumeVoucherBatch(batchId: string, options?: RequestOptions): Promise<VoucherBatchActionResponse> {
+    return this.request<VoucherBatchActionResponse>(
+      `/v1/rewards/voucher-batches/${encodeURIComponent(batchId)}/resume`,
       'POST',
       undefined,
       options,

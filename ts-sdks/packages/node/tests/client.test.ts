@@ -464,6 +464,15 @@ describe('voucher batches SDK (OCT-303)', () => {
       method: 'POST',
       url: 'http://localhost:3000/v1/rewards/voucher-batches/b-1/activate',
     });
+    await client.createVouchers(items, { name: 'catalog.csv' });
+    expect(last().body).toEqual({ items, name: 'catalog.csv' });
+    await client.pauseVoucherBatch('b-1');
+    expect(last()).toMatchObject({ method: 'POST', url: 'http://localhost:3000/v1/rewards/voucher-batches/b-1/pause' });
+    await client.resumeVoucherBatch('b-1');
+    expect(last()).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:3000/v1/rewards/voucher-batches/b-1/resume',
+    });
     await client.archiveVoucherBatch('b-1');
     expect(last()).toMatchObject({
       method: 'POST',

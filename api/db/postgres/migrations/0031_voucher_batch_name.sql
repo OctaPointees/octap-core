@@ -1,0 +1,1 @@
+ALTER TABLE "voucher_import_batches" ADD COLUMN "name" text;

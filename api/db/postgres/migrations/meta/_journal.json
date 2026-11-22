@@ -218,6 +218,13 @@
       "when": 1795336968237,
       "tag": "0030_voucher_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795366622731,
+      "tag": "0031_voucher_batch_name",
+      "breakpoints": true
     }
   ]
 }

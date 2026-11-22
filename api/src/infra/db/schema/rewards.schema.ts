@@ -61,6 +61,8 @@ export const voucherImportBatches = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     source: voucherBatchSourceEnum('source').notNull(),
+    /** A label to tell batches apart (a CSV file's name, a CRM's sync run); not unique. */
+    name: text('name'),
     createdByUserId: uuid('created_by_user_id').references(() => systemUsers.id, { onDelete: 'set null' }),
     createdByCredentialId: uuid('created_by_credential_id').references(() => apiCredentials.id, {
       onDelete: 'set null',

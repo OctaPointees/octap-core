@@ -7,6 +7,7 @@ import {
   voucherUseDeadline,
   type ClaimVoucherResponse,
   type CreateVoucherRequest,
+  type VoucherBatchOutcome,
   type VoucherFieldDifference,
 } from '@octap/contracts';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
@@ -154,9 +155,12 @@ export type VoucherBatchWriteResult =
   | { index: number; kind: 'unchanged'; voucher: Voucher; moved: boolean }
   | { index: number; kind: 'conflict' | 'replaced'; voucher: Voucher; differences: VoucherFieldDifference[] };
 
-export type VoucherBatchActivation =
-  | { voucher: Voucher; outcome: 'publishing' | 'pendingApproval' | 'skipped'; reason: null }
-  | { voucher: Voucher; outcome: 'failed'; reason: string };
+/** What a batch action did to one voucher; `reason` is set when it `failed`. */
+export interface VoucherBatchActionRow {
+  voucher: Voucher;
+  outcome: VoucherBatchOutcome;
+  reason: string | null;
+}
 
 /** Never published: its terms never reached the chain, so it may still be replaced or activated. */
 const neverPublished = (voucher: Voucher): boolean =>
@@ -1049,6 +1053,7 @@ export class RewardsRepository {
     items: VoucherBatchWrite[],
     creator: VoucherActor,
     dryRun: boolean,
+    name: string | null,
     db: DrizzleDb = this.db,
   ): Promise<{ batch: VoucherBatch | null; results: VoucherBatchWriteResult[] }> {
     return withTenant(db, organizationId, async (tx) => {
@@ -1058,6 +1063,7 @@ export class RewardsRepository {
           .insert(voucherImportBatches)
           .values({
             organizationId,
+            name,
             source: creator.role === 'CREDENTIAL' ? 'API' : 'CONSOLE',
             createdByUserId: creator.role === 'CREDENTIAL' ? null : (creator.userId ?? null),
             createdByCredentialId: creator.role === 'CREDENTIAL' ? creator.credentialId : null,
@@ -1150,56 +1156,127 @@ export class RewardsRepository {
   }
 
   /**
-   * Activates every voucher of the batch that can be: each one in its own savepoint, with the same
-   * checks and the same paths as activating it on its own (`queuePublish`, or `queueApproval` when the
-   * organization requires approval and `actor` is not an Owner). The batch row is locked first, so an
-   * archive cannot race it. Vouchers already published, publishing or waiting are `skipped`, which
-   * makes calling it again safe. The program check belongs to the caller (a 422 for the whole call).
+   * Runs `act` on each voucher of the batch, in `code` order (the order other batch writes lock them
+   * in), each in its own savepoint, after locking the batch row, so an archive cannot race it. A
+   * rule error (`RewardsRuleError`) on one voucher is that voucher's `failed` result; anything else
+   * aborts the call. `refuseArchived` is the 409 for actions an archived batch no longer allows.
    */
-  async activateVoucherBatch(
+  private async eachBatchVoucher(
     organizationId: string,
     batchId: string,
-    actor: VoucherActor,
-    db: DrizzleDb = this.db,
-  ): Promise<{ batch: VoucherBatch; results: VoucherBatchActivation[] }> {
+    db: DrizzleDb,
+    refuseArchived: string | null,
+    act: (tx: DrizzleDb, current: Voucher) => Promise<VoucherBatchActionRow>,
+  ): Promise<{ batch: VoucherBatch; results: VoucherBatchActionRow[] }> {
     return withTenant(db, organizationId, async (tx) => {
       const batch = await this.lockBatch(tx, organizationId, batchId);
-      if (batch.archivedAt) throw conflict('This batch is archived and can no longer be activated');
+      if (refuseArchived && batch.archivedAt) throw conflict(refuseArchived);
       const members = await tx
         .select({ id: vouchers.id })
         .from(vouchers)
         .where(and(eq(vouchers.organizationId, organizationId), eq(vouchers.importBatchId, batchId)))
         .orderBy(asc(vouchers.code));
-      const results: VoucherBatchActivation[] = [];
+      const results: VoucherBatchActionRow[] = [];
       for (const { id } of members) {
-        results.push(await tx.transaction((sp) => this.activateBatchVoucher(sp, organizationId, id, actor)));
+        results.push(
+          await tx.transaction(async (sp) => {
+            const current = await this.lockVoucher(sp, organizationId, id);
+            try {
+              return await sp.transaction((step) => act(step, current));
+            } catch (error) {
+              if (!(error instanceof RewardsRuleError)) throw error;
+              return { voucher: current, outcome: 'failed' as const, reason: error.message };
+            }
+          }),
+        );
       }
       return { batch, results };
     });
   }
 
-  private async activateBatchVoucher(
-    tx: DrizzleDb,
+  /**
+   * Activates every voucher of the batch that can be, with the same checks and the same paths as
+   * activating it on its own (`queuePublish`, or `queueApproval` when the organization requires
+   * approval and `actor` is not an Owner). Vouchers already published, publishing or waiting are
+   * `skipped`, which makes calling it again safe. The program check belongs to the caller (a 422 for
+   * the whole call).
+   */
+  async activateVoucherBatch(organizationId: string, batchId: string, actor: VoucherActor, db: DrizzleDb = this.db) {
+    return this.eachBatchVoucher(
+      organizationId,
+      batchId,
+      db,
+      'This batch is archived and can no longer be activated',
+      async (tx, current) => {
+        if (!neverPublished(current)) return { voucher: current, outcome: 'skipped', reason: null };
+        if (expiresTooSoon(current)) throw invalid('A voucher must stay valid for at least 24 hours to be activated');
+        if (current.totalSupply !== null && current.claimedCount >= current.totalSupply)
+          throw conflict('An exhausted voucher cannot be activated');
+        // Like `activation`, but a Business Developer is queued, not refused: a batch's activation is
+        // its submission when approval is required (OCT-59).
+        const queue = actor.role !== 'OWNER' && (await this.approvalRequired(tx, organizationId));
+        return queue
+          ? { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null }
+          : { voucher: await this.queuePublish(tx, current), outcome: 'publishing', reason: null };
+      },
+    );
+  }
+
+  /**
+   * An Owner's decision on every voucher of the batch waiting for approval, made the way `reviewVoucher`
+   * makes it for one (approving starts publishing after the same checks, made now; rejecting returns
+   * it to DRAFT with `reason`). Others are `skipped`. Approving an archived batch is refused, as
+   * activating it is; rejecting one is allowed. The program check belongs to the caller.
+   */
+  async reviewVoucherBatch(
     organizationId: string,
-    id: string,
+    batchId: string,
+    ownerId: string,
+    decision: { approve: true } | { approve: false; reason: string },
+    db: DrizzleDb = this.db,
+  ) {
+    return this.eachBatchVoucher(
+      organizationId,
+      batchId,
+      db,
+      decision.approve ? 'This batch is archived and can no longer be activated' : null,
+      async (tx, current) => {
+        if (current.status !== 'PENDING_APPROVAL') return { voucher: current, outcome: 'skipped', reason: null };
+        const voucher = await this.reviewVoucher(organizationId, current.id, ownerId, decision, tx);
+        return { voucher, outcome: decision.approve ? 'publishing' : 'rejected', reason: null };
+      },
+    );
+  }
+
+  /**
+   * Pauses (`PAUSED`) or resumes (`ACTIVE`) every voucher of the batch that is on-chain, through
+   * `updateVoucher`, so each one gets the checks and rules of pausing or resuming it alone (only an
+   * Owner or an API key may pause; resuming needs no approval). Pausing takes ACTIVE vouchers, and
+   * ones still publishing (they stay paused once live); resuming takes PAUSED ones already published.
+   * Others are `skipped`. Archiving doesn't stop claims, so this works on an archived batch too.
+   */
+  async setVoucherBatchPaused(
+    organizationId: string,
+    batchId: string,
+    paused: boolean,
     actor: VoucherActor,
-  ): Promise<VoucherBatchActivation> {
-    const current = await this.lockVoucher(tx, organizationId, id);
-    if (!neverPublished(current)) return { voucher: current, outcome: 'skipped', reason: null };
-    if (expiresTooSoon(current))
-      return {
-        voucher: current,
-        outcome: 'failed',
-        reason: 'A voucher must stay valid for at least 24 hours to be activated',
-      };
-    if (current.totalSupply !== null && current.claimedCount >= current.totalSupply)
-      return { voucher: current, outcome: 'failed', reason: 'An exhausted voucher cannot be activated' };
-    // Like `activation`, but a Business Developer is queued, not refused: a batch's activation is its
-    // submission when approval is required (OCT-59).
-    const queue = actor.role !== 'OWNER' && (await this.approvalRequired(tx, organizationId));
-    return queue
-      ? { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null }
-      : { voucher: await this.queuePublish(tx, current), outcome: 'publishing', reason: null };
+    db: DrizzleDb = this.db,
+  ) {
+    return this.eachBatchVoucher(organizationId, batchId, db, null, async (tx, current) => {
+      const applies = paused
+        ? current.status === 'ACTIVE' || (current.status === 'DRAFT' && current.publishStatus === 'PUBLISHING')
+        : current.status === 'PAUSED' && current.publishStatus === 'PUBLISHED';
+      if (!applies) return { voucher: current, outcome: 'skipped', reason: null };
+      const voucher = await this.updateVoucher(
+        organizationId,
+        current.id,
+        { status: paused ? 'PAUSED' : 'ACTIVE' },
+        () => undefined,
+        tx,
+        actor,
+      );
+      return { voucher, outcome: paused ? 'paused' : 'resumed', reason: null };
+    });
   }
 
   /** One-way: hides the batch from the default list, refuses activating it, and releases its drafts' codes. */
