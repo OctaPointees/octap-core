@@ -75,10 +75,27 @@ For this staging/developer pilot, stdio is the connection mechanism. The pilot i
 
 `octap-mcp serve-http` serves the same tools over Streamable HTTP. Users sign in with their console Google account through Core's OAuth 2.1 authorization server (see `api/src/domain/mcp-auth/README.md`); each token is bound to one user, one organization and their persona, and the tools call the console member routes with it, so Core checks the membership on every call. One MCP server instance is built per request; a session id is never authentication. stdio with an API key stays for local development.
 
+### Implemented: persona tool sets and prompts (OCT-294)
+
+Over `serve-http`, the tools and prompts a session sees follow the persona on its token
+(`ts-sdks/packages/mcp/src/personas.ts`). The map is for relevance, not security: Core checks the
+organization, the read-only rule and the persona on every call, so a wrong entry can only show a
+tool Core then refuses.
+
+| Persona | Tools | Prompts |
+| --- | --- | --- |
+| Business Developer | `get_connection`, `get_member_balance`, `list_member_transactions`, `list_api_keys` | `check_member_transactions`, `review_api_keys` |
+| Business Owner | everything a Developer gets (an Owner can do everything a Developer can in Core), plus `list_member_vouchers` and `get_refund_policy` (Owner-only in Core) | all three, plus `summarize_member` |
+
+`get_connection` answers which organization and persona the session is connected as. The server
+instructions state the persona, which comes from Core's token check, never from the model. Hosts
+that embed `createHttpHandler` can narrow the persona set with `server.tools`, never widen it. stdio
+with an API key keeps the three member tools: the console reads need a signed-in user.
+
 ### Deferred to future tickets
 
 1. **Durable audit trail (OCT-296):** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
-2. **Persona-based tool sets (OCT-294) and Owner/Developer read tools (OCT-295).**
+2. **Owner/Developer read tools (OCT-295):** member search, budget, voucher catalog, webhook deliveries (after OCT-306), transaction lookup.
 3. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
 4. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 

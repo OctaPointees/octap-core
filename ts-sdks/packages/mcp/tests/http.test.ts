@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { InMemoryTransport } from '@modelcontextprotocol/server';
+import { consoleCoreClient } from '../src/console-client.js';
 import { createHttpHandler } from '../src/http.js';
+import { createServer } from '../src/server.js';
 
 const CORE = 'https://core.test';
 const PUBLIC = 'http://localhost:4100';
 const ORG = '11111111-1111-4111-8111-111111111111';
 const MEMBER = '22222222-2222-4222-8222-222222222222';
 const GOOD = 'octap_mcp_good';
+const DEVELOPER = 'octap_mcp_developer';
 const OTHER_AUDIENCE = 'octap_mcp_other_audience';
 
 const oauthMetadata = {
@@ -18,29 +22,82 @@ const oauthMetadata = {
   code_challenge_methods_supported: ['S256'],
 };
 
-const introspection = (resource: string) => ({
+const introspection = (resource: string, persona = 'BUSINESS_OWNER') => ({
   active: true,
   clientId: 'mcpc_client',
   scopes: ['mcp'],
   userId: 'user-1',
   organizationId: ORG,
-  persona: 'BUSINESS_OWNER',
+  persona,
   resource,
   expiresAt: Math.floor(Date.now() / 1000) + 3600,
 });
 
-/** Stands in for Core: the token check and the console member routes, recording what was called. */
+const OWNER_TOOLS = [
+  'get_connection',
+  'get_member_balance',
+  'get_refund_policy',
+  'list_api_keys',
+  'list_member_transactions',
+  'list_member_vouchers',
+];
+const DEVELOPER_TOOLS = ['get_connection', 'get_member_balance', 'list_api_keys', 'list_member_transactions'];
+
+/**
+ * Stands in for Core: the token check and the console routes, recording what was called. Like Core,
+ * it answers the refund policy to the Owner only, whatever tool map the MCP server uses.
+ */
 function fakeCore() {
   const calls: Array<{ url: string; authorization: string | null }> = [];
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     const authorization = new Headers(init?.headers).get('authorization');
     calls.push({ url, authorization });
+    const persona =
+      authorization === `Bearer ${GOOD}`
+        ? 'BUSINESS_OWNER'
+        : authorization === `Bearer ${DEVELOPER}`
+          ? 'BUSINESS_DEVELOPER'
+          : null;
     if (url === `${CORE}/v1/console/mcp/token`) {
-      if (authorization === `Bearer ${GOOD}`) return Response.json(introspection(`${PUBLIC}/mcp`));
+      if (persona) return Response.json(introspection(`${PUBLIC}/mcp`, persona));
       if (authorization === `Bearer ${OTHER_AUDIENCE}`) return Response.json(introspection('http://elsewhere/mcp'));
       return Response.json({ message: 'invalid' }, { status: 401 });
     }
+    if (!persona) return Response.json({ message: 'invalid' }, { status: 401 });
+    if (url === `${CORE}/v1/console/me`)
+      return Response.json({
+        user: { id: 'user-1', email: 'owner@example.test', fullName: 'Test Owner', systemRole: 'SYSTEM_USER' },
+        organizations: [{ organizationId: ORG, name: 'Coffee', slug: 'coffee', persona }],
+        expiresAt: '2026-11-22T16:00:00.000Z',
+      });
+    if (url === `${CORE}/v1/console/organizations/${ORG}/refund-policy`)
+      return persona === 'BUSINESS_OWNER'
+        ? Response.json({
+            version: 2,
+            allowUnused: true,
+            allowExpired: false,
+            allowRedeemed: false,
+            restockUnused: true,
+            refundWindowDays: 14,
+            reason: 'Two-week window',
+            createdByUserId: 'user-1',
+            createdAt: '2026-11-01T00:00:00.000Z',
+          })
+        : Response.json({ message: 'Organization access is required' }, { status: 403 });
+    if (url === `${CORE}/v1/console/organizations/${ORG}/api-credentials`)
+      return Response.json([
+        {
+          id: 'key-1',
+          name: 'POS',
+          keyPrefix: 'octap_live_ab',
+          scopes: ['read', 'write'],
+          status: 'ACTIVE',
+          createdAt: '2026-10-01T00:00:00.000Z',
+          lastUsedAt: null,
+          keyHash: 'must-never-reach-the-model',
+        },
+      ]);
     if (url === `${CORE}/v1/console/organizations/${ORG}/members/${MEMBER}/transactions?limit=5`)
       return Response.json({
         items: [{ id: 'tx-1', transactionType: 'EARN', status: 'CONFIRMED', pointsAmount: 10 }],
@@ -119,11 +176,7 @@ describe('remote MCP over HTTP (OCT-293)', () => {
     const { calls } = fakeCore();
     const client = await connect(await handler(), GOOD);
     const tools = await client.listTools();
-    expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
-      'get_member_balance',
-      'list_member_transactions',
-      'list_member_vouchers',
-    ]);
+    expect(tools.tools.map((tool) => tool.name).sort()).toEqual(OWNER_TOOLS);
     const history = await client.callTool({
       name: 'list_member_transactions',
       arguments: { memberId: MEMBER, limit: 5 },
@@ -139,6 +192,102 @@ describe('remote MCP over HTTP (OCT-293)', () => {
       expect(call.url.startsWith(`${CORE}/v1/console/organizations/${ORG}/`)).toBe(true);
       expect(call.authorization).toBe(`Bearer ${GOOD}`);
     }
+    await client.close();
+  });
+});
+
+describe('persona tool sets and prompts (OCT-294)', () => {
+  it('gives an Owner every tool and prompt, and says which persona the session acts as', async () => {
+    fakeCore();
+    const client = await connect(await handler(), GOOD);
+    expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(OWNER_TOOLS);
+    expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
+      'check_member_transactions',
+      'review_api_keys',
+      'summarize_member',
+    ]);
+    expect(client.getInstructions()).toContain('as Business Owner');
+    await client.close();
+  });
+
+  it('gives a Developer only the Developer tools and prompts', async () => {
+    fakeCore();
+    const client = await connect(await handler(), DEVELOPER);
+    expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(DEVELOPER_TOOLS);
+    expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
+      'check_member_transactions',
+      'review_api_keys',
+    ]);
+    expect(client.getInstructions()).toContain('as Business Developer');
+    await client.close();
+  });
+
+  it('refuses at the MCP server a tool outside the caller set, without calling Core', async () => {
+    const { calls } = fakeCore();
+    const client = await connect(await handler(), DEVELOPER);
+    const refused = await client.callTool({ name: 'get_refund_policy', arguments: {} }).then(
+      (outcome) => outcome.isError === true,
+      () => true,
+    );
+    expect(refused).toBe(true);
+    expect(calls.some((call) => call.url.endsWith('/refund-policy'))).toBe(false);
+    await client.close();
+  });
+
+  it('lets server options narrow the persona set but never widen it', async () => {
+    fakeCore();
+    const serve = await createHttpHandler({
+      apiUrl: CORE,
+      publicUrl: PUBLIC,
+      oauthMetadata,
+      server: { tools: ['get_connection', 'get_refund_policy'] },
+    });
+    const developer = await connect(serve, DEVELOPER);
+    expect((await developer.listTools()).tools.map((tool) => tool.name)).toEqual(['get_connection']);
+    await developer.close();
+  });
+
+  it('still gets Core 403 when a wrong map gives a Developer an Owner-only tool', async () => {
+    fakeCore();
+    // Deliberately wrong map: the Developer is handed the Owner-only refund policy.
+    const server = createServer({
+      tools: ['get_refund_policy'],
+      client: consoleCoreClient(CORE, DEVELOPER, ORG),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '1.0.0' }, { capabilities: {} });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    const outcome = await client.callTool({ name: 'get_refund_policy', arguments: {} });
+    expect(outcome.isError).toBe(true);
+    expect(JSON.stringify(outcome.content)).toContain('Core denied this read');
+    expect(JSON.stringify(outcome.content)).not.toContain('allowUnused');
+    await client.close();
+    await server.close();
+  });
+
+  it('tells the user which organization and persona the session is connected as', async () => {
+    fakeCore();
+    const client = await connect(await handler(), DEVELOPER);
+    const outcome = await client.callTool({ name: 'get_connection', arguments: {} });
+    expect(outcome.isError).toBeFalsy();
+    const text = JSON.stringify(outcome.content);
+    expect(text).toContain('Coffee');
+    expect(text).toContain('BUSINESS_DEVELOPER');
+    expect(text).not.toContain('owner@example.test');
+    await client.close();
+  });
+
+  it('reads the refund policy for an Owner and lists API keys without secrets', async () => {
+    fakeCore();
+    const client = await connect(await handler(), GOOD);
+    const policy = JSON.stringify((await client.callTool({ name: 'get_refund_policy', arguments: {} })).content);
+    expect(policy).toContain('refundWindowDays');
+    expect(policy).not.toContain('createdByUserId');
+    const keys = JSON.stringify((await client.callTool({ name: 'list_api_keys', arguments: {} })).content);
+    expect(keys).toContain('octap_live_ab');
+    expect(keys).not.toContain('must-never-reach-the-model');
+    expect(keys).not.toContain('key-1');
     await client.close();
   });
 });

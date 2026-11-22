@@ -1,5 +1,19 @@
 export { createServer } from './server.js';
+export {
+  DEVELOPER_TOOLS,
+  OWNER_TOOLS,
+  PERSONA_TOOLS,
+  instructionsForPersona,
+  toolsForPersona,
+  type Persona,
+} from './personas.js';
 export type {
+  ApiKeyView,
+  ConnectionInfo,
+  ConsoleReads,
+  ConsoleToolName,
+  MemberToolName,
+  RefundPolicyView,
   CoreClientLike,
   CreateServerOptions,
   MemberIdResolver,

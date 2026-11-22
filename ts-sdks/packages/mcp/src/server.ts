@@ -21,10 +21,75 @@ export const LIMIT_SCHEMA = z
   .default(DEFAULT_LIMIT)
   .describe('Maximum number of items to return (1-50, default 20)');
 
-export type ToolName = 'get_member_balance' | 'list_member_transactions' | 'list_member_vouchers';
-export const ALL_TOOLS: ToolName[] = ['get_member_balance', 'list_member_transactions', 'list_member_vouchers'];
+export type MemberToolName = 'get_member_balance' | 'list_member_transactions' | 'list_member_vouchers';
+/** Tools that read the signed-in user's console routes; only the console client (`serve-http`) has them. */
+export type ConsoleToolName = 'get_connection' | 'get_refund_policy' | 'list_api_keys';
+export type ToolName = MemberToolName | ConsoleToolName;
+export const MEMBER_TOOLS: MemberToolName[] = [
+  'get_member_balance',
+  'list_member_transactions',
+  'list_member_vouchers',
+];
+export const ALL_TOOLS: ToolName[] = [...MEMBER_TOOLS, 'get_connection', 'get_refund_policy', 'list_api_keys'];
 
-export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransactions' | 'listMemberVouchers'>;
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+/** Who this MCP session acts as, from Core's `GET /v1/console/me` for the session's token. */
+export interface ConnectionInfo {
+  organization: { id: string; name: string; slug: string };
+  persona: string;
+  signedInAs: string;
+  expiresAt: string;
+}
+
+/** The organization's current voucher refund policy (`VoucherRefundPolicyDto` in `@octap/contracts`). */
+export interface RefundPolicyView {
+  version: number;
+  allowUnused: boolean;
+  allowExpired: boolean;
+  allowRedeemed: boolean;
+  restockUnused: boolean;
+  refundWindowDays: number | null;
+  reason?: string;
+  createdAt?: string | null;
+}
+
+/** An API key as the console lists it (`ConsoleCredential`). Core never returns the key or its hash. */
+export interface ApiKeyView {
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  status: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Reads only the console client offers (OCT-294). A tool whose read is missing is not offered. */
+export interface ConsoleReads {
+  getConnection(options?: RequestOptions): Promise<ConnectionInfo>;
+  getRefundPolicy(options?: RequestOptions): Promise<RefundPolicyView>;
+  listApiKeys(options?: RequestOptions): Promise<ApiKeyView[]>;
+}
+
+export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransactions' | 'listMemberVouchers'> &
+  Partial<ConsoleReads>;
+
+const CONSOLE_READ: Record<ConsoleToolName, keyof ConsoleReads> = {
+  get_connection: 'getConnection',
+  get_refund_policy: 'getRefundPolicy',
+  list_api_keys: 'listApiKeys',
+};
+
+/** The tools this server offers: the allowed ones the client can actually serve. */
+export function offeredTools(client: CoreClientLike, allowed: readonly ToolName[] = ALL_TOOLS): Set<ToolName> {
+  return new Set(
+    allowed.filter((tool) =>
+      tool in CONSOLE_READ ? typeof client[CONSOLE_READ[tool as ConsoleToolName]] === 'function' : true,
+    ),
+  );
+}
 
 export type ResolveMemberIdContext = Pick<ServerContext, 'http'>;
 export type MemberIdResolver = (
@@ -33,7 +98,10 @@ export type MemberIdResolver = (
 
 export interface CreateServerOptions {
   client?: CoreClientLike;
-  tools?: ToolName[];
+  /** Tools to offer. Defaults to every tool the client can serve. */
+  tools?: readonly ToolName[];
+  /** Shown to the model when it connects, e.g. which persona this session acts as. */
+  instructions?: string;
   resolveMemberId?: MemberIdResolver;
   project?: (tool: ToolName, value: unknown) => unknown;
 }
@@ -65,7 +133,7 @@ export function safeError(tool: string, error: unknown) {
     console.error(JSON.stringify({ event: 'core_api_error', tool, status: error.statusCode }));
     const message =
       error.statusCode === 401 || error.statusCode === 403
-        ? 'Core denied this read. Check that the configured credential is valid and has the read scope.'
+        ? 'Core denied this read. The signed-in role or the configured credential is not allowed to read this.'
         : error.statusCode === 404
           ? 'No matching member or resource was found in the configured organization.'
           : error.statusCode === 429
@@ -98,9 +166,12 @@ function combineSignal(extra?: Pick<ToolExtra, 'signal' | 'mcpReq'>): AbortSigna
 }
 
 export function createServer(options: CreateServerOptions = {}) {
-  const server = new McpServer({ name: 'octap', version: packageJson.version });
+  const server = new McpServer(
+    { name: 'octap', version: packageJson.version },
+    options.instructions ? { instructions: options.instructions } : undefined,
+  );
   const core = options.client ?? coreClient();
-  const allowedTools = options.tools ? new Set(options.tools) : new Set(ALL_TOOLS);
+  const allowedTools = offeredTools(core, options.tools);
   const resolveMemberId = options.resolveMemberId;
   const project = options.project ?? ((_tool, val) => val);
 
@@ -224,5 +295,168 @@ export function createServer(options: CreateServerOptions = {}) {
     );
   }
 
+  registerConsoleTools(server, core, allowedTools, project);
+  registerPrompts(server, allowedTools);
+
   return server;
+}
+
+const EMPTY_INPUT = z.object({}).strict();
+
+/** The console-only reads (OCT-294). `allowedTools` already holds only those the client can serve. */
+function registerConsoleTools(
+  server: McpServer,
+  core: CoreClientLike,
+  allowedTools: Set<ToolName>,
+  project: (tool: ToolName, value: unknown) => unknown,
+) {
+  const read =
+    <T>(tool: ConsoleToolName, run: (signal: AbortSignal) => Promise<T>, shape: (value: T) => unknown) =>
+    async (_args: Record<string, never>, extra: ToolExtra) => {
+      try {
+        return result(tool, project(tool, shape(await run(combineSignal(extra)))));
+      } catch (error) {
+        return safeError(tool, error);
+      }
+    };
+  const annotations = { readOnlyHint: true, openWorldHint: true };
+
+  if (allowedTools.has('get_connection') && core.getConnection) {
+    const getConnection = core.getConnection.bind(core);
+    server.registerTool(
+      'get_connection',
+      {
+        description:
+          'Show which OctaP organization this session is connected to, the persona (Business Owner or ' +
+          'Business Developer), the signed-in user, and when the sign-in expires. Every other tool reads ' +
+          'this organization only.',
+        inputSchema: EMPTY_INPUT,
+        annotations,
+      },
+      read(
+        'get_connection',
+        (signal) => getConnection({ signal }),
+        (connection) => connection,
+      ),
+    );
+  }
+
+  if (allowedTools.has('get_refund_policy') && core.getRefundPolicy) {
+    const getRefundPolicy = core.getRefundPolicy.bind(core);
+    server.registerTool(
+      'get_refund_policy',
+      {
+        description:
+          "Read the organization's current voucher refund policy: which vouchers can be refunded (unused, " +
+          'expired, redeemed), whether a refunded unused voucher goes back to stock, and the refund window in days.',
+        inputSchema: EMPTY_INPUT,
+        annotations,
+      },
+      read(
+        'get_refund_policy',
+        (signal) => getRefundPolicy({ signal }),
+        (policy) => ({
+          version: policy.version,
+          allowUnused: policy.allowUnused,
+          allowExpired: policy.allowExpired,
+          allowRedeemed: policy.allowRedeemed,
+          restockUnused: policy.restockUnused,
+          refundWindowDays: policy.refundWindowDays,
+          reason: policy.reason,
+          publishedAt: policy.createdAt,
+        }),
+      ),
+    );
+  }
+
+  if (allowedTools.has('list_api_keys') && core.listApiKeys) {
+    const listApiKeys = core.listApiKeys.bind(core);
+    server.registerTool(
+      'list_api_keys',
+      {
+        description:
+          "List the organization's API keys: name, key prefix, scopes (read, or read and write), status, " +
+          'when each was created and last used. The keys themselves are never returned.',
+        inputSchema: EMPTY_INPUT,
+        annotations,
+      },
+      read(
+        'list_api_keys',
+        (signal) => listApiKeys({ signal }),
+        // Whitelist the fields, so nothing Core adds later passes through unreviewed.
+        (keys) =>
+          keys.map((key) => ({
+            name: key.name,
+            keyPrefix: key.keyPrefix,
+            scopes: key.scopes,
+            status: key.status,
+            createdAt: key.createdAt,
+            lastUsedAt: key.lastUsedAt,
+          })),
+      ),
+    );
+  }
+}
+
+const MEMBER_ID_ARGS = z.object({ memberId: MEMBER_ID });
+
+function userMessage(text: string) {
+  return { messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] };
+}
+
+/**
+ * Persona prompts (OCT-294). They guide the answer; they are not access control. A prompt is offered
+ * only when every tool it relies on is, so each persona gets the prompts that fit its tool set.
+ */
+function registerPrompts(server: McpServer, tools: Set<ToolName>) {
+  const offers = (...needed: ToolName[]) => needed.every((tool) => tools.has(tool));
+
+  if (offers('get_member_balance', 'list_member_transactions', 'list_member_vouchers')) {
+    server.registerPrompt(
+      'summarize_member',
+      {
+        title: "Summarize a member's activity",
+        description: 'Balance, recent points activity and vouchers held, as a short summary.',
+        argsSchema: MEMBER_ID_ARGS,
+      },
+      ({ memberId }) =>
+        userMessage(
+          `Summarize member ${memberId} for me: their confirmed and pending points, what they earned and ` +
+            'redeemed recently, and which vouchers they hold and whether they used them. Use only the OctaP ' +
+            "tools, keep it under 10 lines, and say plainly if something couldn't be read.",
+        ),
+    );
+  }
+
+  if (offers('get_member_balance', 'list_member_transactions')) {
+    server.registerPrompt(
+      'check_member_transactions',
+      {
+        title: "Check a member's transactions",
+        description: 'Find pending or failed points transactions for one member, to debug an integration.',
+        argsSchema: MEMBER_ID_ARGS,
+      },
+      ({ memberId }) =>
+        userMessage(
+          `Check member ${memberId}'s recent points transactions. List any that are still PENDING or failed, ` +
+            'with their type, amount and time, and say whether the balance is consistent with them. Use only ' +
+            'the OctaP tools.',
+        ),
+    );
+  }
+
+  if (offers('list_api_keys')) {
+    server.registerPrompt(
+      'review_api_keys',
+      {
+        title: 'Review API keys',
+        description: 'Spot API keys that were never used, are stale, or have write access.',
+      },
+      () =>
+        userMessage(
+          "Review my organization's API keys. Point out keys that were never used, keys not used in the last " +
+            '30 days, and keys with write access, and suggest which ones to revoke. Use only the OctaP tools.',
+        ),
+    );
+  }
 }

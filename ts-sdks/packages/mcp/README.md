@@ -136,6 +136,23 @@ All tools are strictly read-only:
 - **`list_member_transactions`**: Returns up to 50 recent transactions (default 20), including earn, redeem, adjust, and refund records.
 - **`list_member_vouchers`**: Returns up to 50 assigned vouchers (default 20) with voucher titles and redemption status. Serial codes and sensitive secrets are omitted.
 
+Over `serve-http` only (they read the signed-in user's console routes):
+
+- **`get_connection`**: Which organization and persona the session is connected as, the signed-in user, and when the sign-in expires.
+- **`get_refund_policy`**: The organization's current voucher refund policy (Owner-only in Core).
+- **`list_api_keys`**: The organization's API keys with name, prefix, scopes, status, created and last-used time. The keys themselves are never returned.
+
+### Tools and prompts per persona (`serve-http`)
+
+| Persona | Tools | Prompts |
+| --- | --- | --- |
+| Business Developer | `get_connection`, `get_member_balance`, `list_member_transactions`, `list_api_keys` | `check_member_transactions`, `review_api_keys` |
+| Business Owner | every Developer tool, plus `list_member_vouchers` and `get_refund_policy` | every Developer prompt, plus `summarize_member` |
+
+The map lives in `src/personas.ts`. It decides what each persona sees, not what it may read: Core
+checks the organization, the read-only rule and the persona on every call. stdio with an API key
+offers the three member tools.
+
 ## Error Handling & Tenant Isolation
 
 - **Non-existent or cross-tenant members**: When looking up a member ID that does not exist or belongs to another organization, Core responds with HTTP 404. The adapter returns `"No matching member or resource was found in the configured organization."` to prevent cross-tenant existence enumeration.
