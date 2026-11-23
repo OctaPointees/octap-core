@@ -83,6 +83,46 @@ Values are compared after normalizing: a field left out is its default, dates co
 
 `batch` is `null` on a dry run, and when no item landed in the batch (all `unchanged`, `conflict` or `error`).
 
+## parseVoucherCsv
+
+No request: it runs in your process.
+
+```ts
+parseVoucherCsv(text: string, options?: { utcOffset?: string }): ParsedVoucherCsv
+```
+
+Reads a CSV in the Octap voucher template (the file the console imports, `VOUCHER_CSV_TEMPLATE`) into items for `createVouchers`. It makes the console's checks: a row it can't read, that breaks a rule, or that repeats an earlier row's `code` gets a `problem` naming the CSV column, and is left out of `items`. Core still checks every item it receives.
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { parseVoucherCsv } from '@octap/sdk';
+
+const { items, rows, error } = parseVoucherCsv(await readFile('rewards.csv', 'utf8'));
+if (error) throw new Error(error); // empty file, missing column, more than 100 rows
+for (const row of rows) if (row.problem) console.warn(`line ${row.line}: ${row.problem}`);
+const preview = await client.createVouchers(items, { dryRun: true });
+```
+
+- `rows`: every row, with its `line` (the header is line 1), its `code`, and its `item` or its `problem`. `items[i]` is the item of `rows.filter((row) => row.item)[i]`, so a result's `index` leads back to its line.
+- Dates: `claims_open_on` starts at 00:00:00 and `claims_close_on` ends at 23:59:59 of that day in `utcOffset` (default `+07:00`). Dates Excel rewrote (`31/12/2027`, `12/31/2027`) are read; one that could be either day and month is refused.
+- An empty `code` is made from the title, as the console does (`suggestVoucherCode`).
+
+### Benefit terms (`octap.benefit.v1`)
+
+The console shows a voucher's offer from its `terms`. To make vouchers it shows like its own, write `terms` in this shape (`parseVoucherCsv` does):
+
+| `type` column | `terms.kind` | `discountType` | Other `terms` fields |
+| --- | --- | --- | --- |
+| `percent_off` | `PERCENT_OFF` | `PERCENTAGE` (`discountValue`: 1–100) | `maxDiscountVnd` |
+| `amount_off` | `AMOUNT_OFF` | `FIXED_AMOUNT` (`discountValue`: VND) | |
+| `free_item` | `FREE_ITEM` | `FREE_ITEM` | `item` |
+| `buy_x_get_y` | `BUY_X_GET_Y` | none | `buyQuantity`, `getQuantity`, `item` |
+| `free_shipping` | `FREE_SHIPPING` | none | `maxDiscountVnd` |
+| `fixed_price` | `FIXED_PRICE` | none | `priceVnd`, `item` |
+| `custom` | `CUSTOM` | none | `benefit` |
+
+Every kind also has `schema: "octap.benefit.v1"`, and may have `minOrderVnd` and `appliesTo`. Amounts are numbers in VND. `terms` is published on-chain at activation and never changes.
+
 ## listVoucherBatches
 
 `GET /v1/rewards/voucher-batches` · Scope: `read`

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `parseVoucherCsv(text, { utcOffset })` reads a CSV in the Octap voucher template (the file the
+  console imports) into items for `createVouchers`, with the console's checks: each bad row is
+  reported with its line and column and left out. Also exported: `VOUCHER_CSV_TEMPLATE`,
+  `VOUCHER_CSV_TYPES`, `VOUCHER_BENEFIT_SCHEMA` and `suggestVoucherCode`.
+- The reference documents the `octap.benefit.v1` shape of `terms` the console reads.
+
 ## 0.2.0
 
 ### Breaking changes

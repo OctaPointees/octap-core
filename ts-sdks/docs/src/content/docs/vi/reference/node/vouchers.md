@@ -83,6 +83,46 @@ Giá trị được so sau khi chuẩn hoá: field không gửi coi như giá tr
 
 `batch` là `null` khi dry run, và khi không item nào vào lô (toàn `unchanged`, `conflict` hoặc `error`).
 
+## parseVoucherCsv
+
+Không gọi API: chạy ngay trong tiến trình của bạn.
+
+```ts
+parseVoucherCsv(text: string, options?: { utcOffset?: string }): ParsedVoucherCsv
+```
+
+Đọc file CSV theo mẫu voucher của Octap (đúng file mà console import, `VOUCHER_CSV_TEMPLATE`) thành các item cho `createVouchers`. Hàm kiểm tra giống console: dòng không đọc được, sai luật, hoặc trùng `code` với dòng trước sẽ có `problem` ghi rõ cột CSV, và không nằm trong `items`. Core vẫn kiểm tra lại mọi item nhận được.
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { parseVoucherCsv } from '@octap/sdk';
+
+const { items, rows, error } = parseVoucherCsv(await readFile('rewards.csv', 'utf8'));
+if (error) throw new Error(error); // file rỗng, thiếu cột, quá 100 dòng
+for (const row of rows) if (row.problem) console.warn(`dòng ${row.line}: ${row.problem}`);
+const preview = await client.createVouchers(items, { dryRun: true });
+```
+
+- `rows`: mọi dòng, kèm `line` (dòng tiêu đề là dòng 1), `code`, và `item` hoặc `problem`. `items[i]` là item của `rows.filter((row) => row.item)[i]`, nên `index` trong kết quả dẫn về đúng dòng.
+- Ngày: `claims_open_on` bắt đầu lúc 00:00:00, `claims_close_on` kết thúc lúc 23:59:59 của ngày đó theo `utcOffset` (mặc định `+07:00`). Ngày bị Excel đổi định dạng (`31/12/2027`, `12/31/2027`) vẫn đọc được; ngày có thể hiểu theo hai cách thì bị từ chối.
+- `code` để trống thì được tạo từ tiêu đề, giống console (`suggestVoucherCode`).
+
+### Điều khoản ưu đãi (`octap.benefit.v1`)
+
+Console hiển thị ưu đãi của voucher từ `terms`. Muốn voucher hiện trên console giống voucher tạo ở console, hãy ghi `terms` theo dạng này (`parseVoucherCsv` đã làm sẵn):
+
+| Cột `type` | `terms.kind` | `discountType` | Các trường khác trong `terms` |
+| --- | --- | --- | --- |
+| `percent_off` | `PERCENT_OFF` | `PERCENTAGE` (`discountValue`: 1–100) | `maxDiscountVnd` |
+| `amount_off` | `AMOUNT_OFF` | `FIXED_AMOUNT` (`discountValue`: VND) | |
+| `free_item` | `FREE_ITEM` | `FREE_ITEM` | `item` |
+| `buy_x_get_y` | `BUY_X_GET_Y` | không có | `buyQuantity`, `getQuantity`, `item` |
+| `free_shipping` | `FREE_SHIPPING` | không có | `maxDiscountVnd` |
+| `fixed_price` | `FIXED_PRICE` | không có | `priceVnd`, `item` |
+| `custom` | `CUSTOM` | không có | `benefit` |
+
+Loại nào cũng có `schema: "octap.benefit.v1"`, và có thể có `minOrderVnd`, `appliesTo`. Số tiền là số, đơn vị VND. `terms` được ghi lên chain khi activate và không bao giờ đổi được.
+
 ## listVoucherBatches
 
 `GET /v1/rewards/voucher-batches` · Scope: `read`
