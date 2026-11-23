@@ -344,31 +344,7 @@ export class RewardsService {
     voucher: typeof vouchers.$inferSelect,
     approval?: typeof voucherApprovalRequests.$inferSelect | null,
   ): VoucherDto {
-    return {
-      id: voucher.id,
-      organizationId: voucher.organizationId,
-      code: voucher.code,
-      title: voucher.title,
-      description: voucher.description,
-      pointsCost: Number(voucher.pointsCost),
-      discountType: voucher.discountType,
-      discountValue: voucher.discountValue,
-      terms: voucher.terms,
-      publishStatus: voucher.publishStatus,
-      suiTermsId: voucher.suiTermsId,
-      refundPolicy: voucher.refundPolicySnapshot,
-      totalSupply: voucher.totalSupply,
-      perMemberLimit: voucher.perMemberLimit,
-      claimedCount: voucher.claimedCount,
-      status: voucher.status,
-      startsAt: voucher.startsAt ? new Date(voucher.startsAt).toISOString() : null,
-      expiresAt: voucher.expiresAt ? new Date(voucher.expiresAt).toISOString() : null,
-      validForDays: voucher.validForDays,
-      metadata: voucher.metadata as Record<string, unknown> | null,
-      ...(approval !== undefined ? { approval: approval && mapApproval(approval) } : {}),
-      createdAt: new Date(voucher.createdAt).toISOString(),
-      updatedAt: new Date(voucher.updatedAt).toISOString(),
-    };
+    return toVoucherDto(voucher, approval);
   }
 }
 
@@ -384,5 +360,38 @@ function mapApproval(row: typeof voucherApprovalRequests.$inferSelect): VoucherA
     reviewedById: row.reviewedById,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     reason: row.reason,
+  };
+}
+
+/** A voucher row as the API returns it. `approval` is left out where it was not read (a member's vouchers). */
+export function toVoucherDto(
+  voucher: typeof vouchers.$inferSelect,
+  approval?: typeof voucherApprovalRequests.$inferSelect | null,
+): VoucherDto {
+  return {
+    id: voucher.id,
+    organizationId: voucher.organizationId,
+    code: voucher.code,
+    title: voucher.title,
+    description: voucher.description,
+    pointsCost: Number(voucher.pointsCost),
+    discountType: voucher.discountType,
+    discountValue: voucher.discountValue,
+    terms: voucher.terms,
+    publishStatus: voucher.publishStatus,
+    suiTermsId: voucher.suiTermsId,
+    refundPolicy: voucher.refundPolicySnapshot,
+    totalSupply: voucher.totalSupply,
+    perMemberLimit: voucher.perMemberLimit,
+    claimedCount: voucher.claimedCount,
+    status: voucher.status,
+    startsAt: voucher.startsAt ? new Date(voucher.startsAt).toISOString() : null,
+    expiresAt: voucher.expiresAt ? new Date(voucher.expiresAt).toISOString() : null,
+    validForDays: voucher.validForDays,
+    metadata: voucher.metadata as Record<string, unknown> | null,
+    ...(approval !== undefined ? { approval: approval && mapApproval(approval) } : {}),
+    batchId: voucher.importBatchId,
+    createdAt: new Date(voucher.createdAt).toISOString(),
+    updatedAt: new Date(voucher.updatedAt).toISOString(),
   };
 }

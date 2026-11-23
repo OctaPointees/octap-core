@@ -23,12 +23,46 @@ An Owner can require approval with `PATCH /v1/console/organizations/:id/settings
 - Each request is a row of `voucher_approval_requests` (submitter is a user or an API key, at most one PENDING per voucher, RLS by organization). List and detail return the latest as `approval`.
 - The repository reads the setting after the voucher's lock, FOR SHARE, the order a claim takes them; changing it locks the organization FOR UPDATE, so a write in progress finishes under the old value.
 - No webhook fires for a submission yet.
+
+## Voucher batches (OCT-303)
+
+Many vouchers created as one batch, always as `DRAFT`, reviewed, then activated, paused, resumed or archived together. With an API key (`write` to change, `read` to look): `POST|GET /v1/rewards/voucher-batches`, `GET …/:batchId`, `POST …/:batchId/activate|pause|resume|archive`. In the console, the same under `/v1/console/organizations/:id/voucher-batches`. As for a single voucher, pausing and resuming are the Owner's (and an API key's), never a Business Developer's.
+
+| Action | Owner (console) | Business Developer (console) | API key |
+|---|---|---|---|
+| create (`name?`, `dryRun`), list, detail, archive | ✅ | ✅ | ✅ (`write` / `read`) |
+| activate | ✅ publishes, and **approves** what waits for approval | ✅ publishes; queued while approval is required | ✅ the same as a Developer |
+| pause, resume | ✅ | ❌ 403 | ✅ |
+
+There is no batch approve or reject: an Owner is the approver (OCT-59), so the Owner's activation of a reviewed batch is its approval. Rejecting with a reason stays per voucher, and archiving rejects the whole batch.
+
+```
+ preview (dryRun) → create batch (DRAFT) → edit (PATCH, as usual) → activate batch   or   archive batch
+```
+
+- `voucher-batch.ts`: request and item checks, normalization and comparison (pure, unit-tested). `voucher-batch.service.ts`: the use cases, shared by both route sets. `ConsoleVoucherBatchService` (in `console-rewards.service.ts`): the console's access checks.
+- **Create:** 1 to `VOUCHER_BATCH_MAX_ITEMS` (100) items, each `createVoucher`'s fields without `status`. A bad request (no items, too many, not an object) is a 400. Each item is otherwise checked first (`checkBatchItems`: a bad one becomes its own `error`, before the database), then written in one transaction with a savepoint per item, in `code` order (two batches touching the same codes lock them in the same order). Nothing in the write is expected to throw; if something does, the whole call fails and nothing is written. `dryRun` reads and classifies, writes nothing. No batch row is kept when no item landed in it.
+- **Per item**, by `code` (unique per organization):
+
+  | Voucher holding the `code` | Same values | Other values |
+  |---|---|---|
+  | none | `created` | `created` |
+  | published, publishing or waiting for approval | `unchanged` | `conflict` (kept) |
+  | DRAFT of an open batch, or created on its own | `unchanged` | `conflict` (kept) |
+  | `ARCHIVED` (from an archived batch) | `unchanged`, back to `DRAFT` in this batch | `replaced`, back to `DRAFT` in this batch |
+
+  `error` (`INVALID` with the `field`, or `DUPLICATE_IN_BATCH` for a code used twice in one request) writes nothing. Values are compared after normalizing both sides: a missing field is its default, dates as instants, `discountValue` as an amount (`"20"` = `"20.00"`), `terms` and `metadata` with sorted keys. `conflict` and `replaced` list `differences: [{ field, stored, sent }]`. A concurrent insert of the same code is classified the same way, never a 500.
+- **Activate:** the program check is made once (422 for the whole call); an archived batch is a 409. Then each voucher, in its own savepoint, with the checks of a single activation made now: `publishing`, `pendingApproval` (approval required and the caller is not an Owner, OCT-59: a Business Developer's batch activation is its submission), `skipped` (already published or publishing, or waiting when the caller isn't an Owner: calling it again is safe) or `failed` with a `reason` (under 24 hours left, no supply). For an **Owner**, a voucher waiting for approval is approved the way `reviewVoucher` approves one (request `APPROVED`, reviewer the Owner; the 24-hour check made now; then publishing). The batch row is locked first, so an archive cannot race it. The worker publishes a few vouchers per poll (`CHAIN_SUBMIT_BATCH_SIZE`), so a 100-voucher batch takes minutes to be live.
+- **Pause / resume a batch:** through `updateVoucher`, so each voucher gets the rules of pausing or resuming it alone. Pausing takes `ACTIVE` vouchers and ones still publishing (they stay paused once live); resuming takes `PAUSED` ones already published, and needs no approval. Others are `skipped`. A voucher paused while publishing whose publish then failed (`PAUSED` + `FAILED`) never went live: activating the batch publishes it again and keeps it paused, and archiving archives it. It works on an archived batch too: archiving doesn't stop claims.
+- Every batch action runs on the batch's vouchers in `code` order, each in its own savepoint after locking the batch row (`eachBatchVoucher`), and returns `VoucherBatchActionResponse`: the batch, then each voucher's `outcome` (`publishing`, `pendingApproval`, `paused`, `resumed`, `archived`, `skipped`, `failed` with a `reason`) with its `status` after the action.
+- **Archive:** one-way (no un-archive). The batch is hidden from `GET` unless `?includeArchived=true` and can't be activated. Each of its vouchers that never went live becomes **`ARCHIVED`**: a draft (or one paused while its publish failed) directly; one waiting for approval once its request is `WITHDRAWN` ("Batch archived", reviewer the user who archived it, `null` for an API key). An `ARCHIVED` voucher refuses PATCH and submit (409); claim and approve already need `ACTIVE` / `PENDING_APPROVAL`. Its only way back is a re-import of its code (`unchanged` or `replaced`, as `DRAFT` in the new batch). Vouchers that are publishing or live are `skipped`: archiving doesn't stop claims, pausing does. Archiving again only reports.
+- `voucher_import_batches` (optional `name`, up to 120 characters, trimmed, not unique; source `CONSOLE`/`API`, created by a user or an API key, `archived_at`, RLS by organization); `vouchers.import_batch_id` is a composite key with `organization_id`, so a voucher can only belong to a batch of its own organization. `VoucherDto.batchId` shows it.
 - `voucher-use.service.ts`: customer-signed use: prepare with an API key, finalize with the customer's signature.
 - `voucher-terms.ts`: the canonical bytes frozen on-chain as a voucher's promise.
 - `voucher-validation.ts`: runtime create/edit validation; merged edits are validated while the voucher row is locked.
 - `rewards.module.ts`: Nest provider composition.
 
-Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` (API key) and `api/rest/console-rewards.controller.ts` (console session).
+Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` and `api/rest/voucher-batches.controller.ts` (API key), `api/rest/console-rewards.controller.ts` and `api/rest/console-voucher-batches.controller.ts` (console session).
 Every repository method runs under an organization's RLS context (`withTenant`), so Postgres hides other organizations' `vouchers` and `voucher_ownerships`. Request paths pass the authenticated organization (`findVoucherById(organizationId, id)`, …); only worker and indexer callbacks that start from an id read that row's organization first. The organization and member check of a claim or use runs as the connection's own role at its usual point (`asOwnRole`), since the tenant role cannot read `organizations` (OCT-289).
 
 ## What lives where

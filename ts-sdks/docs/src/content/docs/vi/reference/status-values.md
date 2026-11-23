@@ -38,6 +38,7 @@ description: Ý nghĩa của từng trạng thái giao dịch, voucher và webho
 | --- | --- |
 | `DRAFT` | Chưa mở |
 | `PENDING_APPROVAL` | Đang chờ Owner duyệt, khi tổ chức bật yêu cầu duyệt. Không sửa hay claim được. Được duyệt thì được publish và thành `ACTIVE`; bị từ chối hoặc rút lại thì về `DRAFT`. |
+| `ARCHIVED` | Nháp (hoặc voucher đang chờ duyệt) của một lô đã archive. Chưa từng live, không sửa, gửi duyệt hay claim được. Import lại `code` của nó ở một lô mới thì nó thành `DRAFT` ở đó. |
 | `ACTIVE` | Có thể claim |
 | `PAUSED` | Tạm dừng claim |
 | `EXPIRED` | Đã qua ngày kết thúc |

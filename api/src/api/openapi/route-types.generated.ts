@@ -5,6 +5,7 @@ import type { ConsoleIdentityController } from '../rest/console-identity.control
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
 import type { ConsoleRefundPolicyController } from '../rest/console-refund-policy.controller.js';
 import type { ConsoleRewardsController } from '../rest/console-rewards.controller.js';
+import type { ConsoleVoucherBatchesController } from '../rest/console-voucher-batches.controller.js';
 import type { ConsoleWebhooksController } from '../rest/console-webhooks.controller.js';
 import type { CreditsController } from '../rest/credits.controller.js';
 import type { HealthController, PlatformHealthController } from '../rest/health.controller.js';
@@ -14,6 +15,7 @@ import type { ConsoleMcpTokenController, McpOAuthController } from '../rest/mcp-
 import type { MembersController } from '../rest/members.controller.js';
 import type { OrganizationResolutionController, PlatformOrganizationsController } from '../rest/organizations.controller.js';
 import type { RewardsController } from '../rest/rewards.controller.js';
+import type { VoucherBatchesController } from '../rest/voucher-batches.controller.js';
 import type { WebhooksController } from '../rest/webhooks.controller.js';
 
 export type ConsoleChangeRequestsController_propose_Response = Awaited<ReturnType<ConsoleChangeRequestsController['propose']>>;
@@ -74,6 +76,15 @@ export type ConsoleRewardsController_withdraw_Response = Awaited<ReturnType<Cons
 export type ConsoleRewardsController_approve_Response = Awaited<ReturnType<ConsoleRewardsController['approve']>>;
 export type ConsoleRewardsController_reject_Response = Awaited<ReturnType<ConsoleRewardsController['reject']>>;
 export type ConsoleRewardsController_reject_Body = Parameters<ConsoleRewardsController['reject']>[3];
+export type ConsoleVoucherBatchesController_create_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['create']>>;
+export type ConsoleVoucherBatchesController_create_Body = Parameters<ConsoleVoucherBatchesController['create']>[2];
+export type ConsoleVoucherBatchesController_list_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['list']>>;
+export type ConsoleVoucherBatchesController_list_Query = { "includeArchived"?: Parameters<ConsoleVoucherBatchesController['list']>[2] };
+export type ConsoleVoucherBatchesController_detail_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['detail']>>;
+export type ConsoleVoucherBatchesController_activate_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['activate']>>;
+export type ConsoleVoucherBatchesController_archive_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['archive']>>;
+export type ConsoleVoucherBatchesController_pause_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['pause']>>;
+export type ConsoleVoucherBatchesController_resume_Response = Awaited<ReturnType<ConsoleVoucherBatchesController['resume']>>;
 export type ConsoleWebhooksController_listEndpoints_Response = Awaited<ReturnType<ConsoleWebhooksController['listEndpoints']>>;
 export type ConsoleWebhooksController_registerEndpoint_Response = Awaited<ReturnType<ConsoleWebhooksController['registerEndpoint']>>;
 export type ConsoleWebhooksController_registerEndpoint_Body = Parameters<ConsoleWebhooksController['registerEndpoint']>[2];
@@ -160,5 +171,14 @@ export type RewardsController_prepareVoucherUse_Body = Parameters<RewardsControl
 export type RewardsController_finalizeVoucherUse_Response = Awaited<ReturnType<RewardsController['finalizeVoucherUse']>>;
 export type RewardsController_finalizeVoucherUse_Body = Parameters<RewardsController['finalizeVoucherUse']>[0];
 export type RewardsController_listMemberVouchers_Response = Awaited<ReturnType<RewardsController['listMemberVouchers']>>;
+export type VoucherBatchesController_create_Response = Awaited<ReturnType<VoucherBatchesController['create']>>;
+export type VoucherBatchesController_create_Body = Parameters<VoucherBatchesController['create']>[1];
+export type VoucherBatchesController_list_Response = Awaited<ReturnType<VoucherBatchesController['list']>>;
+export type VoucherBatchesController_list_Query = { "includeArchived"?: Parameters<VoucherBatchesController['list']>[1] };
+export type VoucherBatchesController_detail_Response = Awaited<ReturnType<VoucherBatchesController['detail']>>;
+export type VoucherBatchesController_activate_Response = Awaited<ReturnType<VoucherBatchesController['activate']>>;
+export type VoucherBatchesController_archive_Response = Awaited<ReturnType<VoucherBatchesController['archive']>>;
+export type VoucherBatchesController_pause_Response = Awaited<ReturnType<VoucherBatchesController['pause']>>;
+export type VoucherBatchesController_resume_Response = Awaited<ReturnType<VoucherBatchesController['resume']>>;
 export type WebhooksController_listEndpoints_Response = Awaited<ReturnType<WebhooksController['listEndpoints']>>;
 export type WebhooksController_listDeliveries_Response = Awaited<ReturnType<WebhooksController['listDeliveries']>>;
