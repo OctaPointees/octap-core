@@ -204,7 +204,7 @@ function registerMemberTools(
         notFound,
         run: async (args, signal, extra) => {
           const memberId = await memberOf(args, extra);
-          // Core's route has no limit yet (OCT-310 Part 2), so the newest are kept here.
+          // Core's route has no limit yet, so the newest are kept here.
           const rows = await core.listMemberVouchers(memberId, { signal });
           return { vouchers: rows.slice(0, args.limit ?? DEFAULT_LIMIT).map(ownershipOf) };
         },
@@ -221,7 +221,7 @@ function userMessage(text: string) {
 }
 
 /**
- * Persona prompts (OCT-294, OCT-310). They guide the answer; they are not access control. A prompt is
+ * Persona prompts (OCT-294). They guide the answer; they are not access control. A prompt is
  * offered only when every tool it relies on is, and `allowedPrompts` (the persona's) allows it.
  */
 function registerPrompts(server: McpServer, tools: Set<ToolName>, allowedPrompts?: readonly PromptName[]) {

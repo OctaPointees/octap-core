@@ -10,7 +10,7 @@ import {
 } from '../src/personas.js';
 import { ALL_TOOLS } from '../src/server.js';
 
-describe('persona tool map (OCT-294, OCT-310)', () => {
+describe('persona tool map (OCT-294)', () => {
   it('gives an Owner every Developer tool and prompt, as Core gives an Owner every Developer permission', () => {
     for (const tool of DEVELOPER_TOOLS) expect(OWNER_TOOLS).toContain(tool);
     for (const prompt of DEVELOPER_PROMPTS) expect(OWNER_PROMPTS).toContain(prompt);

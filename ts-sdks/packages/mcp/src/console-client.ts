@@ -45,7 +45,7 @@ interface ConsoleMe {
 }
 
 /**
- * The tools' Core client for a signed-in user (OCT-293, OCT-294, OCT-310): the member reads plus the console
+ * The tools' Core client for a signed-in user (OCT-293, OCT-294): the member reads plus the console
  * reads, through the console routes of the token's own organization, with the user's MCP access
  * token. Core rechecks the token, the membership and the persona on every call, so this client
  * holds no authority itself.

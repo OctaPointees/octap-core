@@ -92,7 +92,7 @@ instructions state the persona, which comes from Core's token check, never from 
 that embed `createHttpHandler` can narrow the persona set with `server.tools`, never widen it. stdio
 with an API key keeps the three member tools: the console reads need a signed-in user.
 
-### Implemented: read tools on existing console routes (OCT-310, part 1)
+### Implemented: read tools on existing console routes (OCT-294)
 
 `find_member`, `get_member`, `list_vouchers`, `get_voucher`, `list_voucher_batches`,
 `get_voucher_batch`, `get_budget`, `get_organization`, `list_webhook_endpoints`,
@@ -105,15 +105,14 @@ whitelisted fields, so secrets and fields Core adds later never reach the model.
 pages with a cursor and returns `{ transactions, nextCursor }`; `list_member_vouchers` returns
 `{ vouchers }`. A 404 names what was not found.
 
-Part 2 (new Core routes: one transaction by id, an activity summary, paged member vouchers) and the
-write tools (OCT-314) are not built yet.
+Not built yet, and not on a ticket: reads that need new Core routes (one transaction by id, an
+activity summary, paged member vouchers) and write tools.
 
 ### Deferred to future tickets
 
 1. **Durable audit trail (OCT-296):** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
-2. **Owner/Developer read tools (OCT-295):** member search, budget, voucher catalog, webhook deliveries (after OCT-306), transaction lookup.
-3. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
-4. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
+2. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
+3. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 
 ## Proposed test plan and acceptance checks
 

@@ -4,7 +4,7 @@ import type { PromptName, ToolName } from './server.js';
 export type Persona = 'BUSINESS_OWNER' | 'BUSINESS_DEVELOPER';
 
 /**
- * Which tools each persona sees (OCT-294, OCT-310), in one place so it is easy to review.
+ * Which tools each persona sees (OCT-294), in one place so it is easy to review.
  *
  * This map is for relevance, not security. Core is the authority: every tool call goes to the
  * console routes with the user's own token, and Core checks the organization, the read-only rule

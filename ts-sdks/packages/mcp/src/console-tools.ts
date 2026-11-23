@@ -134,7 +134,7 @@ export interface MemberSearch {
   cursor?: string;
 }
 
-/** Reads only the console client offers (OCT-294, OCT-310). A tool whose read is missing is not offered. */
+/** Reads only the console client offers (OCT-294). A tool whose read is missing is not offered. */
 export interface ConsoleReads {
   getConnection(options?: RequestOptions): Promise<ConnectionInfo>;
   getRefundPolicy(options?: RequestOptions): Promise<RefundPolicyView>;
@@ -342,7 +342,7 @@ function batchOf(batch: VoucherBatchDto): z.infer<typeof BATCH> {
 // Registration
 // -------------------------------------------------------------------------------------------------
 
-/** The console reads (OCT-294, OCT-310). `allowed` already holds only the tools the client can serve. */
+/** The console reads (OCT-294). `allowed` already holds only the tools the client can serve. */
 export function registerConsoleTools<Name extends string>(
   server: McpServer,
   core: Partial<ConsoleReads> & MemberActivityReads,
@@ -514,7 +514,7 @@ export function registerConsoleTools<Name extends string>(
             member: profileOf(detail),
             balance: balanceOf(detail.balance ?? {}, detail.id),
             recentTransactions: transactions ? transactions.items.map(transactionOf) : null,
-            // Core's route has no limit yet (OCT-312), so the newest are kept here.
+            // Core's route has no limit yet, so the newest are kept here.
             vouchers: vouchers ? vouchers.slice(0, limit).map(ownershipOf) : null,
           };
         },

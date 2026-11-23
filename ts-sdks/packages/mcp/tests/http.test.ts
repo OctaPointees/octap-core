@@ -525,7 +525,7 @@ describe('persona tool sets and prompts (OCT-294)', () => {
   });
 });
 
-describe('read tools on existing console routes (OCT-310)', () => {
+describe('read tools on existing console routes (OCT-294)', () => {
   const call = async (token: string, name: string, args: Record<string, unknown> = {}) => {
     const client = await connect(await handler(), token);
     try {
