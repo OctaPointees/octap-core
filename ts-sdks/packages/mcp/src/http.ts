@@ -13,7 +13,7 @@ import {
   type OAuthTokenVerifier,
 } from '@modelcontextprotocol/server';
 import { consoleCoreClient, introspectToken } from './console-client.js';
-import { instructionsForPersona, toolsForPersona } from './personas.js';
+import { instructionsForPersona, promptsForPersona, toolsForPersona } from './personas.js';
 import { createServer, type CreateServerOptions } from './server.js';
 
 export const MCP_PATH = '/mcp';
@@ -101,10 +101,13 @@ export async function createHttpHandler(options: HttpServerOptions) {
     if (!authInfo || !extra?.organizationId) throw new Error('Unauthenticated MCP request');
     // The persona comes from Core's token check, never from the request or the model (OCT-294).
     const personaTools = toolsForPersona(extra.persona);
+    const personaPrompts = promptsForPersona(extra.persona);
     const narrowed = options.server?.tools;
+    const narrowedPrompts = options.server?.prompts;
     return createServer({
       ...options.server,
       tools: narrowed ? personaTools.filter((tool) => narrowed.includes(tool)) : personaTools,
+      prompts: narrowedPrompts ? personaPrompts.filter((prompt) => narrowedPrompts.includes(prompt)) : personaPrompts,
       instructions: instructionsForPersona(extra.persona),
       client: consoleCoreClient(options.apiUrl, authInfo.token, extra.organizationId),
     });
