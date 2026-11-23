@@ -1,11 +1,21 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
-import type { ConsoleVoucherInput, UpdateVoucherRequest, VoucherDto } from '@octap/contracts';
+import type {
+  VoucherBatchActionResponse,
+  ConsoleVoucherInput,
+  CreateVoucherBatchRequest,
+  CreateVoucherBatchResponse,
+  UpdateVoucherRequest,
+  VoucherBatchDetailDto,
+  VoucherBatchDto,
+  VoucherDto,
+} from '@octap/contracts';
 import {
   ConsoleAccessError,
   ConsoleOrganizationsRepository,
 } from '#infra/db/repositories/console-organizations.repository.js';
 import type { VoucherActor } from '#infra/db/repositories/rewards.repository.js';
 import { RewardsService } from './rewards.service.js';
+import { VoucherBatchService } from './voucher-batch.service.js';
 
 /**
  * The organization's reward catalog from the console session. The Owner and a Business Developer
@@ -118,6 +128,76 @@ export class ConsoleRewardsService {
   }
 }
 
+/**
+ * Voucher batches from the console (OCT-303), with the same access as single vouchers: the Owner and a
+ * Business Developer read, create, activate and archive them. Activating as a Business Developer while
+ * the organization requires approval sends the batch to an Owner, as a single voucher's submission
+ * does; the Owner's activation then approves it. Only the Owner pauses or resumes a batch.
+ */
+@Injectable()
+export class ConsoleVoucherBatchService {
+  constructor(
+    private readonly organizations: ConsoleOrganizationsRepository,
+    private readonly batches: VoucherBatchService,
+  ) {}
+
+  private async run<T>(message: string, action: () => Promise<T>): Promise<T> {
+    try {
+      return await action();
+    } catch (error) {
+      if (error instanceof ConsoleAccessError) throw new ForbiddenException(message);
+      throw error;
+    }
+  }
+
+  list(userId: string, orgId: string, includeArchived?: unknown): Promise<VoucherBatchDto[]> {
+    return this.run(READ_DENIED, async () => {
+      await this.organizations.withAccess(userId, orgId, false, async () => undefined);
+      return this.batches.list(orgId, includeArchived);
+    });
+  }
+
+  detail(userId: string, orgId: string, batchId: string): Promise<VoucherBatchDetailDto> {
+    return this.run(READ_DENIED, async () => {
+      await this.organizations.withAccess(userId, orgId, false, async () => undefined);
+      return this.batches.get(orgId, batchId);
+    });
+  }
+
+  create(userId: string, orgId: string, input: CreateVoucherBatchRequest): Promise<CreateVoucherBatchResponse> {
+    return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.batches.create(orgId, input, actorOf(userId, role), tx),
+      ),
+    );
+  }
+
+  activate(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
+    return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.batches.activate(orgId, batchId, actorOf(userId, role), tx),
+      ),
+    );
+  }
+
+  archive(userId: string, orgId: string, batchId: string): Promise<VoucherBatchActionResponse> {
+    return this.run(WRITE_DENIED, () =>
+      this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
+        this.batches.archive(orgId, batchId, actorOf(userId, role), tx),
+      ),
+    );
+  }
+
+  /** Only the Owner pauses or resumes, as for a single voucher. */
+  setPaused(userId: string, orgId: string, batchId: string, paused: boolean): Promise<VoucherBatchActionResponse> {
+    return this.run(PAUSE_DENIED, () =>
+      this.organizations.withOwnerAccess(userId, orgId, (tx) =>
+        this.batches.setPaused(orgId, batchId, paused, actorOf(userId, 'OWNER'), tx),
+      ),
+    );
+  }
+}
+
 function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {
   return role === 'OWNER' ? { role: 'OWNER', userId } : { role: 'DEVELOPER', userId };
 }
@@ -125,4 +205,5 @@ function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherA
 const READ_DENIED = 'Only an active Owner or Business Developer of an active organization can view its rewards';
 const WRITE_DENIED =
   'Only an active Owner or Business Developer of an active organization can create or change its rewards';
+const PAUSE_DENIED = 'Only an active Owner of an active organization can pause or resume its rewards';
 const REVIEW_DENIED = 'Only an active Owner of an active organization can approve or reject its rewards';

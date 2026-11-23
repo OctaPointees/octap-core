@@ -4,6 +4,18 @@ export { OctaSdkError, OctaApiError, OctaNetworkError, OctaRequestAbortedError }
 
 export { verifyWebhookSignature, constructWebhookEvent } from './webhooks.js';
 
+export {
+  parseVoucherCsv,
+  suggestVoucherCode,
+  VOUCHER_BENEFIT_SCHEMA,
+  VOUCHER_CSV_TEMPLATE,
+  VOUCHER_CSV_TYPES,
+  type ParsedVoucherCsv,
+  type ParseVoucherCsvOptions,
+  type VoucherBenefitKind,
+  type VoucherCsvRow,
+} from './voucher-csv.js';
+
 export type { Transport, RestTransport } from './transports/transport.js';
 
 // Re-export contract types so consumers of @octap/sdk have immediate access to wire schemas
@@ -47,6 +59,21 @@ export type {
   FinalizeVoucherUseRequest,
   RedeemVoucherResponse,
   VoucherOwnershipDto,
+  VoucherBatchSource,
+  VoucherBatchItem,
+  CreateVoucherBatchRequest,
+  CreateVoucherBatchResponse,
+  VoucherBatchItemErrorCode,
+  VoucherBatchItemResult,
+  VoucherFieldDifference,
+  VoucherBatchDto,
+  VoucherBatchStatusCounts,
+  VoucherBatchDetailDto,
+  ListVoucherBatchesRequest,
+  VoucherBatchOutcome,
+  VoucherBatchActivationOutcome,
+  VoucherBatchActionResult,
+  VoucherBatchActionResponse,
   WebhookEndpointStatus,
   WebhookDeliveryStatus,
   WebhookEndpointDto,

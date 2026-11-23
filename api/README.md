@@ -50,6 +50,10 @@ reads it and writes drafts; only the Owner pauses or changes a published voucher
 organization requires approval, approves or rejects what a Developer or an API key submitted (OCT-59; see
 `api/src/domain/rewards/README.md`). A console create is always a `DRAFT`
 (activated afterwards with a PATCH) and must send `pointsCost`; `/v1/rewards/vouchers` keeps its own defaults.
+Voucher batches (OCT-303) create up to 100 vouchers as one DRAFT batch (`dryRun` to preview, an
+optional `name`), then activate, pause, resume or archive it: `/v1/rewards/voucher-batches` with an API
+key, and `/v1/console/organizations/:organizationId/voucher-batches` for the Owner or a Business
+Developer, where the Owner's activation also approves what a Developer sent for approval.
 
 ## API docs
 

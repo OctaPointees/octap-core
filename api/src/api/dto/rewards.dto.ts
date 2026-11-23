@@ -4,6 +4,7 @@ import type {
   GrantVoucherRequest,
   PrepareVoucherUseRequest,
   FinalizeVoucherUseRequest,
+  CreateVoucherBatchRequest,
 } from '@octap/contracts';
 
 export type CreateVoucherBodyDto = CreateVoucherRequest;
@@ -17,3 +18,5 @@ export interface ClaimVoucherBodyDto {
 export type GrantVoucherBodyDto = GrantVoucherRequest;
 export type PrepareVoucherUseBodyDto = PrepareVoucherUseRequest;
 export type FinalizeVoucherUseBodyDto = FinalizeVoucherUseRequest;
+
+export type CreateVoucherBatchBodyDto = CreateVoucherBatchRequest;

@@ -211,6 +211,27 @@
       "when": 1795065457593,
       "tag": "0029_voucher_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795336968237,
+      "tag": "0030_voucher_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795366622731,
+      "tag": "0031_voucher_batch_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795368244778,
+      "tag": "0032_voucher_archived_status",
+      "breakpoints": true
     }
   ]
 }
