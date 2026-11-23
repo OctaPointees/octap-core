@@ -82,22 +82,37 @@ Over `serve-http`, the tools and prompts a session sees follow the persona on it
 organization, the read-only rule and the persona on every call, so a wrong entry can only show a
 tool Core then refuses.
 
-| Persona | Tools | Prompts |
-| --- | --- | --- |
-| Business Developer | `get_connection`, `get_member_balance`, `list_member_transactions`, `list_api_keys` | `check_member_transactions`, `review_api_keys` |
-| Business Owner | everything a Developer gets (an Owner can do everything a Developer can in Core), plus `list_member_vouchers` and `get_refund_policy` (Owner-only in Core) | all three, plus `summarize_member` |
+The map is in the package README ("Tools and prompts per persona"). In short, a Business Developer
+gets the organization, member search and detail, the voucher catalog and batches, the budget and API
+keys; an Owner gets all of that plus webhooks, the refund policy and its history, staff and
+invitations, which are Owner-only in Core.
 
 `get_connection` answers which organization and persona the session is connected as. The server
 instructions state the persona, which comes from Core's token check, never from the model. Hosts
 that embed `createHttpHandler` can narrow the persona set with `server.tools`, never widen it. stdio
 with an API key keeps the three member tools: the console reads need a signed-in user.
 
+### Implemented: read tools on existing console routes (OCT-294)
+
+`find_member`, `get_member`, `list_vouchers`, `get_voucher`, `list_voucher_batches`,
+`get_voucher_batch`, `get_budget`, `get_organization`, `list_webhook_endpoints`,
+`list_webhook_deliveries`, `get_refund_policy_history`, `list_staff` and `list_invitations`, plus
+prompts to find a customer, review vouchers waiting for approval, check the budget, explain webhook
+failures and review console access. No Core change: they read existing console routes.
+
+Every tool now declares an output schema and returns structured content; values are built from
+whitelisted fields, so secrets and fields Core adds later never reach the model. `list_member_transactions`
+pages with a cursor and returns `{ transactions, nextCursor }`; `list_member_vouchers` returns
+`{ vouchers }`. A 404 names what was not found.
+
+Not built yet, and not on a ticket: reads that need new Core routes (one transaction by id, an
+activity summary, paged member vouchers) and write tools.
+
 ### Deferred to future tickets
 
 1. **Durable audit trail (OCT-296):** Logging tool executions, caller identity, and tenant context to a persistent audit store (currently logs operational event names to `stderr` only).
-2. **Owner/Developer read tools (OCT-295):** member search, budget, voucher catalog, webhook deliveries (after OCT-306), transaction lookup.
-3. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
-4. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
+2. **End-user identity delegation:** Per-user session token exchange for loyalty chat interfaces.
+3. **Write workflows:** Campaign drafting, deterministic preview manifests, and human-in-the-loop approvals (OCT-229 follow-ups).
 
 ## Proposed test plan and acceptance checks
 

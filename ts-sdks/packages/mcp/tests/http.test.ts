@@ -33,15 +33,59 @@ const introspection = (resource: string, persona = 'BUSINESS_OWNER') => ({
   expiresAt: Math.floor(Date.now() / 1000) + 3600,
 });
 
-const OWNER_TOOLS = [
+const DEVELOPER_TOOLS = [
+  'find_member',
+  'get_budget',
   'get_connection',
+  'get_member',
   'get_member_balance',
-  'get_refund_policy',
+  'get_organization',
+  'get_voucher',
+  'get_voucher_batch',
   'list_api_keys',
   'list_member_transactions',
-  'list_member_vouchers',
+  'list_voucher_batches',
+  'list_vouchers',
 ];
-const DEVELOPER_TOOLS = ['get_connection', 'get_member_balance', 'list_api_keys', 'list_member_transactions'];
+const OWNER_TOOLS = [
+  ...DEVELOPER_TOOLS,
+  'get_refund_policy',
+  'get_refund_policy_history',
+  'list_invitations',
+  'list_member_vouchers',
+  'list_staff',
+  'list_webhook_deliveries',
+  'list_webhook_endpoints',
+].sort();
+const VOUCHER = '33333333-3333-4333-8333-333333333333';
+const BATCH = '44444444-4444-4444-8444-444444444444';
+const ENDPOINT = '55555555-5555-4555-8555-555555555555';
+const voucher = (id: string, status: string, title: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  organizationId: ORG,
+  code: title.toUpperCase().replace(/[^A-Z0-9]+/g, '-'),
+  title,
+  description: 'A treat',
+  pointsCost: 300,
+  discountType: 'FREE_ITEM',
+  discountValue: null,
+  terms: { schema: 'octap.benefit.v1', kind: 'FREE_ITEM', item: 'Latte' },
+  publishStatus: status === 'ACTIVE' ? 'PUBLISHED' : 'NOT_PUBLISHED',
+  suiTermsId: null,
+  totalSupply: 100,
+  perMemberLimit: 1,
+  claimedCount: 40,
+  status,
+  startsAt: null,
+  expiresAt: '2027-12-31T16:59:59.000Z',
+  validForDays: 30,
+  metadata: { internal: 'must-never-reach-the-model' },
+  approval: null,
+  batchId: BATCH,
+  createdAt: '2026-11-01T00:00:00.000Z',
+  updatedAt: '2026-11-01T00:00:00.000Z',
+  ...extra,
+});
 
 /**
  * Stands in for Core: the token check and the console routes, recording what was called. Like Core,
@@ -103,8 +147,191 @@ function fakeCore() {
         items: [{ id: 'tx-1', transactionType: 'EARN', status: 'CONFIRMED', pointsAmount: 10 }],
         nextCursor: null,
       });
-    if (url === `${CORE}/v1/console/organizations/${ORG}/members/${MEMBER}`)
-      return Response.json({ id: MEMBER, balance: { organizationEndUserId: MEMBER, confirmedBalance: 42 } });
+    const org = `${CORE}/v1/console/organizations/${ORG}`;
+    const ownerOnly = (body: unknown) =>
+      persona === 'BUSINESS_OWNER'
+        ? Response.json(body)
+        : Response.json({ message: 'Organization access is required' }, { status: 403 });
+    if (url === `${org}/members/${MEMBER}`)
+      return Response.json({
+        id: MEMBER,
+        endUserId: 'end-user-1',
+        displayName: 'Lan Nguyen',
+        email: 'lan@example.test',
+        phoneNumber: '+84900000001',
+        status: 'ACTIVE',
+        externalMemberId: 'POS-77',
+        metadata: { cccd: '079123456789' },
+        joinedAt: '2026-10-01T00:00:00.000Z',
+        balance: { organizationEndUserId: MEMBER, confirmedBalance: 42 },
+      });
+    if (url === `${org}/members?q=Lan&limit=20`)
+      return Response.json({
+        items: [
+          {
+            id: MEMBER,
+            endUserId: 'end-user-1',
+            displayName: 'Lan Nguyen',
+            email: 'lan@example.test',
+            phoneNumber: null,
+            status: 'ACTIVE',
+            externalMemberId: 'POS-77',
+            metadata: { cccd: '079123456789' },
+            joinedAt: '2026-10-01T00:00:00.000Z',
+          },
+        ],
+        nextCursor: 'next-page',
+      });
+    if (url === `${org}/members/${MEMBER}/transactions?limit=2`)
+      return Response.json({
+        items: [{ id: 'tx-9', transactionType: 'EARN', status: 'PENDING', pointsAmount: null }],
+        nextCursor: null,
+      });
+    if (url === `${org}/members/${MEMBER}/vouchers`)
+      return Response.json([
+        { id: 'own-1', voucherId: VOUCHER, serialCode: 'SERIAL-must-never-reach-the-model', status: 'CLAIMED' },
+        { id: 'own-2', voucherId: VOUCHER, serialCode: 'SERIAL-2', status: 'USED' },
+        { id: 'own-3', voucherId: VOUCHER, serialCode: 'SERIAL-3', status: 'USED' },
+      ]);
+    if (url === org)
+      return Response.json({
+        id: ORG,
+        name: 'Coffee',
+        slug: 'coffee',
+        legalName: 'Coffee JSC',
+        taxId: 'TAX-must-never-reach-the-model',
+        organizationType: 'COMPANY',
+        representativeName: 'Rep',
+        logoUrl: null,
+        voucherApprovalRequired: true,
+        nationalIdLast4: '6789',
+        status: 'ACTIVE',
+        persona,
+      });
+    if (url === `${org}/vouchers`)
+      return Response.json([
+        voucher(VOUCHER, 'PENDING_APPROVAL', 'Free latte', {
+          approval: { status: 'PENDING', submittedAt: '2026-11-20T00:00:00.000Z', reviewedAt: null, reason: null },
+        }),
+        voucher('66666666-6666-4666-8666-666666666666', 'ACTIVE', 'Cake day', { totalSupply: null }),
+      ]);
+    if (url === `${org}/vouchers/${VOUCHER}`)
+      return Response.json(
+        voucher(VOUCHER, 'DRAFT', 'Free latte', {
+          approval: {
+            status: 'REJECTED',
+            submittedBy: { type: 'USER', id: 'user-2' },
+            submittedAt: '2026-11-20T00:00:00.000Z',
+            reviewedById: 'user-1',
+            reviewedAt: '2026-11-21T00:00:00.000Z',
+            reason: 'Points cost too low',
+          },
+        }),
+      );
+    if (url === `${org}/voucher-batches`)
+      return Response.json([
+        {
+          id: BATCH,
+          organizationId: ORG,
+          name: 'catalog-11-11.csv',
+          source: 'CONSOLE',
+          createdBy: { type: 'USER', id: 'user-1' },
+          createdAt: '2026-11-11T00:00:00.000Z',
+          archivedAt: null,
+          statusCounts: { DRAFT: 2, ACTIVE: 1 },
+        },
+      ]);
+    if (url === `${org}/voucher-batches/${BATCH}`)
+      return Response.json({
+        id: BATCH,
+        organizationId: ORG,
+        name: 'catalog-11-11.csv',
+        source: 'CONSOLE',
+        createdBy: null,
+        createdAt: '2026-11-11T00:00:00.000Z',
+        archivedAt: null,
+        statusCounts: { DRAFT: 1 },
+        vouchers: [voucher(VOUCHER, 'DRAFT', 'Free latte')],
+      });
+    if (url === `${org}/budget`)
+      return Response.json({
+        organizationId: ORG,
+        remaining: 1500,
+        initialBudget: 10000,
+        capacity: 10000,
+        warningThreshold: 80,
+        shards: [
+          { shardId: 's1', remaining: 1000 },
+          { shardId: 's2', remaining: 500 },
+        ],
+        recentTopUps: [{ operationId: 'op-1', amount: 5000, status: 'APPLIED', createdAt: '2026-10-01T00:00:00.000Z' }],
+        observedAt: '2026-11-23T00:00:00.000Z',
+      });
+    if (url === `${org}/webhooks/endpoints`)
+      return ownerOnly([
+        {
+          id: ENDPOINT,
+          organizationId: ORG,
+          url: 'https://shop.example/hooks?token=must-never-reach-the-model',
+          description: 'Shop',
+          status: 'ACTIVE',
+          secret: 'whsec_must-never-reach-the-model',
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]);
+    if (url === `${org}/webhooks/deliveries`)
+      return ownerOnly([
+        {
+          id: 'd-1',
+          endpointId: ENDPOINT,
+          eventType: 'credits.earned',
+          status: 'DEAD_LETTER',
+          attemptCount: 8,
+          nextAttemptAt: '2026-11-22T00:00:00.000Z',
+          lastResponseStatus: 401,
+          lastError: 'x'.repeat(1000),
+          payload: { secret: 'must-never-reach-the-model' },
+          createdAt: '2026-11-20T00:00:00.000Z',
+          updatedAt: '2026-11-22T00:00:00.000Z',
+        },
+        { id: 'd-2', endpointId: ENDPOINT, eventType: 'credits.earned', status: 'DELIVERED', attemptCount: 1 },
+      ]);
+    if (url === `${org}/refund-policy/history?limit=1`)
+      return ownerOnly([
+        {
+          version: 3,
+          allowUnused: true,
+          allowExpired: false,
+          allowRedeemed: false,
+          restockUnused: true,
+          refundWindowDays: 7,
+          reason: 'Shorter window',
+          createdByUserId: 'user-1',
+          createdAt: '2026-11-15T00:00:00.000Z',
+        },
+      ]);
+    if (url === `${org}/staff`)
+      return ownerOnly([
+        {
+          id: 'user-1',
+          fullName: 'Test Owner',
+          email: 'owner@example.test',
+          persona: 'BUSINESS_OWNER',
+          status: 'ACTIVE',
+        },
+      ]);
+    if (url === `${org}/invitations`)
+      return ownerOnly([
+        {
+          id: 'inv-1',
+          email: 'dev@example.test',
+          persona: 'BUSINESS_DEVELOPER',
+          status: 'PENDING',
+          expiresAt: '2026-11-30T00:00:00.000Z',
+          token: 'invite-token-must-never-reach-the-model',
+        },
+      ]);
     return Response.json({ message: 'not found' }, { status: 404 });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -202,8 +429,13 @@ describe('persona tool sets and prompts (OCT-294)', () => {
     const client = await connect(await handler(), GOOD);
     expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(OWNER_TOOLS);
     expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
+      'check_budget',
       'check_member_transactions',
+      'check_webhooks',
+      'find_customer',
       'review_api_keys',
+      'review_console_access',
+      'review_pending_vouchers',
       'summarize_member',
     ]);
     expect(client.getInstructions()).toContain('as Business Owner');
@@ -216,6 +448,7 @@ describe('persona tool sets and prompts (OCT-294)', () => {
     expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(DEVELOPER_TOOLS);
     expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
       'check_member_transactions',
+      'find_customer',
       'review_api_keys',
     ]);
     expect(client.getInstructions()).toContain('as Business Developer');
@@ -289,5 +522,171 @@ describe('persona tool sets and prompts (OCT-294)', () => {
     expect(keys).not.toContain('must-never-reach-the-model');
     expect(keys).not.toContain('key-1');
     await client.close();
+  });
+});
+
+describe('read tools on existing console routes (OCT-294)', () => {
+  const call = async (token: string, name: string, args: Record<string, unknown> = {}) => {
+    const client = await connect(await handler(), token);
+    try {
+      return await client.callTool({ name, arguments: args });
+    } finally {
+      await client.close();
+    }
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const structured = (outcome: Awaited<ReturnType<typeof call>>): Record<string, any> => {
+    expect(outcome.isError).toBeFalsy();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return outcome.structuredContent as Record<string, any>;
+  };
+
+  it('declares an output schema for every tool', async () => {
+    fakeCore();
+    const client = await connect(await handler(), GOOD);
+    const tools = (await client.listTools()).tools;
+    expect(tools.filter((tool) => !tool.outputSchema).map((tool) => tool.name)).toEqual([]);
+    expect(tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
+    await client.close();
+  });
+
+  it('finds a member by name and reads them with recent transactions and vouchers, never a serial', async () => {
+    fakeCore();
+    const found = structured(await call(GOOD, 'find_member', { query: 'Lan' }));
+    expect(found).toEqual({
+      members: [
+        {
+          memberId: MEMBER,
+          displayName: 'Lan Nguyen',
+          email: 'lan@example.test',
+          phoneNumber: null,
+          status: 'ACTIVE',
+          posId: 'POS-77',
+          joinedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+      nextCursor: 'next-page',
+    });
+
+    const member = await call(GOOD, 'get_member', {
+      memberId: MEMBER,
+      include: ['transactions', 'vouchers'],
+      limit: 2,
+    });
+    const detail = structured(member);
+    expect(detail.member.posId).toBe('POS-77');
+    expect(detail.balance.confirmedBalance).toBe(42);
+    expect(detail.recentTransactions).toEqual([expect.objectContaining({ transactionId: 'tx-9', status: 'PENDING' })]);
+    expect(detail.vouchers.map((v: { ownershipId: string }) => v.ownershipId)).toEqual(['own-1', 'own-2']);
+    const text = JSON.stringify(member);
+    expect(text).not.toContain('SERIAL-');
+    expect(text).not.toContain('079123456789');
+
+    const plain = structured(await call(GOOD, 'get_member', { memberId: MEMBER }));
+    expect(plain.recentTransactions).toBeNull();
+    expect(plain.vouchers).toBeNull();
+  });
+
+  it('filters the voucher catalog and reads one voucher with its rejection reason', async () => {
+    fakeCore();
+    const pending = structured(await call(DEVELOPER, 'list_vouchers', { status: 'PENDING_APPROVAL' }));
+    expect(pending.matching).toBe(1);
+    expect(pending.vouchers[0]).toMatchObject({
+      voucherId: VOUCHER,
+      title: 'Free latte',
+      approvalStatus: 'PENDING',
+      totalSupply: 100,
+      remainingSupply: 60,
+    });
+    const cake = structured(await call(DEVELOPER, 'list_vouchers', { query: 'cake' }));
+    expect(cake.vouchers).toEqual([expect.objectContaining({ title: 'Cake day', remainingSupply: null })]);
+
+    const one = await call(DEVELOPER, 'get_voucher', { voucherId: VOUCHER });
+    expect(structured(one).approval).toEqual({
+      status: 'REJECTED',
+      submittedAt: '2026-11-20T00:00:00.000Z',
+      reviewedAt: '2026-11-21T00:00:00.000Z',
+      reason: 'Points cost too low',
+    });
+    expect(JSON.stringify(one)).not.toContain('must-never-reach-the-model');
+  });
+
+  it('names what was not found', async () => {
+    fakeCore();
+    const missing = await call(GOOD, 'get_voucher', { voucherId: '77777777-7777-4777-8777-777777777777' });
+    expect(missing.isError).toBe(true);
+    expect(JSON.stringify(missing.content)).toContain('No voucher with this id');
+  });
+
+  it('reads batches, the budget and the organization without its tax or identity numbers', async () => {
+    fakeCore();
+    const batches = structured(await call(DEVELOPER, 'list_voucher_batches'));
+    expect(batches.batches).toEqual([
+      expect.objectContaining({ batchId: BATCH, name: 'catalog-11-11.csv', statusCounts: { DRAFT: 2, ACTIVE: 1 } }),
+    ]);
+    const batch = structured(await call(DEVELOPER, 'get_voucher_batch', { batchId: BATCH }));
+    expect(batch.vouchers).toEqual([expect.objectContaining({ voucherId: VOUCHER, status: 'DRAFT' })]);
+
+    const budget = structured(await call(DEVELOPER, 'get_budget'));
+    expect(budget).toMatchObject({ remaining: 1500, usedPercent: 85, warningThreshold: 80, lowestShardRemaining: 500 });
+
+    const organization = await call(DEVELOPER, 'get_organization');
+    expect(structured(organization)).toMatchObject({ name: 'Coffee', voucherApprovalRequired: true });
+    const text = JSON.stringify(organization);
+    expect(text).not.toContain('TAX-must-never-reach-the-model');
+    expect(text).not.toContain('6789');
+  });
+
+  it("explains an Owner's webhook failures without secrets, tokens or the payload", async () => {
+    fakeCore();
+    const endpoints = await call(GOOD, 'list_webhook_endpoints');
+    expect(structured(endpoints).endpoints).toEqual([
+      expect.objectContaining({ endpointId: ENDPOINT, url: 'https://shop.example/hooks', status: 'ACTIVE' }),
+    ]);
+    const deliveries = await call(GOOD, 'list_webhook_deliveries', { status: 'DEAD_LETTER' });
+    const failed = structured(deliveries);
+    expect(failed.matching).toBe(1);
+    expect(failed.deliveries[0]).toMatchObject({ deliveryId: 'd-1', lastResponseStatus: 401, attemptCount: 8 });
+    expect(failed.deliveries[0].lastError).toHaveLength(300);
+    for (const outcome of [endpoints, deliveries]) {
+      expect(JSON.stringify(outcome)).not.toContain('must-never-reach-the-model');
+    }
+  });
+
+  it("reads an Owner's refund-policy history, staff and invitations, never an invitation token", async () => {
+    fakeCore();
+    const history = structured(await call(GOOD, 'get_refund_policy_history', { limit: 1 }));
+    expect(history).toEqual({
+      versions: [expect.objectContaining({ version: 3, refundWindowDays: 7, reason: 'Shorter window' })],
+      nextBeforeVersion: 3,
+    });
+    expect(structured(await call(GOOD, 'list_staff')).staff).toEqual([
+      expect.objectContaining({ fullName: 'Test Owner', persona: 'BUSINESS_OWNER' }),
+    ]);
+    const invitations = await call(GOOD, 'list_invitations');
+    expect(structured(invitations).invitations).toEqual([
+      expect.objectContaining({ email: 'dev@example.test', status: 'PENDING' }),
+    ]);
+    expect(JSON.stringify(invitations)).not.toContain('invite-token');
+  });
+
+  it('still gets Core 403 when a wrong map gives a Developer the Owner-only webhook deliveries', async () => {
+    fakeCore();
+    const server = createServer({
+      tools: ['list_webhook_deliveries', 'list_staff'],
+      client: consoleCoreClient(CORE, DEVELOPER, ORG),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '1.0.0' }, { capabilities: {} });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    for (const name of ['list_webhook_deliveries', 'list_staff']) {
+      const outcome = await client.callTool({ name, arguments: {} });
+      expect(outcome.isError).toBe(true);
+      expect(JSON.stringify(outcome.content)).toContain('Core denied this read');
+      expect(JSON.stringify(outcome.content)).not.toContain('credits.earned');
+    }
+    await client.close();
+    await server.close();
   });
 });
