@@ -151,7 +151,8 @@ export function parseVoucherCsv(text: string, options: ParseVoucherCsvOptions = 
     const problems = [...row.problems];
     const earlier = code ? seen.get(code) : undefined;
     if (code && earlier && !problems.length) problems.push(`code: ${code} is already used by line ${earlier}`);
-    if (code && !earlier) seen.set(code, line);
+    // Only a row that is sent takes its code: a corrected copy of a bad row is not a repeat.
+    if (code && !earlier && !problems.length) seen.set(code, line);
     return problems.length || !row.item
       ? { line, code, problem: problems.join('; ') || 'This row could not be read' }
       : { line, code, item: row.item };

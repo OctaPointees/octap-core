@@ -69,6 +69,23 @@ describe('parseVoucherCsv', () => {
     ]);
   });
 
+  it('keeps a corrected row whose code repeats an earlier row that was left out', () => {
+    const { items, rows } = parseVoucherCsv(
+      [
+        HEADER,
+        'free_item,A latte,LATTE,500,,Latte,not-a-date',
+        'free_item,A latte,LATTE,500,,Latte,2027-12-31',
+        'free_item,Again,LATTE,500,,Latte,2027-12-31',
+      ].join('\n'),
+    );
+    expect(items.map((item) => item.code)).toEqual(['LATTE']);
+    expect(rows.map((row) => [row.line, row.problem ?? null])).toEqual([
+      [2, expect.stringMatching(/^claims_close_on: /)],
+      [3, null],
+      [4, 'code: LATTE is already used by line 3'],
+    ]);
+  });
+
   it('reads dates Excel rewrote, refuses an unclear one, and keeps the old column names', () => {
     const { items, rows } = parseVoucherCsv(
       [

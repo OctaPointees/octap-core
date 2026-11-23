@@ -162,9 +162,13 @@ export interface VoucherBatchActionRow {
   reason: string | null;
 }
 
-/** Never published: its terms never reached the chain, so it may still be replaced or activated. */
+/**
+ * Never published: its terms never reached the chain, so it may still be archived or activated. A
+ * draft, or one paused while publishing whose publish then failed (`PAUSED` + `FAILED`).
+ */
 const neverPublished = (voucher: Voucher): boolean =>
-  voucher.status === 'DRAFT' && (voucher.publishStatus === 'NOT_PUBLISHED' || voucher.publishStatus === 'FAILED');
+  (voucher.status === 'DRAFT' || voucher.status === 'PAUSED') &&
+  (voucher.publishStatus === 'NOT_PUBLISHED' || voucher.publishStatus === 'FAILED');
 
 /**
  * Every method runs under the voucher's organization's RLS context (`withTenant`), so Postgres itself
@@ -1223,9 +1227,17 @@ export class RewardsRepository {
         // Like `activation`, but a Business Developer is queued, not refused: a batch's activation is
         // its submission when approval is required (OCT-59).
         const queue = actor.role !== 'OWNER' && (await this.approvalRequired(tx, organizationId));
-        return queue
-          ? { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null }
-          : { voucher: await this.queuePublish(tx, current), outcome: 'publishing', reason: null };
+        if (queue)
+          return { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null };
+        const queued = await this.queuePublish(tx, current);
+        if (current.status !== 'PAUSED') return { voucher: queued, outcome: 'publishing', reason: null };
+        // Paused while its publish failed: publishing again keeps the Owner's pause, as `setPublished` does.
+        const [voucher] = await tx
+          .update(vouchers)
+          .set({ status: 'PAUSED', updatedAt: new Date() })
+          .where(eq(vouchers.id, current.id))
+          .returning();
+        return { voucher, outcome: 'publishing', reason: null };
       },
     );
   }

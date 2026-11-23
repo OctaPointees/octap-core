@@ -4,11 +4,24 @@
 
 ### Added
 
+- Voucher batches (OCT-303): `createVouchers(items, { dryRun, name })` creates up to 100 vouchers
+  as one DRAFT batch (`dryRun` previews each item's result and writes nothing), then
+  `activateVoucherBatch`, `pauseVoucherBatch`, `resumeVoucherBatch` and `archiveVoucherBatch` act
+  on the whole batch and report each voucher's outcome. Read them with `listVoucherBatches` and
+  `getVoucherBatch`.
+- `VoucherDto.batchId`: the batch a voucher was created or re-imported in, `null` otherwise.
 - `parseVoucherCsv(text, { utcOffset })` reads a CSV in the Octap voucher template (the file the
   console imports) into items for `createVouchers`, with the console's checks: each bad row is
   reported with its line and column and left out. Also exported: `VOUCHER_CSV_TEMPLATE`,
   `VOUCHER_CSV_TYPES`, `VOUCHER_BENEFIT_SCHEMA` and `suggestVoucherCode`.
 - The reference documents the `octap.benefit.v1` shape of `terms` the console reads.
+
+### Changed
+
+- `VoucherStatus` has a new value, `ARCHIVED`: a voucher of an archived batch that never went
+  live. `listVouchers` and `getVoucher` can return it. It can't be edited, submitted or claimed;
+  importing its code in a new batch brings it back as `DRAFT`. Code that switches on `status`
+  should handle it.
 
 ## 0.2.0
 

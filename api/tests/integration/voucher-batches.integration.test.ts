@@ -519,5 +519,32 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       });
       await ctx.http().post(`${api}/${batch.id}/pause`).set(otherKey).expect(404);
     });
+
+    it('never strands a voucher paused while publishing whose publish then failed', async () => {
+      const failPublish = (code: string) =>
+        voucherByCode(code).then((v) => ctx.app.get(RewardsRepository).failVoucherPublish(v.id));
+      const { batch } = (await send({ items: [item('F1'), item('F2')] }).expect(201)).body;
+      await activate(batch.id).expect(201);
+      await ctx.http().post(`${api}/${batch.id}/pause`).set(key).expect(201);
+      await failPublish('F1');
+      await failPublish('F2');
+      expect(await voucherByCode('F1')).toMatchObject({ status: 'PAUSED', publishStatus: 'FAILED' });
+
+      // Activating again publishes it again, and the Owner's pause holds once the chain confirms it.
+      const activated = (await activate(batch.id).expect(201)).body;
+      expect(outcomes(activated)).toEqual({ F1: 'publishing', F2: 'publishing' });
+      expect(await voucherByCode('F1')).toMatchObject({ status: 'PAUSED', publishStatus: 'PUBLISHING' });
+      await publish('F1');
+      expect(await voucherByCode('F1')).toMatchObject({ status: 'PAUSED', publishStatus: 'PUBLISHED' });
+
+      // F2 fails again: archiving archives it, and a re-import brings its code back as a DRAFT.
+      await failPublish('F2');
+      const archived = (await archive(batch.id).expect(201)).body;
+      expect(outcomes(archived)).toEqual({ F1: 'skipped', F2: 'archived' });
+      expect((await voucherByCode('F2')).status).toBe('ARCHIVED');
+      const reimported = (await send({ items: [item('F2')] }).expect(201)).body;
+      expect(reimported.items[0]).toMatchObject({ code: 'F2', status: 'unchanged', movedToBatch: true });
+      expect((await voucherByCode('F2')).status).toBe('DRAFT');
+    });
   });
 });
