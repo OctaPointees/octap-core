@@ -630,6 +630,9 @@ export function registerConsoleTools<Name extends string>(
           'Read how many more points the organization can issue: remaining, capacity, the share used, a ' +
           'low-budget warning (80 or 95 percent), and recent top-ups. Points, not money.',
         input: EMPTY_INPUT,
+        notFound:
+          'This organization has no active loyalty program yet, so it has no points budget. A platform admin ' +
+          'provisions the program.',
         output: z.object({
           remaining: nullableNumber,
           capacity: nullableNumber.describe('The initial budget plus every top-up'),
