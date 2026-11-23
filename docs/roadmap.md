@@ -183,8 +183,13 @@ then move the row to **Implemented** in the same pull request.
   belongs at a proxy (nginx/Envoy/load balancer) forwarding a verified-identity header, when one
   gets introduced.
 - No request signing: HMAC signing was removed in OCT-70 (no route used it, and its key was the
-  stored `keyHash`, so it added no secret). Key management through the SDK or MCP, if it comes
-  back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
+  stored `keyHash`, so it added no secret). This leaves machine-to-machine API-key traffic (a
+  merchant backend calling Core directly) with no request signing or replay protection. MCP
+  sign-in (OCT-293) does not cover it: its tokens are console-session-bound and GET-only, and
+  `MCP_OAUTH_SIGNING_KEY` only signs dynamic client registrations. The planned fix goes in the
+  `@octap/sdk` transport layer, not per route, so every SDK caller, including the stdio MCP
+  client, signs requests without its own logic. Key management through the SDK or MCP, if it
+  comes back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
 - Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
   and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
   or the same `code` and content returning the existing voucher. No webhook fires when a voucher is
