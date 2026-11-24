@@ -13,6 +13,7 @@ import {
   type OAuthTokenVerifier,
 } from '@modelcontextprotocol/server';
 import { consoleCoreClient, introspectToken } from './console-client.js';
+import { instructionsForPersona, promptsForPersona, toolsForPersona } from './personas.js';
 import { createServer, type CreateServerOptions } from './server.js';
 
 export const MCP_PATH = '/mcp';
@@ -25,8 +26,11 @@ export interface HttpServerOptions {
   publicUrl: string;
   /** Core's RFC 8414 metadata. Fetched from Core when omitted. */
   oauthMetadata?: OAuthMetadata;
-  /** Options passed to every per-request `createServer` call, except the Core client. */
-  server?: Omit<CreateServerOptions, 'client'>;
+  /**
+   * Options passed to every per-request `createServer` call, except the Core client and the
+   * instructions. `tools` can only narrow the persona's tool set, never widen it.
+   */
+  server?: Omit<CreateServerOptions, 'client' | 'instructions'>;
 }
 
 /** The token facts the tools need, carried in `AuthInfo.extra`. */
@@ -95,8 +99,16 @@ export async function createHttpHandler(options: HttpServerOptions) {
     const extra = authInfo?.extra as OctapAuthExtra | undefined;
     // The gate ran first, so this only guards against wiring mistakes.
     if (!authInfo || !extra?.organizationId) throw new Error('Unauthenticated MCP request');
+    // The persona comes from Core's token check, never from the request or the model (OCT-294).
+    const personaTools = toolsForPersona(extra.persona);
+    const personaPrompts = promptsForPersona(extra.persona);
+    const narrowed = options.server?.tools;
+    const narrowedPrompts = options.server?.prompts;
     return createServer({
       ...options.server,
+      tools: narrowed ? personaTools.filter((tool) => narrowed.includes(tool)) : personaTools,
+      prompts: narrowedPrompts ? personaPrompts.filter((prompt) => narrowedPrompts.includes(prompt)) : personaPrompts,
+      instructions: instructionsForPersona(extra.persona),
       client: consoleCoreClient(options.apiUrl, authInfo.token, extra.organizationId),
     });
   });

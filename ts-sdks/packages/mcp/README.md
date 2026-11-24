@@ -130,15 +130,49 @@ The repository's `examples/customer-embed.ts` mirrors this snippet; a protocol t
 
 ## Available Tools
 
-All tools are strictly read-only:
+All tools are strictly read-only. Every tool declares an output schema and returns structured
+content as well as JSON text, built from whitelisted fields only: voucher serials, API keys,
+webhook secrets, invitation tokens, tax and identity numbers never reach the model.
 
-- **`get_member_balance`**: Returns confirmed and pending point balances, plus the observation checkpoint/time for a member.
-- **`list_member_transactions`**: Returns up to 50 recent transactions (default 20), including earn, redeem, adjust, and refund records.
-- **`list_member_vouchers`**: Returns up to 50 assigned vouchers (default 20) with voucher titles and redemption status. Serial codes and sensitive secrets are omitted.
+Member tools (stdio with an API key, and `serve-http`):
+
+- **`get_member_balance`**: confirmed and pending point balances, plus the observation checkpoint/time.
+- **`list_member_transactions`**: `{ transactions, nextCursor }`, newest first, up to 50 per page (default 20). Pass `nextCursor` back as `cursor` for the next page.
+- **`list_member_vouchers`**: `{ vouchers }`, up to 50 (default 20), with titles and redemption status. Serial codes are omitted.
+
+Over `serve-http` only (they read the signed-in user's console routes):
+
+| Tool | What it answers |
+| --- | --- |
+| `get_connection` | Which organization and persona the session is connected as, and when the sign-in expires |
+| `get_organization` | Display and legal name, type, status, and whether vouchers need an Owner's approval |
+| `find_member` | Members by name, email or phone (`query`), POS id (`posId`) or status, paged |
+| `get_member` | One member's profile and balance, optionally with recent transactions and vouchers held |
+| `list_vouchers` | The reward catalog, filtered by status (e.g. `PENDING_APPROVAL`) or words in the title or code, with supply left |
+| `get_voucher` | One voucher in full, with its latest approval request and rejection reason |
+| `list_voucher_batches`, `get_voucher_batch` | Imported batches with their status counts, and one batch's vouchers |
+| `get_budget` | Points budget left, share used, low-budget warning, lowest shard, recent top-ups |
+| `list_api_keys` | API keys with name, prefix, scopes, status, created and last used |
+| `get_refund_policy`, `get_refund_policy_history` | The current voucher refund policy, and earlier versions |
+| `list_webhook_endpoints` | Where events are sent (URLs without their query string) and whether each is enabled |
+| `list_webhook_deliveries` | Recent deliveries by status or endpoint, with attempts and the last HTTP status and error |
+| `list_staff`, `list_invitations` | Who can sign in to the console, and pending invitations |
+
+### Tools and prompts per persona (`serve-http`)
+
+| Persona | Tools | Prompts |
+| --- | --- | --- |
+| Business Developer | `get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys` | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys` |
+| Business Owner | every Developer tool, plus `get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations` | every Developer prompt, plus `review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access` |
+
+The map lives in `src/personas.ts`. It decides what each persona sees, not what it may read: Core
+checks the organization, the read-only rule and the persona on every call. Every Developer tool reads
+a route Core opens to both personas; the Owner extras are the reads Core keeps for Owners (webhooks
+until OCT-306, the refund policy, staff and invitations). stdio with an API key offers the three member tools.
 
 ## Error Handling & Tenant Isolation
 
-- **Non-existent or cross-tenant members**: When looking up a member ID that does not exist or belongs to another organization, Core responds with HTTP 404. The adapter returns `"No matching member or resource was found in the configured organization."` to prevent cross-tenant existence enumeration.
+- **Non-existent or cross-tenant members**: When looking up a member ID that does not exist or belongs to another organization, Core responds with HTTP 404. The adapter returns the same `"No member with this id in the configured organization."` either way, so it cannot be used to probe other organizations. Each tool names what a 404 means for it (member, voucher, batch).
 - **LLM-friendly messaging**: Rate limits and temporary failures advise the model not to loop or retry within the same turn.
 - **Diagnostics**: Operational events and errors are logged strictly to `stderr`, preserving `stdout` for clean JSON-RPC communication.
 

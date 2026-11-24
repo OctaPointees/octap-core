@@ -37,7 +37,7 @@ then move the row to **Implemented** in the same pull request.
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
 | Organization details: Owners change display details (`name`, an https `logoUrl`) directly; legal details (legal name, tax ID, representative, CCCD, one-time type) change only through a System Admin-approved `UPDATE_IDENTITY` request, one pending per organization, stale approvals refused, the new CCCD held encrypted outside the request payload (OCT-281) | api/src/infra/db/organization-identity.rules.ts; api/src/infra/db/repositories/governance.repository.ts; docs/console-google-login.md |
-| MCP sign-in: Core is the OAuth 2.1 authorization server for MCP hosts (dynamic client registration, authorization code with PKCE S256 behind the console Google sign-in, one-hour opaque tokens bound to user, organization and persona, revocation). `ConsoleAccessGuard` accepts these tokens for GET requests on the bound organization only, rechecking the membership each time; `octap-mcp serve-http` serves remote MCP over Streamable HTTP with the user's token (OCT-293) | api/src/domain/mcp-auth; api/src/api/rest/mcp-oauth.controller.ts; ts-sdks/packages/mcp/src/http.ts |
+| MCP sign-in: Core is the OAuth 2.1 authorization server for MCP hosts (dynamic client registration, authorization code with PKCE S256 behind the console Google sign-in, one-hour opaque tokens bound to user, organization and persona, revocation). `ConsoleAccessGuard` accepts these tokens for GET requests on the bound organization only, rechecking the membership each time; `octap-mcp serve-http` serves remote MCP over Streamable HTTP with the user's token (OCT-293). Each session sees the tools and prompts of its persona: Developers get member lookups and API keys, Owners get everything plus member vouchers and the refund policy, both get `get_connection` (OCT-294) | api/src/domain/mcp-auth; api/src/api/rest/mcp-oauth.controller.ts; ts-sdks/packages/mcp/src/http.ts; ts-sdks/packages/mcp/src/personas.ts |
 | Members: tenant customer search/detail, exact POS ID lookup, Owner-only profile/status edits and blocked-member command eligibility | api/src/domain/members; api/src/api/rest/members.controller.ts |
 | Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding, Developer invitations and suspension/restoration, and System Admin first-Owner bootstrap for active ownerless organizations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, token-proven org enrollment, merchant `verifyCustomer` in the Node SDK), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
@@ -183,8 +183,13 @@ then move the row to **Implemented** in the same pull request.
   belongs at a proxy (nginx/Envoy/load balancer) forwarding a verified-identity header, when one
   gets introduced.
 - No request signing: HMAC signing was removed in OCT-70 (no route used it, and its key was the
-  stored `keyHash`, so it added no secret). Key management through the SDK or MCP, if it comes
-  back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
+  stored `keyHash`, so it added no secret). This leaves machine-to-machine API-key traffic (a
+  merchant backend calling Core directly) with no request signing or replay protection. MCP
+  sign-in (OCT-293) does not cover it: its tokens are console-session-bound and GET-only, and
+  `MCP_OAUTH_SIGNING_KEY` only signs dynamic client registrations. The planned fix goes in the
+  `@octap/sdk` transport layer, not per route, so every SDK caller, including the stdio MCP
+  client, signs requests without its own logic. Key management through the SDK or MCP, if it
+  comes back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
 - Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
   and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
   or the same `code` and content returning the existing voucher. No webhook fires when a voucher is

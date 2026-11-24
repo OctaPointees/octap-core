@@ -132,7 +132,7 @@ describe('Octap MCP Server', () => {
 
     it('maps other client status codes to general input rejection message', () => {
       const res = safeError('test_tool', new OctaApiError(400, 'Bad Request', {}));
-      expect(res.content[0].text).toBe('Core rejected this request. Check the member ID and tool inputs.');
+      expect(res.content[0].text).toBe('Core rejected this request. Check the tool inputs.');
     });
 
     it('sanitizes unexpected errors without leaking stack or internal details', () => {
@@ -310,7 +310,8 @@ describe('Octap MCP Server', () => {
 
         expect(res.isError).toBe(true);
         const content = res.content as Array<{ type: string; text: string }>;
-        expect(content[0].text).toBe('No matching member or resource was found in the configured organization.');
+        // The same answer whether the member is in another organization or doesn't exist.
+        expect(content[0].text).toBe('No member with this id in the configured organization.');
       } finally {
         await harness.close();
       }
@@ -351,7 +352,9 @@ describe('Octap MCP Server', () => {
         expect(res.isError).toBeFalsy();
 
         const content = res.content as Array<{ type: string; text: string }>;
-        const data = JSON.parse(content[0].text);
+        const { transactions: data, nextCursor } = JSON.parse(content[0].text);
+        expect(nextCursor).toBeNull();
+        expect(res.structuredContent).toEqual({ transactions: data, nextCursor: null });
         expect(data).toHaveLength(1);
         expect(data[0]).toEqual({
           transactionId: 'tx-1',
@@ -425,7 +428,7 @@ describe('Octap MCP Server', () => {
 
         expect(res.isError).toBeFalsy();
         const content = res.content as Array<{ type: string; text: string }>;
-        const data = JSON.parse(content[0].text);
+        const { vouchers: data } = JSON.parse(content[0].text);
         expect(data).toHaveLength(1);
         expect(data[0]).toEqual({
           ownershipId: 'own-1',

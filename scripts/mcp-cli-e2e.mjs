@@ -137,10 +137,11 @@ try {
     assert.equal(JSON.parse(balance.content[0].text).confirmedBalance, 120);
     const transactions = await client.callTool({ name: 'list_member_transactions', arguments: { memberId } });
     assert.equal(transactions.isError, undefined);
-    assert.equal(JSON.parse(transactions.content[0].text).length, 1);
+    assert.equal(JSON.parse(transactions.content[0].text).transactions.length, 1);
+    assert.equal(transactions.structuredContent.transactions.length, 1);
     const vouchers = await client.callTool({ name: 'list_member_vouchers', arguments: { memberId } });
     assert.equal(vouchers.isError, undefined);
-    assert.deepEqual(JSON.parse(vouchers.content[0].text), []);
+    assert.deepEqual(JSON.parse(vouchers.content[0].text), { vouchers: [] });
   } finally {
     await client.close();
   }
@@ -163,7 +164,7 @@ try {
     for (const name of ['get_member_balance', 'list_member_transactions', 'list_member_vouchers']) {
       const response = await crossTenantClient.callTool({ name, arguments: { memberId: otherMemberId } });
       assert.equal(response.isError, true, `${name} should reject a member from another organization`);
-      assert.match(response.content[0].text, /No matching member or resource was found/);
+      assert.match(response.content[0].text, /No member with this id in the configured organization/);
       assert.doesNotMatch(response.content[0].text, new RegExp(otherMemberId));
     }
   } finally {
