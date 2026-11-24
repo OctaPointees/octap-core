@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.env
+.env.*
+.git
+.github
+infra
+contracts
+docs
+**/tests
+**/examples
+client_secret_*.json
