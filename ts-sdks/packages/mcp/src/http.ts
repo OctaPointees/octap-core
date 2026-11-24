@@ -130,7 +130,7 @@ export async function createHttpHandler(options: HttpServerOptions) {
 /** Serves a `fetch` handler on `node:http`, streaming responses (SSE) as they are produced. */
 export function listen(handler: (request: Request) => Promise<Response>, port: number, host: string) {
   const server = createNodeServer((req, res) => {
-    void toRequest(req)
+    void toRequest(req, res)
       .then(handler)
       .then((response) => writeResponse(response, res))
       .catch(() => {
@@ -141,7 +141,7 @@ export function listen(handler: (request: Request) => Promise<Response>, port: n
   return new Promise<typeof server>((resolve) => server.listen(port, host, () => resolve(server)));
 }
 
-async function toRequest(req: IncomingMessage): Promise<Request> {
+async function toRequest(req: IncomingMessage, res: ServerResponse): Promise<Request> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
@@ -151,8 +151,12 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
   const chunks: Buffer[] = [];
   if (hasBody) for await (const chunk of req) chunks.push(chunk as Buffer);
+  // Per response, not per socket: a client that keeps the connection alive (a proxy, a tunnel) sends
+  // many requests over one socket, and a socket listener per request would pile up until it closed.
   const controller = new AbortController();
-  req.socket.once('close', () => controller.abort());
+  res.once('close', () => {
+    if (!res.writableFinished) controller.abort();
+  });
   return new Request(url, {
     method: req.method,
     headers,
