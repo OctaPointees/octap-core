@@ -478,6 +478,66 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/assistant/messages": {
+      "post": {
+        "operationId": "ConsoleAssistantController_message",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleAssistantController_message_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Assistant"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleAssistantController_message_Body"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/platform/organizations": {
       "get": {
         "operationId": "PlatformOrganizationsController_list",
@@ -6002,6 +6062,9 @@
       "name": "Console Api Credentials"
     },
     {
+      "name": "Console Assistant"
+    },
+    {
       "name": "Console Change Requests"
     },
     {
@@ -6094,6 +6157,16 @@
       }
     },
     "schemas": {
+      "AssistantStopReason": {
+        "description": "- `complete`: the answer is finished.\n- `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.\n- `length`: the answer hit the length limit.\n- `refused`: see the `refusal` event.",
+        "enum": [
+          "complete",
+          "length",
+          "refused",
+          "tool_limit"
+        ],
+        "type": "string"
+      },
       "ConsoleApiCredentialsController_issue_Body": {
         "type": "object",
         "properties": {
@@ -6193,6 +6266,128 @@
         },
         "required": [
           "revoked"
+        ]
+      },
+      "ConsoleAssistantController_message_Body": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "description": "The new question. 1–4000 characters.",
+            "type": "string"
+          },
+          "history": {
+            "description": "The conversation so far, oldest first, starting with a user turn. At most 40 turns and 60000\ncharacters together with the new message.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantTurn"
+            }
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "ConsoleAssistantController_message_Response": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_error"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "refusal"
+              },
+              "category": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "category",
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "done"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/AssistantStopReason"
+              }
+            },
+            "required": [
+              "reason",
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "error"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "type"
+            ]
+          }
         ]
       },
       "ConsoleChangeRequestsController_propose_Body": {
@@ -11422,6 +11617,27 @@
           "indexer",
           "operations",
           "webhookDeliveries"
+        ]
+      },
+      "AssistantTurn": {
+        "description": "One earlier turn of the conversation. The browser keeps the history; Core stores none.",
+        "type": "object",
+        "properties": {
+          "role": {
+            "enum": [
+              "assistant",
+              "user"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "Plain text of that turn.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
         ]
       },
       "ConsoleCredential": {

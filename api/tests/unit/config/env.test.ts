@@ -16,6 +16,10 @@ describe('validateEnv', () => {
         'CCCD storage (ORGANIZATION_IDENTITY_ENCRYPTION_KEY)',
         'MCP sign-in (MCP_OAUTH_ISSUER_URL)',
         'MCP sign-in (MCP_OAUTH_SIGNING_KEY)',
+        'dashboard assistant (ANTHROPIC_API_KEY)',
+        'dashboard assistant (OCTAP_MCP_PUBLIC_URL)',
+        'dashboard assistant on OpenAI (OPENAI_API_KEY)',
+        'dashboard assistant on OpenAI (OPENAI_MODEL)',
       ],
     });
   });
@@ -103,6 +107,12 @@ describe('validateEnv', () => {
         ORGANIZATION_IDENTITY_ENCRYPTION_KEY: KEY_32,
         MCP_OAUTH_ISSUER_URL: 'https://api.octap.example',
         MCP_OAUTH_SIGNING_KEY: KEY_32,
+        ANTHROPIC_API_KEY: 'sk-ant-test',
+        OCTAP_MCP_PUBLIC_URL: 'https://mcp.octap.example',
+        ASSISTANT_RATE_LIMIT_PER_MINUTE: '5',
+        ASSISTANT_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'sk-openai-test',
+        OPENAI_MODEL: 'gpt-test',
       }),
     ).toEqual({ errors: [], disabledFeatures: [] });
   });
@@ -175,6 +185,10 @@ describe('assertValidEnv', () => {
       'CCCD storage (ORGANIZATION_IDENTITY_ENCRYPTION_KEY)',
       'MCP sign-in (MCP_OAUTH_ISSUER_URL)',
       'MCP sign-in (MCP_OAUTH_SIGNING_KEY)',
+      'dashboard assistant (ANTHROPIC_API_KEY)',
+      'dashboard assistant (OCTAP_MCP_PUBLIC_URL)',
+      'dashboard assistant on OpenAI (OPENAI_API_KEY)',
+      'dashboard assistant on OpenAI (OPENAI_MODEL)',
     ]);
   });
 });
