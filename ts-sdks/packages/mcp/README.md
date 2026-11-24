@@ -162,12 +162,13 @@ Over `serve-http` only (they read the signed-in user's console routes):
 
 | Persona | Tools | Prompts |
 | --- | --- | --- |
-| Business Developer | `get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys` | `find_customer`, `check_member_transactions`, `review_api_keys` |
-| Business Owner | every Developer tool, plus `list_member_vouchers`, `get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations` | every Developer prompt, plus `summarize_member`, `review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access` |
+| Business Developer | `get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys` | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys` |
+| Business Owner | every Developer tool, plus `get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations` | every Developer prompt, plus `review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access` |
 
 The map lives in `src/personas.ts`. It decides what each persona sees, not what it may read: Core
-checks the organization, the read-only rule and the persona on every call. Webhook reads are
-Owner-only in Core until OCT-306. stdio with an API key offers the three member tools.
+checks the organization, the read-only rule and the persona on every call. Every Developer tool reads
+a route Core opens to both personas; the Owner extras are the reads Core keeps for Owners (webhooks
+until OCT-306, the refund policy, staff and invitations). stdio with an API key offers the three member tools.
 
 ## Error Handling & Tenant Isolation
 

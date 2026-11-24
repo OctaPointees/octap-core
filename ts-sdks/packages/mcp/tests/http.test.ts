@@ -44,6 +44,7 @@ const DEVELOPER_TOOLS = [
   'get_voucher_batch',
   'list_api_keys',
   'list_member_transactions',
+  'list_member_vouchers',
   'list_voucher_batches',
   'list_vouchers',
 ];
@@ -52,7 +53,6 @@ const OWNER_TOOLS = [
   'get_refund_policy',
   'get_refund_policy_history',
   'list_invitations',
-  'list_member_vouchers',
   'list_staff',
   'list_webhook_deliveries',
   'list_webhook_endpoints',
@@ -450,6 +450,7 @@ describe('persona tool sets and prompts (OCT-294)', () => {
       'check_member_transactions',
       'find_customer',
       'review_api_keys',
+      'summarize_member',
     ]);
     expect(client.getInstructions()).toContain('as Business Developer');
     await client.close();

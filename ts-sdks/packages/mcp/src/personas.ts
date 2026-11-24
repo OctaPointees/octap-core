@@ -11,12 +11,12 @@ export type Persona = 'BUSINESS_OWNER' | 'BUSINESS_DEVELOPER';
  * and the persona again. A wrong entry here can show a tool Core then refuses (403); it can never
  * read more than Core allows.
  *
- * - Business Developer: integration work. The organization, members (to debug what an integration
- *   sent), the voucher catalog and batches, the budget, and API keys. Webhooks are Owner-only in Core
- *   until OCT-306.
+ * - Business Developer: integration work. The organization, members and what they hold (to debug
+ *   what an integration sent), the voucher catalog and batches, the budget, and API keys. Every
+ *   Developer tool reads a route Core opens to both personas.
  * - Business Owner: in Core an Owner can do everything a Developer can, so the Owner set holds every
- *   Developer tool, plus webhooks, the refund policy and its history, staff and invitations
- *   (Owner-only in Core).
+ *   Developer tool, plus the reads Core keeps for Owners: webhooks (until OCT-306), the refund policy
+ *   and its history, staff and invitations.
  */
 export const DEVELOPER_TOOLS: readonly ToolName[] = [
   'get_connection',
@@ -25,6 +25,7 @@ export const DEVELOPER_TOOLS: readonly ToolName[] = [
   'get_member',
   'get_member_balance',
   'list_member_transactions',
+  'list_member_vouchers',
   'list_vouchers',
   'get_voucher',
   'list_voucher_batches',
@@ -35,7 +36,6 @@ export const DEVELOPER_TOOLS: readonly ToolName[] = [
 
 export const OWNER_TOOLS: readonly ToolName[] = [
   ...DEVELOPER_TOOLS,
-  'list_member_vouchers',
   'get_refund_policy',
   'get_refund_policy_history',
   'list_webhook_endpoints',
@@ -56,12 +56,12 @@ export const PERSONA_TOOLS: Readonly<Record<Persona, readonly ToolName[]>> = {
 export const DEVELOPER_PROMPTS: readonly PromptName[] = [
   'find_customer',
   'check_member_transactions',
+  'summarize_member',
   'review_api_keys',
 ];
 
 export const OWNER_PROMPTS: readonly PromptName[] = [
   ...DEVELOPER_PROMPTS,
-  'summarize_member',
   'review_pending_vouchers',
   'check_budget',
   'check_webhooks',

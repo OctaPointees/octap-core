@@ -32,6 +32,12 @@ describe('persona tool map (OCT-294)', () => {
     expect(promptsForPersona('BUSINESS_DEVELOPER')).not.toContain('review_pending_vouchers');
   });
 
+  it('gives a Developer the member reads Core opens to both personas, including what a member holds', () => {
+    // Core: GET …/members/:id/vouchers is for an Owner or Business Developer (members.service.ts).
+    expect(toolsForPersona('BUSINESS_DEVELOPER')).toContain('list_member_vouchers');
+    expect(promptsForPersona('BUSINESS_DEVELOPER')).toContain('summarize_member');
+  });
+
   it('gives an unknown persona nothing but get_connection, and no prompts', () => {
     expect(toolsForPersona('SYSTEM_ADMIN')).toEqual(['get_connection']);
     expect(toolsForPersona('__proto__')).toEqual(['get_connection']);
