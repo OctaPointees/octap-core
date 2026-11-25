@@ -66,3 +66,31 @@ An earn the owning budget shard cannot cover gets 422, using a best-effort read 
 
 `GET .../balance?programId=...` accepts the tenant's program row ID or its on-chain program-control ID;
 a different program returns 404 rather than silently reading another balance.
+
+## On-chain evidence (OCT-334)
+
+`ledger-evidence.service.ts` shows that what Core records is what the chain holds. It is
+read-only: a difference is reported, never corrected.
+
+- **Organization history.** `GET /v1/credits/transactions` (`read`) and
+  `GET /v1/console/organizations/:id/transactions` (Owner or Business Developer) list the
+  organization's whole ledger, newest first. Each row carries its `blockchainDigest` and
+  `confirmedAt`.
+- **Account.** A balance carries `creditAccountId`, the member's `CreditAccount` object.
+- **Program.** `GET …/program` reads the program's frozen `PolicyVersion` from the chain: its
+  rules, and the transaction that published it. `policyStatus` is `MATCH` when those rules are
+  the `earnBps`/`expiryMs` Core applies. The read is cached for an hour, since a frozen object
+  never changes.
+- **Balance reconciliation.** `GET …/members/:id/reconciliation` brings the recorded side up to
+  date (expired buckets, abandoned holds), then compares `confirmedBalance` with the chain's own
+  `credit_account::spendable`, called as a simulated transaction (nothing signed or executed).
+  - `PENDING`: a pending amount or an unsettled durable command for the member means the two
+    cannot be compared yet.
+  - `MATCH` / `MISMATCH`: nothing is in flight, and the two are equal or not.
+  - `UNAVAILABLE`: the chain could not be read.
+
+  A member without a `CreditAccount` holds 0 on-chain. Answers are cached for 30 seconds,
+  except `UNAVAILABLE`. A `MISMATCH` is logged at error level. One known source of it is the
+  clawback debt above: Postgres can go negative while the chain refuses to reverse a spent
+  bucket.
+

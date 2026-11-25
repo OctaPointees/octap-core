@@ -43,6 +43,14 @@ export function fakeChainAdapters() {
       ] as Array<{ type: string; parsedJson: unknown }>,
     })),
     budgetShardRemaining: vi.fn<(shardId: string) => Promise<bigint>>(async () => 1_000_000n),
+    creditAccountSpendable: vi.fn<(accountId: string) => Promise<bigint | null>>(async () => 0n),
+    policyVersionDetails: vi.fn<(policyVersionId: string) => Promise<unknown>>(async () => ({
+      version: 1n,
+      earnBps: 100n,
+      expiryMs: 30n * 24n * 60n * 60n * 1000n,
+      publishedDigest: 'POLICY-DIGEST',
+      publishedAtMs: Date.parse('2026-11-01T00:00:00Z'),
+    })),
     latestCheckpoint: vi.fn<() => Promise<bigint>>(async () => 1_000n),
     listCreditAccountEvents: vi.fn(async () => ({
       events: [],

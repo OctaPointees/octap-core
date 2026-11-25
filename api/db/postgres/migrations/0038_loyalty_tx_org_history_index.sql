@@ -1,0 +1,1 @@
+CREATE INDEX "loyalty_tx_org_created_idx" ON "loyalty_transactions" USING btree ("organization_id","created_at","id");

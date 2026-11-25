@@ -4,6 +4,7 @@ import { ObjectError, SimulationError, TransactionError, type SuiClientTypes } f
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { normalizeSuiAddress } from '@mysten/sui/utils';
+import { bcs } from '@mysten/sui/bcs';
 import type { Signer } from '@mysten/sui/cryptography';
 
 import * as creditAccount from './contracts/octap/credit_account.js';
@@ -298,6 +299,17 @@ export function eventField<T = unknown>(
  * decommissioned (confirmed live against testnet: `getCoins` returns
  * `-32601 Method not found`, not a soft deprecation warning).
  */
+/** A published policy version as the chain holds it. */
+export interface PolicyVersionDetails {
+  version: bigint;
+  earnBps: bigint;
+  expiryMs: bigint;
+  /** The transaction that published (and froze) it. */
+  publishedDigest: string | null;
+  /** Its checkpoint time; null if not checkpointed yet. */
+  publishedAtMs: number | null;
+}
+
 export class OctapChainClient {
   readonly rpc: SuiGrpcClient;
   private readonly packageId: string;
@@ -675,6 +687,63 @@ export class OctapChainClient {
   async budgetShardRemaining(shardId: string): Promise<bigint> {
     const { object } = await this.rpc.core.getObject({ objectId: shardId, include: { content: true } });
     return BigInt(budgetShard.BudgetShard.parse(object.content).remaining);
+  }
+
+  /**
+   * `credit_account::spendable` as of now, computed by the Move function itself (a simulated call,
+   * nothing executed or signed), for reconciling the PostgreSQL projection against the chain. Null
+   * if there is no such account.
+   */
+  async creditAccountSpendable(accountId: string): Promise<bigint | null> {
+    const tx = new Transaction();
+    tx.setSender(normalizeSuiAddress('0x0'));
+    tx.add(creditAccount.spendable({ package: this.packageId, arguments: { account: accountId } }));
+    let result: Awaited<ReturnType<typeof this.rpc.core.simulateTransaction<{ commandResults: true }>>>;
+    try {
+      result = await this.rpc.core.simulateTransaction({
+        transaction: tx,
+        include: { commandResults: true },
+        checksEnabled: false,
+      });
+    } catch (err: unknown) {
+      if (err instanceof ObjectError && (err.reason === 'notFound' || err.reason === 'deleted')) return null;
+      throw err;
+    }
+    const value = result.commandResults?.[0]?.returnValues?.[0]?.bcs;
+    if (result.$kind !== 'Transaction' || !value) {
+      throw new Error(`credit_account::spendable could not be read for ${accountId}`);
+    }
+    return BigInt(bcs.u64().parse(value));
+  }
+
+  /**
+   * A published `PolicyVersion`, read from the frozen object: its rules, and the transaction that
+   * published it (a frozen object is never mutated again, so its last transaction is its
+   * publication). Null if there is no such object.
+   */
+  async policyVersionDetails(policyVersionId: string): Promise<PolicyVersionDetails | null> {
+    let object;
+    try {
+      ({ object } = await this.rpc.core.getObject({
+        objectId: policyVersionId,
+        include: { content: true, previousTransaction: true },
+      }));
+    } catch (err: unknown) {
+      if (err instanceof ObjectError && (err.reason === 'notFound' || err.reason === 'deleted')) return null;
+      throw err;
+    }
+    const policy = policyVersion.PolicyVersion.parse(object.content);
+    const digest = object.previousTransaction ?? null;
+    const publishedAtMs = digest
+      ? ((await this.rpc.core.getTransaction({ digest })).Transaction?.timestampMs ?? null)
+      : null;
+    return {
+      version: BigInt(policy.version),
+      earnBps: BigInt(policy.earn_bps),
+      expiryMs: BigInt(policy.expiry_ms),
+      publishedDigest: digest,
+      publishedAtMs,
+    };
   }
 
   async currentEpoch(): Promise<bigint> {

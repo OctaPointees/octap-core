@@ -2,7 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { CREDIT_ACCOUNT_STREAM, IndexerRepository } from '#infra/db/repositories/indexer.repository.js';
-import type { CreditBalanceSnapshot, LoyaltyTransactionDto, LoyaltyTransactionPage } from '@octap/contracts';
+import type {
+  CreditBalanceSnapshot,
+  LoyaltyTransactionDto,
+  LoyaltyTransactionPage,
+  LoyaltyTxStatus,
+  LoyaltyTxType,
+} from '@octap/contracts';
 import type { loyaltyTransactions } from '#infra/db/schema/credits.schema.js';
 import { UUID_PATTERN } from '#infra/db/repositories/console-access.js';
 
@@ -52,6 +58,7 @@ export class CreditsService {
       asOfCheckpoint: cursor?.lastCheckpoint ?? null,
       observedAt: new Date().toISOString(),
       stale: pendingEarn > 0 || pendingRedemption > 0,
+      creditAccountId: ownership.suiCreditAccountId,
     };
   }
 
@@ -78,7 +85,44 @@ export class CreditsService {
       cursor,
     );
     if (!page) throw new BadRequestException('Invalid cursor');
-    return { items: page.rows.map(({ row, digest }) => toTransactionDto(row, digest)), nextCursor: page.nextCursor };
+    return { items: page.rows.map(toPageItem), nextCursor: page.nextCursor };
+  }
+
+  /**
+   * The organization's whole points history, newest first (OCT-334), for API keys and the console.
+   * Same paging rules as a member's history; `type`, `status` and `memberId` narrow it.
+   */
+  async listOrganizationTransactions(
+    organizationId: string,
+    query: Record<string, unknown> = {},
+  ): Promise<LoyaltyTransactionPage> {
+    const unknown = Object.keys(query).filter(
+      (key) => !['limit', 'cursor', 'type', 'status', 'memberId'].includes(key),
+    );
+    if (unknown.length) throw new BadRequestException(`Unsupported query fields: ${unknown.join(', ')}`);
+    const limit = query.limit === undefined || query.limit === '' ? 25 : Number(query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
+    const cursor = query.cursor === undefined || query.cursor === '' ? undefined : query.cursor;
+    if (cursor !== undefined && (typeof cursor !== 'string' || !UUID_PATTERN.test(cursor)))
+      throw new BadRequestException('Invalid cursor');
+    if (query.type !== undefined && !TX_TYPES.includes(query.type as LoyaltyTxType))
+      throw new BadRequestException(`type must be one of ${TX_TYPES.join(', ')}`);
+    if (query.status !== undefined && !TX_STATUSES.includes(query.status as LoyaltyTxStatus))
+      throw new BadRequestException(`status must be one of ${TX_STATUSES.join(', ')}`);
+    if (query.memberId !== undefined && (typeof query.memberId !== 'string' || !UUID_PATTERN.test(query.memberId)))
+      throw new BadRequestException('memberId must be a UUID');
+    const page = await this.creditsRepo.listTransactionPageByOrganization(
+      organizationId,
+      {
+        type: query.type as LoyaltyTxType | undefined,
+        status: query.status as LoyaltyTxStatus | undefined,
+        memberId: query.memberId as string | undefined,
+      },
+      limit,
+      cursor,
+    );
+    if (!page) throw new BadRequestException('Invalid cursor');
+    return { items: page.rows.map(toPageItem), nextCursor: page.nextCursor };
   }
 
   private async assertMemberBelongsToOrganization(organizationId: string, organizationEndUserId: string) {
@@ -87,6 +131,17 @@ export class CreditsService {
       throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
     }
   }
+}
+
+const TX_TYPES: LoyaltyTxType[] = ['EARN', 'REDEEM', 'REVERSAL', 'TRANSFER', 'EXPIRY', 'ADJUSTMENT'];
+const TX_STATUSES: LoyaltyTxStatus[] = ['PENDING', 'CONFIRMED', 'FAILED', 'REVERSED'];
+
+function toPageItem(item: {
+  row: typeof loyaltyTransactions.$inferSelect;
+  digest: string | null;
+  confirmedAt: Date | null;
+}): LoyaltyTransactionDto {
+  return { ...toTransactionDto(item.row, item.digest), confirmedAt: item.confirmedAt?.toISOString() ?? null };
 }
 
 /** An unconfirmed earn shows no points yet, only its estimate: the chain decides the final amount. */

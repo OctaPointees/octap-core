@@ -7,6 +7,7 @@ export {
   signerFromPrivateKey,
   type OctapNetwork,
   type OctapChainClientOptions,
+  type PolicyVersionDetails,
   type OctapProgramConfig,
   type OpenAccountParams,
   type EarnParams,

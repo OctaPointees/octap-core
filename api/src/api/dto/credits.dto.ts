@@ -24,3 +24,12 @@ export interface FinalizePosRedemptionBodyDto {
   digest: string;
   signature: string;
 }
+
+/** `GET /v1/credits/transactions` and the console's organization history. See `OrganizationTransactionQuery`. */
+export interface OrganizationTransactionQueryDto {
+  limit?: string;
+  cursor?: string;
+  type?: 'EARN' | 'REDEEM' | 'REVERSAL' | 'TRANSFER' | 'EXPIRY' | 'ADJUSTMENT';
+  status?: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED';
+  memberId?: string;
+}

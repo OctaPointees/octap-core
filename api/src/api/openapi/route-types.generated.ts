@@ -3,6 +3,7 @@ import type { ConsoleChangeRequestsController, PlatformChangeRequestsController 
 import type { ConsoleApiCredentialsController } from '../rest/console-api-credentials.controller.js';
 import type { ConsoleAssistantController } from '../rest/console-assistant.controller.js';
 import type { ConsoleIdentityController } from '../rest/console-identity.controller.js';
+import type { ConsoleLedgerController } from '../rest/console-ledger.controller.js';
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
 import type { ConsoleRefundPolicyController } from '../rest/console-refund-policy.controller.js';
 import type { ConsoleRequestLogsController } from '../rest/console-request-logs.controller.js';
@@ -40,6 +41,10 @@ export type ConsoleAssistantController_message_Body = Parameters<ConsoleAssistan
 export type ConsoleIdentityController_login_Response = Awaited<ReturnType<ConsoleIdentityController['login']>>;
 export type ConsoleIdentityController_login_Body = Parameters<ConsoleIdentityController['login']>[0];
 export type ConsoleIdentityController_me_Response = Awaited<ReturnType<ConsoleIdentityController['me']>>;
+export type ConsoleLedgerController_transactions_Response = Awaited<ReturnType<ConsoleLedgerController['transactions']>>;
+export type ConsoleLedgerController_transactions_Query = Parameters<ConsoleLedgerController['transactions']>[2];
+export type ConsoleLedgerController_program_Response = Awaited<ReturnType<ConsoleLedgerController['program']>>;
+export type ConsoleLedgerController_reconciliation_Response = Awaited<ReturnType<ConsoleLedgerController['reconciliation']>>;
 export type ConsoleOrganizationsController_apply_Response = Awaited<ReturnType<ConsoleOrganizationsController['apply']>>;
 export type ConsoleOrganizationsController_apply_Body = Parameters<ConsoleOrganizationsController['apply']>[1];
 export type ConsoleOrganizationsController_applications_Response = Awaited<ReturnType<ConsoleOrganizationsController['applications']>>;
@@ -119,6 +124,10 @@ export type CreditsController_finalizePosRedemption_Body = Parameters<CreditsCon
 export type CreditsController_reverseTransaction_Response = Awaited<ReturnType<CreditsController['reverseTransaction']>>;
 export type CreditsController_reverseTransaction_Body = Parameters<CreditsController['reverseTransaction']>[2];
 export type CreditsController_getBudget_Response = Awaited<ReturnType<CreditsController['getBudget']>>;
+export type CreditsController_getOrganizationTransactions_Response = Awaited<ReturnType<CreditsController['getOrganizationTransactions']>>;
+export type CreditsController_getOrganizationTransactions_Query = Parameters<CreditsController['getOrganizationTransactions']>[1];
+export type CreditsController_getProgram_Response = Awaited<ReturnType<CreditsController['getProgram']>>;
+export type CreditsController_getReconciliation_Response = Awaited<ReturnType<CreditsController['getReconciliation']>>;
 export type CreditsController_getBalance_Response = Awaited<ReturnType<CreditsController['getBalance']>>;
 export type CreditsController_getBalance_Query = { "programId"?: Parameters<CreditsController['getBalance']>[2] };
 export type CreditsController_getTransactions_Response = Awaited<ReturnType<CreditsController['getTransactions']>>;

@@ -1421,25 +1421,88 @@ export class CreditsRepository {
     limit: number,
     cursor?: string,
   ) {
+    return this.transactionPage(
+      organizationId,
+      [eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId)],
+      limit,
+      cursor,
+    );
+  }
+
+  /**
+   * The organization's whole points history, newest first (OCT-334), narrowed by type, status or
+   * member. Same cursor rules as a member's history: `null` for a cursor outside the result set.
+   */
+  async listTransactionPageByOrganization(
+    organizationId: string,
+    filters: {
+      type?: (typeof loyaltyTransactions.$inferSelect)['transactionType'];
+      status?: (typeof loyaltyTransactions.$inferSelect)['status'];
+      memberId?: string;
+    },
+    limit: number,
+    cursor?: string,
+  ) {
+    return this.transactionPage(
+      organizationId,
+      [
+        filters.type ? eq(loyaltyTransactions.transactionType, filters.type) : undefined,
+        filters.status ? eq(loyaltyTransactions.status, filters.status) : undefined,
+        filters.memberId ? eq(loyaltyTransactions.organizationEndUserId, filters.memberId) : undefined,
+      ],
+      limit,
+      cursor,
+    );
+  }
+
+  /**
+   * True while any durable command for this member is still on its way to the chain (PENDING,
+   * PROCESSING or UNKNOWN): an earn, a POS or voucher hold, a reversal mirror, a voucher grant.
+   * Until it settles, the recorded balance and the chain are not comparable.
+   */
+  async hasUnsettledChainWork(organizationId: string, organizationEndUserId: string): Promise<boolean> {
     return withTenant(this.db, organizationId, async (tx) => {
-      const ofMember = and(
-        eq(loyaltyTransactions.organizationId, organizationId),
-        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
-      );
+      const [row] = await tx
+        .select({ id: operations.id })
+        .from(operations)
+        .where(
+          and(
+            eq(operations.tenantId, organizationId),
+            inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+            sql`${operations.payload} ->> 'organizationEndUserId' = ${organizationEndUserId}`,
+          ),
+        )
+        .limit(1);
+      return Boolean(row);
+    });
+  }
+
+  private async transactionPage(
+    organizationId: string,
+    conditions: (ReturnType<typeof eq> | undefined)[],
+    limit: number,
+    cursor?: string,
+  ) {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const scope = and(eq(loyaltyTransactions.organizationId, organizationId), ...conditions);
       if (cursor) {
         const [anchor] = await tx
           .select({ id: loyaltyTransactions.id })
           .from(loyaltyTransactions)
-          .where(and(ofMember, eq(loyaltyTransactions.id, cursor)));
+          .where(and(scope, eq(loyaltyTransactions.id, cursor)));
         if (!anchor) return null;
       }
       const rows = await tx
-        .select({ row: loyaltyTransactions, digest: blockchainTransactions.digest })
+        .select({
+          row: loyaltyTransactions,
+          digest: blockchainTransactions.digest,
+          confirmedAt: blockchainTransactions.confirmedAt,
+        })
         .from(loyaltyTransactions)
         .leftJoin(blockchainTransactions, eq(blockchainTransactions.id, loyaltyTransactions.blockchainTransactionId))
         .where(
           and(
-            ofMember,
+            scope,
             cursor
               ? sql`(${loyaltyTransactions.createdAt}, ${loyaltyTransactions.id}) < (select a.created_at, a.id from ${loyaltyTransactions} a where a.id = ${cursor})`
               : undefined,

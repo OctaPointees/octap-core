@@ -102,6 +102,8 @@ export interface CreditBalanceSnapshot {
   observedAt: string;
   /** True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change. */
   stale: boolean;
+  /** The member's `CreditAccount` object on Sui; null until their first earn opens it. */
+  creditAccountId: string | null;
 }
 
 export interface ReverseTransactionRequest {
@@ -132,6 +134,8 @@ export interface LoyaltyTransactionDto {
   blockchainTransactionId?: string | null;
   /** The Sui transaction digest, once `blockchainTransactionId` resolves on-chain. */
   blockchainDigest?: string | null;
+  /** When the chain confirmed it; null until then. */
+  confirmedAt?: string | null;
   transactionType: LoyaltyTxType;
   /** Actual points; null for an unconfirmed earn. */
   pointsAmount: number | null;
@@ -182,4 +186,71 @@ export interface IssuanceBudgetDto {
   /** Latest first, at most 20. */
   recentTopUps: IssuanceBudgetTopUp[];
   observedAt: string;
+}
+
+/**
+ * `GET /v1/credits/transactions` and `GET /v1/console/organizations/{organizationId}/transactions`:
+ * the organization's points history, newest first. `limit` 1–100 (default 25), `cursor` from the
+ * last page's `nextCursor`; `type`, `status` and `memberId` narrow it.
+ */
+export interface OrganizationTransactionQuery {
+  limit?: number;
+  cursor?: string;
+  type?: LoyaltyTxType;
+  status?: LoyaltyTxStatus;
+  memberId?: string;
+}
+
+/**
+ * How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the
+ * chain's own `credit_account::spendable`:
+ * - `MATCH`: the two are equal.
+ * - `PENDING`: something for this member is still on its way to the chain (a pending earn or
+ *   redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.
+ * - `MISMATCH`: nothing is in flight and they differ.
+ * - `UNAVAILABLE`: the chain could not be read just now.
+ */
+export type BalanceReconciliationStatus = 'MATCH' | 'PENDING' | 'MISMATCH' | 'UNAVAILABLE';
+
+/** `GET …/members/{memberId}/reconciliation`. Cached for up to 30 seconds. */
+export interface BalanceReconciliation {
+  organizationEndUserId: string;
+  status: BalanceReconciliationStatus;
+  /** The member's `CreditAccount` object; null before their first earn (the ledger then holds 0). */
+  creditAccountId: string | null;
+  /** OctaP's `confirmedBalance`. */
+  recordedBalance: number;
+  /** What the chain says is spendable now; null when `UNAVAILABLE`. */
+  ledgerBalance: number | null;
+  /** `ledgerBalance - recordedBalance`; null when `UNAVAILABLE`. */
+  difference: number | null;
+  checkedAt: string;
+}
+
+/** The program's published rules as the chain holds them, beside what OctaP applies. */
+export interface ProgramPolicyEvidence {
+  policyVersionId: string;
+  version: number;
+  earnBps: number;
+  expiryMs: number;
+  /** The transaction that published the policy; null if the chain did not report one. */
+  publishedDigest: string | null;
+  publishedAt: string | null;
+}
+
+/**
+ * `GET /v1/credits/program` and `GET /v1/console/organizations/{organizationId}/program`: the
+ * loyalty program and the on-chain policy behind it. `policyStatus` is `MATCH` when the chain's
+ * rules are the ones OctaP applies, `MISMATCH` otherwise, `UNAVAILABLE` when the chain could not be
+ * read (then `policy` is null).
+ */
+export interface ProgramEvidence {
+  programId: string;
+  status: string;
+  programControlId: string;
+  earnBps: number;
+  expiryMs: number;
+  provisionedAt: string;
+  policyStatus: 'MATCH' | 'MISMATCH' | 'UNAVAILABLE';
+  policy: ProgramPolicyEvidence | null;
 }
