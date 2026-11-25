@@ -92,3 +92,20 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/health && exit 0; sleep 2; done
           docker logs api
           exit 1
+
+  # infra/ (OCT-316): formatting and a validate of each root module, without AWS credentials or a
+  # backend. `plan` against the real account comes with the deploy pipeline (OCT-322).
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+      - run: terraform fmt -check -recursive infra
+      - name: Validate
+        run: |
+          for dir in infra/bootstrap infra/staging; do
+            terraform -chdir=$dir init -backend=false -input=false
+            terraform -chdir=$dir validate
+          done
