@@ -972,7 +972,8 @@ describe('reversal', () => {
     const orphan = await insertLoyaltyTransaction(db, {
       organizationId: orgId,
       organizationEndUserId: fresh,
-      transactionType: 'EARN',
+      // A REDEEM: an EARN without a bucket is already refused before the ownership is looked up.
+      transactionType: 'REDEEM',
       pointsAmount: 5,
       idempotencyKey: 'orphan',
       status: 'CONFIRMED',
