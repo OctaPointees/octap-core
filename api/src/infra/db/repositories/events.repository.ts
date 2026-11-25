@@ -1,8 +1,10 @@
-import { and, eq } from 'drizzle-orm';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, asc, eq, gt, inArray, lt, max, notExists } from 'drizzle-orm';
 import type { WebhookEventData, WebhookEventType } from '@octap/contracts';
-import type { DrizzleDb } from '../postgres.provider.js';
+import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { organizationEvents } from '../schema/events.schema.js';
 import { webhookDeliveries, webhookEndpoints } from '../schema/webhooks.schema.js';
+import { withTenant } from '../rls.js';
 
 export type OrganizationEvent = typeof organizationEvents.$inferSelect;
 
@@ -36,4 +38,93 @@ export async function recordEvent<T extends WebhookEventType>(
     );
   }
   return event;
+}
+
+/**
+ * Reads the outbox for the console event stream (OCT-326) and trims it. `replaySince` and `hasEvent`
+ * run under the organization's RLS context. Two methods are RLS exceptions, by design: the stream's
+ * scan (`latestSequence`, `scanSince`) reads every organization that has a stream open on this
+ * instance, and `deleteExpired` trims every organization's old events.
+ */
+@Injectable()
+export class OrganizationEventsRepository {
+  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+
+  /** The highest sequence recorded so far, 0 when there is none. RLS exception (environment-wide). */
+  async latestSequence(): Promise<number> {
+    const [row] = await this.db.select({ latest: max(organizationEvents.sequence) }).from(organizationEvents);
+    return Number(row?.latest ?? 0);
+  }
+
+  /**
+   * Events of `organizationIds` after `afterSequence`, oldest first. RLS exception: one query for
+   * every organization with a stream open on this instance, each event then goes only to its own.
+   */
+  async scanSince(organizationIds: string[], afterSequence: number, limit: number): Promise<OrganizationEvent[]> {
+    if (organizationIds.length === 0) return [];
+    return this.db
+      .select()
+      .from(organizationEvents)
+      .where(
+        and(
+          inArray(organizationEvents.organizationId, organizationIds),
+          gt(organizationEvents.sequence, afterSequence),
+        ),
+      )
+      .orderBy(asc(organizationEvents.sequence))
+      .limit(limit);
+  }
+
+  /** The organization's events after `afterSequence`, oldest first, at most `limit`. */
+  async replaySince(organizationId: string, afterSequence: number, limit: number): Promise<OrganizationEvent[]> {
+    return withTenant(this.db, organizationId, (tx) =>
+      tx
+        .select()
+        .from(organizationEvents)
+        .where(
+          and(eq(organizationEvents.organizationId, organizationId), gt(organizationEvents.sequence, afterSequence)),
+        )
+        .orderBy(asc(organizationEvents.sequence))
+        .limit(limit),
+    );
+  }
+
+  /** Whether the organization still has the event numbered `sequence`: another's is not found. */
+  async hasEvent(organizationId: string, sequence: number): Promise<boolean> {
+    const [row] = await withTenant(this.db, organizationId, (tx) =>
+      tx
+        .select({ id: organizationEvents.id })
+        .from(organizationEvents)
+        .where(and(eq(organizationEvents.organizationId, organizationId), eq(organizationEvents.sequence, sequence))),
+    );
+    return row !== undefined;
+  }
+
+  /**
+   * Deletes up to `limit` events recorded before `before`, oldest first, and returns how many. One
+   * still owed to an endpoint (a PENDING delivery) or that the Owner may still replay (DEAD_LETTER) is
+   * kept: deleting an event deletes its deliveries. RLS exception (every organization).
+   */
+  async deleteExpired(before: Date, limit: number): Promise<number> {
+    const owed = this.db
+      .select({ id: webhookDeliveries.id })
+      .from(webhookDeliveries)
+      .where(
+        and(
+          eq(webhookDeliveries.eventId, organizationEvents.id),
+          inArray(webhookDeliveries.status, ['PENDING', 'DEAD_LETTER']),
+        ),
+      );
+    const expired = this.db
+      .select({ id: organizationEvents.id })
+      .from(organizationEvents)
+      .where(and(lt(organizationEvents.createdAt, before), notExists(owed)))
+      .orderBy(asc(organizationEvents.sequence))
+      .limit(limit);
+    const deleted = await this.db
+      .delete(organizationEvents)
+      .where(inArray(organizationEvents.id, expired))
+      .returning({ id: organizationEvents.id });
+    return deleted.length;
+  }
 }

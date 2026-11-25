@@ -493,11 +493,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Success.",
+            "description": "Server-Sent Events. Each message: `event` its type, `data` an `AssistantStreamEvent` (`@octap/contracts`) as JSON. Settings, body, membership and rate-limit errors come back as JSON errors before the stream starts.",
             "content": {
-              "application/json": {
+              "text/event-stream": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConsoleAssistantController_message_Response"
+                  "type": "string"
                 }
               }
             }
@@ -3104,6 +3104,65 @@
         },
         "tags": [
           "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/events": {
+      "get": {
+        "operationId": "ConsoleEventsController_stream",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "description": "The last `id` received, to resume after it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events. Each message: `id` is the event `sequence`, `event` its type, `data` an `OrganizationStreamEvent` (`@octap/contracts`) as JSON. `stream.*` messages are about the stream itself. Send `Last-Event-ID` to resume.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Events"
         ],
         "security": [
           {
@@ -6088,6 +6147,9 @@
       "name": "Console Change Requests"
     },
     {
+      "name": "Console Events"
+    },
+    {
       "name": "Console Identity"
     },
     {
@@ -6177,16 +6239,6 @@
       }
     },
     "schemas": {
-      "AssistantStopReason": {
-        "description": "- `complete`: the answer is finished.\n- `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.\n- `length`: the answer hit the length limit.\n- `refused`: see the `refusal` event.",
-        "enum": [
-          "complete",
-          "length",
-          "refused",
-          "tool_limit"
-        ],
-        "type": "string"
-      },
       "ConsoleApiCredentialsController_issue_Body": {
         "type": "object",
         "properties": {
@@ -6305,109 +6357,6 @@
         },
         "required": [
           "message"
-        ]
-      },
-      "ConsoleAssistantController_message_Response": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "text"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "text",
-              "type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "tool"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "tool_error"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "refusal"
-              },
-              "category": {
-                "type": [
-                  "null",
-                  "string"
-                ]
-              }
-            },
-            "required": [
-              "category",
-              "type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "done"
-              },
-              "reason": {
-                "$ref": "#/components/schemas/AssistantStopReason"
-              }
-            },
-            "required": [
-              "reason",
-              "type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "error"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "message",
-              "type"
-            ]
-          }
         ]
       },
       "ConsoleChangeRequestsController_propose_Body": {

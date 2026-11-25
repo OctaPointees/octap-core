@@ -2,6 +2,7 @@ export * from './loyalty.js';
 export * from './rewards.js';
 export * from './voucher-refunds.js';
 export * from './webhooks.js';
+export * from './organization-events.js';
 export * from './identity.js';
 export * from './system-users.js';
 export * from './console.js';

@@ -14,6 +14,7 @@ import type { AssistantStreamEvent } from '@octap/contracts';
 import { AssistantService } from '#domain/assistant/assistant.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { EventStream } from './event-stream.decorator.js';
 import type { AssistantMessageBodyDto } from '../dto/assistant.dto.js';
 
 /** How often an idle answer stream gets an SSE comment. */
@@ -43,18 +44,21 @@ export class ConsoleAssistantController {
   /**
    * Answers one message as a stream (`text/event-stream`) of `AssistantStreamEvent`s. Settings, body,
    * membership and rate-limit errors come back as plain JSON errors before the stream starts.
-   *
-   * The declared result is what each `data:` line of the stream holds, so OpenAPI documents the event
-   * shape; the handler writes the stream itself and returns nothing.
    */
   @Post('messages')
   @HttpCode(200)
+  @EventStream({
+    description:
+      'Server-Sent Events. Each message: `event` its type, `data` an `AssistantStreamEvent` ' +
+      '(`@octap/contracts`) as JSON. Settings, body, membership and rate-limit errors come back as ' +
+      'JSON errors before the stream starts.',
+  })
   async message(
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Body() body: AssistantMessageBodyDto,
     @Res() res: StreamResponse,
-  ): Promise<AssistantStreamEvent | undefined> {
+  ): Promise<void> {
     // Defence in depth: `ConsoleAccessGuard` already refuses an MCP token on a POST ("MCP access is
     // read-only"), so this line is not what blocks it today.
     if (req.mcpToken) throw new ForbiddenException('Sign in to the console to use the assistant');
@@ -86,6 +90,5 @@ export class ConsoleAssistantController {
       clearInterval(heartbeat);
     }
     res.end();
-    return undefined;
   }
 }

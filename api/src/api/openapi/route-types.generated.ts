@@ -35,7 +35,6 @@ export type ConsoleApiCredentialsController_issue_Body = Parameters<ConsoleApiCr
 export type ConsoleApiCredentialsController_rename_Response = Awaited<ReturnType<ConsoleApiCredentialsController['rename']>>;
 export type ConsoleApiCredentialsController_rename_Body = Parameters<ConsoleApiCredentialsController['rename']>[3];
 export type ConsoleApiCredentialsController_revoke_Response = Awaited<ReturnType<ConsoleApiCredentialsController['revoke']>>;
-export type ConsoleAssistantController_message_Response = Awaited<ReturnType<ConsoleAssistantController['message']>>;
 export type ConsoleAssistantController_message_Body = Parameters<ConsoleAssistantController['message']>[2];
 export type ConsoleIdentityController_login_Response = Awaited<ReturnType<ConsoleIdentityController['login']>>;
 export type ConsoleIdentityController_login_Body = Parameters<ConsoleIdentityController['login']>[0];

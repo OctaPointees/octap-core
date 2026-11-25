@@ -20,6 +20,7 @@ import { ConsoleVoucherBatchesController } from './console-voucher-batches.contr
 import { VoucherBatchesController } from './voucher-batches.controller.js';
 import { ConsoleRefundPolicyController } from './console-refund-policy.controller.js';
 import { ConsoleWebhooksController } from './console-webhooks.controller.js';
+import { ConsoleEventsController } from './console-events.controller.js';
 import { ConsoleApiCredentialsController } from './console-api-credentials.controller.js';
 import { ConsoleChangeRequestsController, PlatformChangeRequestsController } from './administration.controller.js';
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
@@ -46,6 +47,7 @@ import { ConsoleAssistantController } from './console-assistant.controller.js';
     ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,
     ConsoleWebhooksController,
+    ConsoleEventsController,
     ConsoleApiCredentialsController,
     CreditsController,
     RewardsController,

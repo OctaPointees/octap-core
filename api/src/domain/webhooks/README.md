@@ -35,6 +35,10 @@ Nothing is ever emitted after a commit, so no event is lost to a crash between t
   (the console stream, OCT-326). It is assigned at insert, not commit: don't assume a lower one has
   always committed first.
 - `recordEvent` is typed by event: the payload must be that type's `data` from `@octap/contracts`.
+- Events are kept 30 days (`EventRetentionWorker`, OCT-326), except one still owed to an endpoint
+  (PENDING) or that the Owner may replay (DEAD_LETTER). Deleting an event deletes its deliveries, so
+  the delivery list shows the last 30 days.
+- The console event stream reads the same table (see `domain/events/README.md`).
 - Each caller records only on the path that made the change (a guarded conditional update, a new
   key), so a retry or a lost race records nothing.
 
