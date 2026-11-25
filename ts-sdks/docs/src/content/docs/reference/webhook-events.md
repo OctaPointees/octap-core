@@ -79,7 +79,6 @@ Settled in the ledger immediately. A chain-confirmed original is also mirrored o
 | `organizationEndUserId` | `string` | |
 | `pointsAmount` | `number` | |
 | `newBalance` | `number` | |
-| `balanceWentNegative` | `boolean` | True when reversing a spent earn left a debt |
 
 ## voucher.granted
 

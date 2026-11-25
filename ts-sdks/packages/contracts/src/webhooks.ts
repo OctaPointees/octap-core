@@ -144,8 +144,6 @@ export interface ReversalEventData {
   organizationEndUserId: string;
   pointsAmount: number;
   newBalance: number;
-  /** True when reversing an already-spent earn left a clawback debt. */
-  balanceWentNegative: boolean;
 }
 
 /**

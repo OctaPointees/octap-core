@@ -179,4 +179,4 @@ reverseTransaction(request: ReverseTransactionRequest, options?): Promise<Revers
 | `idempotencyKey` | `string` | **Bắt buộc.** |
 | `reason` | `string` | **Bắt buộc.** |
 
-Trả về `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance`, `balanceWentNegative` và `idempotencyKey`.
+Trả về `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance` và `idempotencyKey`. Lệnh earn đã bị tiêu hoặc đã hết hạn thì không đảo được: `409`.

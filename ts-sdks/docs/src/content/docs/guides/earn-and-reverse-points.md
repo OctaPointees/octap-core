@@ -60,12 +60,8 @@ const reversal = await client.reverseTransaction({
   idempotencyKey: `refund-${order.id}`,
   reason: 'Customer returned the order',
 });
-
-if (reversal.balanceWentNegative) {
-  // They already spent these points. The negative balance is a debt that blocks further spending.
-}
 ```
 
-You can reverse confirmed `EARN` and `REDEEM` transactions. A `PENDING` transaction can't be reversed: it either settles or gets released.
+You can reverse confirmed `EARN` and `REDEEM` transactions. An `EARN` can be reversed only while all of its points are still unspent and unexpired, the same rule the chain applies. Otherwise the call fails with `409`, and you compensate the customer outside the ledger. A `PENDING` transaction can't be reversed: it either settles or gets released.
 
 To reverse a paid voucher claim, reverse its `REDEEM` transaction. See [Refunds](/guides/manage-vouchers/#refunds).

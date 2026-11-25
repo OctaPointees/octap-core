@@ -118,8 +118,6 @@ export interface ReverseTransactionResponse {
   organizationEndUserId: string;
   pointsAmount: number;
   newBalance: number;
-  /** True when `newBalance` went negative — the member owes points back (clawback debt). */
-  balanceWentNegative: boolean;
   idempotencyKey: string;
 }
 

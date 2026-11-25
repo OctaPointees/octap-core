@@ -32,7 +32,7 @@ then move the row to **Implemented** in the same pull request.
 | On-chain evidence (OCT-334, for OCT-328): the organization's points history (`GET /v1/credits/transactions`, console `…/transactions`; filter by type, status, member), every transaction's digest and `confirmedAt`, the member's `creditAccountId` on their balance, the program with its frozen on-chain policy compared with the rules applied (`…/program`, `policyStatus`), and a member's balance reconciled live against `credit_account::spendable` (`…/members/:id/reconciliation`: MATCH / PENDING / MISMATCH / UNAVAILABLE, cached 30 s). Read-only, for API keys and the console's Owner and Business Developers | api/src/domain/credits/ledger-evidence.service.ts; api/src/api/rest/console-ledger.controller.ts; ts-sdks/packages/chain/src/client.ts |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke | api/src/infra/auth |
 | Console API keys: an Owner or Business Developer issues (`read` by default; only the Owner issues a live `write` key, while a Business Developer may issue a sandbox one, OCT-297), renames and revokes the organization's keys from the Google session (a Business Developer only read keys), at most 25 ACTIVE per organization (409 `API_CREDENTIAL_LIMIT_REACHED`); `/v1/api-credentials` and rotation are removed (OCT-70). The `admin` scope is retired: no route requires it, and a console key works for every integration flow (OCT-301) | api/src/api/rest/console-api-credentials.controller.ts; api/src/domain/identity/console-api-credentials.service.ts; api/src/infra/auth/api-credentials.service.ts |
-| Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
+| Credits: reversal of a CONFIRMED earn (while its points are unspent and unexpired) or redeem, idempotent, at most once | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: Owner-only console endpoint registration, disable/enable, secret rotation, a test event to one endpoint (`webhook.test`, OCT-297) and dead-letter replay (an API key only lists endpoints and deliveries, OCT-301), signed delivery, retry/dead-letter, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
 | Webhooks: one transactional outbox for every event (OCT-325): `recordEvent(tx, ...)` writes an `organization_events` row in the transaction of the change, endpoint or not, and queues one delivery per ACTIVE endpoint, all under one event id. Exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, whichever path confirmed it; `credits.earned` at accept; voucher lifecycle events (`voucher.created` / `submitted` / `returned` / `activated` / `publish.failed` / `paused` / `archived`). Events are kept 30 days, except those still owed or replayable (`EventRetentionWorker`) | api/src/infra/db/repositories/events.repository.ts; voucher-events.ts; api/src/domain/webhooks/README.md |
@@ -169,15 +169,14 @@ then move the row to **Implemented** in the same pull request.
   get them as webhooks is undecided. The 5-streams-per-user limit is per HTTP instance. An open
   stream misses an event whose transaction stays open more than 60 s between recording it and
   committing; a reconnect still replays it.
-- Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
-  further redemption via the existing balance check — there is no separate debt ledger, repayment
-  plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
-  forfeited again; reversing a REDEEM adds the points back *without* a bucket, so they never
-  expire in Postgres. The chain mirrors both (OCT-50): a reversed REDEEM's add-back is a
-  non-expiring on-chain balance too. Reversing an earn whose credits were already spent (or have
-  expired) is accepted in Postgres but aborts on-chain (`EBucketUnavailable`), so that account's
-  two balances differ until a human settles it; the mirror command is FAILED with the abort and
-  nothing retries it. Paid voucher claims use the same on-chain reversal pipeline, keyed by `voucher-claim-<ownershipId>`. Historical Postgres-only claims still have no chain receipt.
+- **Reversing a spent earn is not supported** (OCT-334). An EARN can be reversed only while its
+  bucket is whole and unexpired, the same rule as the chain's `reverse_earn`. Otherwise the call is
+  a 409, and the merchant compensates outside the ledger. There is no clawback debt: Postgres used
+  to let the balance go negative while the chain refused the reversal, which left the two ledgers
+  apart for good. Follow-up if refunds after spending are needed: a clawback on-chain
+  (`reverse_earn` takes what remains of the bucket and records the rest as a debt that later earns
+  repay and that blocks redemption), mirrored in Postgres. Reversing a REDEEM adds the points back
+  without a bucket, matching the chain's `non_expiring` balance. Paid voucher claims use the same on-chain reversal pipeline, keyed by `voucher-claim-<ownershipId>`. Historical Postgres-only claims still have no chain receipt.
 - **Expiry** (OCT-49) is lazy: due buckets are swept whenever the balance is read or spent, not
   by a scheduled job. Every balance check (POS reserve, voucher claim) and `GET /balance` sweeps
   first; only the informational `newBalance` in earn/POS-finalize responses can show a

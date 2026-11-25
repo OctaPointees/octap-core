@@ -179,4 +179,4 @@ reverseTransaction(request: ReverseTransactionRequest, options?): Promise<Revers
 | `idempotencyKey` | `string` | **Required.** |
 | `reason` | `string` | **Required.** |
 
-Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance`, `balanceWentNegative` and `idempotencyKey`.
+Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance` and `idempotencyKey`. A spent or expired earn can't be reversed: `409`.

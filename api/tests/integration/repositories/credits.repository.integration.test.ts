@@ -783,14 +783,8 @@ describe('bucket expiry', () => {
 });
 
 describe('reversal', () => {
-  it('reversing a spent earn drives the balance negative and zeroes its bucket', async () => {
+  it('reverses an unspent earn and zeroes its bucket', async () => {
     const earn = await confirmedEarn(100);
-    await confirmedPosRedeem({
-      organizationId: orgId,
-      organizationEndUserId: memberId,
-      pointsAmount: 80,
-      idempotencyKey: 'r',
-    });
     const original = await getLoyaltyTransaction(db, earn.id);
 
     const { reversal, reversedOriginal, newBalance } = await repo.recordReversalTransaction({
@@ -801,7 +795,7 @@ describe('reversal', () => {
       reason: 'chargeback',
     });
 
-    expect(newBalance).toBe(-80);
+    expect(newBalance).toBe(0);
     expect(reversedOriginal.status).toBe('REVERSED');
     expect(reversal).toMatchObject({
       transactionType: 'REVERSAL',
@@ -812,6 +806,42 @@ describe('reversal', () => {
     });
     expect((await bucketsOf()).map((b) => b.remaining)).toEqual([0]);
     expect((await repo.findReversalOf(earn.id))?.id).toBe(reversal.id);
+  });
+
+  it.each([
+    [
+      'partly spent',
+      async () => {
+        const earn = await confirmedEarn(100);
+        await confirmedPosRedeem({
+          organizationId: orgId,
+          organizationEndUserId: memberId,
+          pointsAmount: 80,
+          idempotencyKey: 'r',
+        });
+        return earn;
+      },
+      /already spent/,
+    ],
+    ['expired', async () => confirmedEarn(100, { expiresInMs: -1000 }), /expired/],
+  ])('refuses to reverse a %s earn, as the chain would, and writes nothing', async (_label, setup, reason) => {
+    const earn = await setup();
+    const before = await getOwnership(db, memberId);
+    const original = await getLoyaltyTransaction(db, earn.id);
+
+    await expect(
+      repo.recordReversalTransaction({
+        evaluateRefund: evaluateVoucherRefund,
+        organizationId: orgId,
+        original,
+        idempotencyKey: 'rev-1',
+        reason: 'chargeback',
+      }),
+    ).rejects.toThrow(reason);
+
+    expect((await getLoyaltyTransaction(db, earn.id)).status).toBe('CONFIRMED');
+    expect((await getOwnership(db, memberId)).confirmedBalance).toBe(before.confirmedBalance);
+    expect(await repo.findReversalOf(earn.id)).toBeFalsy();
   });
 
   it('reversing a redeem adds the points back', async () => {
@@ -1018,7 +1048,6 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
           organizationEndUserId: memberId,
           pointsAmount: 100,
           newBalance: 0,
-          balanceWentNegative: false,
         },
       },
     ]);

@@ -2816,16 +2816,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "newBalance": {
         "type": "number"
       },
-      "balanceWentNegative": {
-        "description": "True when `newBalance` went negative — the member owes points back (clawback debt).",
-        "type": "boolean"
-      },
       "idempotencyKey": {
         "type": "string"
       }
     },
     "required": [
-      "balanceWentNegative",
       "idempotencyKey",
       "newBalance",
       "organizationEndUserId",

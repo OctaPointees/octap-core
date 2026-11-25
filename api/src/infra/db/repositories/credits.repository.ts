@@ -149,7 +149,7 @@ async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: 
  *
  * The forfeit is capped at the current balance (never below zero): a bucket can outlive points
  * spent off-chain without a matching bucket debit (e.g. a voucher claim before buckets existed),
- * and expiry must not invent debt — only a reversal can create clawback debt.
+ * and expiry must not invent a negative balance.
  */
 export async function expireDueBuckets(
   tx: DrizzleDb,
@@ -266,6 +266,18 @@ export class VoucherClaimNotReversibleError extends Error {
         'Check the coupon refund terms or issue separate compensation.',
     );
     this.name = 'VoucherClaimNotReversibleError';
+  }
+}
+
+/**
+ * Thrown by `recordReversalTransaction` for an earn whose points are no longer all there: part of
+ * its bucket was spent, or it expired. The chain's `reverse_earn` refuses exactly these, so the
+ * ledger refuses them too instead of drifting from the chain.
+ */
+export class EarnNotReversibleError extends Error {
+  constructor(reason: string) {
+    super(`This earn cannot be reversed: ${reason}. Issue a separate adjustment if needed.`);
+    this.name = 'EarnNotReversibleError';
   }
 }
 
@@ -1231,10 +1243,10 @@ export class CreditsRepository {
 
   /**
    * Reverses a CONFIRMED EARN or REDEEM: marks the original REVERSED, inserts a REVERSAL row
-   * linked to it via `reversesTransactionId`, and applies the opposite balance effect. A
-   * reversed EARN that was already (partly) spent is allowed to drive `confirmedBalance`
-   * negative — that negative balance *is* the clawback debt, and it already blocks further
-   * redemptions via the balance check in `reservePosRedemption`.
+   * linked to it via `reversesTransactionId`, and applies the opposite balance effect. An EARN is
+   * reversible only while its bucket is whole and unexpired, the same rule as the chain's
+   * `reverse_earn`; otherwise `EarnNotReversibleError`, with no writes. So a reversal never drives
+   * `confirmedBalance` negative, and the ledger never records a reversal the chain will refuse.
    *
    * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
    * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop
@@ -1290,6 +1302,18 @@ export class CreditsRepository {
         };
       }
 
+      if (params.original.transactionType === 'EARN') {
+        const [bucket] = await tx
+          .select()
+          .from(creditBuckets)
+          .where(eq(creditBuckets.earnTransactionId, params.original.id))
+          .for('update');
+        if (!bucket) throw new EarnNotReversibleError('it has no points bucket');
+        if (Number(bucket.expiresAtMs) <= Date.now()) throw new EarnNotReversibleError('its points have expired');
+        if (Number(bucket.remaining) !== Number(bucket.amount))
+          throw new EarnNotReversibleError('some of its points were already spent');
+      }
+
       const [reversedOriginal] = await tx
         .update(loyaltyTransactions)
         .set({ status: 'REVERSED', updatedAt: new Date() })
@@ -1301,7 +1325,7 @@ export class CreditsRepository {
       }
 
       const magnitude = Number(params.original.pointsAmount);
-      // EARN added to confirmedBalance -> reversing subtracts (may go negative: clawback debt).
+      // EARN added to confirmedBalance -> reversing subtracts its whole, unspent bucket.
       // REDEEM subtracted from confirmedBalance -> reversing adds it back.
       const balanceDelta = params.original.transactionType === 'EARN' ? -magnitude : magnitude;
       const newConfirmedBalance = Number(ownership.confirmedBalance) + balanceDelta;
@@ -1311,8 +1335,8 @@ export class CreditsRepository {
         .set({ confirmedBalance: newConfirmedBalance, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
       if (params.original.transactionType === 'EARN') {
-        // Clawed-back points must not be forfeited a second time when the earn's bucket expires.
-        // (A reversed REDEEM's add-back gets no bucket: it doesn't expire here — known gap.)
+        // The reversed points must not be forfeited again when the bucket's expiry comes.
+        // A reversed REDEEM's add-back gets no bucket: like the chain's `non_expiring`, it never expires.
         await tx
           .update(creditBuckets)
           .set({ remaining: 0 })
@@ -1369,7 +1393,6 @@ export class CreditsRepository {
           organizationEndUserId: params.original.organizationEndUserId,
           pointsAmount: magnitude,
           newBalance: newConfirmedBalance,
-          balanceWentNegative: newConfirmedBalance < 0,
         },
       });
 

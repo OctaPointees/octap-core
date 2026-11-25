@@ -8,8 +8,9 @@ Loyalty points for an organization's end users.
 Unsigned POS/voucher holds are released after 30 minutes on the next balance read or POS reserve; voucher claims also have worker recovery. Cleanup cancels reserved coupons and returns stock in the same transaction. Holds with a submitted digest are left to chain reconciliation.
 
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
-  is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
-  the clawback debt when an earn was already spent — there's no separate debt ledger. If the
+  is unique), idempotent on its own `idempotencyKey`. An earn is reversible only while its bucket
+  is whole and unexpired, the chain's own rule for `reverse_earn`: a spent or expired one is a 409
+  (OCT-334), so a reversal never drives the balance negative or diverges from the chain. If the
   original reached the chain (it has a `blockchainTransactionId`), the same transaction queues a
   `CREDIT_REVERSAL_CHAIN_SUBMIT` command, which `chain-submit.processor.ts` mirrors with
   `reverse_earn`/`reverse_redeem` (OCT-50); its digest is linked to the REVERSAL row once it lands.
@@ -90,7 +91,6 @@ read-only: a difference is reported, never corrected.
   - `UNAVAILABLE`: the chain could not be read.
 
   A member without a `CreditAccount` holds 0 on-chain. Answers are cached for 30 seconds,
-  except `UNAVAILABLE`. A `MISMATCH` is logged at error level. One known source of it is the
-  clawback debt above: Postgres can go negative while the chain refuses to reverse a spent
-  bucket.
+  except `UNAVAILABLE`. A `MISMATCH` is logged at error level: since a spent earn can no longer be reversed, nothing in
+  Core is expected to produce one.
 
