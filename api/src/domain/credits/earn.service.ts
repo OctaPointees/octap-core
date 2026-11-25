@@ -29,6 +29,25 @@ function toEarnResponse(transaction: LoyaltyTransaction, newBalance: number): Ea
   };
 }
 
+/**
+ * `floor(purchaseAmount * earnBps / 10000)` with integer arithmetic, as Move computes it on-chain.
+ * Throws 400 when it rounds to zero (the chain would abort) or leaves the safe-integer range.
+ * Shared with the sandbox (OCT-297), so a sandbox earn credits exactly what a live one would.
+ */
+export function pointsForPurchase(purchaseAmount: number, earnBps: number): number {
+  if (!Number.isSafeInteger(purchaseAmount) || purchaseAmount <= 0) {
+    throw new BadRequestException('Purchase amount must be a safe integer greater than zero');
+  }
+  const estimate = (BigInt(purchaseAmount) * BigInt(earnBps)) / 10_000n;
+  if (estimate === 0n) {
+    throw new BadRequestException('Purchase amount is too small to earn any points');
+  }
+  if (estimate > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new BadRequestException('Estimated points exceed safe integer range');
+  }
+  return Number(estimate);
+}
+
 @Injectable()
 export class EarnService {
   constructor(
@@ -78,15 +97,7 @@ export class EarnService {
     idempotencyKey: string,
   ): Promise<number> {
     const program = await requireProgramConfig(this.programsRepo, organizationId);
-    // Integer arithmetic matches Move's floor(purchase * earn_bps / 10_000), which aborts on zero.
-    const estimate = (BigInt(purchaseAmount) * BigInt(program.earnBps)) / 10_000n;
-    if (estimate === 0n) {
-      throw new BadRequestException('Purchase amount is too small to earn any points');
-    }
-    if (estimate > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new BadRequestException('Estimated points exceed safe integer range');
-    }
-    const estimatedPoints = Number(estimate);
+    const estimatedPoints = pointsForPurchase(purchaseAmount, program.earnBps);
     if (!(await this.issuanceBudget.canCover(program, idempotencyKey, estimatedPoints))) {
       throw new UnprocessableEntityException('The issuance budget cannot cover this earn; request a top-up');
     }

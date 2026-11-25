@@ -3009,6 +3009,64 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/webhooks/endpoints/{id}/test": {
+      "post": {
+        "operationId": "ConsoleWebhooksController_sendTestEvent",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleWebhooksController_sendTestEvent_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Webhooks"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/webhooks/deliveries": {
       "get": {
         "operationId": "ConsoleWebhooksController_listDeliveries",
@@ -6988,6 +7046,14 @@
       }
     },
     "schemas": {
+      "ApiCredentialEnvironment": {
+        "description": "`LIVE` keys (`octap_live_…`) move real points on-chain. `SANDBOX` keys (`octap_test_…`) earn and\nredeem against a separate sandbox ledger: same validation and response shapes, no chain, no real\nbalance, no webhooks. A sandbox key may only call the routes that support sandbox; any other\nwrite is a 403 with `code: \"SANDBOX_NOT_SUPPORTED\"`.",
+        "enum": [
+          "LIVE",
+          "SANDBOX"
+        ],
+        "type": "string"
+      },
       "ConsoleApiCredentialsController_issue_Body": {
         "type": "object",
         "properties": {
@@ -6996,10 +7062,18 @@
             "type": "string"
           },
           "scope": {
-            "description": "`read` (the default) grants `['read']`; `write` grants `['read', 'write']` and only the Owner may\nask for it. A Business Developer revokes and renames read keys only.",
+            "description": "`read` (the default) grants `['read']`; `write` grants `['read', 'write']` and only the Owner may\nask for it. A Business Developer revokes and renames read keys only. Sandbox keys are the\nexception: they cannot change anything real, so a Business Developer may create and manage a\nsandbox `write` key.",
             "enum": [
               "read",
               "write"
+            ],
+            "type": "string"
+          },
+          "environment": {
+            "description": "`LIVE` by default.",
+            "enum": [
+              "LIVE",
+              "SANDBOX"
             ],
             "type": "string"
           }
@@ -7033,6 +7107,10 @@
           "status": {
             "type": "string"
           },
+          "environment": {
+            "$ref": "#/components/schemas/ApiCredentialEnvironment",
+            "description": "`SANDBOX` keys never touch real points or the chain (OCT-297). Fixed at issue."
+          },
           "createdAt": {
             "type": "string"
           },
@@ -7046,6 +7124,7 @@
         },
         "required": [
           "createdAt",
+          "environment",
           "id",
           "keyPrefix",
           "lastUsedAt",
@@ -9361,6 +9440,35 @@
           "url"
         ]
       },
+      "ConsoleWebhooksController_sendTestEvent_Response": {
+        "type": "object",
+        "properties": {
+          "endpointId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string",
+            "const": "webhook.test"
+          },
+          "status": {
+            "type": "string",
+            "const": "PENDING"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deliveryId",
+          "endpointId",
+          "eventId",
+          "eventType",
+          "status"
+        ]
+      },
       "CreditsController_earn_Body": {
         "type": "object",
         "properties": {
@@ -9389,6 +9497,11 @@
       "CreditsController_earn_Response": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "transactionId": {
             "type": "string"
           },
@@ -9454,6 +9567,11 @@
       "CreditsController_finalizePosRedemption_Response": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "transactionId": {
             "type": "string"
           },
@@ -9493,6 +9611,11 @@
       "CreditsController_getBalance_Response": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "organizationEndUserId": {
             "type": "string"
           },
@@ -9669,6 +9792,11 @@
       "CreditsController_reservePosRedemption_Response": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "transactionId": {
             "type": "string"
           },
@@ -12833,6 +12961,10 @@
           "status": {
             "type": "string"
           },
+          "environment": {
+            "$ref": "#/components/schemas/ApiCredentialEnvironment",
+            "description": "`SANDBOX` keys never touch real points or the chain (OCT-297). Fixed at issue."
+          },
           "createdAt": {
             "type": "string"
           },
@@ -12846,6 +12978,7 @@
         },
         "required": [
           "createdAt",
+          "environment",
           "id",
           "keyPrefix",
           "lastUsedAt",
@@ -12883,6 +13016,11 @@
       "CreditBalanceSnapshot": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "organizationEndUserId": {
             "type": "string"
           },
@@ -12971,6 +13109,11 @@
       "LoyaltyTransactionDto": {
         "type": "object",
         "properties": {
+          "isSandbox": {
+            "description": "Present, and true, only on what a sandbox key made or reads (OCT-297).",
+            "const": true,
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },

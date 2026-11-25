@@ -8,7 +8,8 @@ export type OrganizationEventSubject =
   | { kind: 'voucher'; id: string; batchId: string | null }
   | { kind: 'voucherOwnership'; id: string; voucherId: string; memberId: string }
   | { kind: 'loyaltyTransaction'; id: string; memberId: string }
-  | { kind: 'issuanceBudget' };
+  | { kind: 'issuanceBudget' }
+  | { kind: 'webhookEndpoint'; id: string };
 
 /**
  * One message of the console event stream (`GET /v1/console/organizations/:id/events`, OCT-326):

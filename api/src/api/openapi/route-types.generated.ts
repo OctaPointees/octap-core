@@ -107,6 +107,7 @@ export type ConsoleWebhooksController_registerEndpoint_Body = Parameters<Console
 export type ConsoleWebhooksController_disableEndpoint_Response = Awaited<ReturnType<ConsoleWebhooksController['disableEndpoint']>>;
 export type ConsoleWebhooksController_enableEndpoint_Response = Awaited<ReturnType<ConsoleWebhooksController['enableEndpoint']>>;
 export type ConsoleWebhooksController_rotateSecret_Response = Awaited<ReturnType<ConsoleWebhooksController['rotateSecret']>>;
+export type ConsoleWebhooksController_sendTestEvent_Response = Awaited<ReturnType<ConsoleWebhooksController['sendTestEvent']>>;
 export type ConsoleWebhooksController_listDeliveries_Response = Awaited<ReturnType<ConsoleWebhooksController['listDeliveries']>>;
 export type ConsoleWebhooksController_replayDelivery_Response = Awaited<ReturnType<ConsoleWebhooksController['replayDelivery']>>;
 export type CreditsController_earn_Response = Awaited<ReturnType<CreditsController['earn']>>;

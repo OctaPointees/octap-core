@@ -37,17 +37,26 @@ export class ConsoleApiCredentialsService {
 
   /** `read` is the default; only the Owner may ask for `write`. */
   issue(userId: string, orgId: string, input: Record<string, unknown>): Promise<CreatedConsoleCredential> {
-    if (!input || typeof input !== 'object' || Object.keys(input).some((key) => key !== 'name' && key !== 'scope'))
-      throw new BadRequestException('Only name and scope can be set on an API key');
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Object.keys(input).some((key) => !['name', 'scope', 'environment'].includes(key))
+    )
+      throw new BadRequestException('Only name, scope and environment can be set on an API key');
     const name = credentialName(input.name);
     if (input.scope !== undefined && input.scope !== 'read' && input.scope !== 'write')
       throw new BadRequestException('scope must be read or write');
+    if (input.environment !== undefined && input.environment !== 'LIVE' && input.environment !== 'SANDBOX')
+      throw new BadRequestException('environment must be LIVE or SANDBOX');
+    const environment = input.environment ?? 'LIVE';
     const scopes = input.scope === 'write' ? ['read', 'write'] : ['read'];
     return this.run(async () => {
       const { credential, rawKey } = await this.organizations.withDeveloperAccess(userId, orgId, (tx, role) => {
-        if (role !== 'OWNER' && scopes.includes('write'))
-          throw new ForbiddenException('Only the Owner can create a write key; a Business Developer creates read keys');
-        return this.apiCredentials.issue(orgId, name, scopes, tx);
+        if (role !== 'OWNER' && environment === 'LIVE' && scopes.includes('write'))
+          throw new ForbiddenException(
+            'Only the Owner can create a live write key; a Business Developer creates read keys and sandbox keys',
+          );
+        return this.apiCredentials.issue(orgId, name, scopes, tx, environment);
       });
       return { ...toConsoleCredential(credential), rawKey };
     });
@@ -82,10 +91,13 @@ export class ConsoleApiCredentialsService {
   }
 }
 
-/** The Owner manages every key; a Business Developer only read-only ones, never the Owner's write keys. */
+/**
+ * The Owner manages every key; a Business Developer read-only ones and sandbox ones, never a live
+ * write key: a sandbox key cannot change anything real (OCT-297).
+ */
 function keyAuthority(role: DeveloperRole) {
-  return (credential: Pick<ApiCredential, 'scopes'>) => {
-    if (role === 'OWNER') return;
+  return (credential: Pick<ApiCredential, 'scopes' | 'environment'>) => {
+    if (role === 'OWNER' || credential.environment === 'SANDBOX') return;
     if ((credential.scopes as string[]).some((scope) => scope !== 'read'))
       throw new ForbiddenException('Only the Owner can revoke or rename a key with more than read access');
   };
@@ -99,7 +111,10 @@ function credentialName(value: unknown): string {
 
 /** Whitelists the fields the console may see: never the key hash. */
 function toConsoleCredential(
-  row: Pick<ApiCredential, 'id' | 'name' | 'keyPrefix' | 'scopes' | 'status' | 'createdAt' | 'lastUsedAt'>,
+  row: Pick<
+    ApiCredential,
+    'id' | 'name' | 'keyPrefix' | 'scopes' | 'status' | 'environment' | 'createdAt' | 'lastUsedAt'
+  >,
 ): ConsoleCredential {
   return {
     id: row.id,
@@ -107,6 +122,7 @@ function toConsoleCredential(
     keyPrefix: row.keyPrefix,
     scopes: row.scopes as string[],
     status: row.status,
+    environment: row.environment,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
   };

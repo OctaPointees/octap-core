@@ -41,6 +41,31 @@ export async function recordEvent<T extends WebhookEventType>(
 }
 
 /**
+ * A `webhook.test` event (OCT-297's test ping), queued for `endpointId` only. Like `recordEvent` it
+ * goes through the outbox, so it is signed, retried and listed like any delivery; unlike it, it
+ * does not fan out to the organization's other endpoints. Call it under the organization's tenant
+ * context.
+ */
+export async function recordTestEvent(
+  tx: DrizzleDb,
+  params: { organizationId: string; endpointId: string },
+): Promise<{ eventId: string; deliveryId: string }> {
+  const data: WebhookEventData<'webhook.test'> = {
+    endpointId: params.endpointId,
+    message: 'Test event from the OctaP console. Nothing happened in your organization.',
+  };
+  const [event] = await tx
+    .insert(organizationEvents)
+    .values({ organizationId: params.organizationId, type: 'webhook.test', payload: data })
+    .returning();
+  const [delivery] = await tx
+    .insert(webhookDeliveries)
+    .values({ organizationId: params.organizationId, endpointId: params.endpointId, eventId: event.id })
+    .returning({ id: webhookDeliveries.id });
+  return { eventId: event.id, deliveryId: delivery.id };
+}
+
+/**
  * Reads the outbox for the console event stream (OCT-326) and trims it. `replaySince` and `hasEvent`
  * run under the organization's RLS context. Two methods are RLS exceptions, by design: the stream's
  * scan (`latestSequence`, `scanSince`) reads every organization that has a stream open on this

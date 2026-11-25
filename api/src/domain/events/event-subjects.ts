@@ -64,6 +64,7 @@ const SUBJECT_OF: SubjectOf = {
   'voucher.paused': voucher,
   'voucher.archived': voucher,
   'budget.low': () => ({ kind: 'issuanceBudget' }),
+  'webhook.test': (data) => ({ kind: 'webhookEndpoint', id: data.endpointId }),
 };
 
 /**

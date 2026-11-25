@@ -11,6 +11,11 @@ Server-to-server authentication and tenant resolution for the REST API.
   write is logged and the request still goes through.
   A route on this guard authorizes by the key's scopes only: the role of whoever created the key
   plays no part.
+  A key is LIVE or SANDBOX (`environment`, fixed at issue; sandbox keys start `octap_test_`). The
+  guard puts it on `request.tenant` and refuses a SANDBOX key on any non-GET route that is not
+  marked `@SandboxSupported()` (`sandbox.decorator.ts`): 403 `code: "SANDBOX_NOT_SUPPORTED"`. A new
+  write route is therefore closed to sandbox keys until it decides what sandbox means for it. See
+  `domain/sandbox/README.md`.
 - `rate-limit.util.ts`: the pure rate-limit logic the guard calls.
 - No request signing. HMAC request signing was removed in OCT-70: no route used it, and it was
   keyed by the stored `keyHash`, so it added no secret beyond the key itself. If key management

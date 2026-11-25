@@ -22,6 +22,9 @@ export interface EarnPointsRequest {
 }
 
 export interface EarnPointsResponse {
+  /** Present, and true, only on what a sandbox key made or reads (OCT-297). */
+  isSandbox?: true;
+
   transactionId: string;
   organizationEndUserId: string;
   purchaseAmount: number | null;
@@ -54,6 +57,9 @@ export interface ReservePosRedemptionRequest extends PosRedemptionBenefit {
 }
 
 export interface ReservePosRedemptionResponse {
+  /** Present, and true, only on what a sandbox key made or reads (OCT-297). */
+  isSandbox?: true;
+
   transactionId: string;
   /** Null only when `status` isn't PENDING — the command already settled on an earlier call. */
   digest: string | null;
@@ -69,6 +75,9 @@ export interface FinalizePosRedemptionRequest {
 }
 
 export interface FinalizePosRedemptionResponse {
+  /** Present, and true, only on what a sandbox key made or reads (OCT-297). */
+  isSandbox?: true;
+
   transactionId: string;
   organizationEndUserId: string;
   pointsRedeemed: number;
@@ -78,6 +87,9 @@ export interface FinalizePosRedemptionResponse {
 }
 
 export interface CreditBalanceSnapshot {
+  /** Present, and true, only on what a sandbox key made or reads (OCT-297). */
+  isSandbox?: true;
+
   organizationEndUserId: string;
   confirmedBalance: number;
   pendingEarn: number;
@@ -110,6 +122,9 @@ export interface ReverseTransactionResponse {
 }
 
 export interface LoyaltyTransactionDto {
+  /** Present, and true, only on what a sandbox key made or reads (OCT-297). */
+  isSandbox?: true;
+
   id: string;
   organizationId: string;
   organizationEndUserId: string;

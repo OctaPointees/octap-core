@@ -59,6 +59,17 @@ export class ConsoleWebhooksController {
     return this.webhooks.rotateSecret(req.consoleIdentity.user.id, orgId, id);
   }
 
+  /** Sends a `webhook.test` event to this endpoint only, through the normal signed delivery. */
+  @Post('endpoints/:id/test')
+  @Header('Cache-Control', 'no-store')
+  sendTestEvent(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.webhooks.sendTestEvent(req.consoleIdentity.user.id, orgId, id);
+  }
+
   @Get('deliveries')
   @Header('Cache-Control', 'no-store')
   listDeliveries(@Req() req: ConsoleRequest, @Param('organizationId', ParseUUIDPipe) orgId: string) {

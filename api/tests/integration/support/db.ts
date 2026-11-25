@@ -146,9 +146,10 @@ export async function seedCredential(
     scopes = ['read', 'write'],
     expiresAt,
     status,
-  }: { scopes?: string[]; expiresAt?: Date; status?: 'ACTIVE' | 'REVOKED' } = {},
+    environment = 'LIVE',
+  }: { scopes?: string[]; expiresAt?: Date; status?: 'ACTIVE' | 'REVOKED'; environment?: 'LIVE' | 'SANDBOX' } = {},
 ) {
-  const { raw, prefix, hash } = generateApiKey();
+  const { raw, prefix, hash } = generateApiKey(environment);
   const [credential] = await db
     .insert(schema.apiCredentials)
     .values({
@@ -158,6 +159,7 @@ export async function seedCredential(
       keyHash: hash,
       scopes,
       expiresAt,
+      environment,
       ...(status ? { status } : {}),
     })
     .returning();

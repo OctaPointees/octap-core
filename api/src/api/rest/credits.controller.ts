@@ -4,6 +4,8 @@ import { EarnService } from '#domain/credits/earn.service.js';
 import { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
 import { ReversalService } from '#domain/credits/reversal.service.js';
 import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
+import { isSandboxDigest, SandboxCreditsService } from '#domain/sandbox/sandbox-credits.service.js';
+import { SandboxSupported } from '#infra/auth/sandbox.decorator.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
@@ -33,14 +35,17 @@ export class CreditsController {
     private readonly reversalService: ReversalService,
     private readonly posRedemptionService: PosRedemptionService,
     private readonly issuanceBudget: IssuanceBudgetService,
+    private readonly sandbox: SandboxCreditsService,
   ) {}
 
   @Post('earn')
   @Scopes('write')
+  @SandboxSupported()
   async earn(@Tenant() tenant: TenantContext, @Body() body: EarnPointsBodyDto): Promise<EarnPointsResponse> {
     if (!body.organizationEndUserId || !body.purchaseAmount || !body.idempotencyKey) {
       throw new BadRequestException('organizationEndUserId, purchaseAmount, and idempotencyKey are required');
     }
+    if (tenant.environment === 'SANDBOX') return this.sandbox.earn(tenant, body);
     return this.earnService.executeEarn(tenant.organizationId, body);
   }
 
@@ -51,6 +56,7 @@ export class CreditsController {
    */
   @Post('redeem/reserve')
   @Scopes('write')
+  @SandboxSupported()
   async reservePosRedemption(
     @Tenant() tenant: TenantContext,
     @Body() body: ReservePosRedemptionBodyDto,
@@ -58,6 +64,7 @@ export class CreditsController {
     if (!body.organizationEndUserId || !body.pointsAmount || !body.idempotencyKey) {
       throw new BadRequestException('organizationEndUserId, pointsAmount, and idempotencyKey are required');
     }
+    if (tenant.environment === 'SANDBOX') return this.sandbox.reserve(tenant, body);
     return this.posRedemptionService.reserve(tenant.organizationId, body);
   }
 
@@ -73,6 +80,7 @@ export class CreditsController {
     if (!body.digest || !body.signature) {
       throw new BadRequestException('digest and signature are required');
     }
+    if (isSandboxDigest(body.digest)) return this.sandbox.finalize(body);
     return this.posRedemptionService.finalize(body);
   }
 
@@ -102,6 +110,7 @@ export class CreditsController {
     @Param('memberId') memberId: string,
     @Query('programId') programId?: string,
   ): Promise<CreditBalanceSnapshot> {
+    if (tenant.environment === 'SANDBOX') return this.sandbox.balance(tenant.organizationId, memberId);
     return this.creditsService.getBalance(tenant.organizationId, memberId, programId);
   }
 
@@ -113,6 +122,8 @@ export class CreditsController {
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
   ): Promise<LoyaltyTransactionPage> {
+    if (tenant.environment === 'SANDBOX')
+      return this.sandbox.listTransactions(tenant.organizationId, memberId, { limit, cursor });
     return this.creditsService.listTransactions(tenant.organizationId, memberId, { limit, cursor });
   }
 }

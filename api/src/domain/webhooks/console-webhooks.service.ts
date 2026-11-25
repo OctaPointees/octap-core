@@ -57,6 +57,11 @@ export class ConsoleWebhooksService {
     return this.owner(userId, orgId, (tx) => this.endpoints.rotateSecret(orgId, endpointId, tx));
   }
 
+  /** Queues a signed `webhook.test` delivery to this endpoint only (OCT-297). */
+  sendTestEvent(userId: string, orgId: string, endpointId: string) {
+    return this.owner(userId, orgId, (tx) => this.endpoints.sendTest(orgId, endpointId, tx));
+  }
+
   listDeliveries(userId: string, orgId: string) {
     return this.owner(userId, orgId, (tx) => this.deliveries.list(orgId, tx));
   }
