@@ -3,6 +3,7 @@ import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { webhookEndpoints, webhookDeliveries } from '../schema/webhooks.schema.js';
 import { withTenant } from '../rls.js';
+import { recordAudit } from './audit.repository.js';
 import { inTenantOf, tenantOf } from './tenant-lookup.js';
 
 /**
@@ -78,6 +79,13 @@ export class WebhooksRepository {
   ) {
     return withTenant(db, params.organizationId, async (tx) => {
       const [created] = await tx.insert(webhookEndpoints).values(params).returning();
+      await recordAudit(tx, {
+        organizationId: params.organizationId,
+        action: 'webhook_endpoint.registered',
+        targetType: 'webhook_endpoint',
+        targetId: created.id,
+        changes: { url: created.url },
+      });
       return created;
     });
   }
@@ -117,6 +125,12 @@ export class WebhooksRepository {
         .set({ status, updatedAt: new Date() })
         .where(eq(webhookEndpoints.id, endpointId))
         .returning();
+      await recordAudit(tx, {
+        organizationId,
+        action: status === 'ACTIVE' ? 'webhook_endpoint.enabled' : 'webhook_endpoint.disabled',
+        targetType: 'webhook_endpoint',
+        targetId: endpointId,
+      });
       return updated;
     });
   }
@@ -128,6 +142,12 @@ export class WebhooksRepository {
         .set({ secret, updatedAt: new Date() })
         .where(eq(webhookEndpoints.id, endpointId))
         .returning();
+      await recordAudit(tx, {
+        organizationId,
+        action: 'webhook_endpoint.secret_rotated',
+        targetType: 'webhook_endpoint',
+        targetId: endpointId,
+      });
       return updated;
     });
   }
@@ -256,6 +276,13 @@ export class WebhooksRepository {
         })
         .where(eq(webhookDeliveries.id, id))
         .returning({ id: webhookDeliveries.id });
+      if (updated)
+        await recordAudit(tx, {
+          organizationId,
+          action: 'webhook_delivery.replayed',
+          targetType: 'webhook_delivery',
+          targetId: id,
+        });
       return updated && deliveryWithEvent(tx, updated.id);
     });
   }

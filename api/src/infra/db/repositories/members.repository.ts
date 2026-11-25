@@ -3,6 +3,7 @@ import { and, asc, eq, gt, ilike, or } from 'drizzle-orm';
 import type { MemberDirectoryQuery, MemberProfilePatch } from '@octap/contracts';
 import { ConsoleNotFoundError, ConsoleOrganizationsRepository } from './console-organizations.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
+import { recordAudit } from './audit.repository.js';
 
 const fields = {
   id: organizationEndUsers.id,
@@ -64,12 +65,36 @@ export class MembersRepository {
   }
   patch(userId: string, organizationId: string, memberId: string, input: MemberProfilePatch) {
     return this.access.withAccess(userId, organizationId, true, async (tx) => {
-      const [row] = await tx
+      const ofMember = and(
+        eq(organizationEndUsers.organizationId, organizationId),
+        eq(organizationEndUsers.id, memberId),
+      );
+      const [before] = await tx
+        .select({ status: organizationEndUsers.status })
+        .from(organizationEndUsers)
+        .where(ofMember)
+        .for('update');
+      if (!before) throw new ConsoleNotFoundError();
+      await tx
         .update(organizationEndUsers)
         .set({ ...input, updatedAt: new Date() })
-        .where(and(eq(organizationEndUsers.organizationId, organizationId), eq(organizationEndUsers.id, memberId)))
-        .returning({ id: organizationEndUsers.id });
-      if (!row) throw new ConsoleNotFoundError();
+        .where(ofMember);
+      // Personal values stay out of the audit log: which fields changed, and the status itself.
+      await recordAudit(tx, {
+        organizationId,
+        action:
+          input.status === 'BLOCKED' && before.status !== 'BLOCKED'
+            ? 'member.blocked'
+            : input.status === 'ACTIVE' && before.status !== 'ACTIVE'
+              ? 'member.unblocked'
+              : 'member.updated',
+        targetType: 'member',
+        targetId: memberId,
+        changes: {
+          fields: Object.keys(input).sort(),
+          ...(input.status !== undefined ? { status: { from: before.status, to: input.status } } : {}),
+        },
+      });
       return { updated: true };
     });
   }

@@ -18,6 +18,7 @@ import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 import { SCOPES_KEY } from './scopes.decorator.js';
 import { SANDBOX_NOT_SUPPORTED, SANDBOX_SUPPORTED_KEY } from './sandbox.decorator.js';
 import type { TenantContext } from './tenant-context.js';
+import { setRequestActor } from '#observability/request-context.js';
 
 /**
  * Authenticates server-to-server requests via `Authorization: Bearer <api key>`, resolving
@@ -72,6 +73,7 @@ export class ApiKeyGuard implements CanActivate {
       environment: credential.environment,
     };
     request.tenant = tenant;
+    setRequestActor({ type: 'CREDENTIAL', id: credential.id });
 
     const requiredScopes =
       this.reflector.getAllAndOverride<string[]>(SCOPES_KEY, [context.getHandler(), context.getClass()]) ?? [];
