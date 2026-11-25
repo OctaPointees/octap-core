@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import type { Test } from 'supertest';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { createTestApp } from './support/app.js';
-import { resetDb, schema, seedCredential, seedOrganization } from './support/db.js';
+import { deliveriesWithEvents, resetDb, schema, seedCredential, seedDelivery, seedOrganization } from './support/db.js';
 
 const ACTORS = ['owner', 'developer', 'stranger', 'inactive', 'outsider'] as const;
 type Actor = (typeof ACTORS)[number];
@@ -51,10 +51,10 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
         .expect(201)
     ).body as { id: string; secret: string };
     const repo = ctx.app.get(WebhooksRepository);
-    const delivery = await repo.enqueueDelivery({
+    const delivery = await seedDelivery(ctx.db, {
       organizationId: org,
       endpointId: endpoint.id,
-      eventType: 'credits.earned',
+      type: 'credits.earned',
       payload: { purchaseAmount: 100 },
     });
     await repo.markDeadLetter(delivery.id, 503, 'HTTP 503');
@@ -147,7 +147,7 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
     const [stored] = await ctx.db.select().from(schema.webhookEndpoints);
     expect(await ctx.db.select().from(schema.webhookEndpoints)).toHaveLength(1);
     expect(stored).toMatchObject({ status: 'ACTIVE', secret: endpoint.secret });
-    expect((await ctx.db.select().from(schema.webhookDeliveries))[0].status).toBe('DEAD_LETTER');
+    expect((await deliveriesWithEvents(ctx.db))[0].status).toBe('DEAD_LETTER');
     expect(await ctx.db.select().from(schema.voucherRefundPolicies)).toEqual([]);
     await ctx.http().get(refunds()).expect(401);
   });

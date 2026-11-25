@@ -71,7 +71,7 @@ Mỗi request có các header sau:
 
 ## Dựa vào event đã xác nhận
 
-`credits.earned` là best-effort: trong trường hợp hiếm, như server sập ngay sau khi nhận lệnh earn, event này có thể mất. Các event đã xác nhận được xếp hàng trong cùng database transaction với thay đổi mà chúng báo, nên hãy xây logic trên các event đó.
+Mọi event đều được xếp hàng trong cùng database transaction với thay đổi mà nó báo, nên không event nào mất khi server sập. `credits.earned` chỉ báo lệnh earn đã được nhận: hãy tính số dư theo `credits.earn.confirmed`, và bắt đầu bán voucher theo `voucher.activated`.
 
 ## Quản lý endpoint
 

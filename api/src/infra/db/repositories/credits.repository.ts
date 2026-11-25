@@ -22,7 +22,7 @@ import {
   lockIdempotencyKey,
   OperationPayloadConflictError,
 } from './operations.repository.js';
-import { enqueueWebhookEvent } from './webhooks.repository.js';
+import { recordEvent } from './events.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { asOwnRole, withRls, withTenant } from '../rls.js';
 import { inTenantOf, tenantOf } from './tenant-lookup.js';
@@ -641,12 +641,21 @@ export class CreditsRepository {
           .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.estimatedPoints}`, updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
 
-        return {
-          transaction,
-          // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
-          newBalance: Number(ownership.confirmedBalance),
-          isNew: true,
-        };
+        // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
+        const newBalance = Number(ownership.confirmedBalance);
+        // Outbox (OCT-325): accepted exactly when the earn is; a retry under the same key never gets here.
+        await recordEvent(tx, {
+          organizationId: params.organizationId,
+          type: 'credits.earned',
+          payload: {
+            transactionId: transaction.id,
+            organizationEndUserId: params.organizationEndUserId,
+            purchaseAmount: params.purchaseAmount,
+            estimatedPoints: params.estimatedPoints,
+            newBalance,
+          },
+        });
+        return { transaction, newBalance, isNew: true };
       });
     });
   }
@@ -836,9 +845,9 @@ export class CreditsRepository {
           }
           // Outbox (OCT-209): commits or rolls back with the confirm itself, and only the one caller
           // that got past the PENDING guard above ever reaches it.
-          await enqueueWebhookEvent(tx, {
+          await recordEvent(tx, {
             organizationId: pending.organizationId,
-            eventType: 'credits.earn.confirmed',
+            type: 'credits.earn.confirmed',
             payload: {
               transactionId: params.loyaltyTransactionId,
               organizationEndUserId: params.organizationEndUserId,
@@ -882,9 +891,9 @@ export class CreditsRepository {
             .where(eq(creditOwnerships.id, ownership.id));
         }
 
-        await enqueueWebhookEvent(tx, {
+        await recordEvent(tx, {
           organizationId: pending.organizationId,
-          eventType: 'credits.earn.failed',
+          type: 'credits.earn.failed',
           payload: {
             transactionId: params.loyaltyTransactionId,
             organizationEndUserId: params.organizationEndUserId,
@@ -1132,9 +1141,9 @@ export class CreditsRepository {
             .where(eq(creditOwnerships.id, ownership.id));
           await consumeBuckets(tx, ownership.id, params.pointsAmount);
           // Same outbox contract as `confirmEarnOnChain`.
-          await enqueueWebhookEvent(tx, {
+          await recordEvent(tx, {
             organizationId: pending.organizationId,
-            eventType: 'credits.redemption.confirmed',
+            type: 'credits.redemption.confirmed',
             payload: {
               transactionId: params.loyaltyTransactionId,
               organizationEndUserId: params.organizationEndUserId,
@@ -1351,9 +1360,9 @@ export class CreditsRepository {
 
       // Outbox (OCT-244), same contract as the `*.confirmed` events: queued in this transaction, so
       // the webhook exists exactly when the reversal does. A replayed key never reaches here.
-      await enqueueWebhookEvent(tx, {
+      await recordEvent(tx, {
         organizationId: params.organizationId,
-        eventType: 'credits.reversed',
+        type: 'credits.reversed',
         payload: {
           reversalTransactionId: reversal.id,
           reversedTransactionId: params.original.id,

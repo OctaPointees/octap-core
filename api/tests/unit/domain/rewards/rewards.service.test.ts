@@ -153,7 +153,7 @@ describe('RewardsService.createVoucher', () => {
     expect(latestApprovals).toHaveBeenCalledWith('org-1', ['v-1'], tx);
     expect(created.approval).toBeNull();
     await svc.updateVoucher('org-1', 'v-1', { title: 'New' }, owner, tx);
-    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx, owner);
+    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx, owner, null);
   });
 
   it('maps approval requests, and a repository refusal to a 403', async () => {
@@ -167,6 +167,7 @@ describe('RewardsService.createVoucher', () => {
       submittedByCredentialId: 'cred-1',
       reviewedById: 'owner-1',
       reason: 'Cap too high',
+      snapshot: null,
       submittedAt,
       reviewedAt: submittedAt,
     };
@@ -177,12 +178,14 @@ describe('RewardsService.createVoucher', () => {
       },
     });
     expect((await svc.getVoucher('org-1', 'v-1')).approval).toEqual({
+      id: 'req-1',
       status: 'REJECTED',
       submittedBy: { type: 'API_CREDENTIAL', id: 'cred-1' },
       submittedAt: '2026-11-18T00:00:00.000Z',
       reviewedById: 'owner-1',
       reviewedAt: '2026-11-18T00:00:00.000Z',
       reason: 'Cap too high',
+      snapshot: null,
     });
     await expect(svc.submitVoucher('org-1', 'v-1', 'bd-1')).rejects.toMatchObject({ status: 403 });
   });

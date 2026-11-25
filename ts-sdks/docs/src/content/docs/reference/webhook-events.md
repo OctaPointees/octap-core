@@ -9,11 +9,11 @@ Every event has this shape, and `data` depends on `type`:
 { id: string; type: WebhookEventType; data: … }
 ```
 
-`id` is stable across retries and replays, so deduplicate on it.
+`id` is stable across retries and replays, and the same for every endpoint, so deduplicate on it.
 
 | Event | Sent when | Delivery |
 | --- | --- | --- |
-| [`credits.earned`](#creditsearned) | An earn was accepted, and is still pending | Best-effort |
+| [`credits.earned`](#creditsearned) | An earn was accepted, and is still pending | Queued with the earn |
 | [`credits.earn.confirmed`](#creditsearnconfirmed) | The chain confirmed an earn | Exactly one per transaction is queued |
 | [`credits.earn.failed`](#creditsearnfailed) | An accepted earn definitely failed | Queued with the failure |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | The chain confirmed a spend, for checkout or a paid voucher | Exactly one per transaction is queued |
@@ -21,6 +21,7 @@ Every event has this shape, and `data` depends on `type`:
 | [`voucher.granted`](#vouchergranted) | The chain recorded a grant or free claim | Exactly one per voucher is queued |
 | [`voucher.redeemed`](#voucherredeemed) | The customer signed and the chain marked a voucher used | Exactly one per voucher is queued |
 | [`budget.low`](#budgetlow) | The issuance budget crossed 80% or 95% used | Checked every few minutes, one per crossing |
+| [`voucher.created` and the other voucher events](#voucher-lifecycle-events) | A voucher was created, submitted, returned, activated, failed to publish, paused or archived | Queued with the change |
 
 Queued events can still be retried, so your receiver may see the same `id` more than once.
 
@@ -120,3 +121,33 @@ Your [issuance budget](/concepts/issuance-budget/) is running low. [Request a to
 | `threshold` | `80 \| 95` | The percentage used that was crossed |
 | `remaining` | `number` | Points left across all shards |
 | `capacity` | `number` | Initial budget plus every applied top-up |
+
+## Voucher lifecycle events
+
+`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused` and `voucher.archived` keep your catalog in step with OctaP. Each one is queued in the same database transaction as the change it reports. Each carries the voucher as it is right after that change:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `voucherId` | `string` | |
+| `code` | `string` | |
+| `title` | `string` | |
+| `batchId` | `string \| null` | The batch it was created or last imported in |
+| `status` | `string` | `DRAFT`, `PENDING_APPROVAL`, `ACTIVE`, `PAUSED`, `ARCHIVED`, … |
+| `publishStatus` | `string` | `NOT_PUBLISHED`, `PUBLISHING`, `PUBLISHED` or `FAILED` |
+| `suiTermsId` | `string \| null` | The on-chain terms, once published |
+| `createdBy` | `{ type: 'USER' \| 'API_CREDENTIAL'; id: string } \| null` | |
+| `activatedBy` | `{ type: 'USER' \| 'API_CREDENTIAL'; id: string } \| null` | Whoever activated it, or the Owner who approved it |
+| `activatedAt` | `string \| null` | |
+| `updatedAt` | `string` | |
+
+| Event | Sent when |
+| --- | --- |
+| `voucher.created` | A voucher was created on its own or by a batch, or an archived code was imported again. Created as `ACTIVE`, it is followed by `voucher.submitted`, or by `voucher.activated` once published. |
+| `voucher.submitted` | An activation is waiting for an Owner, because your organization requires approval. Also carries `approvalRequestId` and `submittedBy`. |
+| `voucher.returned` | A submission was rejected or withdrawn, and the voucher is back to `DRAFT`. Also carries `approvalRequestId`, `outcome` (`REJECTED` or `WITHDRAWN`), `reason` and `reviewedById`. |
+| `voucher.activated` | The voucher is `ACTIVE` and customers can claim it: the chain confirmed its terms, or a paused voucher was resumed. Start selling on this event, not on the activate response. |
+| `voucher.publish.failed` | Its terms never reached the chain. Fix the voucher and activate it again. |
+| `voucher.paused` | An Owner or an API key paused it. Claims stop. |
+| `voucher.archived` | Its batch was archived before it went live. It can't be used any more. |
+
+An approval sends no event of its own: publishing starts, and `voucher.activated` or `voucher.publish.failed` follows. A voucher paused while publishing stays paused once published, so it sends `voucher.activated` only when it is resumed. Running out of supply and expiry send no event.

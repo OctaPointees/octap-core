@@ -71,7 +71,7 @@ Each request carries these headers:
 
 ## Rely on confirmed events
 
-`credits.earned` is best-effort: in rare cases, such as a crash right after accepting an earn, it can be lost. The confirmed events are queued in the same database transaction as the change they report, so build your logic on those.
+Every event is queued in the same database transaction as the change it reports, so none is lost to a crash. `credits.earned` only says an earn was accepted: build balances on `credits.earn.confirmed`, and start selling a voucher on `voucher.activated`.
 
 ## Manage endpoints
 

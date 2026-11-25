@@ -15,6 +15,11 @@
   reported with its line and column and left out. Also exported: `VOUCHER_CSV_TEMPLATE`,
   `VOUCHER_CSV_TYPES`, `VOUCHER_BENEFIT_SCHEMA` and `suggestVoucherCode`.
 - The reference documents the `octap.benefit.v1` shape of `terms` the console reads.
+- `VoucherDto.createdBy`, `activatedBy` and `activatedAt` (OCT-324): who created a voucher, who took
+  it live (whoever activated it, or the Owner who approved it) and when publishing started. Each is
+  `{ type: 'USER' | 'API_CREDENTIAL', id }` or `null` when not recorded.
+- `VoucherApprovalDto.id` and `snapshot`: the submission an Owner decides on, and its terms as
+  submitted, which is what approving publishes.
 
 ### Changed
 
