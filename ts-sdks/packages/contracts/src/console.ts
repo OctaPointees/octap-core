@@ -1,4 +1,4 @@
-import type { CreateVoucherRequest } from './rewards.js';
+import type { CreateVoucherRequest, UpdateVoucherRequest } from './rewards.js';
 import type { OrganizationPersona } from './system-users.js';
 
 export type OrganizationType = 'INDIVIDUAL_HOUSEHOLD' | 'COMPANY';
@@ -126,8 +126,25 @@ export interface OrganizationSettingsInput {
    */
   voucherApprovalRequired: boolean;
 }
+/**
+ * `PATCH /v1/console/organizations/:id/vouchers/:voucherId`. `expectedUpdatedAt` is the voucher's
+ * `updatedAt` as the Owner reviewed it. Required when an Owner activates (`status: 'ACTIVE'`) while the
+ * organization requires approval: a draft changed since is a 409, so nobody's edit goes live unseen
+ * (OCT-324). Ignored otherwise.
+ */
+export type ConsoleVoucherPatch = UpdateVoucherRequest & { expectedUpdatedAt?: string };
+
+/**
+ * `POST /v1/console/organizations/:id/vouchers/:voucherId/approve`. `approvalRequestId` is the
+ * submission the Owner reviewed (`approval.id`): a voucher withdrawn and submitted again since is a 409.
+ */
+export interface VoucherApproveInput {
+  approvalRequestId: string;
+}
 /** `POST /v1/console/organizations/:id/vouchers/:voucherId/reject`. */
 export interface VoucherRejectInput {
+  /** The submission the Owner reviewed (`approval.id`), as for approving. */
+  approvalRequestId: string;
   /** 1–500 characters, shown to whoever submitted it. */
   reason: string;
 }

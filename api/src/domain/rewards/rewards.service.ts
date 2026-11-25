@@ -23,6 +23,7 @@ import {
   type ClaimVoucherRequest,
   type ClaimVoucherResponse,
   type GrantVoucherRequest,
+  type VoucherActorRef,
   type VoucherApprovalDto,
   type VoucherOwnershipDto,
 } from '@octap/contracts';
@@ -160,18 +161,40 @@ export class RewardsService {
     return this.withApproval(organizationId, voucher, tx);
   }
 
-  /** Publishing starts, as when an Owner activates it, after the same checks, made now. */
-  async approveVoucher(organizationId: string, voucherId: string, ownerId: string, tx?: DrizzleDb) {
+  /**
+   * Publishing starts, as when an Owner activates it, after the same checks, made now.
+   * `approvalRequestId` is the submission the Owner reviewed (409 when it was submitted again since).
+   */
+  async approveVoucher(
+    organizationId: string,
+    voucherId: string,
+    ownerId: string,
+    approvalRequestId: string,
+    tx?: DrizzleDb,
+  ) {
     await requireProgramConfig(this.programs(tx), organizationId);
     const voucher = await mapErrors(
-      this.rewardsRepo.reviewVoucher(organizationId, voucherId, ownerId, { approve: true }, tx),
+      this.rewardsRepo.reviewVoucher(organizationId, voucherId, ownerId, { approve: true, approvalRequestId }, tx),
     );
     return this.withApproval(organizationId, voucher, tx);
   }
 
-  async rejectVoucher(organizationId: string, voucherId: string, ownerId: string, reason: string, tx?: DrizzleDb) {
+  async rejectVoucher(
+    organizationId: string,
+    voucherId: string,
+    ownerId: string,
+    approvalRequestId: string,
+    reason: string,
+    tx?: DrizzleDb,
+  ) {
     const voucher = await mapErrors(
-      this.rewardsRepo.reviewVoucher(organizationId, voucherId, ownerId, { approve: false, reason }, tx),
+      this.rewardsRepo.reviewVoucher(
+        organizationId,
+        voucherId,
+        ownerId,
+        { approve: false, approvalRequestId, reason },
+        tx,
+      ),
     );
     return this.withApproval(organizationId, voucher, tx);
   }
@@ -244,6 +267,8 @@ export class RewardsService {
     req: UpdateVoucherRequest,
     actor: VoucherActor,
     tx?: DrizzleDb,
+    /** The `updatedAt` an Owner reviewed, for an activation while approval is required (OCT-324). */
+    expectedUpdatedAt: Date | null = null,
   ): Promise<VoucherDto> {
     validateVoucher(req, true);
     if (!Object.keys(req).length) throw new BadRequestException('Provide at least one voucher field');
@@ -277,6 +302,7 @@ export class RewardsService {
         },
         tx,
         actor,
+        expectedUpdatedAt,
       );
       return await this.withApproval(organizationId, updated, tx);
     } catch (error) {
@@ -348,18 +374,22 @@ export class RewardsService {
   }
 }
 
+/** A user or an API key from its pair of columns; `null` when neither is recorded. */
+function actorRef(userId: string | null, credentialId: string | null): VoucherActorRef {
+  if (credentialId) return { type: 'API_CREDENTIAL', id: credentialId };
+  return userId ? { type: 'USER', id: userId } : null;
+}
+
 function mapApproval(row: typeof voucherApprovalRequests.$inferSelect): VoucherApprovalDto {
   return {
+    id: row.id,
     status: row.status,
-    submittedBy: row.submittedByCredentialId
-      ? { type: 'API_CREDENTIAL', id: row.submittedByCredentialId }
-      : row.submittedByUserId
-        ? { type: 'USER', id: row.submittedByUserId }
-        : null,
+    submittedBy: actorRef(row.submittedByUserId, row.submittedByCredentialId),
     submittedAt: row.submittedAt.toISOString(),
     reviewedById: row.reviewedById,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     reason: row.reason,
+    snapshot: row.snapshot,
   };
 }
 
@@ -391,6 +421,9 @@ export function toVoucherDto(
     metadata: voucher.metadata as Record<string, unknown> | null,
     ...(approval !== undefined ? { approval: approval && mapApproval(approval) } : {}),
     batchId: voucher.importBatchId,
+    createdBy: actorRef(voucher.createdByUserId, voucher.createdByCredentialId),
+    activatedBy: actorRef(voucher.activatedByUserId, voucher.activatedByCredentialId),
+    activatedAt: voucher.activatedAt ? new Date(voucher.activatedAt).toISOString() : null,
     createdAt: new Date(voucher.createdAt).toISOString(),
     updatedAt: new Date(voucher.updatedAt).toISOString(),
   };

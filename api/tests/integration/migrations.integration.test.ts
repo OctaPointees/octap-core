@@ -212,3 +212,67 @@ describe('0019_earn_purchase_amount', () => {
     });
   });
 });
+
+describe('0033_voucher_approval_snapshot_and_actors', () => {
+  it("backfills a batch voucher's creator and an approved voucher's activator, and leaves the rest unknown", async () => {
+    await withDatabaseAt(32, async (client) => {
+      const [org] = await client`insert into organizations (slug, name) values (${randomUUID()}, 'Org') returning id`;
+      const [developer] =
+        await client`insert into system_users (email, full_name) values ('bd@example.com', 'BD') returning id`;
+      const [owner] =
+        await client`insert into system_users (email, full_name) values ('owner@example.com', 'Owner') returning id`;
+      const [batch] = await client`insert into voucher_import_batches (organization_id, source, created_by_user_id)
+        values (${org.id}, 'CONSOLE', ${developer.id}) returning id`;
+      const voucher = async (code: string, extra: { batch?: string; publishStatus?: string } = {}) =>
+        (
+          await client`insert into vouchers (organization_id, code, title, import_batch_id, publish_status)
+            values (${org.id}, ${code}, ${code}, ${extra.batch ?? null}, ${extra.publishStatus ?? 'NOT_PUBLISHED'})
+            returning id`
+        )[0].id as string;
+      await voucher('IMPORTED', { batch: batch.id });
+      const approved = await voucher('APPROVED', { publishStatus: 'PUBLISHED' });
+      const rejected = await voucher('REJECTED');
+      const reviewedAt = new Date('2026-11-20T10:00:00Z');
+      for (const [id, status] of [
+        [approved, 'APPROVED'],
+        [rejected, 'REJECTED'],
+      ] as const) {
+        await client`insert into voucher_approval_requests
+          (organization_id, voucher_id, status, submitted_by_user_id, reviewed_by_id, reviewed_at)
+          values (${org.id}, ${id}, ${status}, ${developer.id}, ${owner.id}, ${reviewedAt.toISOString()})`;
+      }
+
+      await migrate(drizzle(client), { migrationsFolder: migrations });
+
+      const rows = await client`select code, created_by_user_id, created_by_credential_id, activated_by_user_id,
+        activated_at from vouchers order by code`;
+      expect(
+        rows.map((r) => ({ ...r, activated_at: r.activated_at && new Date(r.activated_at).toISOString() })),
+      ).toEqual([
+        {
+          code: 'APPROVED',
+          created_by_user_id: null,
+          created_by_credential_id: null,
+          activated_by_user_id: owner.id,
+          activated_at: reviewedAt.toISOString(),
+        },
+        {
+          code: 'IMPORTED',
+          created_by_user_id: developer.id,
+          created_by_credential_id: null,
+          activated_by_user_id: null,
+          activated_at: null,
+        },
+        {
+          code: 'REJECTED',
+          created_by_user_id: null,
+          created_by_credential_id: null,
+          activated_by_user_id: null,
+          activated_at: null,
+        },
+      ]);
+      const [request] = await client`select snapshot from voucher_approval_requests where voucher_id = ${approved}`;
+      expect(request.snapshot).toBeNull();
+    });
+  });
+});
