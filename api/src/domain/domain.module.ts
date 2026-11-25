@@ -7,6 +7,7 @@ import { MembersModule } from './members/members.module.js';
 import { AdministrationModule } from './administration/administration.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { McpAuthModule } from './mcp-auth/mcp-auth.module.js';
+import { AssistantModule } from './assistant/assistant.module.js';
 import { EventsModule } from './events/events.module.js';
 const featureModules = [
   OrganizationsModule,
@@ -17,6 +18,7 @@ const featureModules = [
   WebhooksModule,
   IdentityModule,
   McpAuthModule,
+  AssistantModule,
   EventsModule,
 ];
 @Module({ imports: featureModules, exports: featureModules })

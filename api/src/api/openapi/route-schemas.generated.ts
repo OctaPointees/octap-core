@@ -101,6 +101,25 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "revoked"
     ]
   },
+  "ConsoleAssistantController_message_Body": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "description": "The new question. 1–4000 characters.",
+        "type": "string"
+      },
+      "history": {
+        "description": "The conversation so far, oldest first, starting with a user turn. At most 40 turns and 60000\ncharacters together with the new message.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AssistantTurn"
+        }
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
   "ConsoleChangeRequestsController_propose_Body": {
     "type": "object",
     "properties": {
@@ -5240,6 +5259,27 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "indexer",
       "operations",
       "webhookDeliveries"
+    ]
+  },
+  "AssistantTurn": {
+    "description": "One earlier turn of the conversation. The browser keeps the history; Core stores none.",
+    "type": "object",
+    "properties": {
+      "role": {
+        "enum": [
+          "assistant",
+          "user"
+        ],
+        "type": "string"
+      },
+      "text": {
+        "description": "Plain text of that turn.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "role",
+      "text"
     ]
   },
   "ConsoleCredential": {

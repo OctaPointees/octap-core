@@ -13,7 +13,7 @@ import { IS_PUBLIC_KEY } from '#infra/auth/public.decorator.js';
 import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
 import { ConsoleAccessGuard, PLATFORM_ADMIN_ONLY_KEY } from '#api/rest/console-access.guard.js';
-import { EVENT_STREAM_KEY } from '#api/rest/event-stream.decorator.js';
+import { EVENT_STREAM_KEY, type EventStreamOptions } from '#api/rest/event-stream.decorator.js';
 import { ROUTE_SCHEMAS } from './route-schemas.generated.js';
 
 /** Swagger UI is served at `/docs`, the raw document at `/docs/openapi.json`. */
@@ -158,7 +158,8 @@ function annotateOperations(document: OpenAPIObject, controllers: Map<string, Ty
       tags.add(tag);
       applyAccess(operation, access);
       applySchemas(operation, method, operation.operationId!);
-      if (Reflect.getMetadata(EVENT_STREAM_KEY, handler)) applyEventStream(operation);
+      const stream = Reflect.getMetadata(EVENT_STREAM_KEY, handler) as EventStreamOptions | undefined;
+      if (stream) applyEventStream(operation, stream);
       for (const response of Object.values(operation.responses)) {
         if (response && 'description' in response && !response.description) response.description = 'Success.';
       }
@@ -228,15 +229,13 @@ function applySchemas(operation: OperationObject, method: string, operationId: s
 }
 
 /** A Server-Sent Events route: its success is a `text/event-stream`, each message's `data` JSON. */
-function applyEventStream(operation: OperationObject): void {
+function applyEventStream(operation: OperationObject, stream: EventStreamOptions): void {
   const success = Object.keys(operation.responses).find((status) => /^2\d\d$/.test(status)) ?? '200';
   operation.responses[success] = {
-    description:
-      'Server-Sent Events. Each message: `id` is the event `sequence`, `event` its type, `data` an ' +
-      '`OrganizationStreamEvent` (`@octap/contracts`) as JSON. `stream.*` messages are about the ' +
-      'stream itself. Send `Last-Event-ID` to resume.',
+    description: stream.description,
     content: { 'text/event-stream': { schema: { type: 'string' } } },
   };
+  if (!stream.resumable) return;
   operation.parameters = [
     ...(operation.parameters ?? []),
     {

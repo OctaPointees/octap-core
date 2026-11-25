@@ -26,6 +26,7 @@ import { ConsoleChangeRequestsController, PlatformChangeRequestsController } fro
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
 import { HealthController, PlatformHealthController } from './health.controller.js';
+import { ConsoleAssistantController } from './console-assistant.controller.js';
 @Module({
   imports: [DomainModule, AuthModule, ObservabilityModule],
   providers: [ConsoleAccessGuard],
@@ -34,6 +35,7 @@ import { HealthController, PlatformHealthController } from './health.controller.
     PlatformHealthController,
     McpOAuthController,
     ConsoleMcpTokenController,
+    ConsoleAssistantController,
     PlatformOrganizationsController,
     OrganizationResolutionController,
     ConsoleIssuanceBudgetController,

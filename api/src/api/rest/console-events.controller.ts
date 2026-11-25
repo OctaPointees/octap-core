@@ -31,7 +31,13 @@ export class ConsoleEventsController {
   constructor(private readonly events: ConsoleEventStreamService) {}
 
   @Get()
-  @EventStream()
+  @EventStream({
+    description:
+      'Server-Sent Events. Each message: `id` is the event `sequence`, `event` its type, `data` an ' +
+      '`OrganizationStreamEvent` (`@octap/contracts`) as JSON. `stream.*` messages are about the ' +
+      'stream itself. Send `Last-Event-ID` to resume.',
+    resumable: true,
+  })
   async stream(
     @Req() req: StreamRequest,
     @Res() res: StreamResponse,

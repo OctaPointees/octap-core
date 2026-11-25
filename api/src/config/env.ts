@@ -76,6 +76,15 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
     optionalFeature: 'MCP sign-in',
   },
   { name: 'MCP_OAUTH_SIGNING_KEY', kind: { type: 'base64Key32' }, readBy: API, optionalFeature: 'MCP sign-in' },
+  {
+    name: 'OCTAP_MCP_PUBLIC_URL',
+    kind: { type: 'url', protocols: ['https:', 'http:'] },
+    readBy: API,
+    optionalFeature: 'dashboard assistant',
+  },
+  { name: 'ASSISTANT_RATE_LIMIT_PER_MINUTE', kind: positive, readBy: API },
+  { name: 'OPENAI_API_KEY', kind: text, readBy: API, optionalFeature: 'dashboard assistant' },
+  { name: 'OPENAI_MODEL', kind: text, readBy: API, optionalFeature: 'dashboard assistant' },
   // Worker tuning
   { name: 'CHAIN_SUBMIT_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'CHAIN_SUBMIT_BATCH_SIZE', kind: positive, readBy: WORKER },
