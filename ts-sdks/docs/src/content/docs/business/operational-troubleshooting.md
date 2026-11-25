@@ -68,4 +68,9 @@ Include only safe identifiers:
 - Member UUID (`organizationEndUserId`) or POS ID
 - `transactionId`, `ownershipId`, or `X-Request-Id`
 
+When available in your Console, also check:
+- **Sandbox vs Live API key:** confirm test traffic is not using a sandbox key when expecting live on-chain points (and use webhook test events when validating endpoints).
+- **Per-key request logs:** filter by `requestId` or status code (`4xx`/`5xx`) to see which API call failed.
+- **Audit log (Owner) & on-chain reconciliation:** verify who performed an administrative write (role changes, voucher approvals, policy updates) and compare projected balances against on-chain evidence.
+
 Never paste raw API keys, webhook signing secrets, invitation links, or customer tax/identity documents into chat tickets or documentation.

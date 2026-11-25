@@ -68,4 +68,9 @@ Chỉ gửi các mã định danh an toàn:
 - Member UUID (`organizationEndUserId`) hoặc POS ID
 - `transactionId`, `ownershipId` hoặc `X-Request-Id`
 
+Khi các công cụ trên Console đã bật, bạn cũng có thể kiểm tra thêm:
+- **API key Sandbox vs Live:** đảm bảo giao dịch thật không dùng nhầm sandbox key (và dùng webhook test event khi kiểm tra endpoint).
+- **Nhật ký request theo API key:** lọc theo `requestId` hoặc mã lỗi (`4xx`/`5xx`) để xác định request gặp sự cố.
+- **Audit log (Owner) & đối soát on-chain:** kiểm tra ai đã thực hiện thao tác thay đổi cấu hình/duyệt voucher và đối chiếu số dư với bằng chứng on-chain.
+
 Tuyệt đối không gửi raw API key, webhook signing secret, link mời nhân sự hay giấy tờ định danh của khách hàng vào ticket/chat.

@@ -57,5 +57,6 @@ OctaP tách **định nghĩa phần thưởng** (chương trình bạn mở bán
 ## Mức độ sẵn sàng của tính năng
 
 - **Đã hỗ trợ chính thức:** Đăng nhập Google Console & onboarding, chọn organization, phân quyền Owner / Business Developer, tra cứu thành viên & số dư/lịch sử, quản lý voucher & batch (kèm duyệt bởi Owner), claim voucher trả phí, sử dụng mã serial một lần tại quầy, chính sách hoàn điểm, và yêu cầu đổi thông tin pháp lý.
+- **Đang hoàn thiện trên Core:** API key chế độ Sandbox & gửi sự kiện webhook thử nghiệm, nhật ký request theo từng API key, audit log thao tác ghi dành cho Owner, và đối soát bằng chứng số dư on-chain.
 - **Chỉ mang tính minh họa (Demo / Reference):** Các trang demo trên `partner-website` minh họa luồng khách hàng claim và thu ngân nhập serial; hệ thống production của bạn tích hợp các luồng này thông qua [Node SDK](/vi/get-started/backend-quickstart/) và [Browser SDK](/vi/get-started/frontend-quickstart/).
 - **Chưa phát hành:** Gói cước & thanh toán tự động, các thao tác ghi dữ liệu qua MCP AI, và cổng đăng nhập tập trung riêng `auth.octap.com` (hiện đăng nhập trực tiếp trên Business Console).
