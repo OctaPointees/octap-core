@@ -1,6 +1,6 @@
 /**
- * The dashboard assistant (OCT-308): a chat in the console backed by a model (Claude by default, or
- * OpenAI), which reads the organization through the OctaP MCP server with the signed-in user's persona.
+ * The dashboard assistant (OCT-308): a chat in the console backed by an OpenAI model, which
+ * reads the organization through the OctaP MCP server with the signed-in user's persona.
  */
 
 /** One earlier turn of the conversation. The browser keeps the history; Core stores none. */
@@ -42,9 +42,7 @@ export type AssistantStreamEvent =
 /**
  * - `complete`: the answer is finished.
  * - `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.
- * - `turn_limit`: the assistant was still working when the turn ran out of time (too many steps on the
- *   provider's side); ask again or split the question.
  * - `length`: the answer hit the length limit.
  * - `refused`: see the `refusal` event.
  */
-export type AssistantStopReason = 'complete' | 'tool_limit' | 'turn_limit' | 'length' | 'refused';
+export type AssistantStopReason = 'complete' | 'tool_limit' | 'length' | 'refused';

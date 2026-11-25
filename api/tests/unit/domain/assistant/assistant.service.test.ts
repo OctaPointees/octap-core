@@ -10,7 +10,6 @@ import {
   MAX_TOOL_CALLS_PER_TURN,
 } from '#domain/assistant/assistant.service.js';
 import type { McpOAuthService } from '#domain/mcp-auth/mcp-oauth.service.js';
-import type { AnthropicAssistantClient } from '#infra/clients/anthropic/anthropic-assistant.client.js';
 import type { AssistantRunEvent, AssistantRunRequest } from '#infra/clients/assistant-model.js';
 import type { OpenAiAssistantClient } from '#infra/clients/openai/openai-assistant.client.js';
 
@@ -37,19 +36,18 @@ function setup(script: AssistantRunEvent[] | Error = [{ type: 'end', reason: 'co
     issueAssistantToken: vi.fn(async () => TOKEN),
     revoke: vi.fn(async () => ({})),
   };
-  const runs: Array<AssistantRunRequest & { provider: string }> = [];
-  const model = (provider: string) => ({
+  const runs: AssistantRunRequest[] = [];
+  const model = {
     async *run(request: AssistantRunRequest) {
-      runs.push({ ...request, provider });
+      runs.push(request);
       if (script instanceof Error) throw script;
       yield* script;
     },
-  });
+  };
   const service = new AssistantService(
     redis as unknown as Redis,
     oauth as unknown as McpOAuthService,
-    model('anthropic') as unknown as AnthropicAssistantClient,
-    model('openai') as unknown as OpenAiAssistantClient,
+    model as unknown as OpenAiAssistantClient,
   );
   return { service, oauth, runs, redis };
 }
@@ -62,7 +60,8 @@ async function collect(stream: AsyncGenerator<AssistantStreamEvent>) {
 
 describe('AssistantService (OCT-308)', () => {
   beforeEach(() => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test-key');
+    vi.stubEnv('OPENAI_API_KEY', 'sk-openai-test');
+    vi.stubEnv('OPENAI_MODEL', 'gpt-test');
     vi.stubEnv('OCTAP_MCP_PUBLIC_URL', 'https://mcp.octap.test');
     vi.stubEnv('MCP_OAUTH_ISSUER_URL', 'https://api.octap.test');
     vi.stubEnv('MCP_OAUTH_SIGNING_KEY', Buffer.alloc(32, 1).toString('base64'));
@@ -72,10 +71,11 @@ describe('AssistantService (OCT-308)', () => {
     vi.restoreAllMocks();
   });
 
-  it('answers 503 until the Anthropic key, the MCP server URL and MCP sign-in are set', async () => {
+  it('answers 503 until the OpenAI key and model, the MCP server URL and MCP sign-in are set', async () => {
     const { service, oauth } = setup();
     const settings: Array<[string, string]> = [
-      ['ANTHROPIC_API_KEY', 'sk-ant-test-key'],
+      ['OPENAI_API_KEY', 'sk-openai-test'],
+      ['OPENAI_MODEL', 'gpt-test'],
       ['OCTAP_MCP_PUBLIC_URL', 'https://mcp.octap.test'],
       // Without MCP sign-in the MCP server can't start, so a turn token would be useless.
       ['MCP_OAUTH_ISSUER_URL', 'https://api.octap.test'],
@@ -87,22 +87,6 @@ describe('AssistantService (OCT-308)', () => {
       vi.stubEnv(name, value);
     }
     expect(oauth.issueAssistantToken).not.toHaveBeenCalled();
-  });
-
-  it('answers on OpenAI when chosen, once its key and model are set', async () => {
-    const { service, runs } = setup();
-    vi.stubEnv('ASSISTANT_PROVIDER', 'openai');
-    await expect(service.prepare(identity(), ORG, { message: 'Hi' })).rejects.toMatchObject({ status: 503 });
-    vi.stubEnv('OPENAI_API_KEY', 'sk-openai-test');
-    await expect(service.prepare(identity(), ORG, { message: 'Hi' })).rejects.toMatchObject({ status: 503 });
-    vi.stubEnv('OPENAI_MODEL', 'gpt-test');
-    const turn = await service.prepare(identity(), ORG, { message: 'Hi' });
-    expect(turn.provider).toBe('openai');
-    await collect(service.stream(turn, new AbortController().signal));
-    expect(runs.map((run) => run.provider)).toEqual(['openai']);
-
-    vi.stubEnv('ASSISTANT_PROVIDER', 'gemini');
-    await expect(service.prepare(identity(), ORG, { message: 'Hi' })).rejects.toMatchObject({ status: 503 });
   });
 
   it('refuses a message, history or conversation over the limits', async () => {

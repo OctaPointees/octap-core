@@ -7,8 +7,6 @@
 
 import type { AssistantStopReason } from '@octap/contracts';
 
-export type AssistantProvider = 'anthropic' | 'openai';
-
 export interface AssistantRunRequest {
   system: string;
   messages: Array<{ role: 'user' | 'assistant'; text: string }>;
@@ -24,7 +22,6 @@ export type AssistantRunEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_call'; id: string; name: string }
   | { type: 'tool_result'; toolUseId: string; isError: boolean }
-  | { type: 'fallback'; from: string; to: string }
   | { type: 'refusal'; category: string | null }
   | { type: 'end'; reason: AssistantStopReason; usage: AssistantUsage };
 

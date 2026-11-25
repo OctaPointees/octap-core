@@ -29,7 +29,7 @@ export function openAiModel(): string | null {
 }
 
 /**
- * The OpenAI Responses API with its hosted MCP tool (OCT-308, the second provider). OpenAI calls the
+ * The OpenAI Responses API with its hosted MCP tool (OCT-308). OpenAI calls the
  * OctaP MCP server itself with the token in `mcp.token`; Core only streams what comes back. Nothing
  * is stored on OpenAI's side (`store: false`).
  */

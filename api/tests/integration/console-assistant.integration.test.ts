@@ -2,7 +2,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { and, eq } from 'drizzle-orm';
 import type { AssistantStreamEvent } from '@octap/contracts';
 import { McpOAuthService } from '#domain/mcp-auth/mcp-oauth.service.js';
-import { AnthropicAssistantClient } from '#infra/clients/anthropic/anthropic-assistant.client.js';
 import type { AssistantRunEvent, AssistantRunRequest } from '#infra/clients/assistant-model.js';
 import { OpenAiAssistantClient } from '#infra/clients/openai/openai-assistant.client.js';
 import { createTestApp } from './support/app.js';
@@ -30,15 +29,9 @@ describe('Dashboard assistant route (OCT-308)', () => {
   let orgB: string;
   let memberA: string;
   let owner: string;
-  /** Stands in for Claude: each test scripts what "Claude" does with the turn's MCP token. */
+  /** Stands in for the OpenAI model: each test scripts what it does with the turn's MCP token. */
   let script: (request: AssistantRunRequest) => AsyncGenerator<AssistantRunEvent>;
-  const providers: string[] = [];
-  const model = (provider: string) => ({
-    run: (request: AssistantRunRequest) => {
-      providers.push(provider);
-      return script(request);
-    },
-  });
+  const model = { run: (request: AssistantRunRequest) => script(request) };
 
   beforeAll(async () => {
     ctx = await createTestApp(
@@ -53,17 +46,15 @@ describe('Dashboard assistant route (OCT-308)', () => {
         }),
       },
       undefined,
-      [
-        { provide: AnthropicAssistantClient, useValue: model('anthropic') },
-        { provide: OpenAiAssistantClient, useValue: model('openai') },
-      ],
+      [{ provide: OpenAiAssistantClient, useValue: model }],
     );
   });
   afterAll(async () => {
     await ctx?.close();
   });
   beforeEach(async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-must-never-leave-core');
+    vi.stubEnv('OPENAI_API_KEY', 'sk-openai-must-never-leave-core');
+    vi.stubEnv('OPENAI_MODEL', 'gpt-test');
     vi.stubEnv('OCTAP_MCP_PUBLIC_URL', MCP_ORIGIN);
     vi.stubEnv('MCP_OAUTH_ISSUER_URL', 'http://127.0.0.1:3000');
     vi.stubEnv('MCP_OAUTH_SIGNING_KEY', Buffer.alloc(32, 3).toString('base64'));
@@ -130,7 +121,7 @@ describe('Dashboard assistant route (OCT-308)', () => {
     ]);
     expect(res.body).toContain('event: text\ndata: ');
     expect(res.body).not.toContain(token);
-    expect(res.body).not.toContain('sk-ant');
+    expect(res.body).not.toContain('sk-openai');
     // The turn's token dies with the turn.
     await read(token, '/v1/console/mcp/token').expect(401);
   });
@@ -168,23 +159,6 @@ describe('Dashboard assistant route (OCT-308)', () => {
     });
   });
 
-  it('answers through OpenAI when ASSISTANT_PROVIDER is openai, with the same token rules', async () => {
-    vi.stubEnv('ASSISTANT_PROVIDER', 'openai');
-    await ask('owner', orgA).expect(503);
-    vi.stubEnv('OPENAI_API_KEY', 'sk-openai-must-never-leave-core');
-    vi.stubEnv('OPENAI_MODEL', 'gpt-test');
-    providers.length = 0;
-    script = async function* (request) {
-      expect((await read(request.mcp.token, '/v1/console/mcp/token').expect(200)).body.persona).toBe('BUSINESS_OWNER');
-      yield { type: 'text', text: 'Hello from OpenAI.' };
-      yield { type: 'end', reason: 'complete', usage };
-    };
-    const res = await ask('owner', orgA).expect(200);
-    expect(providers).toEqual(['openai']);
-    expect(events(res.body as string)[0]).toEqual({ type: 'text', text: 'Hello from OpenAI.' });
-    expect(res.body).not.toContain('sk-openai');
-  });
-
   it('refuses an MCP token and a user of another organization', async () => {
     const mcpToken = await ctx.app.get(McpOAuthService).issueAssistantToken({
       userId: owner,
@@ -197,10 +171,13 @@ describe('Dashboard assistant route (OCT-308)', () => {
     await ask('owner', orgB).expect(403);
   });
 
-  it('answers 503 without an Anthropic key, and checks the message, history and rate limit', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
+  it('answers 503 without the OpenAI key or model, and checks the message, history and rate limit', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
     await ask('owner', orgA).expect(503);
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-must-never-leave-core');
+    vi.stubEnv('OPENAI_API_KEY', 'sk-openai-must-never-leave-core');
+    vi.stubEnv('OPENAI_MODEL', '');
+    await ask('owner', orgA).expect(503);
+    vi.stubEnv('OPENAI_MODEL', 'gpt-test');
 
     await ask('owner', orgA, { message: 'x'.repeat(4001) }).expect(400);
     await ask('owner', orgA, { message: 'Hi', history: [{ role: 'assistant', text: 'Earlier' }] }).expect(400);
@@ -208,6 +185,6 @@ describe('Dashboard assistant route (OCT-308)', () => {
     // 10 per user per minute by default.
     for (let i = 0; i < 10; i++) await ask('developer', orgA).expect(200);
     const limited = await ask('developer', orgA).expect(429);
-    expect(JSON.stringify(limited.body)).not.toContain('sk-ant');
+    expect(JSON.stringify(limited.body)).not.toContain('sk-openai');
   });
 });

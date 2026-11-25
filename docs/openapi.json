@@ -6158,13 +6158,12 @@
     },
     "schemas": {
       "AssistantStopReason": {
-        "description": "- `complete`: the answer is finished.\n- `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.\n- `turn_limit`: the assistant was still working when the turn ran out of time (too many steps on the\n  provider's side); ask again or split the question.\n- `length`: the answer hit the length limit.\n- `refused`: see the `refusal` event.",
+        "description": "- `complete`: the answer is finished.\n- `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.\n- `length`: the answer hit the length limit.\n- `refused`: see the `refusal` event.",
         "enum": [
           "complete",
           "length",
           "refused",
-          "tool_limit",
-          "turn_limit"
+          "tool_limit"
         ],
         "type": "string"
       },

@@ -19,9 +19,8 @@ import type {
 } from '@octap/contracts';
 import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
 import { checkRateLimit } from '#infra/auth/rate-limit.util.js';
-import { AnthropicAssistantClient } from '#infra/clients/anthropic/anthropic-assistant.client.js';
 import { OpenAiAssistantClient, openAiModel } from '#infra/clients/openai/openai-assistant.client.js';
-import type { AssistantModelClient, AssistantProvider, AssistantUsage } from '#infra/clients/assistant-model.js';
+import type { AssistantUsage } from '#infra/clients/assistant-model.js';
 import { McpOAuthService } from '../mcp-auth/mcp-oauth.service.js';
 
 export const MAX_MESSAGE_CHARS = 4_000;
@@ -42,7 +41,6 @@ export interface AssistantTurnRequest {
   userId: string;
   organizationId: string;
   persona: OrganizationPersona;
-  provider: AssistantProvider;
   system: string;
   messages: AssistantTurn[];
   mcpUrl: string;
@@ -54,8 +52,8 @@ export interface AssistantTurnRequest {
  * by reading it through the OctaP MCP server, with a token Core issues for this user, organization and
  * persona. Same permissions as an MCP host: Core checks the token on every tool call.
  *
- * `ASSISTANT_PROVIDER` picks the model provider: `anthropic` (Claude, the default) or `openai`. Both
- * call the MCP server from their side with the same token, so the permissions are the same.
+ * The model is OpenAI's (`OPENAI_MODEL`), through the Responses API's hosted MCP tool: OpenAI calls the
+ * MCP server from its side with that token.
  *
  * Nothing is stored: the browser sends the history. Logs carry ids, persona, tool names, token usage
  * and the outcome, never message text, tool results or the token.
@@ -67,7 +65,6 @@ export class AssistantService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly oauth: McpOAuthService,
-    private readonly claude: AnthropicAssistantClient,
     private readonly openai: OpenAiAssistantClient,
   ) {}
 
@@ -77,10 +74,9 @@ export class AssistantService {
    */
   async prepare(identity: ConsoleIdentity, organizationId: string, body: unknown): Promise<AssistantTurnRequest> {
     const mcpUrl = this.mcpUrl();
-    const provider = assistantProvider();
     // The MCP server can't start without Core's MCP sign-in (its OAuth metadata), so a turn token
     // would be useless without it.
-    if (!provider || !mcpUrl || !providerConfigured(provider) || !mcpSignInConfigured())
+    if (!mcpUrl || !openAiConfigured() || !mcpSignInConfigured())
       throw new ServiceUnavailableException('The dashboard assistant is not configured');
     const { message, history } = parseBody(body);
     const organization = identity.organizations.find((candidate) => candidate.organizationId === organizationId);
@@ -103,7 +99,6 @@ export class AssistantService {
       userId: identity.user.id,
       organizationId,
       persona: organization.persona,
-      provider,
       system: systemPrompt(organization.name, organization.persona),
       messages: [...history, { role: 'user', text: message }],
       mcpUrl,
@@ -121,8 +116,7 @@ export class AssistantService {
     try {
       // The client went away while the turn was being prepared: don't start a paid model call.
       if (signal.aborted) return;
-      const model: AssistantModelClient = turn.provider === 'openai' ? this.openai : this.claude;
-      for await (const event of model.run({
+      for await (const event of this.openai.run({
         system: turn.system,
         messages: turn.messages,
         mcp: { url: turn.mcpUrl, token: turn.token },
@@ -143,9 +137,6 @@ export class AssistantService {
               failedTools.push(name);
               yield { type: 'tool_error', name };
             }
-            break;
-          case 'fallback':
-            this.logger.log(`assistant ${turn.requestId} fell back from ${event.from} to ${event.to}`);
             break;
           case 'refusal':
             yield { type: 'refusal', category: event.category };
@@ -174,7 +165,6 @@ export class AssistantService {
           userId: turn.userId,
           organizationId: turn.organizationId,
           persona: turn.persona,
-          provider: turn.provider,
           tools: [...tools.values()],
           failedTools,
           usage,
@@ -192,15 +182,8 @@ export class AssistantService {
   }
 }
 
-/** `ASSISTANT_PROVIDER`, `anthropic` when unset; null for an unknown value. */
-function assistantProvider(): AssistantProvider | null {
-  const value = process.env.ASSISTANT_PROVIDER?.trim() || 'anthropic';
-  return value === 'anthropic' || value === 'openai' ? value : null;
-}
-
-function providerConfigured(provider: AssistantProvider): boolean {
-  if (provider === 'openai') return Boolean(process.env.OPENAI_API_KEY?.trim() && openAiModel());
-  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+function openAiConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim() && openAiModel());
 }
 
 function mcpSignInConfigured(): boolean {
