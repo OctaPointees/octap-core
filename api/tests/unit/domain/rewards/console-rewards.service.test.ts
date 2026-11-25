@@ -68,13 +68,13 @@ describe('ConsoleRewardsService', () => {
     await service.create('user', 'org', voucher);
     expect(rewards.createVoucher).toHaveBeenLastCalledWith('org', { ...voucher, status: 'DRAFT' }, developer, 'tx');
     await service.update('user', 'org', 'v-1', { status: 'ACTIVE' });
-    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'ACTIVE' }, developer, 'tx');
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'ACTIVE' }, developer, 'tx', null);
   });
 
   it('updates inside the editor check, and reads with Owner or Business Developer access', async () => {
     const { service, organizations, rewards } = setup();
     await service.update('user', 'org', 'v-1', { status: 'PAUSED' });
-    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, owner, 'tx');
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, owner, 'tx', null);
 
     await service.list('user', 'org');
     await service.detail('user', 'org', 'v-1');
@@ -97,18 +97,64 @@ describe('ConsoleRewardsService', () => {
     expect(own.rewards.withdrawVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
   });
 
-  it('approves and rejects inside the Owner check, and requires a reason to reject', async () => {
+  it('approves and rejects inside the Owner check, the submission the Owner reviewed, and requires a reason to reject', async () => {
     const { service, organizations, rewards } = setup();
-    await service.approve('user', 'org', 'v-1');
+    const approvalRequestId = '7b9f5a4e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+    await service.approve('user', 'org', 'v-1', { approvalRequestId });
     expect(organizations.withOwnerAccess).toHaveBeenCalledWith('user', 'org', expect.any(Function));
-    expect(rewards.approveVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'tx');
-    await service.reject('user', 'org', 'v-1', { reason: '  Cap too high ' });
-    expect(rewards.rejectVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', 'Cap too high', 'tx');
+    expect(rewards.approveVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', approvalRequestId, 'tx');
+    await service.reject('user', 'org', 'v-1', { approvalRequestId, reason: '  Cap too high ' });
+    expect(rewards.rejectVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', approvalRequestId, 'Cap too high', 'tx');
 
     rewards.rejectVoucher.mockClear();
-    for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', extra: 1 }, null]) {
-      expect(() => service.reject('user', 'org', 'v-1', body as never)).toThrow(/rejection reason is required/);
+    for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, null]) {
+      expect(() => service.reject('user', 'org', 'v-1', { approvalRequestId, ...body } as never)).toThrow(
+        /rejection reason is required/,
+      );
     }
+    expect(rewards.rejectVoucher).not.toHaveBeenCalled();
+  });
+
+  it('says which keys a rejection may send', () => {
+    const { service } = setup();
+    const approvalRequestId = '7b9f5a4e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+    expect(() => service.reject('user', 'org', 'v-1', { approvalRequestId, reason: 'ok', extra: 1 } as never)).toThrow(
+      /Only approvalRequestId and reason may be sent/,
+    );
+  });
+
+  it('takes the reviewed updatedAt apart from the change, and refuses one that is not a timestamp', async () => {
+    const { service, rewards } = setup();
+    const at = '2026-11-25T10:00:00.123Z';
+    await service.update('user', 'org', 'v-1', { status: 'ACTIVE', expectedUpdatedAt: at });
+    expect(rewards.updateVoucher).toHaveBeenCalledWith(
+      'org',
+      'v-1',
+      { status: 'ACTIVE' },
+      expect.anything(),
+      'tx',
+      new Date(at),
+    );
+    expect(() => service.update('user', 'org', 'v-1', { status: 'ACTIVE', expectedUpdatedAt: 'soon' })).toThrow(
+      /expectedUpdatedAt must be/,
+    );
+  });
+
+  it('refuses to approve or reject without the reviewed submission', () => {
+    const { service, rewards } = setup();
+    for (const body of [null, {}, { approvalRequestId: 'not-a-uuid' }, { approvalRequestId: 7 }]) {
+      expect(() => service.approve('user', 'org', 'v-1', body as never)).toThrow(/approvalRequestId is required/);
+      expect(() => service.reject('user', 'org', 'v-1', { ...(body ?? {}), reason: 'no' } as never)).toThrow(
+        /approvalRequestId is required/,
+      );
+    }
+    expect(() =>
+      service.approve('user', 'org', 'v-1', {
+        approvalRequestId: '7b9f5a4e-1c2d-4e3f-8a9b-0c1d2e3f4a5b',
+        x: 1,
+      } as never),
+    ).toThrow(/Only approvalRequestId/);
+    expect(rewards.approveVoucher).not.toHaveBeenCalled();
     expect(rewards.rejectVoucher).not.toHaveBeenCalled();
   });
 
@@ -120,8 +166,13 @@ describe('ConsoleRewardsService', () => {
     });
     await expect(service.update('user', 'org', 'v-1', { status: 'ACTIVE' })).rejects.toThrow(/Only an active Owner/);
     await expect(service.submit('user', 'org', 'v-1')).rejects.toThrow(/Only an active Owner/);
-    await expect(service.approve('user', 'org', 'v-1')).rejects.toThrow(/Only an active Owner of an active/);
-    await expect(service.reject('user', 'org', 'v-1', { reason: 'no' })).rejects.toThrow(/approve or reject/);
+    const approvalRequestId = '7b9f5a4e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+    await expect(service.approve('user', 'org', 'v-1', { approvalRequestId })).rejects.toThrow(
+      /Only an active Owner of an active/,
+    );
+    await expect(service.reject('user', 'org', 'v-1', { approvalRequestId, reason: 'no' })).rejects.toThrow(
+      /approve or reject/,
+    );
     await expect(service.list('user', 'org')).rejects.toThrow(/Owner or Business Developer/);
     await expect(service.detail('user', 'org', 'v-1')).rejects.toThrow(/Owner or Business Developer/);
     expect(rewards.createVoucher).not.toHaveBeenCalled();

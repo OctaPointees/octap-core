@@ -13,7 +13,15 @@ import { NotFoundException } from '@nestjs/common';
 import { stub } from '../helpers/stub.js';
 import { createTestApp } from './support/app.js';
 import { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
-import { resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from './support/db.js';
+import {
+  deliveriesWithEvents,
+  resetDb,
+  schema,
+  seedCredential,
+  seedMember,
+  seedOrganization,
+  seedProgram,
+} from './support/db.js';
 
 describe('issuance budget', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
@@ -189,7 +197,7 @@ describe('issuance budget', () => {
     const remaining = (points: bigint) => ctx.adapters.suiBuilder.budgetShardRemaining.mockResolvedValue(points);
     const check = () => ctx.app.get(IssuanceBudgetService, { strict: false }).checkWarnings();
     const warnings = async () =>
-      (await ctx.db.select().from(schema.webhookDeliveries))
+      (await deliveriesWithEvents(ctx.db))
         .filter((delivery) => delivery.eventType === 'budget.low')
         .map((delivery) => delivery.payload);
 
@@ -289,7 +297,7 @@ describe('issuance budget', () => {
       await credits.failEarnOnChain(failure);
       await credits.failEarnOnChain(failure);
 
-      const failed = (await ctx.db.select().from(schema.webhookDeliveries)).filter(
+      const failed = (await deliveriesWithEvents(ctx.db)).filter(
         (delivery) => delivery.eventType === 'credits.earn.failed',
       );
       expect(failed).toHaveLength(1);

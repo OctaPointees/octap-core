@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { integer, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, pgEnum, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
+import { organizationEvents } from './events.schema.js';
 import { organizations } from './organizations.schema.js';
 
 export const webhookEndpointStatusEnum = pgEnum('webhook_endpoint_status', ['ACTIVE', 'DISABLED']);
@@ -41,9 +42,9 @@ export const webhookEndpoints = pgTable(
 );
 
 /**
- * WEBHOOK DELIVERY: one event queued for one endpoint. `id` is the stable event identifier sent
- * as `X-OctaP-Event-Id` — it never changes across retries or a manual replay, only `status`,
- * `attemptCount`, and `nextAttemptAt` do.
+ * WEBHOOK DELIVERY: one organization event queued for one endpoint. The event (`eventId`) holds the
+ * type and payload and its id is what the endpoint sees as `X-OctaP-Event-Id`, the same for every
+ * endpoint and across retries or a manual replay. `id` names this delivery (replay, the console list).
  */
 export const webhookDeliveries = pgTable(
   'webhook_deliveries',
@@ -55,8 +56,9 @@ export const webhookDeliveries = pgTable(
     endpointId: uuid('endpoint_id')
       .notNull()
       .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
-    eventType: text('event_type').notNull(),
-    payload: jsonb('payload').notNull(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => organizationEvents.id, { onDelete: 'cascade' }),
     status: webhookDeliveryStatusEnum('status').default('PENDING').notNull(),
     attemptCount: integer('attempt_count').default(0).notNull(),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
@@ -66,6 +68,7 @@ export const webhookDeliveries = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    index('webhook_deliveries_event_idx').on(t.eventId),
     pgPolicy('tenant_manage_webhook_deliveries', {
       for: 'all',
       to: authenticatedRole,

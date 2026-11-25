@@ -101,6 +101,25 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "revoked"
     ]
   },
+  "ConsoleAssistantController_message_Body": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "description": "The new question. 1–4000 characters.",
+        "type": "string"
+      },
+      "history": {
+        "description": "The conversation so far, oldest first, starting with a user turn. At most 40 turns and 60000\ncharacters together with the new message.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AssistantTurn"
+        }
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
   "ConsoleChangeRequestsController_propose_Body": {
     "type": "object",
     "properties": {
@@ -1119,6 +1138,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleRefundPolicyController_publish_Response": {
     "$ref": "#/components/schemas/VoucherRefundPolicyDto"
   },
+  "ConsoleRewardsController_approve_Body": {
+    "type": "object",
+    "properties": {
+      "approvalRequestId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "approvalRequestId"
+    ]
+  },
   "ConsoleRewardsController_approve_Response": {
     "$ref": "#/components/schemas/VoucherDto"
   },
@@ -1221,12 +1251,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleRewardsController_reject_Body": {
     "type": "object",
     "properties": {
+      "approvalRequestId": {
+        "description": "The submission the Owner reviewed (`approval.id`), as for approving.",
+        "type": "string"
+      },
       "reason": {
         "description": "1–500 characters, shown to whoever submitted it.",
         "type": "string"
       }
     },
     "required": [
+      "approvalRequestId",
       "reason"
     ]
   },
@@ -1315,6 +1350,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "PAUSED"
         ],
         "type": "string"
+      },
+      "expectedUpdatedAt": {
+        "type": "string"
       }
     }
   },
@@ -1323,6 +1361,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   },
   "ConsoleRewardsController_withdraw_Response": {
     "$ref": "#/components/schemas/VoucherDto"
+  },
+  "ConsoleVoucherBatchesController_activate_Body": {
+    "type": "object",
+    "properties": {
+      "seen": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VoucherSeen"
+        }
+      }
+    }
   },
   "ConsoleVoucherBatchesController_activate_Response": {
     "description": "The result of activate, pause, resume or archive on a batch.",
@@ -1642,71 +1691,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleWebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "DEAD_LETTER",
-            "DELIVERED",
-            "PENDING"
-          ],
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "organizationId": {
-          "type": "string"
-        },
-        "payload": {},
-        "endpointId": {
-          "type": "string"
-        },
-        "eventType": {
-          "type": "string"
-        },
-        "attemptCount": {
-          "type": "number"
-        },
-        "nextAttemptAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastResponseStatus": {
-          "type": [
-            "null",
-            "number"
-          ]
-        },
-        "lastError": {
-          "type": [
-            "null",
-            "string"
-          ]
-        }
-      },
-      "required": [
-        "attemptCount",
-        "createdAt",
-        "endpointId",
-        "eventType",
-        "id",
-        "lastError",
-        "lastResponseStatus",
-        "nextAttemptAt",
-        "organizationId",
-        "payload",
-        "status",
-        "updatedAt"
-      ]
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
     }
   },
   "ConsoleWebhooksController_listEndpoints_Response": {
@@ -1819,71 +1804,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ConsoleWebhooksController_replayDelivery_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "endpointId": {
-        "type": "string"
-      },
-      "eventType": {
-        "type": "string"
-      },
-      "payload": {},
-      "status": {
-        "enum": [
-          "DEAD_LETTER",
-          "DELIVERED",
-          "PENDING"
-        ],
-        "type": "string"
-      },
-      "attemptCount": {
-        "type": "number"
-      },
-      "nextAttemptAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "lastResponseStatus": {
-        "type": [
-          "null",
-          "number"
-        ]
-      },
-      "lastError": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "attemptCount",
-      "createdAt",
-      "endpointId",
-      "eventType",
-      "id",
-      "lastError",
-      "lastResponseStatus",
-      "nextAttemptAt",
-      "organizationId",
-      "payload",
-      "status",
-      "updatedAt"
-    ]
+    "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
   },
   "ConsoleWebhooksController_rotateSecret_Response": {
     "type": "object",
@@ -5035,71 +4956,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "WebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "DEAD_LETTER",
-            "DELIVERED",
-            "PENDING"
-          ],
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "organizationId": {
-          "type": "string"
-        },
-        "payload": {},
-        "endpointId": {
-          "type": "string"
-        },
-        "eventType": {
-          "type": "string"
-        },
-        "attemptCount": {
-          "type": "number"
-        },
-        "nextAttemptAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastResponseStatus": {
-          "type": [
-            "null",
-            "number"
-          ]
-        },
-        "lastError": {
-          "type": [
-            "null",
-            "string"
-          ]
-        }
-      },
-      "required": [
-        "attemptCount",
-        "createdAt",
-        "endpointId",
-        "eventType",
-        "id",
-        "lastError",
-        "lastResponseStatus",
-        "nextAttemptAt",
-        "organizationId",
-        "payload",
-        "status",
-        "updatedAt"
-      ]
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
     }
   },
   "WebhooksController_listEndpoints_Response": {
@@ -5148,6 +5005,80 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "url"
       ]
     }
+  },
+  "WebhookDeliveryWithEvent": {
+    "description": "A delivery with the event it carries, the shape every delivery read returns.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "description": "This delivery, to replay it.",
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "endpointId": {
+        "type": "string"
+      },
+      "eventId": {
+        "description": "The event delivered: the body's `id` and `x-octap-event-id`, the same for every endpoint.",
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string"
+      },
+      "payload": {},
+      "status": {
+        "enum": [
+          "DEAD_LETTER",
+          "DELIVERED",
+          "PENDING"
+        ],
+        "type": "string"
+      },
+      "attemptCount": {
+        "type": "number"
+      },
+      "nextAttemptAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastResponseStatus": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "lastError": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "attemptCount",
+      "createdAt",
+      "endpointId",
+      "eventId",
+      "eventType",
+      "id",
+      "lastError",
+      "lastResponseStatus",
+      "nextAttemptAt",
+      "organizationId",
+      "payload",
+      "status",
+      "updatedAt"
+    ]
   },
   "DependencyCheck": {
     "type": "object",
@@ -5328,6 +5259,27 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "indexer",
       "operations",
       "webhookDeliveries"
+    ]
+  },
+  "AssistantTurn": {
+    "description": "One earlier turn of the conversation. The browser keeps the history; Core stores none.",
+    "type": "object",
+    "properties": {
+      "role": {
+        "enum": [
+          "assistant",
+          "user"
+        ],
+        "type": "string"
+      },
+      "text": {
+        "description": "Plain text of that turn.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "role",
+      "text"
     ]
   },
   "ConsoleCredential": {
@@ -5581,10 +5533,41 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "updatedAt"
     ]
   },
+  "VoucherActorRef": {
+    "description": "Who did something to a voucher: a console user or an API key; `null` once that user or key is deleted.",
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "API_CREDENTIAL",
+              "USER"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
   "VoucherApprovalDto": {
     "description": "The latest request to take a voucher live, when approval was needed.",
     "type": "object",
     "properties": {
+      "id": {
+        "description": "This submission. An Owner approves or rejects by sending it back (`approvalRequestId`), so a\nvoucher withdrawn and submitted again since is refused (409) instead of decided unseen (OCT-324).",
+        "type": "string"
+      },
       "status": {
         "$ref": "#/components/schemas/VoucherApprovalStatus"
       },
@@ -5637,15 +5620,115 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "null",
           "string"
         ]
+      },
+      "snapshot": {
+        "description": "The terms as submitted; `null` for a submission made before snapshots were kept.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/VoucherApprovalSnapshot"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "required": [
+      "id",
       "reason",
       "reviewedAt",
       "reviewedById",
+      "snapshot",
       "status",
       "submittedAt",
       "submittedBy"
+    ]
+  },
+  "VoucherApprovalSnapshot": {
+    "description": "The terms a voucher had when it was submitted for approval: what the Owner reviews, and what\napproving publishes. Dates are ISO strings; `discountValue` is Core's decimal string.",
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "pointsCost": {
+        "type": "number"
+      },
+      "discountType": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "discountValue": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "terms": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "totalSupply": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "perMemberLimit": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "startsAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "expiresAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "validForDays": {
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "code",
+      "description",
+      "discountType",
+      "discountValue",
+      "expiresAt",
+      "perMemberLimit",
+      "pointsCost",
+      "startsAt",
+      "terms",
+      "title",
+      "totalSupply",
+      "validForDays"
     ]
   },
   "VoucherBatchActionResult": {
@@ -6163,6 +6246,20 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "createdBy": {
+        "$ref": "#/components/schemas/VoucherActorRef",
+        "description": "Who created it (or last replaced it by importing its code again); `null` if not recorded."
+      },
+      "activatedBy": {
+        "$ref": "#/components/schemas/VoucherActorRef",
+        "description": "Who took it live: whoever activated it, or the Owner who approved it. Set when publishing starts\n(again on a retry after a failed publish); `null` until then, or when not recorded."
+      },
+      "activatedAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "createdAt": {
         "type": "string"
       },
@@ -6171,9 +6268,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       }
     },
     "required": [
+      "activatedAt",
+      "activatedBy",
       "claimedCount",
       "code",
       "createdAt",
+      "createdBy",
       "id",
       "organizationId",
       "perMemberLimit",
@@ -6248,6 +6348,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationEndUserId",
       "serialCode",
       "status",
+      "voucherId"
+    ]
+  },
+  "VoucherSeen": {
+    "description": "A voucher as an Owner reviewed it: its `updatedAt` at the time.",
+    "type": "object",
+    "properties": {
+      "voucherId": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "updatedAt",
       "voucherId"
     ]
   },

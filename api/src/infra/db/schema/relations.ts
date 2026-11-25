@@ -6,6 +6,7 @@ import { creditOwnerships, blockchainTransactions, loyaltyTransactions } from '.
 import { vouchers, voucherOwnerships } from './rewards.schema.js';
 import { billingPlans, paymentMethods, subscriptions, invoices } from './billing.schema.js';
 import { webhookEndpoints, webhookDeliveries } from './webhooks.schema.js';
+import { organizationEvents } from './events.schema.js';
 
 // SYSTEM USERS RELATIONS
 export const systemUsersRelations = relations(systemUsers, ({ many }) => ({
@@ -233,4 +234,17 @@ export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one })
     fields: [webhookDeliveries.endpointId],
     references: [webhookEndpoints.id],
   }),
+  event: one(organizationEvents, {
+    fields: [webhookDeliveries.eventId],
+    references: [organizationEvents.id],
+  }),
+}));
+
+// ORGANIZATION EVENTS RELATIONS
+export const organizationEventsRelations = relations(organizationEvents, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [organizationEvents.organizationId],
+    references: [organizations.id],
+  }),
+  deliveries: many(webhookDeliveries),
 }));

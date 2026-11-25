@@ -8,6 +8,7 @@ import type {
 import { ConsoleVoucherBatchService } from '#domain/rewards/console-rewards.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import type { ActivateVoucherBatchBodyDto } from '../dto/console.dto.js';
 import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
 
 /**
@@ -58,8 +59,9 @@ export class ConsoleVoucherBatchesController {
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
     @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Body() body: ActivateVoucherBatchBodyDto,
   ): Promise<VoucherBatchActionResponse> {
-    return this.batches.activate(req.consoleIdentity.user.id, orgId, batchId);
+    return this.batches.activate(req.consoleIdentity.user.id, orgId, batchId, body);
   }
 
   @Post(':batchId/archive')

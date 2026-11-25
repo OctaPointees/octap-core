@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { OperationalHealthRepository } from '#infra/db/repositories/operational-health.repository.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
-import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
+import { connectTestDb, resetDb, schema, seedDelivery, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
 const repo = new OperationalHealthRepository(db);
@@ -67,20 +67,18 @@ describe('OperationalHealthRepository', () => {
     const delivery = (status: 'PENDING' | 'DELIVERED' | 'DEAD_LETTER', nextAttemptAt: Date) => ({
       organizationId: orgA,
       endpointId,
-      eventType: 'credits.earn.confirmed',
-      payload: {},
       status,
       nextAttemptAt,
     });
-    await db
-      .insert(schema.webhookDeliveries)
-      .values([
-        delivery('PENDING', ago(120)),
-        delivery('PENDING', ago(5)),
-        delivery('PENDING', new Date(Date.now() + 3_600_000)),
-        delivery('DEAD_LETTER', ago(9000)),
-        delivery('DELIVERED', ago(9000)),
-      ]);
+    for (const values of [
+      delivery('PENDING', ago(120)),
+      delivery('PENDING', ago(5)),
+      delivery('PENDING', new Date(Date.now() + 3_600_000)),
+      delivery('DEAD_LETTER', ago(9000)),
+      delivery('DELIVERED', ago(9000)),
+    ]) {
+      await seedDelivery(db, values);
+    }
 
     const backlog = await repo.webhookBacklog();
 

@@ -13,6 +13,7 @@ import {
   resetDb,
   schema,
   seedCredential,
+  seedDelivery,
   seedMember,
   seedOrganization,
   setOwnership,
@@ -64,10 +65,7 @@ async function seedTenant(label: string) {
     .insert(schema.webhookEndpoints)
     .values({ organizationId: org.id, url: `https://${label}.example.com/hook`, secret: 'secret' })
     .returning();
-  const [delivery] = await db
-    .insert(schema.webhookDeliveries)
-    .values({ organizationId: org.id, endpointId: endpoint.id, eventType: 'test', payload: {} })
-    .returning();
+  const delivery = await seedDelivery(db, { organizationId: org.id, endpointId: endpoint.id });
   const [operation] = await db
     .insert(schema.operations)
     .values({ tenantId: org.id, idempotencyKey: `op-${label}`, commandType: 'TEST', payload: {} })
@@ -84,6 +82,7 @@ async function seedTenant(label: string) {
       apiCredentials: credential.id,
       webhookEndpoints: endpoint.id,
       webhookDeliveries: delivery.id,
+      organizationEvents: delivery.eventId,
       operations: operation.id,
     },
   };
@@ -98,6 +97,7 @@ const TABLES: Record<keyof Seeded['ids'], PgTable & { id: unknown }> = {
   apiCredentials: schema.apiCredentials,
   webhookEndpoints: schema.webhookEndpoints,
   webhookDeliveries: schema.webhookDeliveries,
+  organizationEvents: schema.organizationEvents,
   operations: schema.operations,
 };
 

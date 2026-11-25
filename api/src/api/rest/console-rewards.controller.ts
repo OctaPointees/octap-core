@@ -3,8 +3,12 @@ import type { VoucherDto } from '@octap/contracts';
 import { ConsoleRewardsService } from '#domain/rewards/console-rewards.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
-import type { ConsoleVoucherBodyDto, VoucherRejectBodyDto } from '../dto/console.dto.js';
-import type { UpdateVoucherBodyDto } from '../dto/rewards.dto.js';
+import type {
+  ConsoleVoucherBodyDto,
+  ConsoleVoucherPatchBodyDto,
+  VoucherApproveBodyDto,
+  VoucherRejectBodyDto,
+} from '../dto/console.dto.js';
 
 /**
  * Owner or Business Developer reads and writes drafts; only the Owner pauses, changes a published
@@ -44,7 +48,7 @@ export class ConsoleRewardsController {
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: UpdateVoucherBodyDto,
+    @Body() body: ConsoleVoucherPatchBodyDto,
   ): Promise<VoucherDto> {
     return this.rewards.update(req.consoleIdentity.user.id, orgId, id, body);
   }
@@ -72,8 +76,9 @@ export class ConsoleRewardsController {
     @Req() req: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: VoucherApproveBodyDto,
   ): Promise<VoucherDto> {
-    return this.rewards.approve(req.consoleIdentity.user.id, orgId, id);
+    return this.rewards.approve(req.consoleIdentity.user.id, orgId, id, body);
   }
   @Post(':id/reject')
   @Header('Cache-Control', 'no-store')
