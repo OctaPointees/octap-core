@@ -41,3 +41,54 @@ jobs:
         run: node scripts/sdk-demo-local.mjs
       - run: npm run check:bootstrap
       - run: npm run openapi:check
+
+  # The deploy image (OCT-317): it builds, the migrations apply to an empty plain Postgres (the
+  # shape RDS has) and apply again as a no-op, and the API it starts answers /health.
+  image:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: octap
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d octap"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/octap
+      REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: octap-core:ci
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Migrations, twice
+        run: |
+          docker run --rm --network host -e DATABASE_URL octap-core:ci node scripts/migrate.mjs
+          docker run --rm --network host -e DATABASE_URL octap-core:ci node scripts/migrate.mjs
+      - name: API answers /health
+        run: |
+          docker run -d --name api --network host -e DATABASE_URL -e REDIS_URL -e SUI_NETWORK=testnet octap-core:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/health && exit 0; sleep 2; done
+          docker logs api
+          exit 1
