@@ -12,8 +12,35 @@ import type { VoucherRefundPolicySnapshot } from './voucher-refunds.js';
 export type VoucherStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'DEPLETED' | 'ARCHIVED';
 export type VoucherApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
 
+/** Who did something to a voucher: a console user or an API key; `null` once that user or key is deleted. */
+export type VoucherActorRef = { type: 'USER' | 'API_CREDENTIAL'; id: string } | null;
+
+/**
+ * The terms a voucher had when it was submitted for approval: what the Owner reviews, and what
+ * approving publishes. Dates are ISO strings; `discountValue` is Core's decimal string.
+ */
+export interface VoucherApprovalSnapshot {
+  code: string;
+  title: string;
+  description: string | null;
+  pointsCost: number;
+  discountType: string | null;
+  discountValue: string | null;
+  terms: Record<string, unknown> | null;
+  totalSupply: number | null;
+  perMemberLimit: number | null;
+  startsAt: string | null;
+  expiresAt: string | null;
+  validForDays: number | null;
+}
+
 /** The latest request to take a voucher live, when approval was needed. */
 export interface VoucherApprovalDto {
+  /**
+   * This submission. An Owner approves or rejects by sending it back (`approvalRequestId`), so a
+   * voucher withdrawn and submitted again since is refused (409) instead of decided unseen (OCT-324).
+   */
+  id: string;
   status: VoucherApprovalStatus;
   /** A console user (Business Developer) or an API key; `null` once that user or key is deleted. */
   submittedBy: { type: 'USER' | 'API_CREDENTIAL'; id: string } | null;
@@ -23,6 +50,8 @@ export interface VoucherApprovalDto {
   reviewedAt: string | null;
   /** Why an Owner rejected it. */
   reason: string | null;
+  /** The terms as submitted; `null` for a submission made before snapshots were kept. */
+  snapshot: VoucherApprovalSnapshot | null;
 }
 export type VoucherOwnershipStatus = 'AVAILABLE' | 'RESERVED' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
 export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_ITEM';
@@ -140,6 +169,14 @@ export interface VoucherDto {
   approval?: VoucherApprovalDto | null;
   /** The batch it was created or last imported in (`createVoucherBatch`), `null` if created on its own. */
   batchId?: string | null;
+  /** Who created it (or last replaced it by importing its code again); `null` if not recorded. */
+  createdBy: VoucherActorRef;
+  /**
+   * Who took it live: whoever activated it, or the Owner who approved it. Set when publishing starts
+   * (again on a retry after a failed publish); `null` until then, or when not recorded.
+   */
+  activatedBy: VoucherActorRef;
+  activatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -385,6 +422,15 @@ export interface VoucherBatchActionResult {
   status: VoucherStatus;
   /** Set when `outcome` is `failed`. */
   reason: string | null;
+}
+
+/**
+ * `POST …/voucher-batches/:batchId/activate` from the console. An Owner's activation approves only the
+ * submissions listed here (each voucher's `approval.id`, as the Owner saw them); any other voucher of
+ * the batch waiting for approval is `failed`, with the reason (OCT-324).
+ */
+export interface ActivateVoucherBatchRequest {
+  approvalRequestIds?: string[];
 }
 
 /** The result of activate, pause, resume or archive on a batch. */

@@ -232,6 +232,13 @@
       "when": 1795368244778,
       "tag": "0032_voucher_archived_status",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795602910639,
+      "tag": "0033_voucher_approval_snapshot_and_actors",
+      "breakpoints": true
     }
   ]
 }

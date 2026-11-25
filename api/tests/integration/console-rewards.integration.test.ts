@@ -18,6 +18,9 @@ type Actor = (typeof ACTORS)[number];
 
 const reward = { code: 'coffee', title: 'Free coffee', discountType: 'FREE_ITEM', pointsCost: 100, totalSupply: 10 };
 
+/** A well-formed approval request id that is no voucher's submission. */
+const NO_SUBMISSION = '00000000-0000-4000-8000-000000000000';
+
 describe('console rewards: list, create, edit, pause and activate from a Google session', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
   let ids: Record<Actor, string>;
@@ -50,6 +53,9 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
   const action = (actor: Actor, id: string, name: string, body: Record<string, unknown> = {}) =>
     ctx.http().post(`${path()}/${id}/${name}`).set(as(actor)).send(body);
   const requireApproval = () => settings('owner', { voucherApprovalRequired: true }).expect(200);
+  /** The submission an Owner reviews: the voucher's `approval.id` as the console shows it now (OCT-324). */
+  const submission = async (id: string): Promise<string> =>
+    (await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body.approval?.id ?? NO_SUBMISSION;
   const activate = async (id: string) => {
     await patch('owner', id, { status: 'ACTIVE' }).expect(200);
     await publish(id);
@@ -370,18 +376,21 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
       await action('developer', id, 'submit').expect(201);
 
       // Only an Owner decides, and a rejection needs a reason.
-      await action('developer', id, 'approve').expect(403);
-      await action('developer', id, 'reject', { reason: 'no' }).expect(403);
-      await action('owner', id, 'reject', {}).expect(400);
-      const rejected = await action('owner', id, 'reject', { reason: 'Cap too high' }).expect(201);
+      await action('developer', id, 'approve', { approvalRequestId: await submission(id) }).expect(403);
+      await action('developer', id, 'reject', { approvalRequestId: await submission(id), reason: 'no' }).expect(403);
+      await action('owner', id, 'reject', { approvalRequestId: await submission(id) }).expect(400);
+      const rejected = await action('owner', id, 'reject', {
+        approvalRequestId: await submission(id),
+        reason: 'Cap too high',
+      }).expect(201);
       expect(rejected.body).toMatchObject({
         status: 'DRAFT',
         approval: { status: 'REJECTED', reason: 'Cap too high', reviewedById: ids.owner },
       });
-      await action('owner', id, 'approve').expect(409);
+      await action('owner', id, 'approve', { approvalRequestId: await submission(id) }).expect(409);
 
       await action('developer', id, 'submit').expect(201);
-      const approved = await action('owner', id, 'approve').expect(201);
+      const approved = await action('owner', id, 'approve', { approvalRequestId: await submission(id) }).expect(201);
       expect(approved.body).toMatchObject({
         status: 'DRAFT',
         publishStatus: 'PUBLISHING',
@@ -446,7 +455,7 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
         .expect(200)
         .expect((res) => expect(res.body.status).toBe('PENDING_APPROVAL'));
 
-      await action('owner', id, 'approve').expect(201);
+      await action('owner', id, 'approve', { approvalRequestId: await submission(id) }).expect(201);
       await publish(id);
       const key = (body: Record<string, unknown>) =>
         ctx.http().patch(`/v1/rewards/vouchers/${id}`).set(apiKey).send(body).expect(200);
@@ -468,8 +477,14 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
         .update(schema.vouchers)
         .set({ expiresAt: new Date(Date.now() + 3_600_000) })
         .where(eq(schema.vouchers.id, late));
-      expect((await action('owner', late, 'approve').expect(400)).body.message).toMatch(/at least 24 hours/);
-      await action('owner', late, 'reject', { reason: 'Expired while waiting' }).expect(201);
+      expect(
+        (await action('owner', late, 'approve', { approvalRequestId: await submission(late) }).expect(400)).body
+          .message,
+      ).toMatch(/at least 24 hours/);
+      await action('owner', late, 'reject', {
+        approvalRequestId: await submission(late),
+        reason: 'Expired while waiting',
+      }).expect(201);
 
       await settings('owner', { voucherApprovalRequired: false }).expect(200);
       expect((await ctx.http().get(`${path()}/${kept}`).set(as('owner')).expect(200)).body.status).toBe(
@@ -480,7 +495,129 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
       expect((await action('developer', fresh, 'submit').expect(409)).body.message).toMatch(
         /does not require approval/,
       );
-      await action('owner', kept, 'approve').expect(201);
+      await action('owner', kept, 'approve', { approvalRequestId: await submission(kept) }).expect(201);
+    });
+
+    describe('approving only what the Owner reviewed, and who created and took it live (OCT-324)', () => {
+      const publishCommands = async (voucherId: string) =>
+        (await ctx.db.select().from(schema.operations)).filter(
+          (c) =>
+            c.commandType === 'VOUCHER_TERMS_PUBLISH' && (c.payload as { voucherId?: string }).voucherId === voucherId,
+        );
+
+      it('refuses a decision on a submission that was withdrawn and submitted again with new terms', async () => {
+        await requireApproval();
+        const { id } = (
+          await create('developer', { ...reward, discountType: 'FIXED_AMOUNT', discountValue: '50000' }).expect(201)
+        ).body as { id: string };
+        await action('developer', id, 'submit').expect(201);
+        // The Owner opens the review: this is the submission they see.
+        const reviewed = await submission(id);
+        expect((await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body.approval).toMatchObject({
+          id: reviewed,
+          snapshot: { code: 'coffee', discountType: 'FIXED_AMOUNT', discountValue: '50000.00', totalSupply: 10 },
+        });
+
+        // Meanwhile the Developer takes it back, raises the discount and submits it again.
+        await action('developer', id, 'withdraw').expect(201);
+        await patch('developer', id, { discountValue: '500000' }).expect(200);
+        await action('developer', id, 'submit').expect(201);
+
+        const approve = await action('owner', id, 'approve', { approvalRequestId: reviewed }).expect(409);
+        expect(approve.body.message).toMatch(/submitted again since you reviewed it/);
+        const reject = await action('owner', id, 'reject', { approvalRequestId: reviewed, reason: 'Too much' }).expect(
+          409,
+        );
+        expect(reject.body.message).toMatch(/submitted again/);
+        await action('owner', id, 'approve', { approvalRequestId: NO_SUBMISSION }).expect(409);
+        // Nothing was decided or published.
+        const detail = (await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body;
+        expect(detail).toMatchObject({
+          status: 'PENDING_APPROVAL',
+          publishStatus: 'NOT_PUBLISHED',
+          activatedBy: null,
+          approval: { status: 'PENDING', snapshot: { discountValue: '500000.00' } },
+        });
+        expect(detail.approval.id).not.toBe(reviewed);
+        expect(await publishCommands(id)).toHaveLength(0);
+
+        // Reviewing the new submission, the Owner approves what they now see.
+        const approved = await action('owner', id, 'approve', { approvalRequestId: detail.approval.id }).expect(201);
+        expect(approved.body).toMatchObject({
+          publishStatus: 'PUBLISHING',
+          discountValue: '500000.00',
+          createdBy: { type: 'USER', id: ids.developer },
+          activatedBy: { type: 'USER', id: ids.owner },
+          activatedAt: expect.any(String),
+          approval: { id: detail.approval.id, status: 'APPROVED' },
+        });
+        expect(await publishCommands(id)).toHaveLength(1);
+      });
+
+      it('refuses to approve terms that changed after they were submitted', async () => {
+        await requireApproval();
+        const { id } = (await create('developer').expect(201)).body as { id: string };
+        await action('developer', id, 'submit').expect(201);
+        const reviewed = await submission(id);
+        // No route edits a waiting voucher; this stands for any path that would.
+        await ctx.db.update(schema.vouchers).set({ pointsCost: 1 }).where(eq(schema.vouchers.id, id));
+        const refused = await action('owner', id, 'approve', { approvalRequestId: reviewed }).expect(409);
+        expect(refused.body.message).toMatch(/changed after it was submitted/);
+        expect(await publishCommands(id)).toHaveLength(0);
+        // Rejecting it is still possible.
+        await action('owner', id, 'reject', { approvalRequestId: reviewed, reason: 'Changed' }).expect(201);
+      });
+
+      it('requires the reviewed submission to approve or reject (400)', async () => {
+        await requireApproval();
+        const { id } = (await create('developer').expect(201)).body as { id: string };
+        await action('developer', id, 'submit').expect(201);
+        for (const body of [{}, { approvalRequestId: 'nope' }]) {
+          expect((await action('owner', id, 'approve', body).expect(400)).body.message).toMatch(
+            /approvalRequestId is required/,
+          );
+          await action('owner', id, 'reject', { ...body, reason: 'no' }).expect(400);
+        }
+      });
+
+      it('records who created a voucher and who took it live, with or without approval', async () => {
+        const [credential] = await ctx.db
+          .select()
+          .from(schema.apiCredentials)
+          .where(eq(schema.apiCredentials.organizationId, orgId));
+        const key = { type: 'API_CREDENTIAL', id: credential.id };
+
+        // The Owner creates and activates.
+        const own = (await create('owner', { ...reward, code: 'own' }).expect(201)).body;
+        expect(own).toMatchObject({ createdBy: { type: 'USER', id: ids.owner }, activatedBy: null, activatedAt: null });
+        expect((await patch('owner', own.id, { status: 'ACTIVE' }).expect(200)).body).toMatchObject({
+          activatedBy: { type: 'USER', id: ids.owner },
+          activatedAt: expect.any(String),
+        });
+
+        // With approval off, a Business Developer activates their own draft.
+        const bd = (await create('developer', { ...reward, code: 'bd' }).expect(201)).body;
+        expect((await patch('developer', bd.id, { status: 'ACTIVE' }).expect(200)).body).toMatchObject({
+          createdBy: { type: 'USER', id: ids.developer },
+          activatedBy: { type: 'USER', id: ids.developer },
+        });
+
+        // An API key creating it live is both.
+        const crm = await ctx
+          .http()
+          .post('/v1/rewards/vouchers')
+          .set(apiKey)
+          .send({ ...reward, code: 'crm' })
+          .expect(201);
+        expect(crm.body).toMatchObject({ createdBy: key, activatedBy: key });
+
+        // A Business Developer's draft activated by the Owner: created by one, taken live by the other.
+        const handed = (await create('developer', { ...reward, code: 'handed' }).expect(201)).body;
+        expect((await patch('owner', handed.id, { status: 'ACTIVE' }).expect(200)).body).toMatchObject({
+          createdBy: { type: 'USER', id: ids.developer },
+          activatedBy: { type: 'USER', id: ids.owner },
+        });
+      });
     });
 
     it('does not deadlock with a claim when a Business Developer edits: the check holds the organization FOR SHARE', async () => {

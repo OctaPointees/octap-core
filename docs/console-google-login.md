@@ -65,12 +65,16 @@ reloads the user's memberships; a suspended membership or changed persona invali
   (any other `status` is a 400) and requires `pointsCost`. Another organization's voucher is a 404 (OCT-236).
 - PATCH `/:id/settings` (`{ voucherApprovalRequired }`): Owner only. When on, a Developer activates
   nothing directly: POST `/:id/vouchers/:voucherId/submit` (Developer) puts a draft in
-  `PENDING_APPROVAL`, `/withdraw` (Owner/Developer) takes it back, and `/approve` or `/reject`
-  (`{ reason }`) are the Owner's. An API key asking for `ACTIVE` is queued the same way (OCT-59).
+  `PENDING_APPROVAL`, `/withdraw` (Owner/Developer) takes it back, and `/approve`
+  (`{ approvalRequestId }`) or `/reject` (`{ approvalRequestId, reason }`) are the Owner's. An API key
+  asking for `ACTIVE` is queued the same way (OCT-59). `approvalRequestId` is the submission the Owner
+  reviewed (`approval.id`, with its terms in `approval.snapshot`): a voucher withdrawn and submitted
+  again since is a 409, so a decision never lands on terms the Owner hasn't seen (OCT-324).
 - POST/GET `/:id/voucher-batches`, GET `/:id/voucher-batches/:batchId`, POST `…/:batchId/activate` and
   `…/:batchId/archive`: Owner/Developer, with the same rules as single vouchers. Activating as a
   Developer while approval is required sends the batch's drafts to `PENDING_APPROVAL` (OCT-303).
-  The Owner's activation also approves what waits for approval. POST `…/:batchId/pause` and
+  The Owner's activation (`{ approvalRequestIds }`) also approves what waits for approval, but only
+  the submissions listed; any other waiting voucher is `failed`, with the reason. POST `…/:batchId/pause` and
   `…/resume`: Owner only. Archiving makes the batch's never-live vouchers `ARCHIVED`.
 
 This is the CREATE_ORGANIZATION portion of the coordinated governance workflow.

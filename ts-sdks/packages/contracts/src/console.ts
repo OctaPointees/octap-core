@@ -126,8 +126,17 @@ export interface OrganizationSettingsInput {
    */
   voucherApprovalRequired: boolean;
 }
+/**
+ * `POST /v1/console/organizations/:id/vouchers/:voucherId/approve`. `approvalRequestId` is the
+ * submission the Owner reviewed (`approval.id`): a voucher withdrawn and submitted again since is a 409.
+ */
+export interface VoucherApproveInput {
+  approvalRequestId: string;
+}
 /** `POST /v1/console/organizations/:id/vouchers/:voucherId/reject`. */
 export interface VoucherRejectInput {
+  /** The submission the Owner reviewed (`approval.id`), as for approving. */
+  approvalRequestId: string;
   /** 1–500 characters, shown to whoever submitted it. */
   reason: string;
 }

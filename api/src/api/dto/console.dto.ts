@@ -17,6 +17,8 @@ import type {
   PlatformOrganizationListQuery,
   ProvisionOrganizationInput,
   ReviewDecisionInput,
+  ActivateVoucherBatchRequest,
+  VoucherApproveInput,
   VoucherRejectInput,
 } from '@octap/contracts';
 
@@ -35,7 +37,9 @@ export type GovernanceRequestListQueryDto = Wire<GovernanceRequestListQuery>;
 export type OrganizationApplicationBodyDto = Wire<OrganizationApplicationInput>;
 export type OrganizationProfileBodyDto = Wire<OrganizationProfileInput>;
 export type OrganizationSettingsBodyDto = Wire<OrganizationSettingsInput>;
+export type VoucherApproveBodyDto = Wire<VoucherApproveInput>;
 export type VoucherRejectBodyDto = Wire<VoucherRejectInput>;
+export type ActivateVoucherBatchBodyDto = Wire<ActivateVoucherBatchRequest>;
 export type ConsoleStaffAccessBodyDto = Wire<ConsoleStaffAccessPatch>;
 export type ConsoleInvitationBodyDto = Wire<ConsoleInvitationInput>;
 export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;

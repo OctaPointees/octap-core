@@ -402,6 +402,14 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       Object.fromEntries(body.vouchers.map((v) => [v.code, v.outcome]));
     const publish = (code: string) =>
       voucherByCode(code).then((v) => ctx.app.get(RewardsRepository).markVoucherPublished(v.id, `0xterms-${code}`));
+    /** Every submission waiting for an Owner, as the Owner reviewing the batch sees them. */
+    const pendingIds = async () =>
+      (
+        await ctx.db
+          .select()
+          .from(schema.voucherApprovalRequests)
+          .where(eq(schema.voucherApprovalRequests.status, 'PENDING'))
+      ).map((r) => r.id);
 
     it('keeps a trimmed name, none when blank, and refuses one too long or not a string', async () => {
       const named = (await send({ name: '  catalog-11-11.csv ', items: [item('N1')] }).expect(201)).body.batch;
@@ -443,7 +451,10 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
         .set(as('developer'))
         .expect(201);
 
-      const approved = (await consoleAction('owner', created.id, 'activate').expect(201)).body;
+      // The Owner approves the submissions they reviewed (OCT-324).
+      const approved = (
+        await consoleAction('owner', created.id, 'activate', { approvalRequestIds: await pendingIds() }).expect(201)
+      ).body;
       expect(outcomes(approved)).toEqual({ A1: 'publishing', A2: 'failed', A3: 'publishing' });
       expect(approved.vouchers.find((v: { code: string }) => v.code === 'A2')).toMatchObject({
         status: 'PENDING_APPROVAL',
@@ -458,6 +469,46 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
       // No separate batch approve or reject: activating is the approval, rejecting stays per voucher.
       await consoleAction('owner', created.id, 'approve').expect(404);
       await consoleAction('owner', created.id, 'reject', { reason: 'x' }).expect(404);
+    });
+
+    it("approves only the submissions the Owner reviewed, and records the batch's creator on each voucher (OCT-324)", async () => {
+      await requireApproval();
+      const created = (
+        await ctx
+          .http()
+          .post(consolePath())
+          .set(as('developer'))
+          .send({ items: [item('R1'), item('R2')] })
+          .expect(201)
+      ).body.batch;
+      expect(await voucherByCode('R1')).toMatchObject({ createdByUserId: ids.developer, createdByCredentialId: null });
+      await consoleAction('developer', created.id, 'activate').expect(201);
+      const reviewed = await pendingIds();
+
+      // After the Owner reviewed the batch, R2 is withdrawn and submitted again.
+      const r2 = (await voucherByCode('R2')).id;
+      const single = `/v1/console/organizations/${orgId}/vouchers/${r2}`;
+      await ctx.http().post(`${single}/withdraw`).set(as('developer')).expect(201);
+      await ctx.http().patch(single).set(as('developer')).send({ pointsCost: 1 }).expect(200);
+      await ctx.http().post(`${single}/submit`).set(as('developer')).expect(201);
+
+      // Without the reviewed submissions, nothing waiting is approved.
+      const blind = (await consoleAction('owner', created.id, 'activate').expect(201)).body;
+      expect(blind.vouchers.map((v: { outcome: string; reason: string }) => [v.outcome, v.reason])).toEqual([
+        ['failed', expect.stringMatching(/approvalRequestIds/)],
+        ['failed', expect.stringMatching(/approvalRequestIds/)],
+      ]);
+      await consoleAction('owner', created.id, 'activate', { approvalRequestIds: ['nope'] }).expect(400);
+
+      const run = (await consoleAction('owner', created.id, 'activate', { approvalRequestIds: reviewed }).expect(201))
+        .body;
+      expect(outcomes(run)).toEqual({ R1: 'publishing', R2: 'failed' });
+      expect(run.vouchers.find((v: { code: string }) => v.code === 'R2')).toMatchObject({
+        status: 'PENDING_APPROVAL',
+        reason: expect.stringMatching(/Submitted again since you reviewed the batch/),
+      });
+      expect(await voucherByCode('R1')).toMatchObject({ publishStatus: 'PUBLISHING', activatedByUserId: ids.owner });
+      expect(await voucherByCode('R2')).toMatchObject({ publishStatus: 'NOT_PUBLISHED', activatedByUserId: null });
     });
 
     it('archives what waits for approval too: the request is withdrawn and the voucher frozen', async () => {
@@ -478,6 +529,7 @@ describe('voucher batches: create as DRAFT, compare by code, activate or archive
         .http()
         .post(`/v1/console/organizations/${orgId}/vouchers/${w1.id}/approve`)
         .set(as('owner'))
+        .send({ approvalRequestId: request.id })
         .expect(409);
       expect(
         (
