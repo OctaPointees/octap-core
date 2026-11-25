@@ -56,7 +56,6 @@ OctaP separates **the reward definition** (what your business offers) from **the
 
 ## Feature availability
 
-- **Supported today:** Google Console sign-in and onboarding, organization selection, Business Owner & Business Developer roles, member directory & balance/history lookup, reward & batch management (including optional Owner approval), paid voucher claims, single-use serial redemption, refund policies, and legal identity change requests.
-- **Rolling out in Core:** Sandbox API keys & webhook test events, per-key API request logs, Owner durable audit logs, and on-chain balance reconciliation / evidence views.
+- **Supported today:** Google Console sign-in and onboarding, organization selection, Business Owner & Business Developer roles, member directory & balance/history lookup, reward & batch management (including optional Owner approval), paid voucher claims, single-use serial redemption, refund policies, legal identity change requests, sandbox API keys & webhook test events, per-key API request logs, Owner durable audit logs, and on-chain balance reconciliation / evidence views.
 - **Demo / reference only:** The partner storefront/cashier screens in the reference app demonstrate customer claim and cashier serial redemption flows; your production POS/website integrates those flows via the [Node SDK](/get-started/backend-quickstart/) and [Browser SDK](/get-started/frontend-quickstart/).
 - **Not shipped yet:** Automated license billing/plans, write actions in MCP AI assistants, and a separate centralized `auth.octap.com` portal (sign-in currently happens directly on the Business Console).
