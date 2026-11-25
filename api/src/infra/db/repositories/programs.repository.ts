@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
+import type { BudgetWarningThreshold } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { programs } from '../schema/programs.schema.js';
-import { enqueueWebhookEvent } from './webhooks.repository.js';
+import { recordEvent } from './events.repository.js';
 
 @Injectable()
 export class ProgramsRepository {
@@ -25,7 +26,8 @@ export class ProgramsRepository {
     programId: string;
     organizationId: string;
     previous: number;
-    next: number;
+    /** `0` is no threshold crossed. */
+    next: BudgetWarningThreshold | 0;
     remaining: number;
     capacity: number;
   }) {
@@ -35,10 +37,10 @@ export class ProgramsRepository {
         .set({ budgetWarningThreshold: params.next })
         .where(and(eq(programs.id, params.programId), eq(programs.budgetWarningThreshold, params.previous)))
         .returning({ id: programs.id });
-      if (updated.length === 0 || params.next <= params.previous) return;
-      await enqueueWebhookEvent(tx, {
+      if (updated.length === 0 || params.next === 0 || params.next <= params.previous) return;
+      await recordEvent(tx, {
         organizationId: params.organizationId,
-        eventType: 'budget.low',
+        type: 'budget.low',
         payload: { threshold: params.next, remaining: params.remaining, capacity: params.capacity },
       });
     });

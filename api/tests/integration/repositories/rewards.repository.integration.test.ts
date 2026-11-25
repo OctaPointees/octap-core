@@ -10,14 +10,15 @@ import { OperationsRepository } from '#infra/db/repositories/operations.reposito
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import {
   connectTestDb,
-  resetDb,
-  schema,
-  seedMember,
-  seedOrganization,
-  seedCredential,
-  setOwnership,
+  deliveriesWithEvents,
   getOwnership,
   insertLoyaltyTransaction,
+  resetDb,
+  schema,
+  seedCredential,
+  seedMember,
+  seedOrganization,
+  setOwnership,
 } from '../support/db.js';
 import { POS_BENEFIT } from '../../helpers/fixtures.js';
 
@@ -138,7 +139,7 @@ describe('atomic voucher conversion', () => {
     ]);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 100, pendingRedemption: 25 });
     await expect(use(result.serialCode)).rejects.toThrow(/RESERVED/);
-    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+    expect(await deliveriesWithEvents(db)).toHaveLength(0);
     const confirmed = await confirm(result);
     expect(await getOwnership(db, memberId)).toMatchObject({ confirmedBalance: 75, pendingRedemption: 0 });
     expect(await row(voucher.id)).toMatchObject({ claimedCount: 1, status: 'DEPLETED' });
@@ -147,7 +148,7 @@ describe('atomic voucher conversion', () => {
     expect(await claim(voucher.id)).toMatchObject({ ...confirmed, status: 'REDEEMED' });
     expect(await db.select().from(schema.loyaltyTransactions)).toHaveLength(1);
     expect(await db.select().from(schema.voucherOwnerships)).toHaveLength(1);
-    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(2);
+    expect(await deliveriesWithEvents(db)).toHaveLength(2);
   });
 
   it('serializes simultaneous retries of one key and rejects changed payloads', async () => {
@@ -727,7 +728,7 @@ describe('granted vouchers', () => {
     expect((await repo.confirmVoucherGrant(params))?.key).toMatchObject({ idempotencyKey: 'grant-1' });
     expect(await repo.confirmVoucherGrant(params)).toBeNull();
     expect(await repo.getClaim(orgId, granted.voucherOwnershipId)).toMatchObject({ status: 'AVAILABLE' });
-    const deliveries = await db.select().from(schema.webhookDeliveries);
+    const deliveries = await deliveriesWithEvents(db);
     expect(deliveries).toMatchObject([
       {
         eventType: 'voucher.granted',
@@ -818,8 +819,8 @@ describe('validity from the issue date (OCT-291)', () => {
     await repo.confirmVoucherGrant({ voucherOwnershipId: granted.voucherOwnershipId, digest: 'g', issuedAt });
     const deadline = new Date(issuedAt.getTime() + 14 * DAY);
     expect((await ownershipRow(granted.voucherOwnershipId)).expiresAt).toEqual(deadline);
-    expect(await db.select().from(schema.webhookDeliveries)).toMatchObject([
-      { eventType: 'voucher.granted', payload: { expiresAt: deadline.toISOString() } },
+    expect((await deliveriesWithEvents(db)).filter((d) => d.eventType === 'voucher.granted')).toMatchObject([
+      { payload: { expiresAt: deadline.toISOString() } },
     ]);
   });
 
@@ -849,9 +850,10 @@ describe('validity from the issue date (OCT-291)', () => {
     const confirmed = await confirm(claimed, issuedAt);
     const deadline = new Date(issuedAt.getTime() + 7 * DAY);
     expect(confirmed).toMatchObject({ status: 'AVAILABLE', expiresAt: deadline.toISOString() });
-    expect(await db.select().from(schema.webhookDeliveries)).toMatchObject([
+    expect(
+      (await deliveriesWithEvents(db)).filter((d) => d.eventType === 'credits.redemption.confirmed'),
+    ).toMatchObject([
       {
-        eventType: 'credits.redemption.confirmed',
         payload: { voucher: { voucherOwnershipId: claimed.voucherOwnershipId, expiresAt: deadline.toISOString() } },
       },
     ]);
@@ -903,7 +905,7 @@ describe('customer-signed voucher use', () => {
     expect(operation).toMatchObject({ commandType: 'VOUCHER_USE_RESERVE', status: 'PENDING' });
     expect(ownership.status).toBe('AVAILABLE');
     expect((await repo.getClaim(orgId, coupon.voucherOwnershipId)).status).toBe('AVAILABLE');
-    expect(await db.select().from(schema.webhookDeliveries)).toHaveLength(0);
+    expect(await deliveriesWithEvents(db)).toHaveLength(0);
   });
 
   it('a retry resumes the same use and refreshes its age; another key is refused until it settles', async () => {
@@ -959,7 +961,7 @@ describe('customer-signed voucher use', () => {
       key: { idempotencyKey: 'use-key' },
     });
     expect(await repo.confirmVoucherUse(params)).toMatchObject({ applied: false, key: null });
-    const deliveries = await db.select().from(schema.webhookDeliveries);
+    const deliveries = await deliveriesWithEvents(db);
     expect(deliveries).toMatchObject([
       { eventType: 'voucher.redeemed', payload: { status: 'REDEEMED', blockchainDigest: 'use-digest' } },
     ]);
@@ -1055,7 +1057,7 @@ describe('voucher redeem outbox retained from OCT-244', () => {
       .values({ organizationId: orgId, url: 'https://example.com/hook', secret: 'test' });
     const attempts = await Promise.allSettled([use(result.serialCode), use(result.serialCode)]);
     expect(attempts.filter((a) => a.status === 'fulfilled' && a.value.applied)).toHaveLength(1);
-    const delivered = await db.select().from(schema.webhookDeliveries);
+    const delivered = await deliveriesWithEvents(db);
     expect(delivered).toHaveLength(1);
     expect(delivered[0]).toMatchObject({
       eventType: 'voucher.redeemed',

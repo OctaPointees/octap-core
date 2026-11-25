@@ -11,32 +11,39 @@ import { inTenantOf, tenantOf } from './tenant-lookup.js';
  */
 export const DELIVERY_CLAIM_LEASE_MS = 60_000;
 
-/**
- * Outbox form of `WebhookDeliveryService.emit()`: queues `eventType` for every ACTIVE endpoint of
- * the organization on the caller's `tx`, so the deliveries commit or roll back with the write that
- * caused them. A function, not a repository method, for the same reason as `acceptCommand`: it
- * must never open its own transaction. Returns how many deliveries were queued.
- */
-export async function enqueueWebhookEvent(
-  tx: DrizzleDb,
-  params: { organizationId: string; eventType: string; payload: Record<string, unknown> },
-): Promise<number> {
-  const endpoints = await tx
-    .select({ id: webhookEndpoints.id })
-    .from(webhookEndpoints)
-    .where(and(eq(webhookEndpoints.organizationId, params.organizationId), eq(webhookEndpoints.status, 'ACTIVE')));
-  if (endpoints.length === 0) {
-    return 0;
-  }
-  await tx.insert(webhookDeliveries).values(
-    endpoints.map((endpoint) => ({
-      organizationId: params.organizationId,
-      endpointId: endpoint.id,
-      eventType: params.eventType,
-      payload: params.payload,
-    })),
-  );
-  return endpoints.length;
+/** A delivery with the event it carries, the shape every delivery read returns. */
+export interface WebhookDeliveryWithEvent {
+  /** This delivery, to replay it. */
+  id: string;
+  organizationId: string;
+  endpointId: string;
+  /** The event delivered: the body's `id` and `x-octap-event-id`, the same for every endpoint. */
+  eventId: string;
+  eventType: string;
+  payload: unknown;
+  status: 'PENDING' | 'DELIVERED' | 'DEAD_LETTER';
+  attemptCount: number;
+  nextAttemptAt: Date;
+  lastResponseStatus: number | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** What the deliveries' reads join: the event's type and payload. */
+const WITH_EVENT = { event: { columns: { type: true, payload: true } } } as const;
+
+function flatten(
+  row: typeof webhookDeliveries.$inferSelect & { event: { type: string; payload: unknown } },
+): WebhookDeliveryWithEvent {
+  const { event, ...delivery } = row;
+  return { ...delivery, eventType: event.type, payload: event.payload };
+}
+
+/** Reads delivery `id` with its event, under the caller's tenant context. */
+async function deliveryWithEvent(tx: DrizzleDb, id: string): Promise<WebhookDeliveryWithEvent | undefined> {
+  const row = await tx.query.webhookDeliveries.findFirst({ where: eq(webhookDeliveries.id, id), with: WITH_EVENT });
+  return row && flatten(row);
 }
 
 /**
@@ -98,14 +105,6 @@ export class WebhooksRepository {
     );
   }
 
-  async listActiveEndpoints(organizationId: string) {
-    return withTenant(this.db, organizationId, (tx) =>
-      tx.query.webhookEndpoints.findMany({
-        where: and(eq(webhookEndpoints.organizationId, organizationId), eq(webhookEndpoints.status, 'ACTIVE')),
-      }),
-    );
-  }
-
   async setEndpointStatus(
     organizationId: string,
     endpointId: string,
@@ -135,33 +134,27 @@ export class WebhooksRepository {
 
   // --- Deliveries ------------------------------------------------------------
 
-  async enqueueDelivery(params: {
-    organizationId: string;
-    endpointId: string;
-    eventType: string;
-    payload: Record<string, unknown>;
-  }) {
-    return withTenant(this.db, params.organizationId, async (tx) => {
-      const [created] = await tx.insert(webhookDeliveries).values(params).returning();
-      return created;
-    });
-  }
-
   async listDeliveries(organizationId: string, limit = 50, db: DrizzleDb = this.db) {
     return withTenant(db, organizationId, (tx) =>
-      tx.query.webhookDeliveries.findMany({
-        where: eq(webhookDeliveries.organizationId, organizationId),
-        orderBy: [desc(webhookDeliveries.createdAt)],
-        limit,
-      }),
+      tx.query.webhookDeliveries
+        .findMany({
+          where: eq(webhookDeliveries.organizationId, organizationId),
+          orderBy: [desc(webhookDeliveries.createdAt)],
+          limit,
+          with: WITH_EVENT,
+        })
+        .then((rows) => rows.map(flatten)),
     );
   }
 
   async findDeliveryForOrganization(organizationId: string, deliveryId: string, db: DrizzleDb = this.db) {
     return withTenant(db, organizationId, (tx) =>
-      tx.query.webhookDeliveries.findFirst({
-        where: and(eq(webhookDeliveries.id, deliveryId), eq(webhookDeliveries.organizationId, organizationId)),
-      }),
+      tx.query.webhookDeliveries
+        .findFirst({
+          where: and(eq(webhookDeliveries.id, deliveryId), eq(webhookDeliveries.organizationId, organizationId)),
+          with: WITH_EVENT,
+        })
+        .then((row) => row && flatten(row)),
     );
   }
 
@@ -189,10 +182,10 @@ export class WebhooksRepository {
       limit,
     });
 
-    const claimed: (typeof webhookDeliveries.$inferSelect)[] = [];
+    const claimed: WebhookDeliveryWithEvent[] = [];
     for (const candidate of candidates) {
-      const [row] = await withTenant(this.db, candidate.organizationId, (tx) =>
-        tx
+      const row = await withTenant(this.db, candidate.organizationId, async (tx) => {
+        const [won] = await tx
           .update(webhookDeliveries)
           .set({
             attemptCount: candidate.attemptCount + 1,
@@ -206,8 +199,9 @@ export class WebhooksRepository {
               eq(webhookDeliveries.attemptCount, candidate.attemptCount),
             ),
           )
-          .returning(),
-      );
+          .returning({ id: webhookDeliveries.id });
+        return won && deliveryWithEvent(tx, won.id);
+      });
       if (row) {
         claimed.push(row);
       }
@@ -261,8 +255,8 @@ export class WebhooksRepository {
           updatedAt: new Date(),
         })
         .where(eq(webhookDeliveries.id, id))
-        .returning();
-      return updated;
+        .returning({ id: webhookDeliveries.id });
+      return updated && deliveryWithEvent(tx, updated.id);
     });
   }
 }

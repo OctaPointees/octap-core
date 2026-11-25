@@ -22,7 +22,7 @@ An Owner can require approval with `PATCH /v1/console/organizations/:id/settings
 - Turning approval off leaves vouchers already waiting as they are; they are still decided the same way.
 - Each request is a row of `voucher_approval_requests` (submitter is a user or an API key, at most one PENDING per voucher, RLS by organization). List and detail return the latest as `approval`.
 - The repository reads the setting after the voucher's lock, FOR SHARE, the order a claim takes them; changing it locks the organization FOR UPDATE, so a write in progress finishes under the old value.
-- No webhook fires for a submission yet.
+- A submission sends `voucher.submitted`; a rejection or withdrawal sends `voucher.returned` (OCT-325, see the webhooks README).
 
 ## Voucher batches (OCT-303)
 

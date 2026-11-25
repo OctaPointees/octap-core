@@ -9,11 +9,11 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 { id: string; type: WebhookEventType; data: … }
 ```
 
-`id` không đổi qua các lần retry và replay, nên hãy khử trùng lặp theo nó.
+`id` không đổi qua các lần retry và replay, và giống nhau ở mọi endpoint, nên hãy khử trùng lặp theo nó.
 
 | Event | Gửi khi | Cách gửi |
 | --- | --- | --- |
-| [`credits.earned`](#creditsearned) | Lệnh earn được nhận và vẫn đang chờ | Best-effort |
+| [`credits.earned`](#creditsearned) | Lệnh earn được nhận và vẫn đang chờ | Xếp hàng cùng lệnh earn |
 | [`credits.earn.confirmed`](#creditsearnconfirmed) | Chain xác nhận lệnh earn | Xếp hàng đúng một lần cho mỗi giao dịch |
 | [`credits.earn.failed`](#creditsearnfailed) | Lệnh earn đã nhận chắc chắn thất bại | Xếp hàng cùng lúc ghi nhận thất bại |
 | [`credits.redemption.confirmed`](#creditsredemptionconfirmed) | Chain xác nhận lệnh tiêu, cho thanh toán hoặc voucher trả phí | Xếp hàng đúng một lần cho mỗi giao dịch |
@@ -21,6 +21,7 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`voucher.granted`](#vouchergranted) | Chain ghi nhận voucher được tặng hoặc claim miễn phí | Xếp hàng đúng một lần cho mỗi voucher |
 | [`voucher.redeemed`](#voucherredeemed) | Khách hàng đã ký và chain đánh dấu voucher đã dùng | Xếp hàng đúng một lần cho mỗi voucher |
 | [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
+| [`voucher.created` và các event voucher khác](#event-vòng-đời-voucher) | Voucher được tạo, gửi duyệt, trả về, activate, publish thất bại, tạm dừng hoặc archive | Xếp hàng cùng thay đổi |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
 
@@ -120,3 +121,33 @@ Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào tha
 | `threshold` | `80 \| 95` | Mức phần trăm đã dùng vừa vượt |
 | `remaining` | `number` | Số điểm còn lại trên mọi shard |
 | `capacity` | `number` | Ngân sách ban đầu cộng mọi lần top-up đã áp dụng |
+
+## Event vòng đời voucher
+
+`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused` và `voucher.archived` giúp catalog của bạn khớp với OctaP. Mỗi event được xếp hàng trong cùng database transaction với thay đổi mà nó báo. Mỗi event mang voucher đúng như ngay sau thay đổi đó:
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `voucherId` | `string` | |
+| `code` | `string` | |
+| `title` | `string` | |
+| `batchId` | `string \| null` | Batch tạo ra nó, hoặc batch import nó gần nhất |
+| `status` | `string` | `DRAFT`, `PENDING_APPROVAL`, `ACTIVE`, `PAUSED`, `ARCHIVED`, … |
+| `publishStatus` | `string` | `NOT_PUBLISHED`, `PUBLISHING`, `PUBLISHED` hoặc `FAILED` |
+| `suiTermsId` | `string \| null` | Điều khoản on-chain, khi đã publish |
+| `createdBy` | `{ type: 'USER' \| 'API_CREDENTIAL'; id: string } \| null` | |
+| `activatedBy` | `{ type: 'USER' \| 'API_CREDENTIAL'; id: string } \| null` | Người activate nó, hoặc Owner đã duyệt nó |
+| `activatedAt` | `string \| null` | |
+| `updatedAt` | `string` | |
+
+| Event | Gửi khi |
+| --- | --- |
+| `voucher.created` | Một voucher được tạo riêng lẻ hoặc qua batch, hoặc một code đã archive được import lại. Tạo với `ACTIVE` thì sau đó có `voucher.submitted`, hoặc `voucher.activated` khi đã publish. |
+| `voucher.submitted` | Một lần activate đang chờ Owner, vì tổ chức của bạn yêu cầu duyệt. Có thêm `approvalRequestId` và `submittedBy`. |
+| `voucher.returned` | Một lần gửi duyệt bị từ chối hoặc rút lại, voucher quay về `DRAFT`. Có thêm `approvalRequestId`, `outcome` (`REJECTED` hoặc `WITHDRAWN`), `reason` và `reviewedById`. |
+| `voucher.activated` | Voucher đã `ACTIVE` và khách hàng claim được: chain xác nhận điều khoản, hoặc voucher đang tạm dừng được chạy lại. Hãy bắt đầu bán theo event này, không theo response của lệnh activate. |
+| `voucher.publish.failed` | Điều khoản không lên được chain. Sửa voucher rồi activate lại. |
+| `voucher.paused` | Owner hoặc API key đã tạm dừng nó. Claim dừng lại. |
+| `voucher.archived` | Batch của nó bị archive trước khi lên chain. Voucher không dùng được nữa. |
+
+Lần duyệt không có event riêng: việc publish bắt đầu, sau đó là `voucher.activated` hoặc `voucher.publish.failed`. Voucher bị tạm dừng trong lúc publish vẫn tạm dừng sau khi publish xong, nên chỉ gửi `voucher.activated` khi được chạy lại. Hết số lượng và hết hạn không gửi event.

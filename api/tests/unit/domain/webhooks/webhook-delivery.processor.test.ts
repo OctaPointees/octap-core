@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_DELIVERY_ATTEMPTS, WebhookDeliveryProcessor } from '#domain/webhooks/webhook-delivery.processor.js';
 import { generateWebhookSecret, signWebhookPayload } from '#domain/webhooks/webhook-signing.util.js';
-import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
-import type { webhookDeliveries } from '#infra/db/schema/webhooks.schema.js';
+import type { WebhookDeliveryWithEvent, WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
 const activeEndpoint = (secret = generateWebhookSecret()) => ({
@@ -12,21 +11,22 @@ const activeEndpoint = (secret = generateWebhookSecret()) => ({
   status: 'ACTIVE',
 });
 
-const delivery = (attemptCount = 1): typeof webhookDeliveries.$inferSelect =>
+const delivery = (attemptCount = 1): WebhookDeliveryWithEvent =>
   ({
     id: 'dlv-1',
+    eventId: 'evt-1',
     endpointId: 'ep-1',
     eventType: 'credits.earned',
     payload: { a: 1 },
     attemptCount,
-  }) as typeof webhookDeliveries.$inferSelect;
+  }) as WebhookDeliveryWithEvent;
 
 describe('WebhookDeliveryProcessor', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('a successful delivery is signed over the exact body and marked DELIVERED', async () => {
+  it('a successful delivery is signed over the exact body, carries the event id, and is marked DELIVERED', async () => {
     const secret = generateWebhookSecret();
     const markDelivered = vi.fn(async () => {});
     const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<{ ok: boolean; status: number }>>(async () => ({
@@ -43,9 +43,9 @@ describe('WebhookDeliveryProcessor', () => {
     const headers = init.headers as Record<string, string>;
     expect(url).toBe('https://merchant.example/hooks');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({ id: 'dlv-1', type: 'credits.earned', data: { a: 1 } });
+    expect(JSON.parse(init.body as string)).toEqual({ id: 'evt-1', type: 'credits.earned', data: { a: 1 } });
     expect(headers['x-octap-signature']).toBe(signWebhookPayload(init.body as string, secret));
-    expect(headers['x-octap-event-id']).toBe('dlv-1');
+    expect(headers['x-octap-event-id']).toBe('evt-1');
     expect(headers['x-octap-event-type']).toBe('credits.earned');
     expect(markDelivered).toHaveBeenCalledWith('dlv-1', 200);
   });

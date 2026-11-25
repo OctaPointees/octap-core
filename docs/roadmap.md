@@ -31,7 +31,7 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: Owner-only console endpoint registration, disable/enable, secret rotation and dead-letter replay (an API key only lists endpoints and deliveries, OCT-301), signed delivery, retry/dead-letter, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
-| Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
+| Webhooks: one transactional outbox for every event (OCT-325): `recordEvent(tx, ...)` writes an `organization_events` row in the transaction of the change, endpoint or not, and queues one delivery per ACTIVE endpoint, all under one event id. Exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, whichever path confirmed it; `credits.earned` at accept; voucher lifecycle events (`voucher.created` / `submitted` / `returned` / `activated` / `publish.failed` / `paused` / `archived`) | api/src/infra/db/repositories/events.repository.ts; voucher-events.ts; api/src/domain/webhooks/README.md |
 | Authorization hardening: per-credential and per-IP public-route rate limiting, RLS enforced on every tenant-scoped read and write of the credits, rewards, webhooks and API-key repositories, including worker and indexer callbacks (OCT-289) | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/rls.ts; api/src/infra/db/repositories/tenant-lookup.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
@@ -154,13 +154,9 @@ then move the row to **Implemented** in the same pull request.
   reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; unsigned voucher claims also have a worker sweep; submitted digests are never released by age alone.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- `emit()` (the accept-time `credits.earned`) is not in
-  the same DB transaction as the write that triggers it (a crash in between, or a failed enqueue
-  that `emit()` only logs, silently drops the event). The chain-confirmation events and, since
-  OCT-244, `credits.reversed` and `voucher.redeemed` already use the outbox form,
-  `enqueueWebhookEvent(tx, ...)`; the accept-time event could move to it too. The endpoint
-  `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
-  not oversights; the first needs the OCT-43 outbox generalized to cover this too.
+- Webhook endpoint `secret` is stored as plaintext, not via a secrets manager/KMS: a known,
+  deliberate gap. `organization_events` (the outbox, OCT-325) has no retention yet: it grows until
+  the console stream (OCT-326) settles how far back a reader may resume.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
   plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
@@ -192,8 +188,9 @@ then move the row to **Implemented** in the same pull request.
   comes back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
 - Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
   and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
-  or the same `code` and content returning the existing voucher. No webhook fires when a voucher is
-  created, activated, paused or submitted for approval either; only `voucher.granted` and `voucher.redeemed` exist.
+  or the same `code` and content returning the existing voucher.  Voucher lifecycle webhooks
+  (OCT-325) cover create, submit, return, activate, publish failure, pause and archive; running out of
+  supply (`DEPLETED`) and expiry send none.
 - Console API keys record no creator or revoker, and survive the member who issued them leaving:
   an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the
