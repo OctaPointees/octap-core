@@ -1138,6 +1138,525 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleRefundPolicyController_publish_Response": {
     "$ref": "#/components/schemas/VoucherRefundPolicyDto"
   },
+  "ConsoleRequestLogsController_detail_Response": {
+    "description": "One row with everything recorded about it, including a non-2xx response's full error body.",
+    "type": "object",
+    "properties": {
+      "errorBody": {},
+      "requestId": {
+        "description": "The correlation id (`X-Request-Id` on the response): quote it to OctaP support.",
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "route": {
+        "description": "The route template, e.g. `/v1/credits/members/:memberId/balance`: groups calls to the same endpoint.",
+        "type": "string"
+      },
+      "path": {
+        "description": "The path actually called, without its query string.",
+        "type": "string"
+      },
+      "statusCode": {
+        "type": "number"
+      },
+      "latencyMs": {
+        "type": "number"
+      },
+      "category": {
+        "$ref": "#/components/schemas/RequestLogCategory"
+      },
+      "errorCode": {
+        "description": "The `code` of a non-2xx response's error body, when it had one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "errorMessage": {
+        "description": "The `message` of a non-2xx response's error body.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "credential": {
+        "$ref": "#/components/schemas/RequestLogCredentialRef"
+      },
+      "userAgent": {
+        "description": "The caller's `User-Agent`, e.g. the SDK and its version.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "category",
+      "createdAt",
+      "credential",
+      "errorBody",
+      "errorCode",
+      "errorMessage",
+      "latencyMs",
+      "method",
+      "path",
+      "requestId",
+      "route",
+      "statusCode",
+      "userAgent"
+    ]
+  },
+  "ConsoleRequestLogsController_errors_Query": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "credentialId": {
+        "type": "string"
+      },
+      "category": {
+        "description": "What part of the API a call belongs to, from its route.",
+        "enum": [
+          "credits",
+          "organizations",
+          "other",
+          "refund-policy",
+          "vouchers",
+          "webhooks"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "status": {
+        "description": "`succeeded` = 2xx/3xx, `failed` = 4xx/5xx; a class (`4xx`) or an exact code (`404`) narrows it further.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]*$"
+          },
+          {
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "failed",
+              "succeeded"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "route": {
+        "description": "Exact route template, e.g. from a summary row.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRequestLogsController_errors_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/RequestLogErrorGroup"
+    }
+  },
+  "ConsoleRequestLogsController_list_Query": {
+    "type": "object",
+    "properties": {
+      "page": {
+        "type": "number"
+      },
+      "limit": {
+        "type": "number"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "credentialId": {
+        "type": "string"
+      },
+      "category": {
+        "description": "What part of the API a call belongs to, from its route.",
+        "enum": [
+          "credits",
+          "organizations",
+          "other",
+          "refund-policy",
+          "vouchers",
+          "webhooks"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "status": {
+        "description": "`succeeded` = 2xx/3xx, `failed` = 4xx/5xx; a class (`4xx`) or an exact code (`404`) narrows it further.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]*$"
+          },
+          {
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "failed",
+              "succeeded"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "route": {
+        "description": "Exact route template, e.g. from a summary row.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRequestLogsController_list_Response": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RequestLogEntry"
+        }
+      },
+      "page": {
+        "type": "number"
+      },
+      "limit": {
+        "type": "number"
+      },
+      "total": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "items",
+      "limit",
+      "page",
+      "total"
+    ]
+  },
+  "ConsoleRequestLogsController_summary_Query": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "credentialId": {
+        "type": "string"
+      },
+      "category": {
+        "description": "What part of the API a call belongs to, from its route.",
+        "enum": [
+          "credits",
+          "organizations",
+          "other",
+          "refund-policy",
+          "vouchers",
+          "webhooks"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "status": {
+        "description": "`succeeded` = 2xx/3xx, `failed` = 4xx/5xx; a class (`4xx`) or an exact code (`404`) narrows it further.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]*$"
+          },
+          {
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "failed",
+              "succeeded"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "route": {
+        "description": "Exact route template, e.g. from a summary row.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRequestLogsController_summary_Response": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "totals": {
+        "$ref": "#/components/schemas/RequestLogStats"
+      },
+      "byCategory": {
+        "type": "array",
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/RequestLogStats"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "$ref": "#/components/schemas/RequestLogCategory"
+                }
+              },
+              "required": [
+                "category"
+              ]
+            }
+          ]
+        }
+      },
+      "byRoute": {
+        "description": "The 20 busiest endpoints.",
+        "type": "array",
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/RequestLogStats"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string"
+                },
+                "route": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "route"
+              ]
+            }
+          ]
+        }
+      },
+      "byCredential": {
+        "type": "array",
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/RequestLogStats"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/RequestLogCredentialRef"
+                }
+              },
+              "required": [
+                "credential"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "required": [
+      "byCategory",
+      "byCredential",
+      "byRoute",
+      "from",
+      "to",
+      "totals"
+    ]
+  },
+  "ConsoleRequestLogsController_tail_Query": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "string"
+      },
+      "status": {
+        "description": "`succeeded` = 2xx/3xx, `failed` = 4xx/5xx; a class (`4xx`) or an exact code (`404`) narrows it further.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]*$"
+          },
+          {
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "failed",
+              "succeeded"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "credentialId": {
+        "type": "string"
+      },
+      "category": {
+        "description": "What part of the API a call belongs to, from its route.",
+        "enum": [
+          "credits",
+          "organizations",
+          "other",
+          "refund-policy",
+          "vouchers",
+          "webhooks"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "route": {
+        "description": "Exact route template, e.g. from a summary row.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRequestLogsController_tail_Response": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RequestLogEntry"
+        }
+      },
+      "cursor": {
+        "description": "Pass it back on the next poll.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "cursor",
+      "items"
+    ]
+  },
+  "ConsoleRequestLogsController_timeseries_Query": {
+    "type": "object",
+    "properties": {
+      "interval": {
+        "enum": [
+          "15m",
+          "1d",
+          "1h",
+          "1m",
+          "5m"
+        ],
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "credentialId": {
+        "type": "string"
+      },
+      "category": {
+        "description": "What part of the API a call belongs to, from its route.",
+        "enum": [
+          "credits",
+          "organizations",
+          "other",
+          "refund-policy",
+          "vouchers",
+          "webhooks"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "status": {
+        "description": "`succeeded` = 2xx/3xx, `failed` = 4xx/5xx; a class (`4xx`) or an exact code (`404`) narrows it further.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]*$"
+          },
+          {
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "failed",
+              "succeeded"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "route": {
+        "description": "Exact route template, e.g. from a summary row.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleRequestLogsController_timeseries_Response": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "interval": {
+        "$ref": "#/components/schemas/RequestLogInterval"
+      },
+      "buckets": {
+        "description": "Every bucket in the window, empty ones included, oldest first.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RequestLogBucket"
+        }
+      }
+    },
+    "required": [
+      "buckets",
+      "from",
+      "interval",
+      "to"
+    ]
+  },
   "ConsoleRewardsController_approve_Body": {
     "type": "object",
     "properties": {
@@ -4068,6 +4587,28 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "Record_string_unknown": {
     "type": "object"
   },
+  "RequestLogCategory": {
+    "description": "What part of the API a call belongs to, from its route.",
+    "enum": [
+      "credits",
+      "organizations",
+      "other",
+      "refund-policy",
+      "vouchers",
+      "webhooks"
+    ],
+    "type": "string"
+  },
+  "RequestLogInterval": {
+    "enum": [
+      "15m",
+      "1d",
+      "1h",
+      "1m",
+      "5m"
+    ],
+    "type": "string"
+  },
   "RewardsController_claimVoucher_Body": {
     "type": "object",
     "properties": {
@@ -5531,6 +6072,243 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "status",
       "transactionType",
       "updatedAt"
+    ]
+  },
+  "LatencyPercentiles": {
+    "type": "object",
+    "properties": {
+      "p50": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "p95": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "p99": {
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "p50",
+      "p95",
+      "p99"
+    ]
+  },
+  "RequestLogBucket": {
+    "type": "object",
+    "properties": {
+      "start": {
+        "type": "string"
+      },
+      "requests": {
+        "type": "number"
+      },
+      "succeeded": {
+        "type": "number"
+      },
+      "clientErrors": {
+        "type": "number"
+      },
+      "serverErrors": {
+        "type": "number"
+      },
+      "p95LatencyMs": {
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "clientErrors",
+      "p95LatencyMs",
+      "requests",
+      "serverErrors",
+      "start",
+      "succeeded"
+    ]
+  },
+  "RequestLogCredentialRef": {
+    "description": "The API key that made a call, as the console shows it. Never the key itself.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "keyPrefix": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "keyPrefix",
+      "name"
+    ]
+  },
+  "RequestLogEntry": {
+    "description": "One row of the list.",
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "description": "The correlation id (`X-Request-Id` on the response): quote it to OctaP support.",
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "route": {
+        "description": "The route template, e.g. `/v1/credits/members/:memberId/balance`: groups calls to the same endpoint.",
+        "type": "string"
+      },
+      "path": {
+        "description": "The path actually called, without its query string.",
+        "type": "string"
+      },
+      "statusCode": {
+        "type": "number"
+      },
+      "latencyMs": {
+        "type": "number"
+      },
+      "category": {
+        "$ref": "#/components/schemas/RequestLogCategory"
+      },
+      "errorCode": {
+        "description": "The `code` of a non-2xx response's error body, when it had one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "errorMessage": {
+        "description": "The `message` of a non-2xx response's error body.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "credential": {
+        "$ref": "#/components/schemas/RequestLogCredentialRef"
+      },
+      "userAgent": {
+        "description": "The caller's `User-Agent`, e.g. the SDK and its version.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "category",
+      "createdAt",
+      "credential",
+      "errorCode",
+      "errorMessage",
+      "latencyMs",
+      "method",
+      "path",
+      "requestId",
+      "route",
+      "statusCode",
+      "userAgent"
+    ]
+  },
+  "RequestLogErrorGroup": {
+    "description": "`GET …/request-logs/errors`: failed calls grouped by endpoint, status and error code, most frequent first.",
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string"
+      },
+      "route": {
+        "type": "string"
+      },
+      "statusCode": {
+        "type": "number"
+      },
+      "errorCode": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "errorMessage": {
+        "description": "The most recent message in the group.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "count": {
+        "type": "number"
+      },
+      "firstSeenAt": {
+        "type": "string"
+      },
+      "lastSeenAt": {
+        "type": "string"
+      },
+      "lastRequestId": {
+        "description": "The most recent call in the group, to open its detail.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "count",
+      "errorCode",
+      "errorMessage",
+      "firstSeenAt",
+      "lastRequestId",
+      "lastSeenAt",
+      "method",
+      "route",
+      "statusCode"
+    ]
+  },
+  "RequestLogStats": {
+    "description": "Rate, errors, duration for one slice of traffic. `errorRate` is failed / requests, 0–1.",
+    "type": "object",
+    "properties": {
+      "requests": {
+        "type": "number"
+      },
+      "succeeded": {
+        "type": "number"
+      },
+      "clientErrors": {
+        "type": "number"
+      },
+      "serverErrors": {
+        "type": "number"
+      },
+      "errorRate": {
+        "type": "number"
+      },
+      "latencyMs": {
+        "$ref": "#/components/schemas/LatencyPercentiles"
+      }
+    },
+    "required": [
+      "clientErrors",
+      "errorRate",
+      "latencyMs",
+      "requests",
+      "serverErrors",
+      "succeeded"
     ]
   },
   "VoucherActorRef": {

@@ -27,6 +27,7 @@ import { PlatformOrganizationsController, OrganizationResolutionController } fro
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
 import { HealthController, PlatformHealthController } from './health.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
+import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
 @Module({
   imports: [DomainModule, AuthModule, ObservabilityModule],
   providers: [ConsoleAccessGuard],
@@ -49,6 +50,7 @@ import { ConsoleAssistantController } from './console-assistant.controller.js';
     ConsoleWebhooksController,
     ConsoleEventsController,
     ConsoleApiCredentialsController,
+    ConsoleRequestLogsController,
     CreditsController,
     RewardsController,
     VoucherBatchesController,

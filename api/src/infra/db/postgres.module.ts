@@ -20,6 +20,7 @@ import { GovernanceRepository } from './repositories/governance.repository.js';
 import { OrganizationsRepository } from './repositories/organizations.repository.js';
 import { OperationalHealthRepository } from './repositories/operational-health.repository.js';
 import { OrganizationEventsRepository } from './repositories/events.repository.js';
+import { RequestLogsRepository } from './repositories/request-logs.repository.js';
 const repositories = [
   OrganizationsRepository,
   GovernanceRepository,
@@ -38,6 +39,7 @@ const repositories = [
   ProgramsRepository,
   OperationalHealthRepository,
   OrganizationEventsRepository,
+  RequestLogsRepository,
 ];
 
 @Module({
