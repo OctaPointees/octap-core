@@ -121,8 +121,11 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
 
     const [delivery] = (await ctx.http().get('/v1/webhooks/deliveries').set(auth).expect(200)).body;
     expect((await ctx.http().get(hooks('/deliveries')).set(owner).expect(200)).body).toEqual([delivery]);
+    // The body's id and the header are the event's, not the delivery's (OCT-325).
+    expect(JSON.parse(body).id).toBe(headers['x-octap-event-id']);
     expect(delivery).toMatchObject({
-      id: headers['x-octap-event-id'],
+      eventId: headers['x-octap-event-id'],
+      eventType: 'credits.earned',
       status: 'DELIVERED',
       lastResponseStatus: 200,
       attemptCount: 1,
@@ -154,11 +157,16 @@ describe('webhooks over HTTP, delivered to a real receiver', () => {
       .post(hooks(`/deliveries/${pending.id}/replay`))
       .set(owner)
       .expect(201);
-    expect(replayed.body).toMatchObject({ id: pending.id, status: 'PENDING', attemptCount: 0 });
+    expect(replayed.body).toMatchObject({
+      id: pending.id,
+      eventId: pending.eventId,
+      status: 'PENDING',
+      attemptCount: 0,
+    });
 
     receiver.status = 200;
     await deliverDue();
-    expect(receiver.received.at(-1)?.headers['x-octap-event-id']).toBe(pending.id);
+    expect(receiver.received.at(-1)?.headers['x-octap-event-id']).toBe(pending.eventId);
   });
 
   it('disable stops deliveries, enable resumes them, rotate-secret returns a new secret once', async () => {

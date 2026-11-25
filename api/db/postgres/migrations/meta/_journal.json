@@ -239,6 +239,20 @@
       "when": 1795602910639,
       "tag": "0033_voucher_approval_snapshot_and_actors",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795618133381,
+      "tag": "0034_organization_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795618135320,
+      "tag": "0035_webhook_deliveries_reference_events",
+      "breakpoints": true
     }
   ]
 }

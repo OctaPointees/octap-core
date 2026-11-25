@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RewardsRepository, RewardsRuleError, type VoucherActor } from '#infra/db/repositories/rewards.repository.js';
+import { voucherActorRef } from '#infra/db/repositories/voucher-events.js';
 import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import type { voucherApprovalRequests, vouchers } from '#infra/db/schema/rewards.schema.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
@@ -23,7 +24,6 @@ import {
   type ClaimVoucherRequest,
   type ClaimVoucherResponse,
   type GrantVoucherRequest,
-  type VoucherActorRef,
   type VoucherApprovalDto,
   type VoucherOwnershipDto,
 } from '@octap/contracts';
@@ -375,16 +375,11 @@ export class RewardsService {
 }
 
 /** A user or an API key from its pair of columns; `null` when neither is recorded. */
-function actorRef(userId: string | null, credentialId: string | null): VoucherActorRef {
-  if (credentialId) return { type: 'API_CREDENTIAL', id: credentialId };
-  return userId ? { type: 'USER', id: userId } : null;
-}
-
 function mapApproval(row: typeof voucherApprovalRequests.$inferSelect): VoucherApprovalDto {
   return {
     id: row.id,
     status: row.status,
-    submittedBy: actorRef(row.submittedByUserId, row.submittedByCredentialId),
+    submittedBy: voucherActorRef(row.submittedByUserId, row.submittedByCredentialId),
     submittedAt: row.submittedAt.toISOString(),
     reviewedById: row.reviewedById,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
@@ -421,8 +416,8 @@ export function toVoucherDto(
     metadata: voucher.metadata as Record<string, unknown> | null,
     ...(approval !== undefined ? { approval: approval && mapApproval(approval) } : {}),
     batchId: voucher.importBatchId,
-    createdBy: actorRef(voucher.createdByUserId, voucher.createdByCredentialId),
-    activatedBy: actorRef(voucher.activatedByUserId, voucher.activatedByCredentialId),
+    createdBy: voucherActorRef(voucher.createdByUserId, voucher.createdByCredentialId),
+    activatedBy: voucherActorRef(voucher.activatedByUserId, voucher.activatedByCredentialId),
     activatedAt: voucher.activatedAt ? new Date(voucher.activatedAt).toISOString() : null,
     createdAt: new Date(voucher.createdAt).toISOString(),
     updatedAt: new Date(voucher.updatedAt).toISOString(),

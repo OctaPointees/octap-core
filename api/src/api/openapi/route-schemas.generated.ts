@@ -1672,71 +1672,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleWebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "DEAD_LETTER",
-            "DELIVERED",
-            "PENDING"
-          ],
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "organizationId": {
-          "type": "string"
-        },
-        "payload": {},
-        "endpointId": {
-          "type": "string"
-        },
-        "eventType": {
-          "type": "string"
-        },
-        "attemptCount": {
-          "type": "number"
-        },
-        "nextAttemptAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastResponseStatus": {
-          "type": [
-            "null",
-            "number"
-          ]
-        },
-        "lastError": {
-          "type": [
-            "null",
-            "string"
-          ]
-        }
-      },
-      "required": [
-        "attemptCount",
-        "createdAt",
-        "endpointId",
-        "eventType",
-        "id",
-        "lastError",
-        "lastResponseStatus",
-        "nextAttemptAt",
-        "organizationId",
-        "payload",
-        "status",
-        "updatedAt"
-      ]
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
     }
   },
   "ConsoleWebhooksController_listEndpoints_Response": {
@@ -1849,71 +1785,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ConsoleWebhooksController_replayDelivery_Response": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "endpointId": {
-        "type": "string"
-      },
-      "eventType": {
-        "type": "string"
-      },
-      "payload": {},
-      "status": {
-        "enum": [
-          "DEAD_LETTER",
-          "DELIVERED",
-          "PENDING"
-        ],
-        "type": "string"
-      },
-      "attemptCount": {
-        "type": "number"
-      },
-      "nextAttemptAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "lastResponseStatus": {
-        "type": [
-          "null",
-          "number"
-        ]
-      },
-      "lastError": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      }
-    },
-    "required": [
-      "attemptCount",
-      "createdAt",
-      "endpointId",
-      "eventType",
-      "id",
-      "lastError",
-      "lastResponseStatus",
-      "nextAttemptAt",
-      "organizationId",
-      "payload",
-      "status",
-      "updatedAt"
-    ]
+    "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
   },
   "ConsoleWebhooksController_rotateSecret_Response": {
     "type": "object",
@@ -5065,71 +4937,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "WebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "DEAD_LETTER",
-            "DELIVERED",
-            "PENDING"
-          ],
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "organizationId": {
-          "type": "string"
-        },
-        "payload": {},
-        "endpointId": {
-          "type": "string"
-        },
-        "eventType": {
-          "type": "string"
-        },
-        "attemptCount": {
-          "type": "number"
-        },
-        "nextAttemptAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastResponseStatus": {
-          "type": [
-            "null",
-            "number"
-          ]
-        },
-        "lastError": {
-          "type": [
-            "null",
-            "string"
-          ]
-        }
-      },
-      "required": [
-        "attemptCount",
-        "createdAt",
-        "endpointId",
-        "eventType",
-        "id",
-        "lastError",
-        "lastResponseStatus",
-        "nextAttemptAt",
-        "organizationId",
-        "payload",
-        "status",
-        "updatedAt"
-      ]
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
     }
   },
   "WebhooksController_listEndpoints_Response": {
@@ -5178,6 +4986,80 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "url"
       ]
     }
+  },
+  "WebhookDeliveryWithEvent": {
+    "description": "A delivery with the event it carries, the shape every delivery read returns.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "description": "This delivery, to replay it.",
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "endpointId": {
+        "type": "string"
+      },
+      "eventId": {
+        "description": "The event delivered: the body's `id` and `x-octap-event-id`, the same for every endpoint.",
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string"
+      },
+      "payload": {},
+      "status": {
+        "enum": [
+          "DEAD_LETTER",
+          "DELIVERED",
+          "PENDING"
+        ],
+        "type": "string"
+      },
+      "attemptCount": {
+        "type": "number"
+      },
+      "nextAttemptAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastResponseStatus": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "lastError": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "attemptCount",
+      "createdAt",
+      "endpointId",
+      "eventId",
+      "eventType",
+      "id",
+      "lastError",
+      "lastResponseStatus",
+      "nextAttemptAt",
+      "organizationId",
+      "payload",
+      "status",
+      "updatedAt"
+    ]
   },
   "DependencyCheck": {
     "type": "object",

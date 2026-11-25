@@ -23,7 +23,8 @@ import { creditOwnerships, loyaltyTransactions } from '../schema/credits.schema.
 import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
-import { enqueueWebhookEvent } from './webhooks.repository.js';
+import { recordEvent } from './events.repository.js';
+import { recordVoucherEvent, recordVoucherReturned, recordVoucherSubmitted } from './voucher-events.js';
 import {
   ABANDONED_POS_HOLD_GRACE_MS,
   VOUCHER_CLAIM_RESERVE_COMMAND_TYPE,
@@ -247,10 +248,18 @@ export class RewardsRepository {
         .onConflictDoNothing({ target: [vouchers.organizationId, vouchers.code] })
         .returning();
       if (!voucher) throw conflict('Voucher code already exists for this organization');
-      if (status !== 'ACTIVE') return voucher;
-      return (await this.activation(tx, data.organizationId, actor)) === 'PUBLISH'
-        ? this.queuePublish(tx, voucher, actor)
-        : this.queueApproval(tx, voucher, actor);
+      if (status !== 'ACTIVE') {
+        await recordVoucherEvent(tx, 'voucher.created', voucher);
+        return voucher;
+      }
+      if ((await this.activation(tx, data.organizationId, actor)) === 'PUBLISH') {
+        const publishing = await this.queuePublish(tx, voucher, actor);
+        await recordVoucherEvent(tx, 'voucher.created', publishing);
+        return publishing;
+      }
+      // Created, then submitted: the events in the order they happened.
+      await recordVoucherEvent(tx, 'voucher.created', voucher);
+      return this.queueApproval(tx, voucher, actor);
     });
   }
 
@@ -286,14 +295,18 @@ export class RewardsRepository {
       .where(eq(vouchers.id, voucher.id))
       .returning();
     const by = actorIds(submitter);
-    await tx.insert(voucherApprovalRequests).values({
-      organizationId: voucher.organizationId,
-      voucherId: voucher.id,
-      submittedByUserId: by.userId,
-      submittedByCredentialId: by.credentialId,
-      // The terms as saved with it, so the Owner reviews exactly what approving publishes.
-      snapshot: approvalSnapshot(updated),
-    });
+    const [request] = await tx
+      .insert(voucherApprovalRequests)
+      .values({
+        organizationId: voucher.organizationId,
+        voucherId: voucher.id,
+        submittedByUserId: by.userId,
+        submittedByCredentialId: by.credentialId,
+        // The terms as saved with it, so the Owner reviews exactly what approving publishes.
+        snapshot: approvalSnapshot(updated),
+      })
+      .returning();
+    await recordVoucherSubmitted(tx, updated, request);
     return updated;
   }
 
@@ -346,7 +359,7 @@ export class RewardsRepository {
   }
 
   private async setPublished(tx: DrizzleDb, voucherId: string, suiTermsId: string) {
-    await tx
+    const [published] = await tx
       .update(vouchers)
       .set({
         publishStatus: 'PUBLISHED',
@@ -355,7 +368,10 @@ export class RewardsRepository {
         status: sql`case when ${vouchers.status} = 'DRAFT' then 'ACTIVE'::voucher_status else ${vouchers.status} end`,
         updatedAt: new Date(),
       })
-      .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING')));
+      .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING')))
+      .returning();
+    // Only the confirm that moved it reports, once. One paused while publishing reports when resumed.
+    if (published?.status === 'ACTIVE') await recordVoucherEvent(tx, 'voucher.activated', published);
   }
 
   /** The terms never reached the chain, so the voucher can be edited and activated again. */
@@ -363,11 +379,14 @@ export class RewardsRepository {
     await withTenantOf(
       this.db,
       (db) => tenantOf.voucher(db, voucherId),
-      (tx) =>
-        tx
+      async (tx) => {
+        const [failed] = await tx
           .update(vouchers)
           .set({ publishStatus: 'FAILED', updatedAt: new Date() })
-          .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING'))),
+          .where(and(eq(vouchers.id, voucherId), eq(vouchers.publishStatus, 'PUBLISHING')))
+          .returning();
+        if (failed) await recordVoucherEvent(tx, 'voucher.publish.failed', failed);
+      },
       () => undefined,
     );
   }
@@ -462,6 +481,11 @@ export class RewardsRepository {
         })
         .where(eq(vouchers.id, id))
         .returning();
+      // ACTIVE here is only ever a published voucher resumed; activating a draft took the paths above.
+      if (updated.status !== current.status && updated.status === 'PAUSED')
+        await recordVoucherEvent(tx, 'voucher.paused', updated);
+      if (updated.status !== current.status && updated.status === 'ACTIVE')
+        await recordVoucherEvent(tx, 'voucher.activated', updated);
       return updated;
     });
   }
@@ -530,13 +554,14 @@ export class RewardsRepository {
       const current = await this.lockVoucher(tx, organizationId, id);
       if (current.status !== 'PENDING_APPROVAL') throw conflict('The voucher is not waiting for approval');
       const pending = await this.pendingApproval(tx, id);
-      if (outcome !== 'WITHDRAWN' && (!pending || pending.id !== approvalRequestId))
+      if (!pending) throw conflict('The voucher is not waiting for approval');
+      if (outcome !== 'WITHDRAWN' && pending.id !== approvalRequestId)
         throw conflict('This voucher was submitted again since you reviewed it; review the new submission');
       if (outcome === 'APPROVED') {
         if (expiresTooSoon(current))
           throw invalid('A voucher must stay valid for at least 24 hours to be activated; reject it instead');
         // Nothing edits a voucher while it waits, so this only guards against a path that would.
-        if (pending?.snapshot && canonicalJson(pending.snapshot) !== canonicalJson(approvalSnapshot(current)))
+        if (pending.snapshot && canonicalJson(pending.snapshot) !== canonicalJson(approvalSnapshot(current)))
           throw conflict('The voucher changed after it was submitted; reject it, or have it submitted again');
       }
       await tx
@@ -549,6 +574,7 @@ export class RewardsRepository {
         .set({ status: 'DRAFT', updatedAt: new Date() })
         .where(eq(vouchers.id, id))
         .returning();
+      await recordVoucherReturned(tx, updated, pending, outcome, userId, reason);
       return updated;
     });
   }
@@ -932,9 +958,9 @@ export class RewardsRepository {
       })
       .where(eq(voucherOwnerships.id, ownership.id))
       .returning();
-    await enqueueWebhookEvent(tx, {
+    await recordEvent(tx, {
       organizationId: voucher.organizationId,
-      eventType: 'voucher.granted',
+      type: 'voucher.granted',
       payload: {
         voucherOwnershipId: updated.id,
         voucherId: updated.voucherId,
@@ -1070,9 +1096,9 @@ export class RewardsRepository {
       .set({ status: 'REDEEMED', redeemedAt: new Date(), pendingOperationId: null, updatedAt: new Date() })
       .where(eq(voucherOwnerships.id, ownership.id))
       .returning();
-    await enqueueWebhookEvent(tx, {
+    await recordEvent(tx, {
       organizationId: voucher.organizationId,
-      eventType: 'voucher.redeemed',
+      type: 'voucher.redeemed',
       payload: {
         voucherOwnershipId: updated.id,
         voucherId: updated.voucherId,
@@ -1205,7 +1231,10 @@ export class RewardsRepository {
         })
         .onConflictDoNothing({ target: [vouchers.organizationId, vouchers.code] })
         .returning();
-      if (created) return { index: item.index, kind: 'created', voucher: created };
+      if (created) {
+        await recordVoucherEvent(tx, 'voucher.created', created);
+        return { index: item.index, kind: 'created', voucher: created };
+      }
       // Another batch inserted this code since the read above: classify against its voucher.
       stored = await this.voucherByCode(tx, organizationId, item.code, true);
       if (!stored) throw conflict(`Voucher code ${item.code} changed while the batch was written; try again`);
@@ -1248,6 +1277,8 @@ export class RewardsRepository {
       })
       .where(eq(vouchers.id, stored.id))
       .returning();
+    // An archived code imported again is a new voucher to anyone following the catalog.
+    await recordVoucherEvent(tx, 'voucher.created', updated);
     return differences.length
       ? { index: item.index, kind: 'replaced', voucher: updated, differences }
       : { index: item.index, kind: 'unchanged', voucher: updated, moved: true };
@@ -1429,6 +1460,8 @@ export class RewardsRepository {
           .set({ status: 'ARCHIVED', updatedAt: new Date() })
           .where(eq(vouchers.id, current.id))
           .returning();
+        // One waiting for approval leaves the queue here too: `voucher.archived`, not `voucher.returned`.
+        await recordVoucherEvent(tx, 'voucher.archived', voucher);
         return { voucher, outcome: 'archived', reason: null };
       },
       async (tx, batch) => {

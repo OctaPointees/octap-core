@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
-import type { webhookDeliveries } from '#infra/db/schema/webhooks.schema.js';
+import { WebhooksRepository, type WebhookDeliveryWithEvent } from '#infra/db/repositories/webhooks.repository.js';
 import { signWebhookPayload } from './webhook-signing.util.js';
 
 export const MAX_DELIVERY_ATTEMPTS = 6;
@@ -20,14 +19,15 @@ export class WebhookDeliveryProcessor {
 
   constructor(private readonly repo: WebhooksRepository) {}
 
-  async process(delivery: typeof webhookDeliveries.$inferSelect): Promise<void> {
+  async process(delivery: WebhookDeliveryWithEvent): Promise<void> {
     const endpoint = await this.repo.findEndpointById(delivery.endpointId);
     if (!endpoint || endpoint.status !== 'ACTIVE') {
       await this.repo.markDeadLetter(delivery.id, null, 'Endpoint is disabled or no longer exists');
       return;
     }
 
-    const body = JSON.stringify({ id: delivery.id, type: delivery.eventType, data: delivery.payload });
+    // The event's id, not the delivery's: the same for every endpoint, retry and replay.
+    const body = JSON.stringify({ id: delivery.eventId, type: delivery.eventType, data: delivery.payload });
     const signature = signWebhookPayload(body, endpoint.secret);
 
     try {
@@ -35,7 +35,7 @@ export class WebhookDeliveryProcessor {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-octap-event-id': delivery.id,
+          'x-octap-event-id': delivery.eventId,
           'x-octap-event-type': delivery.eventType,
           'x-octap-signature': signature,
         },
@@ -54,7 +54,7 @@ export class WebhookDeliveryProcessor {
   }
 
   private async handleFailure(
-    delivery: typeof webhookDeliveries.$inferSelect,
+    delivery: WebhookDeliveryWithEvent,
     responseStatus: number | null,
     error: string,
   ): Promise<void> {
