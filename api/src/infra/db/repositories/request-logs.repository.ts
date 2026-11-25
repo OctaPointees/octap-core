@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, gte, inArray, lt, lte, max, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { apiRequestLogs } from '../schema/request-logs.schema.js';
 import { apiCredentials } from '../schema/organizations.schema.js';
@@ -22,6 +22,12 @@ export interface RequestLogQuery {
 
 /** One log row with the key that made it: never the key itself. */
 export type RequestLogRow = ApiRequestLog & { credentialName: string; credentialKeyPrefix: string };
+
+/** A position in the tail: the last row returned, by writing transaction and sequence. */
+export interface TailPosition {
+  txId: number;
+  sequence: number;
+}
 
 export interface RawStats {
   requests: number;
@@ -95,38 +101,56 @@ export class RequestLogsRepository {
     });
   }
 
-  /** The organization's highest sequence so far: where a new tail starts. */
-  async latestSequence(tx: DrizzleDb, organizationId: string): Promise<number> {
-    return withTenant(tx, organizationId, async (db) => {
-      const [row] = await db
-        .select({ latest: max(apiRequestLogs.sequence) })
-        .from(apiRequestLogs)
-        .where(eq(apiRequestLogs.organizationId, organizationId));
-      return Number(row?.latest ?? 0);
-    });
+  /**
+   * Where a new tail starts: just below the oldest transaction still running, so every row written
+   * by a transaction that has not finished yet will still come.
+   */
+  async tailStart(tx: DrizzleDb, organizationId: string): Promise<TailPosition> {
+    return withTenant(tx, organizationId, async (db) => ({
+      txId: (await this.settledBelow(db)) - 1,
+      sequence: Number.MAX_SAFE_INTEGER,
+    }));
   }
 
   /**
-   * Rows after `afterSequence`, oldest first. A row that commits after a later one was already read
-   * is skipped by the tail; the list still has it.
+   * Rows after `after`, in (`tx_id`, `sequence`) order, and only from transactions below the
+   * snapshot's `xmin`: every such transaction has ended, so no row can later appear behind the
+   * returned cursor. A row committing late (its insert waited on a lock) is returned once its
+   * transaction ends, never skipped. A long-running transaction elsewhere delays the tail; it does
+   * not lose rows.
    */
   async since(
     tx: DrizzleDb,
     organizationId: string,
-    afterSequence: number,
+    after: TailPosition,
     query: Omit<RequestLogQuery, 'from' | 'to'>,
     limit: number,
   ): Promise<RequestLogRow[]> {
     return withTenant(tx, organizationId, async (db) => {
+      const settled = await this.settledBelow(db);
       const rows = await db
         .select(withCredential)
         .from(apiRequestLogs)
         .innerJoin(apiCredentials, eq(apiCredentials.id, apiRequestLogs.credentialId))
-        .where(and(this.filters(organizationId, query), gt(apiRequestLogs.sequence, afterSequence)))
-        .orderBy(asc(apiRequestLogs.sequence))
+        .where(
+          and(
+            this.filters(organizationId, query),
+            sql`(${apiRequestLogs.txId}, ${apiRequestLogs.sequence}) > (${after.txId}, ${after.sequence})`,
+            lt(apiRequestLogs.txId, settled),
+          ),
+        )
+        .orderBy(asc(apiRequestLogs.txId), asc(apiRequestLogs.sequence))
         .limit(limit);
       return flatten(rows);
     });
+  }
+
+  /** The snapshot's `xmin`: every transaction with a lower id has committed or rolled back. */
+  private async settledBelow(db: DrizzleDb): Promise<number> {
+    const [row] = await db.execute<{ xmin: string }>(
+      sql`select (pg_snapshot_xmin(pg_current_snapshot())::text) as xmin`,
+    );
+    return Number(row.xmin);
   }
 
   async summary(tx: DrizzleDb, organizationId: string, query: RequestLogQuery, topRoutes: number) {

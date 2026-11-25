@@ -15,6 +15,7 @@ interface LoggedRequest {
   url: string;
   baseUrl?: string;
   route?: { path?: unknown };
+  params?: Record<string, unknown>;
   headers: Record<string, string | string[] | undefined>;
   tenant?: TenantContext;
 }
@@ -29,6 +30,32 @@ function pathOf(request: LoggedRequest): string {
   const url = request.originalUrl ?? request.url;
   const query = url.indexOf('?');
   return query === -1 ? url : url.slice(0, query);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The path called, rebuilt from the route template with only the UUID parameters filled in: an
+ * OctaP id is what a developer searches for, while any other value (a mistyped email, a free-text
+ * id) stays a placeholder, so no personal data sits in the log for 30 days. Without a template, the
+ * path without its query.
+ */
+export function loggedPathOf(request: LoggedRequest): string {
+  const template = request.route?.path;
+  if (typeof template !== 'string') return pathOf(request);
+  const filled = template.replace(/:(\w+)/g, (placeholder, name: string) => {
+    const value = request.params?.[name];
+    return typeof value === 'string' && UUID.test(value) ? value : placeholder;
+  });
+  return `${request.baseUrl ?? ''}${filled}`;
+}
+
+/** Writes still in flight. Tests drain them before truncating; nothing in production waits on them. */
+const pendingWrites = new Set<Promise<void>>();
+
+/** Resolves once every request-log write started so far has finished, written or failed. */
+export async function drainRequestLogWrites(): Promise<void> {
+  while (pendingWrites.size > 0) await Promise.allSettled([...pendingWrites]);
 }
 
 /** The matched route template (OpenTelemetry `http.route`); the path itself when nothing matched. */
@@ -95,7 +122,7 @@ export class RequestLogMiddleware implements NestMiddleware {
         requestId,
         method: request.method,
         route,
-        path: pathOf(request),
+        path: loggedPathOf(request),
         statusCode: response.statusCode,
         latencyMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
         category: categoryOf(route),
@@ -105,11 +132,15 @@ export class RequestLogMiddleware implements NestMiddleware {
         userAgent: text(request.headers['user-agent'], MAX_USER_AGENT),
         createdAt: receivedAt,
       };
-      void this.logs.record(entry).catch((error: unknown) => {
-        this.logger.error(
-          `Could not record request ${requestId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
+      const write = this.logs
+        .record(entry)
+        .catch((error: unknown) => {
+          this.logger.error(
+            `Could not record request ${requestId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => pendingWrites.delete(write));
+      pendingWrites.add(write);
     });
     next();
   }

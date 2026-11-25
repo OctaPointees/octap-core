@@ -1155,7 +1155,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "path": {
-        "description": "The path actually called, without its query string.",
+        "description": "The path called, without its query string, with only UUID parameters filled in: any other value\nstays its placeholder (`:memberId`), so no free text or personal data is kept.",
         "type": "string"
       },
       "statusCode": {
@@ -1558,7 +1558,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         }
       },
       "cursor": {
-        "description": "Pass it back on the next poll.",
+        "description": "Opaque. Pass it back on the next poll.",
         "type": "string"
       }
     },
@@ -6172,7 +6172,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "path": {
-        "description": "The path actually called, without its query string.",
+        "description": "The path called, without its query string, with only UUID parameters filled in: any other value\nstays its placeholder (`:memberId`), so no free text or personal data is kept.",
         "type": "string"
       },
       "statusCode": {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_ERROR_BODY_BYTES,
   RequestLogMiddleware,
+  loggedPathOf,
   routeOf,
   storedErrorBody,
 } from '#domain/developer/request-log.middleware.js';
@@ -36,7 +37,7 @@ function run(
   const response = fakeResponse();
   const req = {
     method: 'GET',
-    url: '/v1/credits/members/abc/balance?programId=x',
+    url: '/v1/credits/members/44444444-4444-4444-8444-444444444444/balance?programId=x',
     baseUrl: '',
     headers: { 'user-agent': '@octap/node/0.1.0' },
     correlationId: REQUEST_ID,
@@ -54,6 +55,7 @@ describe('RequestLogMiddleware', () => {
       {
         tenant: { organizationId: ORG, credentialId: KEY, scopes: ['read'] },
         route: { path: '/v1/credits/members/:memberId/balance' },
+        params: { memberId: '44444444-4444-4444-8444-444444444444' },
       },
       (res) => res.json({ balance: 10 }),
     );
@@ -64,7 +66,7 @@ describe('RequestLogMiddleware', () => {
       requestId: REQUEST_ID,
       method: 'GET',
       route: '/v1/credits/members/:memberId/balance',
-      path: '/v1/credits/members/abc/balance',
+      path: '/v1/credits/members/44444444-4444-4444-8444-444444444444/balance',
       statusCode: 200,
       category: 'credits',
       errorCode: null,
@@ -132,6 +134,19 @@ describe('request log helpers', () => {
     expect(stored.truncated).toBe(true);
     expect(stored.preview).toHaveLength(MAX_ERROR_BODY_BYTES);
     expect(storedErrorBody({ message: 'small' })).toEqual({ message: 'small' });
+  });
+
+  it('fills only UUID parameters into the logged path, so free text never lands in the log', () => {
+    const request = {
+      method: 'GET',
+      url: '/v1/credits/members/jane@example.com/balance',
+      baseUrl: '',
+      route: { path: '/v1/credits/members/:memberId/balance' },
+      params: { memberId: 'jane@example.com' },
+      headers: {},
+    };
+    expect(loggedPathOf(request)).toBe('/v1/credits/members/:memberId/balance');
+    expect(loggedPathOf({ method: 'GET', url: '/v1/x?token=1', headers: {} })).toBe('/v1/x');
   });
 
   it('falls back to the path when no route matched', () => {

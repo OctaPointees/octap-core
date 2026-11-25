@@ -11,14 +11,24 @@ import { apiCredentials, organizations } from './organizations.schema.js';
  *
  * Only calls that authenticated with a key are here: a console session, a public route or an
  * unknown key has no organization to log under. `request_id` is the correlation id (OCT-60), the
- * same as the `X-Request-Id` response header and this process's access log line. `sequence` only
- * orders rows for the live tail.
+ * same as the `X-Request-Id` response header and this process's access log line.
+ *
+ * The tenant role may only read and insert: a merchant cannot edit or delete its own history. The
+ * retention sweep deletes as the connection's own role.
  */
 export const apiRequestLogs = pgTable(
   'api_request_logs',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     sequence: bigint('sequence', { mode: 'number' }).generatedAlwaysAsIdentity().notNull().unique(),
+    /**
+     * The id of the transaction that wrote the row (`pg_current_xact_id()`), for the live tail: once
+     * every transaction older than a snapshot's `xmin` has ended, no row with a lower `tx_id` can
+     * still appear, so a tail that only reads below it never skips a late commit.
+     */
+    txId: bigint('tx_id', { mode: 'number' })
+      .notNull()
+      .default(sql`(pg_current_xact_id()::text)::bigint`),
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
@@ -46,10 +56,16 @@ export const apiRequestLogs = pgTable(
     index('api_request_logs_org_created_idx').on(t.organizationId, t.createdAt),
     index('api_request_logs_org_credential_created_idx').on(t.organizationId, t.credentialId, t.createdAt),
     index('api_request_logs_created_idx').on(t.createdAt),
+    index('api_request_logs_org_tail_idx').on(t.organizationId, t.txId, t.sequence),
     pgPolicy('tenant_read_api_request_logs', {
-      for: 'all',
+      for: 'select',
       to: authenticatedRole,
       using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
+    }),
+    pgPolicy('tenant_insert_api_request_logs', {
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
     }),
   ],
 );

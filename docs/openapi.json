@@ -8143,7 +8143,7 @@
             "type": "string"
           },
           "path": {
-            "description": "The path actually called, without its query string.",
+            "description": "The path called, without its query string, with only UUID parameters filled in: any other value\nstays its placeholder (`:memberId`), so no free text or personal data is kept.",
             "type": "string"
           },
           "statusCode": {
@@ -8546,7 +8546,7 @@
             }
           },
           "cursor": {
-            "description": "Pass it back on the next poll.",
+            "description": "Opaque. Pass it back on the next poll.",
             "type": "string"
           }
         },
@@ -13160,7 +13160,7 @@
             "type": "string"
           },
           "path": {
-            "description": "The path actually called, without its query string.",
+            "description": "The path called, without its query string, with only UUID parameters filled in: any other value\nstays its placeholder (`:memberId`), so no free text or personal data is kept.",
             "type": "string"
           },
           "statusCode": {

@@ -1,5 +1,5 @@
 {
-  "id": "08098c17-d23d-4d9f-8916-e873c3273af3",
+  "id": "02119fe9-c6ef-408a-bb6e-95f470f7d667",
   "prevId": "20f08171-9e6d-4eca-abd5-08050a9c65a8",
   "version": "7",
   "dialect": "postgresql",
@@ -3462,6 +3462,13 @@
             "cycle": false
           }
         },
+        "tx_id": {
+          "name": "tx_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(pg_current_xact_id()::text)::bigint"
+        },
         "organization_id": {
           "name": "organization_id",
           "type": "uuid",
@@ -3611,6 +3618,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "api_request_logs_org_tail_idx": {
+          "name": "api_request_logs_org_tail_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tx_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3662,11 +3696,20 @@
         "tenant_read_api_request_logs": {
           "name": "tenant_read_api_request_logs",
           "as": "PERMISSIVE",
-          "for": "ALL",
+          "for": "SELECT",
           "to": [
             "authenticated"
           ],
           "using": "\"api_request_logs\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
+        },
+        "tenant_insert_api_request_logs": {
+          "name": "tenant_insert_api_request_logs",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "authenticated"
+          ],
+          "withCheck": "\"api_request_logs\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
         }
       },
       "checkConstraints": {},

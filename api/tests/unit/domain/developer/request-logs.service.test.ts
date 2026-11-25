@@ -78,16 +78,29 @@ describe('RequestLogsService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('starts a tail at the latest row without returning any', async () => {
-    const latestSequence = vi.fn(async () => 42);
+  it('starts a tail just below the oldest running transaction, without returning any', async () => {
+    const tailStart = vi.fn(async () => ({ txId: 41, sequence: Number.MAX_SAFE_INTEGER }));
     const since = vi.fn();
-    expect(await service({ latestSequence, since }).service.tail(USER, ORG, {})).toEqual({ items: [], cursor: '42' });
+    expect(await service({ tailStart, since }).service.tail(USER, ORG, {})).toEqual({
+      items: [],
+      cursor: `41.${Number.MAX_SAFE_INTEGER}`,
+    });
     expect(since).not.toHaveBeenCalled();
   });
 
-  it('keeps the cursor when nothing new arrived', async () => {
+  it('reads after the cursor, and keeps it when nothing new arrived', async () => {
     const since = vi.fn(async () => []);
-    expect(await service({ since }).service.tail(USER, ORG, { cursor: '42' })).toEqual({ items: [], cursor: '42' });
+    expect(await service({ since }).service.tail(USER, ORG, { cursor: '42.7' })).toEqual({
+      items: [],
+      cursor: '42.7',
+    });
+    expect(since).toHaveBeenCalledWith({}, ORG, { txId: 42, sequence: 7 }, expect.any(Object), 100);
+  });
+
+  it.each(['42', 'abc', '1.2.3'])('refuses a cursor it did not issue (%s)', async (cursor) => {
+    await expect(service({ since: vi.fn() }).service.tail(USER, ORG, { cursor })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('picks the finest interval that keeps the chart at or under 120 buckets', async () => {

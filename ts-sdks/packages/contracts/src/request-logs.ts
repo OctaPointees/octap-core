@@ -34,7 +34,10 @@ export interface RequestLogEntry {
   method: string;
   /** The route template, e.g. `/v1/credits/members/:memberId/balance`: groups calls to the same endpoint. */
   route: string;
-  /** The path actually called, without its query string. */
+  /**
+   * The path called, without its query string, with only UUID parameters filled in: any other value
+   * stays its placeholder (`:memberId`), so no free text or personal data is kept.
+   */
   path: string;
   statusCode: number;
   latencyMs: number;
@@ -85,8 +88,9 @@ export interface RequestLogPage {
 }
 
 /**
- * `GET …/request-logs/tail`: what arrived after `cursor`, oldest first (at most 100). Without a
- * cursor nothing is returned, only the cursor to poll from: a tail starts now, like `stripe logs tail`.
+ * `GET …/request-logs/tail`: what arrived after `cursor` (at most 100). Without a cursor nothing is
+ * returned, only the cursor to poll from: a tail starts now, like `stripe logs tail`. A call is
+ * never skipped, even one whose row committed late; it may arrive a moment after newer ones.
  */
 export interface RequestLogTailQuery extends Omit<RequestLogFilters, 'from' | 'to'> {
   cursor?: string;
@@ -94,7 +98,7 @@ export interface RequestLogTailQuery extends Omit<RequestLogFilters, 'from' | 't
 
 export interface RequestLogTail {
   items: RequestLogEntry[];
-  /** Pass it back on the next poll. */
+  /** Opaque. Pass it back on the next poll. */
   cursor: string;
 }
 

@@ -22,6 +22,7 @@ import {
   type RawStats,
   type RequestLogQuery,
   type RequestLogRow,
+  type TailPosition,
 } from '#infra/db/repositories/request-logs.repository.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 
@@ -79,12 +80,13 @@ export class RequestLogsService {
     allowOnly(input, ['cursor', 'credentialId', 'category', 'method', 'status', 'route']);
     const filters = filtersOf(input);
     if (input.cursor === undefined) {
-      const latest = await this.read(userId, orgId, (tx) => this.logs.latestSequence(tx, orgId));
-      return { items: [], cursor: String(latest) };
+      const start = await this.read(userId, orgId, (tx) => this.logs.tailStart(tx, orgId));
+      return { items: [], cursor: encodeCursor(start) };
     }
-    const after = integer(input.cursor, 'cursor', 0, 0, Number.MAX_SAFE_INTEGER);
+    const after = decodeCursor(input.cursor);
     const rows = await this.read(userId, orgId, (tx) => this.logs.since(tx, orgId, after, filters, TAIL_LIMIT));
-    return { items: rows.map(toEntry), cursor: String(rows.at(-1)?.sequence ?? after) };
+    const last = rows.at(-1);
+    return { items: rows.map(toEntry), cursor: last ? encodeCursor(last) : encodeCursor(after) };
   }
 
   async summary(userId: string, orgId: string, input: Query): Promise<RequestLogSummary> {
@@ -155,6 +157,20 @@ export class RequestLogsService {
       throw error;
     }
   }
+}
+
+/** Opaque to the caller: `<txId>.<sequence>` of the last row returned. */
+function encodeCursor(position: TailPosition): string {
+  return `${position.txId}.${position.sequence}`;
+}
+
+function decodeCursor(value: unknown): TailPosition {
+  const match = typeof value === 'string' ? /^(-?\d+)\.(\d+)$/.exec(value) : null;
+  const txId = match ? Number(match[1]) : NaN;
+  const sequence = match ? Number(match[2]) : NaN;
+  if (!Number.isSafeInteger(txId) || !Number.isSafeInteger(sequence))
+    throw new BadRequestException('cursor must be one a previous tail returned');
+  return { txId, sequence };
 }
 
 function allowOnly(input: Query, keys: string[]): void {
