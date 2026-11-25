@@ -5,6 +5,8 @@
  * provider's own client.
  */
 
+import type { AssistantStopReason } from '@octap/contracts';
+
 export type AssistantProvider = 'anthropic' | 'openai';
 
 export interface AssistantRunRequest {
@@ -24,13 +26,18 @@ export type AssistantRunEvent =
   | { type: 'tool_result'; toolUseId: string; isError: boolean }
   | { type: 'fallback'; from: string; to: string }
   | { type: 'refusal'; category: string | null }
-  | { type: 'end'; reason: 'complete' | 'tool_limit' | 'length' | 'refused'; usage: AssistantUsage };
+  | { type: 'end'; reason: AssistantStopReason; usage: AssistantUsage };
 
 export interface AssistantUsage {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   modelCalls: number;
+  /**
+   * Set when a model call was cut off (the tool-call cap) before the provider reported its final
+   * usage: the counts hold only what the stream had reported, so they under-count that call.
+   */
+  partial?: true;
 }
 
 export interface AssistantModelClient {

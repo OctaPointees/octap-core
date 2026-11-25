@@ -42,7 +42,9 @@ export type AssistantStreamEvent =
 /**
  * - `complete`: the answer is finished.
  * - `tool_limit`: the assistant needed more tool calls than one turn allows; ask a narrower question.
+ * - `turn_limit`: the assistant was still working when the turn ran out of time (too many steps on the
+ *   provider's side); ask again or split the question.
  * - `length`: the answer hit the length limit.
  * - `refused`: see the `refusal` event.
  */
-export type AssistantStopReason = 'complete' | 'tool_limit' | 'length' | 'refused';
+export type AssistantStopReason = 'complete' | 'tool_limit' | 'turn_limit' | 'length' | 'refused';

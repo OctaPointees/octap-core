@@ -78,7 +78,9 @@ export class AssistantService {
   async prepare(identity: ConsoleIdentity, organizationId: string, body: unknown): Promise<AssistantTurnRequest> {
     const mcpUrl = this.mcpUrl();
     const provider = assistantProvider();
-    if (!provider || !mcpUrl || !providerConfigured(provider))
+    // The MCP server can't start without Core's MCP sign-in (its OAuth metadata), so a turn token
+    // would be useless without it.
+    if (!provider || !mcpUrl || !providerConfigured(provider) || !mcpSignInConfigured())
       throw new ServiceUnavailableException('The dashboard assistant is not configured');
     const { message, history } = parseBody(body);
     const organization = identity.organizations.find((candidate) => candidate.organizationId === organizationId);
@@ -117,6 +119,8 @@ export class AssistantService {
     let outcome = 'aborted';
     let usage: AssistantUsage | undefined;
     try {
+      // The client went away while the turn was being prepared: don't start a paid model call.
+      if (signal.aborted) return;
       const model: AssistantModelClient = turn.provider === 'openai' ? this.openai : this.claude;
       for await (const event of model.run({
         system: turn.system,
@@ -199,6 +203,10 @@ function providerConfigured(provider: AssistantProvider): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 }
 
+function mcpSignInConfigured(): boolean {
+  return Boolean(process.env.MCP_OAUTH_ISSUER_URL?.trim() && process.env.MCP_OAUTH_SIGNING_KEY?.trim());
+}
+
 function parseBody(body: unknown): { message: string; history: AssistantTurn[] } {
   const input = (body ?? {}) as Partial<AssistantMessageBody>;
   const message = typeof input.message === 'string' ? input.message.trim() : '';
@@ -207,11 +215,17 @@ function parseBody(body: unknown): { message: string; history: AssistantTurn[] }
   const raw = input.history ?? [];
   if (!Array.isArray(raw) || raw.length > MAX_HISTORY_TURNS)
     throw new BadRequestException(`history must be a list of at most ${MAX_HISTORY_TURNS} turns`);
-  const history = raw.map((turn: unknown) => {
+  const history = raw.flatMap((turn: unknown): AssistantTurn[] => {
     const { role, text } = (turn ?? {}) as Partial<AssistantTurn>;
-    if ((role !== 'user' && role !== 'assistant') || typeof text !== 'string' || !text.trim())
+    if ((role !== 'user' && role !== 'assistant') || typeof text !== 'string')
       throw new BadRequestException('Each history turn needs a role (user or assistant) and text');
-    return { role, text };
+    // A turn that ended in a refusal or a limit before any text leaves an empty assistant turn in the
+    // browser; it carries nothing, so it is dropped rather than failing the next message.
+    if (!text.trim()) {
+      if (role === 'assistant') return [];
+      throw new BadRequestException('A user turn in the history needs text');
+    }
+    return [{ role, text }];
   });
   if (history.length > 0 && history[0].role !== 'user')
     throw new BadRequestException('history must start with a user turn');

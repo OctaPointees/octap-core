@@ -28,6 +28,17 @@ const toolResult = (toolUseId: string, isError: boolean): Step =>
     content_block: { type: 'mcp_tool_result', tool_use_id: toolUseId, is_error: isError, content: [] },
   }) as Step;
 const usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 80 };
+const messageStart = (input: number, cacheRead: number): Step =>
+  ({
+    type: 'message_start',
+    message: { usage: { input_tokens: input, output_tokens: 1, cache_read_input_tokens: cacheRead } },
+  }) as Step;
+const messageDelta = (output: number): Step =>
+  ({
+    type: 'message_delta',
+    delta: { stop_reason: null },
+    usage: { input_tokens: null, output_tokens: output, cache_read_input_tokens: null },
+  }) as unknown as Step;
 
 /** The client with the SDK replaced by scripted model calls. */
 class ScriptedClient extends AnthropicAssistantClient {
@@ -113,17 +124,35 @@ describe('AnthropicAssistantClient (OCT-308)', () => {
     ]);
   });
 
-  it('stops the turn at the tool-call limit', async () => {
+  it('stops the turn at the tool-call limit, counting the usage the cut-off call had reported', async () => {
     const client = new ScriptedClient([
       {
-        events: [toolUse('t1', 'find_member'), toolUse('t2', 'get_member'), toolUse('t3', 'list_vouchers')],
+        events: [
+          messageStart(300, 250),
+          toolUse('t1', 'find_member'),
+          messageDelta(15),
+          toolUse('t2', 'get_member'),
+          toolUse('t3', 'list_vouchers'),
+        ],
         final: { stop_reason: 'end_turn' },
       },
     ]);
     const events = await collect(client, request({ maxToolCalls: 2 }));
     expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_call', 'end']);
-    expect(events.at(-1)).toMatchObject({ type: 'end', reason: 'tool_limit' });
+    expect(events.at(-1)).toEqual({
+      type: 'end',
+      reason: 'tool_limit',
+      usage: { inputTokens: 300, outputTokens: 15, cacheReadTokens: 250, modelCalls: 1, partial: true },
+    });
     expect(client.aborted).toBe(1);
+  });
+
+  it('ends a turn still paused after every continuation as turn_limit, not tool_limit', async () => {
+    const paused = { stop_reason: 'pause_turn' as const, content: [] as BetaMessage['content'] };
+    const client = new ScriptedClient(Array.from({ length: 4 }, () => ({ events: [], final: paused })));
+    const events = await collect(client);
+    expect(client.params).toHaveLength(4);
+    expect(events.at(-1)).toMatchObject({ type: 'end', reason: 'turn_limit', usage: { modelCalls: 4 } });
   });
 
   it('resumes a paused turn by sending the answer so far back', async () => {

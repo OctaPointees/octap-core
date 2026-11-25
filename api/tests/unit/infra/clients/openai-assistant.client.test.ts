@@ -119,7 +119,8 @@ describe('OpenAiAssistantClient (OCT-308)', () => {
     });
     const limited = await collect(client, request({ maxToolCalls: 2 }));
     expect(limited.map((event) => event.type)).toEqual(['tool_call', 'tool_call', 'end']);
-    expect(limited.at(-1)).toMatchObject({ reason: 'tool_limit' });
+    // OpenAI reports usage only with the finished response, so the cut-off call's usage is marked partial.
+    expect(limited.at(-1)).toMatchObject({ reason: 'tool_limit', usage: { partial: true } });
     expect(client.aborted).toBe(1);
   });
 

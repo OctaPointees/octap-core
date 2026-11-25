@@ -65,6 +65,8 @@ describe('Dashboard assistant route (OCT-308)', () => {
   beforeEach(async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-must-never-leave-core');
     vi.stubEnv('OCTAP_MCP_PUBLIC_URL', MCP_ORIGIN);
+    vi.stubEnv('MCP_OAUTH_ISSUER_URL', 'http://127.0.0.1:3000');
+    vi.stubEnv('MCP_OAUTH_SIGNING_KEY', Buffer.alloc(32, 3).toString('base64'));
     await resetDb(ctx.db);
     orgA = (await seedOrganization(ctx.db, { name: 'A Coffee' })).id;
     orgB = (await seedOrganization(ctx.db, { name: 'B Bakery' })).id;

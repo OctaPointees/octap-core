@@ -75,7 +75,9 @@ export class OpenAiAssistantClient implements AssistantModelClient {
             toolCalls++;
             if (toolCalls > request.maxToolCalls) {
               stream.abort();
-              yield { type: 'end', reason: 'tool_limit', usage: emptyUsage() };
+              // OpenAI reports usage only with the finished response, which an aborted call never
+              // gets; `max_tool_calls` normally ends the turn first, so this is the fallback.
+              yield { type: 'end', reason: 'tool_limit', usage: { ...emptyUsage(), partial: true } };
               return;
             }
             yield { type: 'tool_call', id: event.item.id, name: event.item.name };
