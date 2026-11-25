@@ -1,11 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import {
-  DELIVERY_CLAIM_LEASE_MS,
-  WebhooksRepository,
-  enqueueWebhookEvent,
-} from '#infra/db/repositories/webhooks.repository.js';
-import { connectTestDb, resetDb, schema, seedOrganization } from '../support/db.js';
+import { recordEvent } from '#infra/db/repositories/events.repository.js';
+import { withTenant } from '#infra/db/rls.js';
+import { DELIVERY_CLAIM_LEASE_MS, WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
+import { connectTestDb, deliveriesWithEvents, resetDb, schema, seedDelivery, seedOrganization } from '../support/db.js';
 
 const { db, client } = connectTestDb();
 const repo = new WebhooksRepository(db);
@@ -31,9 +29,9 @@ afterAll(async () => {
 });
 
 const deliveryRow = async (id: string) =>
-  (await db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.id, id)))[0];
-const enqueue = (eventType = 'credits.earned') =>
-  repo.enqueueDelivery({ organizationId: orgId, endpointId, eventType, payload: { a: 1 } });
+  (await deliveriesWithEvents(db).where(eq(schema.webhookDeliveries.id, id)))[0];
+const enqueue = (type = 'credits.earned') =>
+  seedDelivery(db, { organizationId: orgId, endpointId, type, payload: { a: 1 } });
 
 describe('endpoints', () => {
   it('lists, finds (tenant-scoped), toggles, and rotates', async () => {
@@ -46,26 +44,21 @@ describe('endpoints', () => {
     expect((await repo.findEndpointById(endpointId))?.secret).toBe('whsec_1');
 
     expect((await repo.setEndpointStatus(orgId, endpointId, 'DISABLED')).status).toBe('DISABLED');
-    expect(await repo.listActiveEndpoints(orgId)).toEqual([]);
-    await repo.setEndpointStatus(orgId, endpointId, 'ACTIVE');
-    expect((await repo.listActiveEndpoints(orgId)).map((e) => e.id)).toEqual([endpointId]);
+    expect((await repo.setEndpointStatus(orgId, endpointId, 'ACTIVE')).status).toBe('ACTIVE');
 
     expect((await repo.rotateEndpointSecret(orgId, endpointId, 'whsec_2')).secret).toBe('whsec_2');
   });
 });
 
 describe('deliveries', () => {
-  it('enqueues PENDING, due now, with no attempts yet; listing is tenant-scoped', async () => {
+  it('enqueues PENDING, due now, with no attempts yet; reads carry the event; listing is tenant-scoped', async () => {
     const delivery = await enqueue();
-    expect(delivery).toMatchObject({
-      status: 'PENDING',
-      attemptCount: 0,
-      eventType: 'credits.earned',
-      payload: { a: 1 },
-    });
+    expect(delivery).toMatchObject({ status: 'PENDING', attemptCount: 0 });
 
     const other = await seedOrganization(db);
-    expect((await repo.listDeliveries(orgId)).map((d) => d.id)).toEqual([delivery.id]);
+    expect(await repo.listDeliveries(orgId)).toMatchObject([
+      { id: delivery.id, eventId: delivery.eventId, eventType: 'credits.earned', payload: { a: 1 } },
+    ]);
     expect(await repo.listDeliveries(other.id)).toEqual([]);
     expect((await repo.findDeliveryForOrganization(orgId, delivery.id))?.id).toBe(delivery.id);
     expect(await repo.findDeliveryForOrganization(other.id, delivery.id)).toBeUndefined();
@@ -81,6 +74,7 @@ describe('deliveries', () => {
     const claimed = await repo.claimDueDeliveries(10);
 
     expect(claimed.map((d) => [d.id, d.attemptCount])).toEqual([[due.id, 1]]);
+    expect(claimed[0]).toMatchObject({ eventId: due.eventId, eventType: 'credits.earned', payload: { a: 1 } });
   });
 
   it('a claimed delivery is leased: invisible to the next poll until the lease lapses', async () => {
@@ -126,15 +120,31 @@ describe('deliveries', () => {
     });
 
     const replayed = await repo.resetForReplay(orgId, d.id);
-    expect(replayed).toMatchObject({ id: d.id, status: 'PENDING', attemptCount: 0, lastError: null });
+    expect(replayed).toMatchObject({
+      id: d.id,
+      eventId: d.eventId,
+      eventType: 'credits.earned',
+      status: 'PENDING',
+      attemptCount: 0,
+      lastError: null,
+    });
 
     await repo.markDelivered(d.id, 204);
     expect(await deliveryRow(d.id)).toMatchObject({ status: 'DELIVERED', lastResponseStatus: 204, lastError: null });
   });
 });
 
-describe('enqueueWebhookEvent (OCT-209 outbox)', () => {
-  it('queues one delivery per ACTIVE endpoint of the organization, on the caller’s transaction', async () => {
+describe('recordEvent (OCT-325 outbox)', () => {
+  const record = (organizationId: string) =>
+    withTenant(db, organizationId, (tx) =>
+      recordEvent(tx, {
+        organizationId,
+        type: 'budget.low',
+        payload: { threshold: 80, remaining: 20, capacity: 100 },
+      }),
+    );
+
+  it('records one event and queues it once per ACTIVE endpoint of the organization, under one event id', async () => {
     const second = await repo.createEndpoint({
       organizationId: orgId,
       url: 'https://merchant.example/b',
@@ -149,33 +159,52 @@ describe('enqueueWebhookEvent (OCT-209 outbox)', () => {
     const other = await seedOrganization(db);
     await repo.createEndpoint({ organizationId: other.id, url: 'https://other.example', secret: 'whsec_4' });
 
-    const queued = await db.transaction((tx) =>
-      enqueueWebhookEvent(tx, {
-        organizationId: orgId,
-        eventType: 'credits.earn.confirmed',
-        payload: { transactionId: 't' },
-      }),
-    );
+    const event = await record(orgId);
 
-    expect(queued).toBe(2);
-    const rows = await db.select().from(schema.webhookDeliveries);
+    expect(event).toMatchObject({ organizationId: orgId, type: 'budget.low', sequence: expect.any(Number) });
+    const rows = await deliveriesWithEvents(db);
     expect(rows.map((r) => r.endpointId).sort()).toEqual([endpointId, second.id].sort());
-    expect(rows.every((r) => r.status === 'PENDING' && r.eventType === 'credits.earn.confirmed')).toBe(true);
+    expect(rows.every((r) => r.eventId === event.id && r.status === 'PENDING' && r.eventType === 'budget.low')).toBe(
+      true,
+    );
   });
 
-  it('queues nothing for an organization without active endpoints, and rolls back with its transaction', async () => {
+  it('records the event even without an endpoint, and orders events by sequence', async () => {
     const bare = await seedOrganization(db);
-    await expect(
-      db.transaction((tx) => enqueueWebhookEvent(tx, { organizationId: bare.id, eventType: 'x', payload: {} })),
-    ).resolves.toBe(0);
+    const first = await record(bare.id);
+    const second = await record(bare.id);
 
+    expect(second.sequence).toBeGreaterThan(first.sequence);
+    expect(await db.select().from(schema.organizationEvents)).toHaveLength(2);
+    expect(await deliveriesWithEvents(db)).toEqual([]);
+  });
+
+  it('rolls back, event and deliveries, with the caller’s transaction', async () => {
     await expect(
-      db.transaction(async (tx) => {
-        await enqueueWebhookEvent(tx, { organizationId: orgId, eventType: 'credits.earn.confirmed', payload: {} });
+      withTenant(db, orgId, async (tx) => {
+        await recordEvent(tx, {
+          organizationId: orgId,
+          type: 'budget.low',
+          payload: { threshold: 95, remaining: 5, capacity: 100 },
+        });
         throw new Error('rolled back');
       }),
     ).rejects.toThrow('rolled back');
 
-    expect(await db.select().from(schema.webhookDeliveries)).toEqual([]);
+    expect(await db.select().from(schema.organizationEvents)).toEqual([]);
+    expect(await deliveriesWithEvents(db)).toEqual([]);
+  });
+
+  it('RLS refuses an event recorded for another organization', async () => {
+    const other = await seedOrganization(db);
+    await expect(
+      withTenant(db, orgId, (tx) =>
+        recordEvent(tx, {
+          organizationId: other.id,
+          type: 'budget.low',
+          payload: { threshold: 80, remaining: 20, capacity: 100 },
+        }),
+      ),
+    ).rejects.toThrow();
   });
 });

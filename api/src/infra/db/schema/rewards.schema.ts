@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { VoucherRefundPolicySnapshot } from '@octap/contracts';
+import type { VoucherApprovalSnapshot, VoucherRefundPolicySnapshot } from '@octap/contracts';
 import {
   bigint,
   check,
@@ -136,11 +136,31 @@ export const vouchers = pgTable(
     metadata: jsonb('metadata').default({}),
     /** The batch it was created or last imported in (OCT-303); null when created on its own. */
     importBatchId: uuid('import_batch_id'),
+    /**
+     * Who created it, or last replaced it by importing its code again (OCT-324): a console user or an
+     * API key. Null when it was created before this was recorded, or that user or key was deleted.
+     */
+    createdByUserId: uuid('created_by_user_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    createdByCredentialId: uuid('created_by_credential_id').references(() => apiCredentials.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * Who took it live (OCT-324): whoever activated it, or the Owner who approved it, set when
+     * publishing starts. The chain can't say: every publish is signed with OctaP's issuer key.
+     */
+    activatedByUserId: uuid('activated_by_user_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    activatedByCredentialId: uuid('activated_by_credential_id').references(() => apiCredentials.id, {
+      onDelete: 'set null',
+    }),
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('voucher_org_code_idx').on(t.organizationId, t.code),
+    // Never both, as for a batch's creator.
+    check('vouchers_one_creator', sql`num_nonnulls(${t.createdByUserId}, ${t.createdByCredentialId}) <= 1`),
+    check('vouchers_one_activator', sql`num_nonnulls(${t.activatedByUserId}, ${t.activatedByCredentialId}) <= 1`),
     index('vouchers_import_batch_idx').on(t.importBatchId),
     // Composite, so a voucher can only point at a batch of its own organization.
     foreignKey({
@@ -236,6 +256,11 @@ export const voucherApprovalRequests = pgTable(
     }),
     reviewedById: uuid('reviewed_by_id').references(() => systemUsers.id, { onDelete: 'set null' }),
     reason: text('reason'),
+    /**
+     * The terms as submitted (OCT-324): what the Owner reviews, and what approving publishes. Approving
+     * refuses a voucher whose terms no longer match. Null for requests made before it was kept.
+     */
+    snapshot: jsonb('snapshot').$type<VoucherApprovalSnapshot>(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }).defaultNow().notNull(),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   },

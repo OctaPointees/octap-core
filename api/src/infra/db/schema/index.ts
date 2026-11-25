@@ -6,6 +6,7 @@ export * from './rewards.schema.js';
 export * from './voucher-refund-policies.schema.js';
 export * from './billing.schema.js';
 export * from './operations.schema.js';
+export * from './events.schema.js';
 export * from './webhooks.schema.js';
 export * from './programs.schema.js';
 export * from './documents.schema.js';

@@ -13,7 +13,7 @@ then move the row to **Implemented** in the same pull request.
 | --- | --- |
 | PostgreSQL (Supabase) connection, Drizzle schema, first migration, RLS helper | api/src/infra/db; api/db/postgres/migrations |
 | Earn from purchase amounts, customer-signed POS redeem, balance and transaction history | api/src/domain/credits; api/src/api/rest/credits.controller.ts |
-| Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279). A per-voucher `perMemberLimit` caps how many one member may hold, null for no limit, and `validForDays` makes each customer's voucher usable N days from its issue, capped by `expiresAt` (OCT-291). Organizations may require an Owner's approval before a Business Developer's or an API key's voucher goes live (`PENDING_APPROVAL`, OCT-59). Voucher batches: up to 100 vouchers created as one DRAFT batch with a `dryRun` preview and per-item results keyed by `code` (`created`/`unchanged`/`conflict`/`replaced`/`error`), then activated (an Owner's activation also approves), paused, resumed or archived (drafts become `ARCHIVED`) together, with an API key or from the console (OCT-303) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
+| Voucher create/publish/list/get/claim/grant, customer-signed use, member vouchers. Terms are frozen on-chain and each customer's voucher is a record in their `CreditAccount` (OCT-279). A per-voucher `perMemberLimit` caps how many one member may hold, null for no limit, and `validForDays` makes each customer's voucher usable N days from its issue, capped by `expiresAt` (OCT-291). Organizations may require an Owner's approval before a Business Developer's or an API key's voucher goes live (`PENDING_APPROVAL`, OCT-59); the Owner approves, rejects or (while approval is required) activates only the version they reviewed, with a submission's terms kept as submitted, and every voucher records who created it and who took it live (OCT-324). Voucher batches: up to 100 vouchers created as one DRAFT batch with a `dryRun` preview and per-item results keyed by `code` (`created`/`unchanged`/`conflict`/`replaced`/`error`), then activated (an Owner's activation also approves), paused, resumed or archived (drafts become `ARCHIVED`) together, with an API key or from the console (OCT-303) | api/src/domain/rewards; api/src/api/rest/rewards.controller.ts; contracts/sui/sources/voucher_terms.move |
 | Console reward catalog: Owner/Business Developer list and detail, Owner-only create (DRAFT by default, `pointsCost` required), edit, pause and activate, from the Google session, checked in the write's transaction (OCT-236) | api/src/api/rest/console-rewards.controller.ts; api/src/domain/rewards/console-rewards.service.ts |
 | Points and voucher wire types | ts-sdks/packages/contracts |
 | Merchant Node client (REST) for credits, vouchers, webhook management, structured errors and cancellation | ts-sdks/packages/node |
@@ -24,6 +24,7 @@ then move the row to **Implemented** in the same pull request.
 | Earn lands on Sui: durable PG command → outbox → worker dispatch → on-chain confirmation | api/src/domain/credits/chain-submit.worker.ts, chain-submit.processor.ts; api/src/infra/clients/sui |
 | CORS enabled (permissive) so a separately-hosted frontend can call the API | api/src/main.ts |
 | Validated configuration: every env var the API and worker read is checked at boot (`ENV_SCHEMA`), all problems reported at once; `DATABASE_URL` and the worker's issuer signer (plus the program admin signer when provisioning is enabled) are required; HTTP feature secrets may stay unset and are logged (OCT-60) | api/src/config; api/src/main.ts; api/src/worker.ts |
+| Deploy image: one `Dockerfile` for the API, the worker, the migrations and the MCP server (the command picks the process, configuration from the environment only, no `.env` in the image); `scripts/migrate.mjs` applies the migrations and, on a Postgres without Supabase's roles (RDS), creates them first; CI builds the image, migrates an empty Postgres twice and checks the API's `/health` (OCT-317). Not deployed anywhere yet: OCT-316 | Dockerfile; scripts/migrate.mjs; .github/workflows/check.yml |
 | Observability: a server-generated correlation id per HTTP request (`request.correlationId`, `X-Request-Id` header, access log line); public deep `/health` (database, Redis, Sui RPC; 503 only when the database or Redis is down); platform-admin `/v1/platform/health` with probe errors and worker lag (unsettled command outbox age per command type, webhook backlog, indexer checkpoints behind the chain) (OCT-60) | api/src/observability; api/src/api/rest/health.controller.ts; api/src/infra/db/repositories/operational-health.repository.ts |
 | OpenAPI document for every REST route (paths, params, auth per route read from the guards' metadata), Swagger UI at `/docs` behind `OPENAPI_ENABLED`, request/response/query schemas generated from each handler's TypeScript types, committed `docs/openapi.json` (3.1) checked in CI (OCT-285) | api/src/api/openapi; scripts/openapi*.mjs; docs/openapi.json |
 | Tenant authorization: API-key auth (`Authorization: Bearer`), scopes, credential issue/revoke | api/src/infra/auth |
@@ -31,13 +32,15 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: Owner-only console endpoint registration, disable/enable, secret rotation and dead-letter replay (an API key only lists endpoints and deliveries, OCT-301), signed delivery, retry/dead-letter, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
-| Webhooks: exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, queued in the same DB transaction as the confirm (outbox), whichever path confirmed it | api/src/infra/db/repositories/credits.repository.ts (`confirm*OnChain`); `enqueueWebhookEvent` in webhooks.repository.ts |
+| Webhooks: one transactional outbox for every event (OCT-325): `recordEvent(tx, ...)` writes an `organization_events` row in the transaction of the change, endpoint or not, and queues one delivery per ACTIVE endpoint, all under one event id. Exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, whichever path confirmed it; `credits.earned` at accept; voucher lifecycle events (`voucher.created` / `submitted` / `returned` / `activated` / `publish.failed` / `paused` / `archived`). Events are kept 30 days, except those still owed or replayable (`EventRetentionWorker`) | api/src/infra/db/repositories/events.repository.ts; voucher-events.ts; api/src/domain/webhooks/README.md |
+| Console event stream (OCT-326): `GET /v1/console/organizations/:id/events`, Server-Sent Events of the organization's events as thin hints (type and subject ids) for the console to refetch; Owner or Business Developer with the Google ID token as Bearer (a `fetch`-based client), `Last-Event-ID` resume or `stream.reset`, heartbeat with an access re-check, closes when the token expires; one scan of `organization_events` per HTTP instance per second, not Redis pub/sub | api/src/domain/events; api/src/api/rest/console-events.controller.ts; ts-sdks/packages/contracts/src/organization-events.ts |
 | Authorization hardening: per-credential and per-IP public-route rate limiting, RLS enforced on every tenant-scoped read and write of the credits, rewards, webhooks and API-key repositories, including worker and indexer callbacks (OCT-289) | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/rls.ts; api/src/infra/db/repositories/tenant-lookup.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
 | Administration: audited requests, ownership transfer, display-name approval, suspension/reinstatement/deactivation, terminal decisions and inactive-organization API-key enforcement | api/src/domain/administration; api/src/api/rest/administration.controller.ts |
 | Organization details: Owners change display details (`name`, an https `logoUrl`) directly; legal details (legal name, tax ID, representative, CCCD, one-time type) change only through a System Admin-approved `UPDATE_IDENTITY` request, one pending per organization, stale approvals refused, the new CCCD held encrypted outside the request payload (OCT-281) | api/src/infra/db/organization-identity.rules.ts; api/src/infra/db/repositories/governance.repository.ts; docs/console-google-login.md |
 | MCP sign-in: Core is the OAuth 2.1 authorization server for MCP hosts (dynamic client registration, authorization code with PKCE S256 behind the console Google sign-in, one-hour opaque tokens bound to user, organization and persona, revocation). `ConsoleAccessGuard` accepts these tokens for GET requests on the bound organization only, rechecking the membership each time; `octap-mcp serve-http` serves remote MCP over Streamable HTTP with the user's token (OCT-293). Each session sees the tools and prompts of its persona: Developers get member lookups and API keys, Owners get everything plus member vouchers and the refund policy, both get `get_connection` (OCT-294) | api/src/domain/mcp-auth; api/src/api/rest/mcp-oauth.controller.ts; ts-sdks/packages/mcp/src/http.ts; ts-sdks/packages/mcp/src/personas.ts |
+| Dashboard assistant: `POST /v1/console/organizations/:organizationId/assistant/messages` streams (SSE) an answer from an OpenAI model (`OPENAI_MODEL`), which reads the organization through the MCP server with a 10-minute MCP token Core issues for the user's persona, revoked after the turn. 503 until the OpenAI key and model, `OCTAP_MCP_PUBLIC_URL` and MCP sign-in are set; limits on message and conversation length, 12 tool calls per turn, 10 messages per user per minute; nothing stored (OCT-308) | api/src/domain/assistant; api/src/infra/clients/openai; api/src/api/rest/console-assistant.controller.ts |
 | Members: tenant customer search/detail, exact POS ID lookup, Owner-only profile/status edits and blocked-member command eligibility | api/src/domain/members; api/src/api/rest/members.controller.ts |
 | Console: audited operator bootstrap/link script, direct Google identity verification, org/persona-protected profile/staff/credential reads, approved organization onboarding, Developer invitations and suspension/restoration, and System Admin first-Owner bootstrap for active ownerless organizations | api/src/domain/identity; api/src/api/rest/console*; docs/console-google-login.md |
 | Identity: Google zkLogin via Enoki (address resolution, end-user binding, token-proven org enrollment, merchant `verifyCustomer` in the Node SDK), sponsored-transaction boundary for the future customer-signed redeem | api/src/domain/identity; api/src/infra/clients/enoki; api/src/infra/clients/sui/sui-transaction-builder.client.ts |
@@ -154,13 +157,15 @@ then move the row to **Implemented** in the same pull request.
   reserves or reads their balance again, the stale hold still shows in `pendingRedemption`; unsigned voucher claims also have a worker sweep; submitted digests are never released by age alone.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
-- `emit()` (the accept-time `credits.earned`) is not in
-  the same DB transaction as the write that triggers it (a crash in between, or a failed enqueue
-  that `emit()` only logs, silently drops the event). The chain-confirmation events and, since
-  OCT-244, `credits.reversed` and `voucher.redeemed` already use the outbox form,
-  `enqueueWebhookEvent(tx, ...)`; the accept-time event could move to it too. The endpoint
-  `secret` is stored as plaintext, not via a secrets manager/KMS — both are known, deliberate gaps,
-  not oversights; the first needs the OCT-43 outbox generalized to cover this too.
+- Webhook endpoint `secret` is stored as plaintext, not via a secrets manager/KMS: a known,
+  deliberate gap.
+- The console event stream (OCT-326) only carries what `organization_events` records: vouchers,
+  credits and the issuance budget. Members, API keys and webhook endpoints record no events yet, so
+  those screens don't update from it. Recording one there (`recordEvent` plus its subject in
+  `api/src/domain/events/event-subjects.ts`) streams it with no other change; whether merchants also
+  get them as webhooks is undecided. The 5-streams-per-user limit is per HTTP instance. An open
+  stream misses an event whose transaction stays open more than 60 s between recording it and
+  committing; a reconnect still replays it.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
   plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
@@ -192,8 +197,9 @@ then move the row to **Implemented** in the same pull request.
   comes back, needs a new design: an Ed25519 keypair held by the client and a scope ceiling.
 - Creating a voucher takes no `idempotencyKey`: a create whose response is lost gets a 409 on retry,
   and the caller finds it with `listVouchers`. A later fix belongs in rewards: an `idempotencyKey`,
-  or the same `code` and content returning the existing voucher. No webhook fires when a voucher is
-  created, activated, paused or submitted for approval either; only `voucher.granted` and `voucher.redeemed` exist.
+  or the same `code` and content returning the existing voucher.  Voucher lifecycle webhooks
+  (OCT-325) cover create, submit, return, activate, publish failure, pause and archive; running out of
+  supply (`DEPLETED`) and expiry send none.
 - Console API keys record no creator or revoker, and survive the member who issued them leaving:
   an Owner revokes them by hand. There is no rotation and no expiry from the console.
 - System-user (dashboard login) sessions are a separate, not-yet-started auth path from the
@@ -202,12 +208,15 @@ then move the row to **Implemented** in the same pull request.
   `docker/postgres-init`) covers every tenant-scoped method of `CreditsRepository`,
   `RewardsRepository`, `WebhooksRepository` and `ApiCredentialsRepository` (OCT-289), with a policy
   on `credit_ownerships`, `voucher_ownerships` and `credit_buckets` that resolves the organization
-  through the member. Five methods stay on the plain pooled connection, by design, each marked
+  through the member. Eight methods stay on the plain pooled connection, by design, each marked
   `RLS exception` in the code: `ApiCredentialsRepository.findByKeyHash` (finds the organization),
   `WebhooksRepository.claimDueDeliveries`' scan (every organization's due deliveries; each claim
   then runs under its organization), `CreditsRepository.findMemberOrganizationId` (finds the
   organization), `findCreditOwnershipBySuiAccountId` (the indexer only has the chain account) and
-  `hasAnyLoyaltyTransactions` (environment-wide). Request paths pass the authenticated
+  `hasAnyLoyaltyTransactions` (environment-wide), and `OrganizationEventsRepository`'s
+  `latestSequence` and `scanSince` (the console stream's scan over the organizations with a stream
+  open on the instance; each event then goes only to its own organization's streams) and
+  `deleteExpired` (trims every organization's events). Request paths pass the authenticated
   organization, so RLS refuses another organization's row. Only worker and indexer callbacks,
   which start from an id, first read that row's organization (`tenantOf` in `tenant-lookup.ts`);
   the console and POS finalize steps share two of them (`confirmPosRedemptionOnChain`,

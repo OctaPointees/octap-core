@@ -35,6 +35,7 @@
     "drizzle-orm": "^0.45.3",
     "google-auth-library": "^11.3.2",
     "ioredis": "^6.0.0",
+    "openai": "^7.63.0",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"

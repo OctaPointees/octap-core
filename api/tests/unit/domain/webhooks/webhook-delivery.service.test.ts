@@ -3,50 +3,6 @@ import { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.servic
 import type { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { stub } from '../../../helpers/stub.js';
 
-describe('WebhookDeliveryService.emit', () => {
-  it('enqueues one delivery per ACTIVE endpoint', async () => {
-    const enqueueDelivery = vi.fn(async () => ({}));
-    const service = new WebhookDeliveryService(
-      stub<WebhooksRepository>({ listActiveEndpoints: async () => [{ id: 'ep-1' }, { id: 'ep-2' }], enqueueDelivery }),
-    );
-
-    await service.emit('org-1', 'credits.earned', { transactionId: 'tx-1' });
-
-    expect(enqueueDelivery.mock.calls).toEqual([
-      [
-        {
-          organizationId: 'org-1',
-          endpointId: 'ep-1',
-          eventType: 'credits.earned',
-          payload: { transactionId: 'tx-1' },
-        },
-      ],
-      [
-        {
-          organizationId: 'org-1',
-          endpointId: 'ep-2',
-          eventType: 'credits.earned',
-          payload: { transactionId: 'tx-1' },
-        },
-      ],
-    ]);
-  });
-
-  it.each([new Error('db down'), 'db down'])(
-    'never throws, so webhook infra can’t fail the business operation (%s)',
-    async (failure) => {
-      const service = new WebhookDeliveryService(
-        stub<WebhooksRepository>({
-          listActiveEndpoints: async () => {
-            throw failure;
-          },
-        }),
-      );
-      await expect(service.emit('org-1', 'credits.earned', {})).resolves.toBeUndefined();
-    },
-  );
-});
-
 describe('WebhookDeliveryService.list / replay', () => {
   it('lists the organization’s deliveries', async () => {
     const listDeliveries = vi.fn(async () => [{ id: 'dlv-1' }]);

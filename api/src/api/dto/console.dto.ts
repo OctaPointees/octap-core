@@ -5,6 +5,7 @@ import type {
   ConsoleInvitationInput,
   ConsoleStaffAccessPatch,
   ConsoleVoucherInput,
+  ConsoleVoucherPatch,
   GovernanceProposal,
   GovernanceRequestListQuery,
   MemberDirectoryQuery,
@@ -17,6 +18,8 @@ import type {
   PlatformOrganizationListQuery,
   ProvisionOrganizationInput,
   ReviewDecisionInput,
+  ActivateVoucherBatchRequest,
+  VoucherApproveInput,
   VoucherRejectInput,
 } from '@octap/contracts';
 
@@ -29,13 +32,16 @@ export type Wire<T> = { [K in keyof T]: T[K] };
 
 export type ConsoleGoogleLoginBodyDto = Wire<ConsoleGoogleLoginInput>;
 export type ConsoleVoucherBodyDto = Wire<ConsoleVoucherInput>;
+export type ConsoleVoucherPatchBodyDto = Wire<ConsoleVoucherPatch>;
 export type ReviewDecisionBodyDto = Wire<ReviewDecisionInput>;
 export type GovernanceProposalBodyDto = Wire<GovernanceProposal>;
 export type GovernanceRequestListQueryDto = Wire<GovernanceRequestListQuery>;
 export type OrganizationApplicationBodyDto = Wire<OrganizationApplicationInput>;
 export type OrganizationProfileBodyDto = Wire<OrganizationProfileInput>;
 export type OrganizationSettingsBodyDto = Wire<OrganizationSettingsInput>;
+export type VoucherApproveBodyDto = Wire<VoucherApproveInput>;
 export type VoucherRejectBodyDto = Wire<VoucherRejectInput>;
+export type ActivateVoucherBatchBodyDto = Wire<ActivateVoucherBatchRequest>;
 export type ConsoleStaffAccessBodyDto = Wire<ConsoleStaffAccessPatch>;
 export type ConsoleInvitationBodyDto = Wire<ConsoleInvitationInput>;
 export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;

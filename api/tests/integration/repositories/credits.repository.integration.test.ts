@@ -11,6 +11,7 @@ import { OperationPayloadConflictError, OperationsRepository } from '#infra/db/r
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import {
   connectTestDb,
+  deliveriesWithEvents,
   getLoyaltyTransaction,
   getOwnership,
   insertLoyaltyTransaction,
@@ -985,7 +986,9 @@ describe('tenant scoping', () => {
 });
 
 describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
-  const deliveries = () => db.select().from(schema.webhookDeliveries);
+  /** What the chain's outcome queued: an accepted earn's own `credits.earned` is left out (tested below). */
+  const deliveries = async () =>
+    (await deliveriesWithEvents(db)).filter((delivery) => delivery.eventType !== 'credits.earned');
 
   it('a reversal queues exactly one credits.reversed in its own transaction; a rejected one queues nothing (OCT-244)', async () => {
     const earn = await getLoyaltyTransaction(db, (await confirmedEarn(100)).id);
@@ -1051,6 +1054,24 @@ describe('chain-confirmation webhooks (OCT-209 outbox)', () => {
       },
       db_,
     );
+
+  it('an accepted earn records credits.earned in its own transaction, once per key (OCT-325)', async () => {
+    const tx = await acceptEarn('accept');
+    await acceptEarn('accept');
+
+    const accepted = (await deliveriesWithEvents(db)).filter((delivery) => delivery.eventType === 'credits.earned');
+    expect(accepted).toMatchObject([
+      {
+        payload: {
+          transactionId: tx.id,
+          organizationEndUserId: memberId,
+          purchaseAmount: 10_000,
+          estimatedPoints: 10_000,
+          newBalance: 0,
+        },
+      },
+    ]);
+  });
 
   it('a confirmed earn queues exactly one credits.earn.confirmed carrying the on-chain amount, balance and digest', async () => {
     const tx = await acceptEarn('e');

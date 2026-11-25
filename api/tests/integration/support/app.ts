@@ -63,6 +63,8 @@ export async function createTestApp(
   adapters: ChainAdapters = fakeChainAdapters(),
   google?: Pick<GoogleIdentityClient, 'verify'>,
   beforeInit?: (app: INestApplication) => void,
+  /** More providers to replace, e.g. a vendor client a test fakes. */
+  overrides: Array<{ provide: unknown; useValue: unknown }> = [],
 ) {
   const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EnokiClient)
@@ -70,6 +72,7 @@ export async function createTestApp(
     .overrideProvider(SuiTransactionBuilderClient)
     .useValue(adapters.suiBuilder);
   if (google) builder.overrideProvider(GoogleIdentityClient).useValue(google);
+  for (const { provide, useValue } of overrides) builder.overrideProvider(provide).useValue(useValue);
   const moduleRef = await builder.compile();
   const app: INestApplication = moduleRef.createNestApplication({ logger: false });
   beforeInit?.(app);

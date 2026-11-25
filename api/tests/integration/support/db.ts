@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq } from 'drizzle-orm';
+import { asc, eq, getTableColumns } from 'drizzle-orm';
 import * as schema from '#infra/db/schema/index.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { generateApiKey } from '#infra/auth/api-key-hash.util.js';
@@ -156,4 +156,53 @@ export async function seedCredential(
     })
     .returning();
   return { credential, rawKey: raw };
+}
+
+/** Every webhook delivery with its event's `eventType` and `payload`, oldest first. */
+export function deliveriesWithEvents(db: DrizzleDb) {
+  return db
+    .select({
+      ...getTableColumns(schema.webhookDeliveries),
+      eventType: schema.organizationEvents.type,
+      payload: schema.organizationEvents.payload,
+    })
+    .from(schema.webhookDeliveries)
+    .innerJoin(schema.organizationEvents, eq(schema.organizationEvents.id, schema.webhookDeliveries.eventId))
+    .orderBy(asc(schema.organizationEvents.sequence));
+}
+
+/** Every organization event's type, in the order recorded. */
+export async function eventTypes(db: DrizzleDb, organizationId?: string): Promise<string[]> {
+  const rows = await db
+    .select({ type: schema.organizationEvents.type })
+    .from(schema.organizationEvents)
+    .where(organizationId ? eq(schema.organizationEvents.organizationId, organizationId) : undefined)
+    .orderBy(asc(schema.organizationEvents.sequence));
+  return rows.map((row) => row.type);
+}
+
+/** Every organization event of `type`, in the order recorded. */
+export function eventsOfType(db: DrizzleDb, type: string) {
+  return db
+    .select()
+    .from(schema.organizationEvents)
+    .where(eq(schema.organizationEvents.type, type))
+    .orderBy(asc(schema.organizationEvents.sequence));
+}
+
+/** Queues a delivery of a made-up event to `endpointId`, as `recordEvent` would. */
+export async function seedDelivery(
+  db: DrizzleDb,
+  params: Omit<typeof schema.webhookDeliveries.$inferInsert, 'eventId'> & { type?: string; payload?: unknown },
+) {
+  const { type = 'test', payload = {}, ...delivery } = params;
+  const [event] = await db
+    .insert(schema.organizationEvents)
+    .values({ organizationId: delivery.organizationId, type, payload })
+    .returning();
+  const [created] = await db
+    .insert(schema.webhookDeliveries)
+    .values({ ...delivery, eventId: event.id })
+    .returning();
+  return created;
 }

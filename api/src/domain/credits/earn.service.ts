@@ -8,7 +8,6 @@ import {
 import { CreditsRepository } from '#infra/db/repositories/credits.repository.js';
 import { OperationPayloadConflictError } from '#infra/db/repositories/operations.repository.js';
 import { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
-import { WebhookDeliveryService } from '../webhooks/webhook-delivery.service.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 import { IssuanceBudgetService } from './issuance-budget.service.js';
@@ -34,7 +33,6 @@ function toEarnResponse(transaction: LoyaltyTransaction, newBalance: number): Ea
 export class EarnService {
   constructor(
     private readonly creditsRepo: CreditsRepository,
-    private readonly webhooks: WebhookDeliveryService,
     private readonly programsRepo: ProgramsRepository,
     private readonly issuanceBudget: IssuanceBudgetService,
   ) {}
@@ -55,7 +53,7 @@ export class EarnService {
       ? accepted.pointsAmount
       : await this.estimatePoints(organizationId, request.purchaseAmount, request.idempotencyKey);
 
-    const { transaction, newBalance, isNew } = await this.creditsRepo
+    const { transaction, newBalance } = await this.creditsRepo
       .recordEarnTransaction({
         organizationId,
         organizationEndUserId: request.organizationEndUserId,
@@ -69,16 +67,6 @@ export class EarnService {
         if (error instanceof OperationPayloadConflictError) throw new ConflictException(error.message);
         throw mapMemberEligibilityError(error);
       });
-
-    if (isNew) {
-      await this.webhooks.emit(organizationId, 'credits.earned', {
-        transactionId: transaction.id,
-        organizationEndUserId: transaction.organizationEndUserId,
-        purchaseAmount: request.purchaseAmount,
-        estimatedPoints,
-        newBalance,
-      });
-    }
 
     return toEarnResponse(transaction, newBalance);
   }

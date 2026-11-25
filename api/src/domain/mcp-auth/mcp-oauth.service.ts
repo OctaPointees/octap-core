@@ -23,6 +23,10 @@ export const MCP_SCOPE = 'mcp';
 export const AUTHORIZATION_REQUEST_TTL_SECONDS = 600;
 export const AUTHORIZATION_CODE_TTL_SECONDS = 60;
 export const ACCESS_TOKEN_TTL_SECONDS = 3600;
+/** Long enough for one assistant turn; revoked as soon as the turn ends. */
+export const ASSISTANT_TOKEN_TTL_SECONDS = 600;
+/** The client id on assistant tokens, so they can be told apart from an MCP host's. */
+export const ASSISTANT_CLIENT_ID = 'octap-dashboard-assistant';
 const CLIENT_ID_PREFIX = 'mcpc_';
 const MAX_REDIRECT_URIS = 5;
 const MAX_URL_LENGTH = 2048;
@@ -310,6 +314,28 @@ export class McpOAuthService {
     };
     await this.redis.set(this.key('token', hash(token)), JSON.stringify(stored), 'EX', ACCESS_TOKEN_TTL_SECONDS);
     return { access_token: token, token_type: 'Bearer', expires_in: ACCESS_TOKEN_TTL_SECONDS, scope: MCP_SCOPE };
+  }
+
+  /**
+   * A token for the dashboard assistant (OCT-308), issued by Core itself instead of through the
+   * browser flow. It is the same record as any MCP token, so introspection, the console guard and the
+   * MCP server treat it the same way: one organization, the user's persona there, read-only, and
+   * rechecked on every use. It lives only for one assistant turn.
+   */
+  async issueAssistantToken(grant: {
+    userId: string;
+    organizationId: string;
+    persona: OrganizationPersona;
+    resource: string;
+  }): Promise<string> {
+    const token = `${MCP_TOKEN_PREFIX}${random()}`;
+    const stored: AccessTokenRecord = {
+      ...grant,
+      clientId: ASSISTANT_CLIENT_ID,
+      expiresAt: Math.floor(Date.now() / 1000) + ASSISTANT_TOKEN_TTL_SECONDS,
+    };
+    await this.redis.set(this.key('token', hash(token)), JSON.stringify(stored), 'EX', ASSISTANT_TOKEN_TTL_SECONDS);
+    return token;
   }
 
   /** RFC 7009: always succeeds, whether or not the token existed. */

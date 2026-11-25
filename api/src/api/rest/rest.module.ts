@@ -20,11 +20,13 @@ import { ConsoleVoucherBatchesController } from './console-voucher-batches.contr
 import { VoucherBatchesController } from './voucher-batches.controller.js';
 import { ConsoleRefundPolicyController } from './console-refund-policy.controller.js';
 import { ConsoleWebhooksController } from './console-webhooks.controller.js';
+import { ConsoleEventsController } from './console-events.controller.js';
 import { ConsoleApiCredentialsController } from './console-api-credentials.controller.js';
 import { ConsoleChangeRequestsController, PlatformChangeRequestsController } from './administration.controller.js';
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
 import { HealthController, PlatformHealthController } from './health.controller.js';
+import { ConsoleAssistantController } from './console-assistant.controller.js';
 @Module({
   imports: [DomainModule, AuthModule, ObservabilityModule],
   providers: [ConsoleAccessGuard],
@@ -33,6 +35,7 @@ import { HealthController, PlatformHealthController } from './health.controller.
     PlatformHealthController,
     McpOAuthController,
     ConsoleMcpTokenController,
+    ConsoleAssistantController,
     PlatformOrganizationsController,
     OrganizationResolutionController,
     ConsoleIssuanceBudgetController,
@@ -44,6 +47,7 @@ import { HealthController, PlatformHealthController } from './health.controller.
     ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,
     ConsoleWebhooksController,
+    ConsoleEventsController,
     ConsoleApiCredentialsController,
     CreditsController,
     RewardsController,
