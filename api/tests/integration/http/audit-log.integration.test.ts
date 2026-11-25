@@ -193,12 +193,16 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
   });
 
   it('is append-only: no role can change or delete a row', async () => {
+    // drizzle wraps the Postgres error: the trigger's message is on its cause.
+    const appendOnly = { cause: expect.objectContaining({ message: expect.stringMatching(/append-only/) }) };
     await ctx.http().post(consolePath('/api-credentials')).set(as('owner')).send({ name: 'k' }).expect(201);
     const [row] = await auditRows();
     await expect(
       ctx.db.update(schema.auditLog).set({ action: 'tampered' }).where(eq(schema.auditLog.id, row.id)),
-    ).rejects.toThrow(/append-only/);
-    await expect(ctx.db.delete(schema.auditLog).where(eq(schema.auditLog.id, row.id))).rejects.toThrow(/append-only/);
+    ).rejects.toMatchObject(appendOnly);
+    await expect(ctx.db.delete(schema.auditLog).where(eq(schema.auditLog.id, row.id))).rejects.toMatchObject(
+      appendOnly,
+    );
   });
 
   it('never shows another organization’s rows', async () => {
