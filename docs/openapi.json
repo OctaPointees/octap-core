@@ -7445,6 +7445,9 @@
               "PAUSED"
             ],
             "type": "string"
+          },
+          "expectedUpdatedAt": {
+            "type": "string"
           }
         }
       },
@@ -7457,10 +7460,10 @@
       "ConsoleVoucherBatchesController_activate_Body": {
         "type": "object",
         "properties": {
-          "approvalRequestIds": {
+          "seen": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/VoucherSeen"
             }
           }
         }
@@ -12537,6 +12540,22 @@
           "organizationEndUserId",
           "serialCode",
           "status",
+          "voucherId"
+        ]
+      },
+      "VoucherSeen": {
+        "description": "A voucher as an Owner reviewed it: its `updatedAt` at the time.",
+        "type": "object",
+        "properties": {
+          "voucherId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "updatedAt",
           "voucherId"
         ]
       },

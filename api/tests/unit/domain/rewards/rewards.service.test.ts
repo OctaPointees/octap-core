@@ -153,7 +153,7 @@ describe('RewardsService.createVoucher', () => {
     expect(latestApprovals).toHaveBeenCalledWith('org-1', ['v-1'], tx);
     expect(created.approval).toBeNull();
     await svc.updateVoucher('org-1', 'v-1', { title: 'New' }, owner, tx);
-    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx, owner);
+    expect(updateVoucher).toHaveBeenCalledWith('org-1', 'v-1', { title: 'New' }, expect.any(Function), tx, owner, null);
   });
 
   it('maps approval requests, and a repository refusal to a 403', async () => {

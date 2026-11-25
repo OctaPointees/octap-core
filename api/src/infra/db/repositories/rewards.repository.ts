@@ -108,6 +108,9 @@ function sameVoucherField(key: (typeof PUBLISHED_FIELDS)[number], before: unknow
 }
 
 const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message);
+const OWNER_ACTIVATION_NEEDS_SEEN =
+  'This organization requires approval: send expectedUpdatedAt, the updatedAt of the voucher you reviewed';
+const NOT_REVIEWED_IN_BATCH = 'Not among the vouchers you reviewed (seen); review the batch again';
 const conflict = (message: string) => new RewardsRuleError('CONFLICT', message);
 const invalid = (message: string) => new RewardsRuleError('INVALID', message);
 const forbidden = (message: string) => new RewardsRuleError('FORBIDDEN', message);
@@ -128,6 +131,17 @@ function actorIds(actor: VoucherActor): { userId: string | null; credentialId: s
   return actor.role === 'CREDENTIAL'
     ? { userId: null, credentialId: actor.credentialId }
     : { userId: actor.userId ?? null, credentialId: null };
+}
+
+/**
+ * An Owner deciding on a voucher they reviewed: it must be the one they saw, its `updatedAt` unchanged
+ * since (an edit, a withdrawal or a new submission all change it), or someone else's change would go
+ * live unseen (OCT-324). Compared in milliseconds, the precision the API returns.
+ */
+function requireSeen(voucher: Voucher, seen: Date | null | undefined, missing: string) {
+  if (!seen) throw invalid(missing);
+  if (seen.getTime() !== voucher.updatedAt.getTime())
+    throw conflict('This voucher changed since you reviewed it; review it again');
 }
 
 /** The terms an Owner reviews when a voucher is submitted, and that approving it publishes (OCT-324). */
@@ -392,6 +406,8 @@ export class RewardsRepository {
     validate: (merged: Voucher) => void,
     db: DrizzleDb = this.db,
     actor: VoucherActor = OWNER,
+    /** The `updatedAt` the Owner reviewed, for an activation while approval is required (OCT-324). */
+    expectedUpdatedAt: Date | null = null,
   ) {
     return withTenant(db, organizationId, async (tx) => {
       const current = await this.lockVoucher(tx, organizationId, id);
@@ -419,10 +435,16 @@ export class RewardsRepository {
       const depleted = merged.totalSupply !== null && merged.claimedCount >= merged.totalSupply;
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
-      if (requestedStatus === 'ACTIVE' && !onChain)
-        return (await this.activation(tx, organizationId, actor)) === 'PUBLISH'
+      if (requestedStatus === 'ACTIVE' && !onChain) {
+        const activation = await this.activation(tx, organizationId, actor);
+        // While approval is required, an Owner's activation is the approval of whatever the draft holds,
+        // so it must be the draft they reviewed: a Business Developer may have edited it since.
+        if (activation === 'PUBLISH' && actor.role === 'OWNER' && (await this.approvalRequired(tx, organizationId)))
+          requireSeen(current, expectedUpdatedAt, OWNER_ACTIVATION_NEEDS_SEEN);
+        return activation === 'PUBLISH'
           ? this.queuePublish(tx, current, actor, fields)
           : this.queueApproval(tx, current, actor, fields);
+      }
       // DRAFT means an activation in progress here, so it would go ACTIVE when the chain confirms.
       if (requestedStatus === 'DRAFT' && onChain) {
         throw conflict('A published voucher cannot return to DRAFT; pause it instead');
@@ -1285,17 +1307,18 @@ export class RewardsRepository {
    * Activates every voucher of the batch that can be, with the same checks and the same paths as
    * activating it on its own (`queuePublish`, or `queueApproval` when the organization requires
    * approval and `actor` is not an Owner). An Owner's activation also approves the vouchers waiting
-   * for approval, but only the submissions in `approvalRequestIds` (those the Owner reviewed, OCT-324):
-   * another waiting voucher is `failed`, with the reason. Vouchers already published or publishing, and
-   * waiting ones for anyone but an Owner, are `skipped`, which makes calling it again safe. The program
-   * check belongs to the caller (a 422 for the whole call).
+   * for approval. An Owner decides only on what they reviewed (OCT-324): `seen` holds each voucher's
+   * `updatedAt` as they saw it, and a waiting voucher, or (while approval is required) a draft, that
+   * changed since or isn't in it is `failed`, with the reason. Vouchers already published or publishing,
+   * and waiting ones for anyone but an Owner, are `skipped`, which makes calling it again safe. The
+   * program check belongs to the caller (a 422 for the whole call).
    */
   async activateVoucherBatch(
     organizationId: string,
     batchId: string,
     actor: VoucherActor,
     db: DrizzleDb = this.db,
-    approvalRequestIds: readonly string[] | null = null,
+    seen: ReadonlyMap<string, Date> | null = null,
   ) {
     return this.eachBatchVoucher(
       organizationId,
@@ -1307,27 +1330,28 @@ export class RewardsRepository {
         // way approving one voucher does (the same checks, then publishing). Anyone else skips it.
         if (current.status === 'PENDING_APPROVAL') {
           if (actor.role !== 'OWNER' || !actor.userId) return { voucher: current, outcome: 'skipped', reason: null };
+          requireSeen(current, seen?.get(current.id), NOT_REVIEWED_IN_BATCH);
+          // Unchanged since the Owner saw it, so the submission waiting now is the one they reviewed.
           const pending = await this.pendingApproval(tx, current.id);
-          if (!approvalRequestIds)
-            throw conflict('Waiting for approval: approve it with its submission (approvalRequestIds)');
-          if (!pending || !approvalRequestIds.includes(pending.id))
-            throw conflict('Submitted again since you reviewed the batch; review the new submission');
           const voucher = await this.reviewVoucher(
             organizationId,
             current.id,
             actor.userId,
-            { approve: true, approvalRequestId: pending.id },
+            { approve: true, approvalRequestId: pending?.id ?? '' },
             tx,
           );
           return { voucher, outcome: 'publishing', reason: null };
         }
         if (!neverPublished(current)) return { voucher: current, outcome: 'skipped', reason: null };
+        const required = await this.approvalRequired(tx, organizationId);
+        // While approval is required, an Owner's activation approves the draft as it is now.
+        if (required && actor.role === 'OWNER') requireSeen(current, seen?.get(current.id), NOT_REVIEWED_IN_BATCH);
         if (expiresTooSoon(current)) throw invalid('A voucher must stay valid for at least 24 hours to be activated');
         if (current.totalSupply !== null && current.claimedCount >= current.totalSupply)
           throw conflict('An exhausted voucher cannot be activated');
         // Like `activation`, but a Business Developer is queued, not refused: a batch's activation is
         // its submission when approval is required (OCT-59).
-        const queue = actor.role !== 'OWNER' && (await this.approvalRequired(tx, organizationId));
+        const queue = actor.role !== 'OWNER' && required;
         if (queue)
           return { voucher: await this.queueApproval(tx, current, actor), outcome: 'pendingApproval', reason: null };
         const queued = await this.queuePublish(tx, current, actor);

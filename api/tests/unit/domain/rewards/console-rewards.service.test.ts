@@ -68,13 +68,13 @@ describe('ConsoleRewardsService', () => {
     await service.create('user', 'org', voucher);
     expect(rewards.createVoucher).toHaveBeenLastCalledWith('org', { ...voucher, status: 'DRAFT' }, developer, 'tx');
     await service.update('user', 'org', 'v-1', { status: 'ACTIVE' });
-    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'ACTIVE' }, developer, 'tx');
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'ACTIVE' }, developer, 'tx', null);
   });
 
   it('updates inside the editor check, and reads with Owner or Business Developer access', async () => {
     const { service, organizations, rewards } = setup();
     await service.update('user', 'org', 'v-1', { status: 'PAUSED' });
-    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, owner, 'tx');
+    expect(rewards.updateVoucher).toHaveBeenCalledWith('org', 'v-1', { status: 'PAUSED' }, owner, 'tx', null);
 
     await service.list('user', 'org');
     await service.detail('user', 'org', 'v-1');
@@ -107,12 +107,37 @@ describe('ConsoleRewardsService', () => {
     expect(rewards.rejectVoucher).toHaveBeenCalledWith('org', 'v-1', 'user', approvalRequestId, 'Cap too high', 'tx');
 
     rewards.rejectVoucher.mockClear();
-    for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', extra: 1 }, null]) {
+    for (const body of [{}, { reason: '  ' }, { reason: 'x'.repeat(501) }, null]) {
       expect(() => service.reject('user', 'org', 'v-1', { approvalRequestId, ...body } as never)).toThrow(
         /rejection reason is required/,
       );
     }
     expect(rewards.rejectVoucher).not.toHaveBeenCalled();
+  });
+
+  it('says which keys a rejection may send', () => {
+    const { service } = setup();
+    const approvalRequestId = '7b9f5a4e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+    expect(() => service.reject('user', 'org', 'v-1', { approvalRequestId, reason: 'ok', extra: 1 } as never)).toThrow(
+      /Only approvalRequestId and reason may be sent/,
+    );
+  });
+
+  it('takes the reviewed updatedAt apart from the change, and refuses one that is not a timestamp', async () => {
+    const { service, rewards } = setup();
+    const at = '2026-11-25T10:00:00.123Z';
+    await service.update('user', 'org', 'v-1', { status: 'ACTIVE', expectedUpdatedAt: at });
+    expect(rewards.updateVoucher).toHaveBeenCalledWith(
+      'org',
+      'v-1',
+      { status: 'ACTIVE' },
+      expect.anything(),
+      'tx',
+      new Date(at),
+    );
+    expect(() => service.update('user', 'org', 'v-1', { status: 'ACTIVE', expectedUpdatedAt: 'soon' })).toThrow(
+      /expectedUpdatedAt must be/,
+    );
   });
 
   it('refuses to approve or reject without the reviewed submission', () => {

@@ -102,19 +102,19 @@ export class VoucherBatchService {
   /**
    * The program check is made once, for the whole call (422): it is the organization's, not any one
    * voucher's. The 24-hour and supply checks are made for each voucher, now, not taken from a preview.
-   * `approvalRequestIds`: the submissions an Owner's activation approves (OCT-324).
+   * `seen`: each voucher's `updatedAt` as the Owner reviewed it, by voucher id (OCT-324).
    */
   async activate(
     organizationId: string,
     batchId: string,
     actor: VoucherActor,
     tx?: DrizzleDb,
-    approvalRequestIds: readonly string[] | null = null,
+    seen: ReadonlyMap<string, Date> | null = null,
   ): Promise<VoucherBatchActionResponse> {
     await this.requireProgram(organizationId, tx);
     return this.actionResponse(
       organizationId,
-      await mapErrors(this.rewardsRepo.activateVoucherBatch(organizationId, batchId, actor, tx, approvalRequestIds)),
+      await mapErrors(this.rewardsRepo.activateVoucherBatch(organizationId, batchId, actor, tx, seen)),
       tx,
     );
   }

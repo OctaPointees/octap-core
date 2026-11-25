@@ -1331,6 +1331,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "PAUSED"
         ],
         "type": "string"
+      },
+      "expectedUpdatedAt": {
+        "type": "string"
       }
     }
   },
@@ -1343,10 +1346,10 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "ConsoleVoucherBatchesController_activate_Body": {
     "type": "object",
     "properties": {
-      "approvalRequestIds": {
+      "seen": {
         "type": "array",
         "items": {
-          "type": "string"
+          "$ref": "#/components/schemas/VoucherSeen"
         }
       }
     }
@@ -6423,6 +6426,22 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationEndUserId",
       "serialCode",
       "status",
+      "voucherId"
+    ]
+  },
+  "VoucherSeen": {
+    "description": "A voucher as an Owner reviewed it: its `updatedAt` at the time.",
+    "type": "object",
+    "properties": {
+      "voucherId": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "updatedAt",
       "voucherId"
     ]
   },

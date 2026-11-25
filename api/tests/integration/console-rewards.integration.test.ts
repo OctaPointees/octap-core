@@ -53,6 +53,9 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
   const action = (actor: Actor, id: string, name: string, body: Record<string, unknown> = {}) =>
     ctx.http().post(`${path()}/${id}/${name}`).set(as(actor)).send(body);
   const requireApproval = () => settings('owner', { voucherApprovalRequired: true }).expect(200);
+  /** A voucher's `updatedAt` as the Owner reviewing it sees it (OCT-324). */
+  const seenAt = async (id: string): Promise<string> =>
+    (await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body.updatedAt;
   /** The submission an Owner reviews: the voucher's `approval.id` as the console shows it now (OCT-324). */
   const submission = async (id: string): Promise<string> =>
     (await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body.approval?.id ?? NO_SUBMISSION;
@@ -411,7 +414,10 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
       await requireApproval();
       const { id } = (await create('owner').expect(201)).body as { id: string };
       expect((await action('owner', id, 'submit').expect(409)).body.message).toMatch(/Owner needs no approval/);
-      expect((await patch('owner', id, { status: 'ACTIVE' }).expect(200)).body.publishStatus).toBe('PUBLISHING');
+      expect(
+        (await patch('owner', id, { status: 'ACTIVE', expectedUpdatedAt: await seenAt(id) }).expect(200)).body
+          .publishStatus,
+      ).toBe('PUBLISHING');
     });
 
     it('queues an API key asking for ACTIVE, and lets it resume a published voucher without approval', async () => {
@@ -578,6 +584,34 @@ describe('console rewards: list, create, edit, pause and activate from a Google 
           );
           await action('owner', id, 'reject', { ...body, reason: 'no' }).expect(400);
         }
+      });
+
+      it("refuses an Owner's activation of a draft edited since they reviewed it, while approval is required", async () => {
+        await requireApproval();
+        const { id } = (
+          await create('developer', { ...reward, discountType: 'FIXED_AMOUNT', discountValue: '50000' }).expect(201)
+        ).body as { id: string };
+        const reviewed = await seenAt(id);
+        // The Developer raises the discount while the Owner looks at the draft.
+        await patch('developer', id, { discountValue: '500000' }).expect(200);
+
+        expect((await patch('owner', id, { status: 'ACTIVE' }).expect(400)).body.message).toMatch(/expectedUpdatedAt/);
+        await patch('owner', id, { status: 'ACTIVE', expectedUpdatedAt: 'yesterday' }).expect(400);
+        const stale = await patch('owner', id, { status: 'ACTIVE', expectedUpdatedAt: reviewed }).expect(409);
+        expect(stale.body.message).toMatch(/changed since you reviewed it/);
+        expect((await ctx.http().get(`${path()}/${id}`).set(as('owner')).expect(200)).body).toMatchObject({
+          status: 'DRAFT',
+          publishStatus: 'NOT_PUBLISHED',
+          activatedBy: null,
+        });
+        expect(await publishCommands(id)).toHaveLength(0);
+
+        // Looking again, the Owner takes the edited draft live knowingly.
+        const live = await patch('owner', id, { status: 'ACTIVE', expectedUpdatedAt: await seenAt(id) }).expect(200);
+        expect(live.body).toMatchObject({ publishStatus: 'PUBLISHING', discountValue: '500000.00' });
+        // An edit with no activation needs nothing reviewed.
+        const other = (await create('developer', { ...reward, code: 'other' }).expect(201)).body.id;
+        await patch('owner', other, { title: 'Renamed' }).expect(200);
       });
 
       it('records who created a voucher and who took it live, with or without approval', async () => {

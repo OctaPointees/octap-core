@@ -424,13 +424,21 @@ export interface VoucherBatchActionResult {
   reason: string | null;
 }
 
+/** A voucher as an Owner reviewed it: its `updatedAt` at the time. */
+export interface VoucherSeen {
+  voucherId: string;
+  updatedAt: string;
+}
+
 /**
- * `POST …/voucher-batches/:batchId/activate` from the console. An Owner's activation approves only the
- * submissions listed here (each voucher's `approval.id`, as the Owner saw them); any other voucher of
- * the batch waiting for approval is `failed`, with the reason (OCT-324).
+ * `POST …/voucher-batches/:batchId/activate` from the console. `seen` lists the vouchers as the Owner
+ * reviewed them (OCT-324). An Owner's activation approves a voucher waiting for approval, and, while
+ * the organization requires approval, publishes a draft, only when it is listed with its current
+ * `updatedAt`: one changed since (edited, or withdrawn and submitted again) or not listed is `failed`,
+ * with the reason. Business Developers don't send it: their activation is a submission.
  */
 export interface ActivateVoucherBatchRequest {
-  approvalRequestIds?: string[];
+  seen?: VoucherSeen[];
 }
 
 /** The result of activate, pause, resume or archive on a batch. */

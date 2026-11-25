@@ -5,7 +5,7 @@ import type {
   ConsoleVoucherInput,
   CreateVoucherBatchRequest,
   CreateVoucherBatchResponse,
-  UpdateVoucherRequest,
+  ConsoleVoucherPatch,
   VoucherBatchDetailDto,
   VoucherBatchDto,
   VoucherDto,
@@ -81,10 +81,13 @@ export class ConsoleRewardsService {
    * Edits fields, or pauses/activates with `{ status }`. A Business Developer edits drafts only, and
    * cannot pause. Another organization's voucher is a 404.
    */
-  update(userId: string, orgId: string, voucherId: string, input: UpdateVoucherRequest): Promise<VoucherDto> {
+  update(userId: string, orgId: string, voucherId: string, input: ConsoleVoucherPatch): Promise<VoucherDto> {
+    // `expectedUpdatedAt` is the console's, about the review; the rest is the voucher's change.
+    const { expectedUpdatedAt, ...change } = bodyOf(input) as ConsoleVoucherPatch & { expectedUpdatedAt?: unknown };
+    const seen = expectedUpdatedAt === undefined ? null : timestampOf(expectedUpdatedAt, 'expectedUpdatedAt');
     return this.run(WRITE_DENIED, () =>
       this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
-        this.rewards.updateVoucher(orgId, voucherId, input, actorOf(userId, role), tx),
+        this.rewards.updateVoucher(orgId, voucherId, change, actorOf(userId, role), tx, seen),
       ),
     );
   }
@@ -135,11 +138,9 @@ export class ConsoleRewardsService {
   ): Promise<VoucherDto> {
     const body = bodyOf(input);
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-    if (
-      !reason ||
-      reason.length > 500 ||
-      Object.keys(body).some((key) => key !== 'reason' && key !== 'approvalRequestId')
-    )
+    if (Object.keys(body).some((key) => key !== 'reason' && key !== 'approvalRequestId'))
+      throw new BadRequestException('Only approvalRequestId and reason may be sent');
+    if (!reason || reason.length > 500)
       throw new BadRequestException('A rejection reason is required (up to 500 characters)');
     const approvalRequestId = reviewedSubmission(body);
     return this.run(REVIEW_DENIED, () =>
@@ -195,32 +196,22 @@ export class ConsoleVoucherBatchService {
   }
 
   /**
-   * An Owner's activation approves only the submissions in `approvalRequestIds` (each voucher's
-   * `approval.id`, as the Owner saw it); another voucher waiting for approval is `failed` (OCT-324).
+   * `seen` is each voucher as the Owner reviewed it (`{ voucherId, updatedAt }`). An Owner's activation
+   * approves a waiting voucher, and publishes a draft while approval is required, only when it is
+   * listed and unchanged since; any other is `failed`, with the reason (OCT-324).
    */
   activate(
     userId: string,
     orgId: string,
     batchId: string,
-    input?: { approvalRequestIds?: unknown } | null,
+    input?: { seen?: unknown } | null,
   ): Promise<VoucherBatchActionResponse> {
     const body = bodyOf(input);
-    if (Object.keys(body).some((key) => key !== 'approvalRequestIds'))
-      throw new BadRequestException('Only approvalRequestIds may be sent');
-    const ids = body.approvalRequestIds;
-    if (
-      ids !== undefined &&
-      (!Array.isArray(ids) ||
-        ids.length > VOUCHER_BATCH_MAX_ITEMS ||
-        ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)))
-    )
-      throw new BadRequestException(
-        `approvalRequestIds must be a list of up to ${VOUCHER_BATCH_MAX_ITEMS} approval request ids (approval.id)`,
-      );
-    const approvalRequestIds = (ids as string[] | undefined) ?? null;
+    if (Object.keys(body).some((key) => key !== 'seen')) throw new BadRequestException('Only seen may be sent');
+    const seen = body.seen === undefined ? null : seenOf(body.seen);
     return this.run(WRITE_DENIED, () =>
       this.organizations.withEditorAccess(userId, orgId, (tx, role) =>
-        this.batches.activate(orgId, batchId, actorOf(userId, role), tx, approvalRequestIds),
+        this.batches.activate(orgId, batchId, actorOf(userId, role), tx, seen),
       ),
     );
   }
@@ -255,6 +246,34 @@ function reviewedSubmission(body: { approvalRequestId?: unknown }): string {
       "approvalRequestId is required: the id of the submission you reviewed (the voucher's approval.id)",
     );
   return id;
+}
+
+/** An ISO timestamp the console sent back, such as a voucher's `updatedAt`. */
+function timestampOf(value: unknown, field: string): Date {
+  const at = typeof value === 'string' ? new Date(value) : null;
+  if (!at || Number.isNaN(at.getTime()))
+    throw new BadRequestException(`${field} must be the voucher's updatedAt, an ISO timestamp`);
+  return at;
+}
+
+const SEEN_SHAPE = `seen must be a list of up to ${VOUCHER_BATCH_MAX_ITEMS} { voucherId, updatedAt } as you reviewed them`;
+
+/** The batch's vouchers as the Owner reviewed them, by voucher id. */
+function seenOf(value: unknown): Map<string, Date> {
+  if (!Array.isArray(value) || value.length > VOUCHER_BATCH_MAX_ITEMS) throw new BadRequestException(SEEN_SHAPE);
+  const seen = new Map<string, Date>();
+  for (const entry of value as unknown[]) {
+    const { voucherId, updatedAt, ...rest } = (entry ?? {}) as { voucherId?: unknown; updatedAt?: unknown };
+    if (
+      typeof entry !== 'object' ||
+      typeof voucherId !== 'string' ||
+      !UUID_PATTERN.test(voucherId) ||
+      Object.keys(rest).length
+    )
+      throw new BadRequestException(SEEN_SHAPE);
+    seen.set(voucherId, timestampOf(updatedAt, 'seen[].updatedAt'));
+  }
+  return seen;
 }
 
 function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {

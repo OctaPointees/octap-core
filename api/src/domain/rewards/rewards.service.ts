@@ -267,6 +267,8 @@ export class RewardsService {
     req: UpdateVoucherRequest,
     actor: VoucherActor,
     tx?: DrizzleDb,
+    /** The `updatedAt` an Owner reviewed, for an activation while approval is required (OCT-324). */
+    expectedUpdatedAt: Date | null = null,
   ): Promise<VoucherDto> {
     validateVoucher(req, true);
     if (!Object.keys(req).length) throw new BadRequestException('Provide at least one voucher field');
@@ -300,6 +302,7 @@ export class RewardsService {
         },
         tx,
         actor,
+        expectedUpdatedAt,
       );
       return await this.withApproval(organizationId, updated, tx);
     } catch (error) {
