@@ -104,7 +104,7 @@ describe('console API keys: issue, rename and revoke from a Google session', () 
     const listed = await list('developer');
     expect(listed).toHaveLength(1);
     expect(Object.keys(listed[0]).sort()).toEqual(
-      ['createdAt', 'id', 'keyPrefix', 'lastUsedAt', 'name', 'scopes', 'status'].sort(),
+      ['createdAt', 'environment', 'id', 'keyPrefix', 'lastUsedAt', 'name', 'scopes', 'status'].sort(),
     );
     expect(listed[0].lastUsedAt).toBeNull();
     expect(JSON.stringify(listed)).not.toContain(rawKey);
