@@ -129,6 +129,27 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Platform & business guides',
+          translations: { vi: 'Hướng dẫn vận hành & nghiệp vụ' },
+          items: [
+            {
+              label: 'Roles and business concepts',
+              translations: { vi: 'Vai trò và khái niệm nghiệp vụ' },
+              slug: 'business/roles-and-concepts',
+            },
+            {
+              label: 'Operator and cashier workflows',
+              translations: { vi: 'Quy trình vận hành và thu ngân' },
+              slug: 'business/operator-and-cashier-workflows',
+            },
+            {
+              label: 'Operational troubleshooting',
+              translations: { vi: 'Xử lý sự cố vận hành' },
+              slug: 'business/operational-troubleshooting',
+            },
+          ],
+        },
+        {
           label: 'Node SDK reference',
           translations: { vi: 'Tham chiếu Node SDK' },
           items: [
