@@ -139,12 +139,22 @@ describe('OpenAPI request and response schemas', () => {
     expect(document.openapi).toBe('3.1.0');
   });
 
-  it('gives every operation a JSON success response schema', () => {
+  it('gives every operation a success response schema: JSON, or text/event-stream for the stream', () => {
     for (const { operation: op } of operations()) {
       const success = Object.entries(op.responses).find(([status]) => /^2\d\d$/.test(status));
       expect(success, op.operationId).toBeDefined();
-      expect((success![1] as { content?: unknown }).content, op.operationId).toBeDefined();
+      const content = (success![1] as { content?: Record<string, unknown> }).content;
+      expect(Object.keys(content ?? {}), op.operationId).toEqual(
+        op.operationId === 'ConsoleEventsController_stream' ? ['text/event-stream'] : ['application/json'],
+      );
     }
+  });
+
+  it('documents the console event stream and its optional Last-Event-ID', () => {
+    const stream = operation('get', '/v1/console/organizations/{organizationId}/events');
+    expect(stream.parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'Last-Event-ID', in: 'header', required: false })]),
+    );
   });
 
   it('describes a typed body with its required fields', () => {

@@ -3057,6 +3057,65 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/events": {
+      "get": {
+        "operationId": "ConsoleEventsController_stream",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "description": "The last `id` received, to resume after it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events. Each message: `id` is the event `sequence`, `event` its type, `data` an `OrganizationStreamEvent` (`@octap/contracts`) as JSON. `stream.*` messages are about the stream itself. Send `Last-Event-ID` to resume.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Events"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/api-credentials": {
       "get": {
         "operationId": "ConsoleApiCredentialsController_list",
@@ -6023,6 +6082,9 @@
     },
     {
       "name": "Console Change Requests"
+    },
+    {
+      "name": "Console Events"
     },
     {
       "name": "Console Identity"

@@ -31,7 +31,8 @@ then move the row to **Implemented** in the same pull request.
 | Credits: reversal of a CONFIRMED earn or redeem, idempotent, at most once, with clawback debt | api/src/domain/credits/reversal.service.ts |
 | Credits: reversals of chain-confirmed earns/POS redemptions mirrored on-chain (`reverse_earn`/`reverse_redeem`, at most once on-chain too), via the same outbox → worker → digest-first path as earn | contracts/sui/sources/credit_account.move; api/src/domain/credits/chain-submit.processor.ts (`processReversal`); `recordReversalTransaction` |
 | Webhooks: Owner-only console endpoint registration, disable/enable, secret rotation and dead-letter replay (an API key only lists endpoints and deliveries, OCT-301), signed delivery, retry/dead-letter, Node SDK verifier and typed events (`constructWebhookEvent`) | api/src/domain/webhooks; ts-sdks/packages/node/src/webhooks.ts |
-| Webhooks: one transactional outbox for every event (OCT-325): `recordEvent(tx, ...)` writes an `organization_events` row in the transaction of the change, endpoint or not, and queues one delivery per ACTIVE endpoint, all under one event id. Exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, whichever path confirmed it; `credits.earned` at accept; voucher lifecycle events (`voucher.created` / `submitted` / `returned` / `activated` / `publish.failed` / `paused` / `archived`) | api/src/infra/db/repositories/events.repository.ts; voucher-events.ts; api/src/domain/webhooks/README.md |
+| Webhooks: one transactional outbox for every event (OCT-325): `recordEvent(tx, ...)` writes an `organization_events` row in the transaction of the change, endpoint or not, and queues one delivery per ACTIVE endpoint, all under one event id. Exactly one `credits.earn.confirmed` / `credits.redemption.confirmed` per chain-confirmed transaction, whichever path confirmed it; `credits.earned` at accept; voucher lifecycle events (`voucher.created` / `submitted` / `returned` / `activated` / `publish.failed` / `paused` / `archived`). Events are kept 30 days, except those still owed or replayable (`EventRetentionWorker`) | api/src/infra/db/repositories/events.repository.ts; voucher-events.ts; api/src/domain/webhooks/README.md |
+| Console event stream (OCT-326): `GET /v1/console/organizations/:id/events`, Server-Sent Events of the organization's events as thin hints (type and subject ids) for the console to refetch; Owner or Business Developer with the Google ID token as Bearer (a `fetch`-based client), `Last-Event-ID` resume or `stream.reset`, heartbeat with an access re-check, closes when the token expires; one scan of `organization_events` per HTTP instance per second, not Redis pub/sub | api/src/domain/events; api/src/api/rest/console-events.controller.ts; ts-sdks/packages/contracts/src/organization-events.ts |
 | Authorization hardening: per-credential and per-IP public-route rate limiting, RLS enforced on every tenant-scoped read and write of the credits, rewards, webhooks and API-key repositories, including worker and indexer callbacks (OCT-289) | api/src/infra/auth; api/src/infra/cache; api/src/infra/db/rls.ts; api/src/infra/db/repositories/tenant-lookup.ts |
 | System users: explicit SYSTEM_USER/SYSTEM_ADMIN platform roles, preserving legacy admin assignments through migration 0014 | api/src/infra/db/schema/auth.schema.ts; ts-sdks/packages/contracts/src/system-users.ts; docs/system-roles.md |
 | Organizations: admin-attributed applications, paginated platform list/detail, safe slug resolution, durable worker-backed program provisioning/status | api/src/domain/organizations; api/src/api/rest/organizations.controller.ts |
@@ -155,8 +156,14 @@ then move the row to **Implemented** in the same pull request.
 - `claimNextPending` is one conditional `UPDATE` per candidate row (documented in its own doc
   comment), not a batched `SKIP LOCKED` claim — fine for today's single worker only.
 - Webhook endpoint `secret` is stored as plaintext, not via a secrets manager/KMS: a known,
-  deliberate gap. `organization_events` (the outbox, OCT-325) has no retention yet: it grows until
-  the console stream (OCT-326) settles how far back a reader may resume.
+  deliberate gap.
+- The console event stream (OCT-326) only carries what `organization_events` records: vouchers,
+  credits and the issuance budget. Members, API keys and webhook endpoints record no events yet, so
+  those screens don't update from it. Recording one there (`recordEvent` plus its subject in
+  `api/src/domain/events/event-subjects.ts`) streams it with no other change; whether merchants also
+  get them as webhooks is undecided. The 5-streams-per-user limit is per HTTP instance. An open
+  stream misses an event whose transaction stays open more than 60 s between recording it and
+  committing; a reconnect still replays it.
 - Reversal's "clawback debt" is just letting `confirmedBalance` go negative, which already blocks
   further redemption via the existing balance check — there is no separate debt ledger, repayment
   plan, or collections flow. Reversing an EARN empties that earn's expiry bucket so it can't be
@@ -199,12 +206,15 @@ then move the row to **Implemented** in the same pull request.
   `docker/postgres-init`) covers every tenant-scoped method of `CreditsRepository`,
   `RewardsRepository`, `WebhooksRepository` and `ApiCredentialsRepository` (OCT-289), with a policy
   on `credit_ownerships`, `voucher_ownerships` and `credit_buckets` that resolves the organization
-  through the member. Five methods stay on the plain pooled connection, by design, each marked
+  through the member. Eight methods stay on the plain pooled connection, by design, each marked
   `RLS exception` in the code: `ApiCredentialsRepository.findByKeyHash` (finds the organization),
   `WebhooksRepository.claimDueDeliveries`' scan (every organization's due deliveries; each claim
   then runs under its organization), `CreditsRepository.findMemberOrganizationId` (finds the
   organization), `findCreditOwnershipBySuiAccountId` (the indexer only has the chain account) and
-  `hasAnyLoyaltyTransactions` (environment-wide). Request paths pass the authenticated
+  `hasAnyLoyaltyTransactions` (environment-wide), and `OrganizationEventsRepository`'s
+  `latestSequence` and `scanSince` (the console stream's scan over the organizations with a stream
+  open on the instance; each event then goes only to its own organization's streams) and
+  `deleteExpired` (trims every organization's events). Request paths pass the authenticated
   organization, so RLS refuses another organization's row. Only worker and indexer callbacks,
   which start from an id, first read that row's organization (`tenantOf` in `tenant-lookup.ts`);
   the console and POS finalize steps share two of them (`confirmPosRedemptionOnChain`,
