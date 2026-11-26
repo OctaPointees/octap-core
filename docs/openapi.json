@@ -1652,6 +1652,9 @@
     "/v1/console/organizations/{organizationId}/transactions": {
       "get": {
         "operationId": "ConsoleLedgerController_transactions",
+    "/v1/console/organizations/{organizationId}/audit-log": {
+      "get": {
+        "operationId": "ConsoleAuditLogController_list",
         "parameters": [
           {
             "name": "organizationId",
@@ -1726,6 +1729,7 @@
                 }
               }
             }
+            "description": "Success."
           },
           "4XX": {
             "description": "Request rejected. `message` says why.",
@@ -1848,6 +1852,7 @@
         },
         "tags": [
           "Console Ledger"
+          "Console Audit Log"
         ],
         "security": [
           {
@@ -7361,6 +7366,9 @@
     },
     {
       "name": "Console Assistant"
+    },
+    {
+      "name": "Console Audit Log"
     },
     {
       "name": "Console Change Requests"

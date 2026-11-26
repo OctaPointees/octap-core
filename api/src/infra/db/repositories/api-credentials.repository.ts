@@ -73,7 +73,12 @@ export class ApiCredentialsRepository {
           action: 'api_key.issued',
           targetType: 'api_key',
           targetId: created.id,
-          changes: { name: created.name, scopes: created.scopes, keyPrefix: created.keyPrefix },
+          changes: {
+            name: created.name,
+            scopes: created.scopes,
+            environment: created.environment,
+            keyPrefix: created.keyPrefix,
+          },
         });
         return created;
       });

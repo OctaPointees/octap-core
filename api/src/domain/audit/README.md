@@ -18,7 +18,7 @@ layers. Ledger verification is OCT-328/334. A signed export is OCT-77.
   nobody did them. The ledger already records them.
 - **Explicit rows:**
   - `api_key.issued` / `renamed` / `revoked`
-  - `webhook_endpoint.registered` / `enabled` / `disabled` / `secret_rotated`
+  - `webhook_endpoint.registered` / `enabled` / `disabled` / `secret_rotated` / `tested` (the test ping, OCT-297)
   - `webhook_delivery.replayed`
   - `member.blocked` / `unblocked` / `updated`
   - `staff.suspended` / `restored`

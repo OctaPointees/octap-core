@@ -78,6 +78,7 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
       targetId: issued.body.id,
       requestId: issued.headers['x-request-id'],
     });
+    expect(issuedRow.changes).toMatchObject({ name: 'till', environment: 'LIVE' });
     expect(issuedRow.changes).not.toHaveProperty('rawKey');
     expect(rows.find((row) => row.action === 'api_key.renamed')!.changes).toEqual({
       name: { from: 'till', to: 'till 2' },
@@ -147,6 +148,31 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
     });
     expect(rows.every((row) => row.actorType === 'USER' && row.actorId === ids.owner)).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('developer@example.com');
+  });
+
+  it('records a webhook test ping, which has its own writer, with its event and delivery', async () => {
+    const endpoint = await ctx
+      .http()
+      .post(consolePath('/webhooks/endpoints'))
+      .set(as('owner'))
+      .send({ url: 'https://hooks.example.com/octap' })
+      .expect(201);
+    await ctx
+      .http()
+      .post(consolePath(`/webhooks/endpoints/${endpoint.body.id}/test`))
+      .set(as('owner'))
+      .expect(201);
+
+    const [tested] = (await auditRows()).filter((row) => row.action === 'webhook_endpoint.tested');
+    const [event] = await ctx.db.select().from(schema.organizationEvents);
+    const [delivery] = await ctx.db.select().from(schema.webhookDeliveries);
+    expect(tested).toMatchObject({
+      actorType: 'USER',
+      actorId: ids.owner,
+      targetType: 'webhook_endpoint',
+      targetId: endpoint.body.id,
+      changes: { eventId: event.id, deliveryId: delivery.id },
+    });
   });
 
   it('records a refund policy publication with its version', async () => {

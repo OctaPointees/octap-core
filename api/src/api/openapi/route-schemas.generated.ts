@@ -15,6 +15,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "MISMATCH",
       "PENDING",
       "UNAVAILABLE"
+  "AuditActorType": {
+    "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+    "enum": [
+      "CREDENTIAL",
+      "SYSTEM",
+      "USER"
     ],
     "type": "string"
   },
@@ -149,6 +155,65 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     },
     "required": [
       "message"
+    ]
+  },
+  "ConsoleAuditLogController_list_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "actorType": {
+        "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+        "enum": [
+          "CREDENTIAL",
+          "SYSTEM",
+          "USER"
+        ],
+        "type": "string"
+      },
+      "actorId": {
+        "type": "string"
+      },
+      "action": {
+        "type": "string"
+      },
+      "targetType": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleAuditLogController_list_Response": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AuditLogEntry"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
     ]
   },
   "ConsoleChangeRequestsController_propose_Body": {
@@ -6220,6 +6285,101 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "role",
       "text"
+    ]
+  },
+  "AuditActorRef": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "$ref": "#/components/schemas/AuditActorType"
+      },
+      "id": {
+        "description": "A user id or an API key id; null for SYSTEM.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "label": {
+        "description": "The user's name, or the key's name and prefix, as they are now. Null for SYSTEM or a removed record.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "type"
+    ]
+  },
+  "AuditLogEntry": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "sequence": {
+        "description": "Orders the log.",
+        "type": "number"
+      },
+      "occurredAt": {
+        "type": "string"
+      },
+      "actor": {
+        "$ref": "#/components/schemas/AuditActorRef"
+      },
+      "action": {
+        "description": "`<target>.<verb>` (e.g. `api_key.revoked`, `member.blocked`) or an event type (`credits.earned`).",
+        "type": "string"
+      },
+      "target": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ]
+      },
+      "requestId": {
+        "description": "The request's `X-Request-Id`, to match the request log and OctaP's own logs.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "changes": {
+        "description": "Field names and non-personal values only, e.g. `{ status: { from: 'ACTIVE', to: 'BLOCKED' } }`.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "action",
+      "actor",
+      "changes",
+      "id",
+      "occurredAt",
+      "requestId",
+      "sequence",
+      "target"
     ]
   },
   "ConsoleCredential": {

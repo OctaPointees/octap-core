@@ -76,6 +76,14 @@ export async function recordTestEvent(
     .insert(webhookDeliveries)
     .values({ organizationId: params.organizationId, endpointId: params.endpointId, eventId: event.id })
     .returning({ id: webhookDeliveries.id });
+  // Its own writer, not `recordEvent`, so the automatic event audit does not cover it (OCT-333).
+  await recordAudit(tx, {
+    organizationId: params.organizationId,
+    action: 'webhook_endpoint.tested',
+    targetType: 'webhook_endpoint',
+    targetId: params.endpointId,
+    changes: { eventId: event.id, deliveryId: delivery.id },
+  });
   return { eventId: event.id, deliveryId: delivery.id };
 }
 
