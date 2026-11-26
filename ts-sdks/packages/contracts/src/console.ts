@@ -83,10 +83,19 @@ export interface ConsoleCredential {
   keyPrefix: string;
   scopes: string[];
   status: string;
+  /** `SANDBOX` keys never touch real points or the chain (OCT-297). Fixed at issue. */
+  environment: ApiCredentialEnvironment;
   createdAt: string;
   /** Approximate: recorded after each authenticated request, not inside it. */
   lastUsedAt: string | null;
 }
+/**
+ * `LIVE` keys (`octap_live_…`) move real points on-chain. `SANDBOX` keys (`octap_test_…`) earn and
+ * redeem against a separate sandbox ledger: same validation and response shapes, no chain, no real
+ * balance, no webhooks. A sandbox key may only call the routes that support sandbox; any other
+ * write is a 403 with `code: "SANDBOX_NOT_SUPPORTED"`.
+ */
+export type ApiCredentialEnvironment = 'LIVE' | 'SANDBOX';
 /** Returned once, when the key is created: store `rawKey` now, it cannot be read again. */
 export interface CreatedConsoleCredential extends ConsoleCredential {
   rawKey: string;
@@ -96,9 +105,13 @@ export interface ConsoleCredentialInput {
   name: string;
   /**
    * `read` (the default) grants `['read']`; `write` grants `['read', 'write']` and only the Owner may
-   * ask for it. A Business Developer revokes and renames read keys only.
+   * ask for it. A Business Developer revokes and renames read keys only. Sandbox keys are the
+   * exception: they cannot change anything real, so a Business Developer may create and manage a
+   * sandbox `write` key.
    */
   scope?: 'read' | 'write';
+  /** `LIVE` by default. */
+  environment?: ApiCredentialEnvironment;
 }
 export interface ConsoleCredentialPatch {
   /** 1–100 characters. */

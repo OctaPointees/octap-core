@@ -1,4 +1,6 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { recordTestEvent } from '#infra/db/repositories/events.repository.js';
+import { withTenant } from '#infra/db/rls.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { WebhooksRepository } from '#infra/db/repositories/webhooks.repository.js';
 import { generateWebhookSecret } from './webhook-signing.util.js';
@@ -41,6 +43,19 @@ export class WebhookEndpointsService {
     const secret = generateWebhookSecret();
     const endpoint = await this.repo.rotateEndpointSecret(organizationId, endpointId, secret, tx);
     return { ...withoutSecret(endpoint), secret };
+  }
+
+  /**
+   * Queues a `webhook.test` event to this endpoint only, so the Owner can check it receives and
+   * verifies deliveries before anything real happens. A DISABLED endpoint gets nothing: 409.
+   */
+  async sendTest(organizationId: string, endpointId: string, tx: DrizzleDb) {
+    const endpoint = await this.assertOwned(organizationId, endpointId, tx);
+    if (endpoint.status !== 'ACTIVE') {
+      throw new ConflictException('Enable this endpoint before sending it a test event');
+    }
+    const queued = await withTenant(tx, organizationId, (db) => recordTestEvent(db, { organizationId, endpointId }));
+    return { ...queued, endpointId, eventType: 'webhook.test' as const, status: 'PENDING' as const };
   }
 
   private async assertOwned(organizationId: string, endpointId: string, tx?: DrizzleDb) {

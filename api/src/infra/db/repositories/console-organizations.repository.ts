@@ -445,6 +445,7 @@ export class ConsoleOrganizationsRepository {
           keyPrefix: apiCredentials.keyPrefix,
           scopes: apiCredentials.scopes,
           status: apiCredentials.status,
+          environment: apiCredentials.environment,
           createdAt: apiCredentials.createdAt,
           lastUsedAt: apiCredentials.lastUsedAt,
         })

@@ -22,11 +22,20 @@ export interface CredentialWriteOptions {
 export class ApiCredentialsService {
   constructor(private readonly repo: ApiCredentialsRepository) {}
 
-  /** Returns the raw key exactly once; only its hash is ever persisted. */
-  async issue(organizationId: string, name: string, scopes: string[], tx?: DrizzleDb) {
-    const { raw, prefix, hash } = generateApiKey();
+  /**
+   * Returns the raw key exactly once; only its hash is ever persisted. Sandbox and live keys share
+   * the 25-key limit.
+   */
+  async issue(
+    organizationId: string,
+    name: string,
+    scopes: string[],
+    tx?: DrizzleDb,
+    environment: 'LIVE' | 'SANDBOX' = 'LIVE',
+  ) {
+    const { raw, prefix, hash } = generateApiKey(environment);
     const credential = await this.repo.createWithinLimit(
-      { organizationId, name, keyPrefix: prefix, keyHash: hash, scopes },
+      { organizationId, name, keyPrefix: prefix, keyHash: hash, scopes, environment },
       MAX_ACTIVE_API_CREDENTIALS,
       tx,
     );

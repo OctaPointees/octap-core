@@ -21,6 +21,7 @@ import type { GoogleLoginResponse, EnrollMemberResponse, VerifyCustomerResponse 
 import type { ZkLoginProofResult } from '#infra/clients/enoki/enoki.client.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
+import { SandboxSupported } from '#infra/auth/sandbox.decorator.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
@@ -84,6 +85,8 @@ export class CustomerVerificationController {
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   @Scopes('read')
+  // A read sent as a POST (the ID token stays out of the URL), and the first step of the POS flow.
+  @SandboxSupported()
   async verify(@Tenant() tenant: TenantContext, @Body() body: VerifyCustomerBodyDto): Promise<VerifyCustomerResponse> {
     return this.identity.verifyCustomer(requireIdToken(body), tenant.organizationId);
   }

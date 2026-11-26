@@ -16,6 +16,7 @@ import { hashApiKey } from './api-key-hash.util.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 import { SCOPES_KEY } from './scopes.decorator.js';
+import { SANDBOX_NOT_SUPPORTED, SANDBOX_SUPPORTED_KEY } from './sandbox.decorator.js';
 import type { TenantContext } from './tenant-context.js';
 
 /**
@@ -68,6 +69,7 @@ export class ApiKeyGuard implements CanActivate {
       organizationId: credential.organizationId,
       credentialId: credential.id,
       scopes: credential.scopes as string[],
+      environment: credential.environment,
     };
     request.tenant = tenant;
 
@@ -76,6 +78,22 @@ export class ApiKeyGuard implements CanActivate {
     const missingScope = requiredScopes.find((scope) => !tenant.scopes.includes(scope));
     if (missingScope) {
       throw new ForbiddenException(`This API credential is missing the required "${missingScope}" scope`);
+    }
+
+    // The sandbox boundary (OCT-297): a sandbox key may read, and may write only where the route
+    // handles sandbox itself. Everything else is refused here, before any handler runs.
+    if (tenant.environment === 'SANDBOX' && request.method !== 'GET' && request.method !== 'HEAD') {
+      const supported =
+        this.reflector.getAllAndOverride<boolean>(SANDBOX_SUPPORTED_KEY, [context.getHandler(), context.getClass()]) ??
+        false;
+      if (!supported) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          code: SANDBOX_NOT_SUPPORTED,
+          message: 'This route is not available to sandbox keys; use a live key',
+        });
+      }
     }
 
     const rateLimitResult = await checkRateLimit(this.redis, credential.id);

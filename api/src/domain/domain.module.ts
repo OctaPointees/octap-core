@@ -7,6 +7,7 @@ import { MembersModule } from './members/members.module.js';
 import { AdministrationModule } from './administration/administration.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { McpAuthModule } from './mcp-auth/mcp-auth.module.js';
+import { SandboxModule } from './sandbox/sandbox.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
 import { EventsModule } from './events/events.module.js';
 import { DeveloperModule } from './developer/developer.module.js';
@@ -19,6 +20,7 @@ const featureModules = [
   WebhooksModule,
   IdentityModule,
   McpAuthModule,
+  SandboxModule,
   AssistantModule,
   EventsModule,
   DeveloperModule,

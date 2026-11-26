@@ -10,6 +10,8 @@ export const organizationStatusEnum = pgEnum('organization_status', [
 ]);
 
 export const apiCredentialStatusEnum = pgEnum('api_credential_status', ['ACTIVE', 'REVOKED', 'EXPIRED']);
+/** LIVE keys move real points on-chain; SANDBOX keys only ever touch the sandbox ledger (OCT-297). */
+export const apiCredentialEnvironmentEnum = pgEnum('api_credential_environment', ['LIVE', 'SANDBOX']);
 export const organizationTypeEnum = pgEnum('organization_type', ['INDIVIDUAL_HOUSEHOLD', 'COMPANY']);
 
 /**
@@ -73,6 +75,8 @@ export const apiCredentials = pgTable(
     keyHash: text('key_hash').notNull().unique(),
     scopes: jsonb('scopes').default(['read', 'write']).notNull(),
     status: apiCredentialStatusEnum('status').default('ACTIVE').notNull(),
+    /** Set at issue and never changed: a key cannot move between sandbox and live. */
+    environment: apiCredentialEnvironmentEnum('environment').default('LIVE').notNull(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

@@ -43,7 +43,14 @@ export class ApiCredentialsRepository {
    * taken before the RLS context: the tenant role can neither see nor lock `organizations`.
    */
   async createWithinLimit(
-    data: { organizationId: string; name: string; keyPrefix: string; keyHash: string; scopes: string[] },
+    data: {
+      organizationId: string;
+      name: string;
+      keyPrefix: string;
+      keyHash: string;
+      scopes: string[];
+      environment?: 'LIVE' | 'SANDBOX';
+    },
     limit: number,
     tx?: DrizzleDb,
   ): Promise<ApiCredential | undefined> {

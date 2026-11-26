@@ -260,6 +260,13 @@
       "when": 1795636130364,
       "tag": "0036_api_request_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795677847881,
+      "tag": "0037_sandbox_mode",
+      "breakpoints": true
     }
   ]
 }

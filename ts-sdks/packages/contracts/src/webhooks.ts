@@ -62,7 +62,8 @@ export type WebhookEventType =
   | 'voucher.publish.failed'
   | 'voucher.paused'
   | 'voucher.archived'
-  | 'budget.low';
+  | 'budget.low'
+  | 'webhook.test';
 
 /**
  * `credits.earned`: an earn was *accepted* and is on its way to the chain (status PENDING).
@@ -120,6 +121,16 @@ export interface BudgetLowEventData {
   threshold: BudgetWarningThreshold;
   remaining: number;
   capacity: number;
+}
+
+/**
+ * `webhook.test`: sent on request from the console to one endpoint only, to check that it receives
+ * and verifies OctaP's deliveries. Signed and retried like any other event. Nothing happened in
+ * the organization: ignore it beyond acknowledging it.
+ */
+export interface WebhookTestEventData {
+  endpointId: string;
+  message: string;
 }
 
 /**
@@ -238,7 +249,8 @@ export type WebhookEvent =
   | WebhookEventOf<'voucher.publish.failed', VoucherLifecycleEventData>
   | WebhookEventOf<'voucher.paused', VoucherLifecycleEventData>
   | WebhookEventOf<'voucher.archived', VoucherLifecycleEventData>
-  | WebhookEventOf<'budget.low', BudgetLowEventData>;
+  | WebhookEventOf<'budget.low', BudgetLowEventData>
+  | WebhookEventOf<'webhook.test', WebhookTestEventData>;
 
 /** The `data` of each event type. */
 export type WebhookEventData<T extends WebhookEventType> = Extract<WebhookEvent, { type: T }>['data'];

@@ -61,6 +61,7 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `voucher.publish.failed` | its terms never reached the chain | `RewardsRepository.failVoucherPublish` |
 | `voucher.paused` | an Owner or an API key paused it | `RewardsRepository.updateVoucher` |
 | `voucher.archived` | its batch was archived before it went live | `RewardsRepository.archiveVoucherBatch` |
+| `webhook.test` | an Owner sent a test ping from the console; delivered to that one endpoint only | `EventsRepository.recordTestEvent` |
 
 Voucher lifecycle events carry the voucher as it is right after the change (`VoucherLifecycleEventData`:
 `status` including `ARCHIVED`, `publishStatus`, `createdBy`, `activatedBy`, `updatedAt`). An approval

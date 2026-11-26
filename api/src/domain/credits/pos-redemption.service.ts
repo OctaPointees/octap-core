@@ -39,6 +39,22 @@ function isUniqueViolation(err: unknown): boolean {
   return code(err) === '23505' || code((err as { cause?: unknown } | null)?.cause) === '23505';
 }
 
+/** The request checks every POS reserve makes, live or sandbox (OCT-297). */
+export function assertValidReserveRequest(request: ReservePosRedemptionRequest): void {
+  if (!Number.isSafeInteger(request.pointsAmount) || request.pointsAmount <= 0) {
+    throw new BadRequestException('Points amount must be a whole number greater than zero');
+  }
+  if (!request.orderReference?.trim() || request.orderReference.length > 100) {
+    throw new BadRequestException('orderReference must be 1-100 characters');
+  }
+  if (!Number.isFinite(request.discountAmount) || request.discountAmount <= 0) {
+    throw new BadRequestException('discountAmount must be greater than zero');
+  }
+  if (!/^[A-Z]{3}$/.test(request.currency ?? '')) {
+    throw new BadRequestException('currency must be an ISO 4217 code such as VND');
+  }
+}
+
 /** Unparseable bytes only cost the "expired, never landed" shortcut, never the finalize itself. */
 export function expirationOf(transactionBytes: string): bigint | null {
   try {
@@ -84,18 +100,7 @@ export class PosRedemptionService {
   ) {}
 
   async reserve(organizationId: string, request: ReservePosRedemptionRequest): Promise<ReservePosRedemptionResponse> {
-    if (request.pointsAmount <= 0) {
-      throw new BadRequestException('Points amount must be greater than zero');
-    }
-    if (!request.orderReference?.trim() || request.orderReference.length > 100) {
-      throw new BadRequestException('orderReference must be 1-100 characters');
-    }
-    if (!Number.isFinite(request.discountAmount) || request.discountAmount <= 0) {
-      throw new BadRequestException('discountAmount must be greater than zero');
-    }
-    if (!/^[A-Z]{3}$/.test(request.currency ?? '')) {
-      throw new BadRequestException('currency must be an ISO 4217 code such as VND');
-    }
+    assertValidReserveRequest(request);
 
     const memberOrgId = await this.creditsRepo.findMemberOrganizationId(request.organizationEndUserId);
     if (memberOrgId !== organizationId) {

@@ -6,6 +6,7 @@ import { ApiKeyGuard } from '#infra/auth/api-key.guard.js';
 import { hashApiKey } from '#infra/auth/api-key-hash.util.js';
 import { Scopes, SCOPES_KEY } from '#infra/auth/scopes.decorator.js';
 import { IS_PUBLIC_KEY, Public } from '#infra/auth/public.decorator.js';
+import { SANDBOX_NOT_SUPPORTED, SANDBOX_SUPPORTED_KEY, SandboxSupported } from '#infra/auth/sandbox.decorator.js';
 import { IdentityController } from '#api/rest/identity.controller.js';
 import { CreditsController } from '#api/rest/credits.controller.js';
 import { RATE_LIMIT_MAX_REQUESTS } from '#infra/auth/rate-limit.util.js';
@@ -207,5 +208,44 @@ describe('ApiKeyGuard: lastUsedAt', () => {
       process.off('unhandledRejection', unhandled);
       error.mockRestore();
     }
+  });
+});
+
+describe('ApiKeyGuard: the sandbox boundary (OCT-297)', () => {
+  const sandbox = activeCredential({ environment: 'SANDBOX' });
+  const writeCtx = (handler: () => void, method = 'POST') =>
+    executionContext({ headers: { authorization: 'Bearer octap_test_k' }, method, handler });
+
+  it('carries the key environment on the tenant', async () => {
+    const ctx = executionContext({ headers: { authorization: 'Bearer octap_test_k' } });
+    expect(await guard(sandbox).canActivate(ctx)).toBe(true);
+    expect(ctx.request.tenant).toMatchObject({ environment: 'SANDBOX' });
+  });
+
+  it.each(['POST', 'PATCH', 'PUT', 'DELETE'])('refuses a sandbox key on an unmarked %s route', async (method) => {
+    await expect(guard(sandbox).canActivate(writeCtx(route(Scopes('write')), method))).rejects.toMatchObject({
+      name: 'ForbiddenException',
+      response: expect.objectContaining({ code: SANDBOX_NOT_SUPPORTED }),
+    });
+  });
+
+  it('lets a sandbox key read, and write where the route supports sandbox', async () => {
+    expect(await guard(sandbox).canActivate(writeCtx(route(Scopes('read')), 'GET'))).toBe(true);
+    expect(await guard(sandbox).canActivate(writeCtx(route(Scopes('write'), SandboxSupported())))).toBe(true);
+  });
+
+  it('leaves live keys alone on unmarked write routes', async () => {
+    const live = activeCredential({ environment: 'LIVE' });
+    expect(await guard(live).canActivate(writeCtx(route(Scopes('write'))))).toBe(true);
+  });
+
+  it('marks exactly earn and reserve as sandbox-supported among the credits writes', () => {
+    const reflector = new Reflector();
+    const marked = (name: keyof CreditsController) =>
+      reflector.get<boolean>(SANDBOX_SUPPORTED_KEY, CreditsController.prototype[name] as unknown as () => void) ??
+      false;
+    expect(marked('earn')).toBe(true);
+    expect(marked('reservePosRedemption')).toBe(true);
+    expect(marked('reverseTransaction')).toBe(false);
   });
 });

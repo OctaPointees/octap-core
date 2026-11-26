@@ -15,10 +15,16 @@ import type { IdentityService } from '#domain/identity/identity.service.js';
 import type { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints.service.js';
 import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
+import type { SandboxCreditsService } from '#domain/sandbox/sandbox-credits.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { POS_BENEFIT } from '../../../helpers/fixtures.js';
 
-const tenant: TenantContext = { organizationId: 'org-1', credentialId: 'cred-1', scopes: ['read', 'write'] };
+const tenant: TenantContext = {
+  organizationId: 'org-1',
+  credentialId: 'cred-1',
+  scopes: ['read', 'write'],
+  environment: 'LIVE',
+};
 const ok = <T>(value: T) => vi.fn(async () => value);
 const bad = (promise: Promise<unknown>, message: RegExp) =>
   expect(promise).rejects.toMatchObject({ name: 'BadRequestException', message: expect.stringMatching(message) });
@@ -40,6 +46,7 @@ describe('CreditsController', () => {
       stub<ReversalService>(overrides.reversal),
       stub<PosRedemptionService>(overrides.pos),
       stub<IssuanceBudgetService>(),
+      stub<SandboxCreditsService>(),
     );
   }
   const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k', ...POS_BENEFIT };
