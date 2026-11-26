@@ -2,3 +2,7 @@
 budget_alert_emails = ["you@example.com"]
 # A commit SHA pushed to the octap-core ECR repository.
 image_tag = "0123abc"
+# The Google OAuth client the console signs in with (public, the same one the web apps use).
+console_google_client_id = "1234567890-abc.apps.googleusercontent.com"
+# The API's feature secrets to pass to it: only ones whose value is set (infra/README.md).
+api_feature_secrets = []

@@ -1,5 +1,5 @@
-# The ECS cluster and the one-off migration task (OCT-319). The api, worker and mcp services
-# join this cluster in OCT-320 and OCT-321.
+# The ECS cluster and the one-off migration task (OCT-319). The api service (api.tf, OCT-320)
+# runs here; the worker and mcp services join in OCT-321 and OCT-307.
 
 resource "aws_ecs_cluster" "core" {
   name = var.name

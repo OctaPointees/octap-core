@@ -5,7 +5,7 @@ Terraform for Core's AWS staging environment (OCT-316), region `ap-southeast-2`.
 - `bootstrap/`: the S3 bucket that holds Terraform's state. Run once per AWS account.
 - `staging/`: everything else. So far: the network, the image registry, the log groups and a
   monthly budget alert (OCT-318); Postgres, Redis, the secrets, the ECS cluster and the migration
-  task (OCT-319).
+  task (OCT-319); the load balancer, `api.octap.biz` and the `api` service (OCT-320).
 
 ## First time
 
@@ -75,6 +75,37 @@ The migrations were written for Supabase. `scripts/migrate.mjs` creates Supabase
 a plain Postgres. RDS's admin user is not a superuser, but it may still create `service_role`
 with `BYPASSRLS` (staging's has it). On a Postgres where the user may not, it is created without
 `BYPASSRLS`. Nothing in Core runs as `service_role`.
+
+## The API at api.octap.biz (OCT-320)
+
+An application load balancer serves `https://api.octap.biz` (HTTP redirects to HTTPS) and forwards
+to the `api` ECS service, health-checked on `/health`. The tasks accept traffic from the load
+balancer only. The certificate (ACM) and the DNS records live in Cloudflare, created by
+Terraform, DNS only: Cloudflare's proxy would cut a stream at 100 seconds.
+
+1. **A Cloudflare API token** with DNS edit on `octap.biz`, in the shell, never in a file here:
+
+   ```sh
+   export CLOUDFLARE_API_TOKEN=...                 # bash
+   $env:CLOUDFLARE_API_TOKEN = '...'               # PowerShell
+   ```
+
+2. **`terraform.tfvars`**: `console_google_client_id`, the Google OAuth client the console signs in
+   with (the same one the web apps use).
+
+3. **Feature secrets.** The API starts with only `DATABASE_URL`; each feature secret left out turns
+   its feature off (503). A task can't start while a secret it names has no value, so set the
+   value first (step 3 above), then add its name to `api_feature_secrets` and apply:
+
+   ```hcl
+   api_feature_secrets = ["ENOKI_API_KEY", "ORGANIZATION_IDENTITY_ENCRYPTION_KEY"]
+   ```
+
+4. **Google sign-in.** Add `https://api.octap.biz` to the OAuth client's Authorized JavaScript
+   origins (Google Cloud console). Terraform doesn't manage the client.
+
+Check it: `curl https://api.octap.biz/health` returns 200. A new `image_tag` rolls the service out;
+one that never turns healthy is rolled back by ECS.
 
 ## Rules
 

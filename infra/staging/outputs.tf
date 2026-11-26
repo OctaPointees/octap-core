@@ -31,6 +31,14 @@ output "redis_url" {
   value       = "rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
 }
 
+output "api_url" {
+  value = "https://${local.api_domain}"
+}
+
+output "load_balancer_dns_name" {
+  value = aws_lb.public.dns_name
+}
+
 output "secret_names" {
   value = sort([for s in aws_secretsmanager_secret.core : s.name])
 }

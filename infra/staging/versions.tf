@@ -10,6 +10,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"
     }
+    # DNS for api.octap.biz and its certificate (OCT-320). Reads CLOUDFLARE_API_TOKEN.
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
 
   # Created by infra/bootstrap. The bucket name carries the AWS account id, which is not a secret.
@@ -33,3 +38,6 @@ provider "aws" {
     }
   }
 }
+
+# The token comes from CLOUDFLARE_API_TOKEN (DNS edit on the zone), never from a file here.
+provider "cloudflare" {}
