@@ -17,8 +17,6 @@ export interface AuditActorRef {
 
 export interface AuditLogEntry {
   id: string;
-  /** Orders the log. */
-  sequence: number;
   occurredAt: string;
   actor: AuditActorRef;
   /** `<target>.<verb>` (e.g. `api_key.revoked`, `member.blocked`) or an event type (`credits.earned`). */

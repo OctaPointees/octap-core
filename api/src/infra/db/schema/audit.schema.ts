@@ -14,8 +14,8 @@ const tenant = (organizationId: unknown) =>
  * nor a row without its change.
  *
  * Durable and append-only. Nothing trims it (unlike `organization_events`, kept 30 days), the
- * tenant role may only read and insert, and a trigger refuses any UPDATE or DELETE whatever the
- * role. `sequence` orders it for a reader and for a future signed export (OCT-77).
+ * tenant role is granted only SELECT and INSERT on it (`scripts/migrate.mjs`), and triggers refuse
+ * any UPDATE, DELETE or TRUNCATE whatever the role. `sequence` orders it for a reader and for a future signed export (OCT-77).
  *
  * The shape follows the common actor / action / target model (WorkOS, Pangea, OCSF API Activity).
  * Rows hold ids, never names, emails or other personal data: the read API resolves a label at read
@@ -43,6 +43,8 @@ export const auditLog = pgTable(
     changes: jsonb('changes'),
   },
   (t) => [
+    // The read: one organization, newest first.
+    index('audit_log_org_sequence_idx').on(t.organizationId, t.sequence),
     index('audit_log_org_occurred_idx').on(t.organizationId, t.occurredAt, t.sequence),
     index('audit_log_org_actor_idx').on(t.organizationId, t.actorType, t.actorId, t.occurredAt),
     index('audit_log_org_target_idx').on(t.organizationId, t.targetType, t.targetId),

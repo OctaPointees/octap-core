@@ -26,6 +26,14 @@ export function runInRequestContext<T>(requestId: string, work: () => T): T {
   return storage.run({ requestId }, work);
 }
 
+/**
+ * Runs `work` outside any request context: for background work started from inside a request (a
+ * timer, a fire-and-forget write), so it never inherits that request's actor.
+ */
+export function outsideRequestContext<T>(work: () => T): T {
+  return storage.exit(work);
+}
+
 /** Called by `ApiKeyGuard` and `ConsoleAccessGuard` once they have authenticated the caller. */
 export function setRequestActor(actor: AuditActor): void {
   const context = storage.getStore();

@@ -6,6 +6,8 @@ import { ConsoleOrganizationsRepository } from '#infra/db/repositories/console-o
 
 const ACTOR_TYPES: AuditActorType[] = ['USER', 'CREDENTIAL', 'SYSTEM'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** ISO 8601 date-time with an explicit offset or Z, so the server's time zone never decides. */
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/;
 const KEYS = ['limit', 'cursor', 'from', 'to', 'actorType', 'actorId', 'action', 'targetType', 'targetId'];
 
 /**
@@ -24,8 +26,8 @@ export class AuditLogService {
     if (unknown.length) throw new BadRequestException(`Unsupported query fields: ${unknown.join(', ')}`);
     const limit = input.limit === undefined ? 50 : Number(input.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be 1–100');
-    const cursor = input.cursor === undefined ? undefined : Number(input.cursor);
-    if (cursor !== undefined && (!Number.isSafeInteger(cursor) || cursor < 1))
+    const cursor = input.cursor === undefined ? undefined : input.cursor;
+    if (cursor !== undefined && (typeof cursor !== 'string' || !UUID.test(cursor)))
       throw new BadRequestException('Invalid cursor');
     const query = parseQuery(input);
     let page: Awaited<ReturnType<AuditRepository['page']>>;
@@ -39,7 +41,7 @@ export class AuditLogService {
       throw error;
     }
     if (!page) throw new BadRequestException('Invalid cursor');
-    return { items: page.rows.map(toEntry), nextCursor: page.nextCursor === null ? null : String(page.nextCursor) };
+    return { items: page.rows.map(toEntry), nextCursor: page.nextCursor };
   }
 }
 
@@ -47,8 +49,10 @@ function parseQuery(input: Record<string, unknown>): AuditQuery {
   const query: AuditQuery = {};
   for (const key of ['from', 'to'] as const) {
     if (input[key] === undefined) continue;
-    const date = typeof input[key] === 'string' ? new Date(input[key]) : new Date(NaN);
-    if (Number.isNaN(date.getTime())) throw new BadRequestException(`${key} must be an ISO 8601 date-time`);
+    const value = input[key];
+    const date = typeof value === 'string' && ISO_DATE_TIME.test(value) ? new Date(value) : new Date(NaN);
+    if (Number.isNaN(date.getTime()))
+      throw new BadRequestException(`${key} must be an ISO 8601 date-time with an offset or Z`);
     query[key] = date;
   }
   if (query.from && query.to && query.from >= query.to) throw new BadRequestException('from must be before to');
@@ -75,7 +79,6 @@ function parseQuery(input: Record<string, unknown>): AuditQuery {
 function toEntry(row: AuditRow): AuditLogEntry {
   return {
     id: row.id,
-    sequence: row.sequence,
     occurredAt: row.occurredAt.toISOString(),
     actor: { type: row.actorType, id: row.actorId, label: row.actorLabel },
     action: row.action,

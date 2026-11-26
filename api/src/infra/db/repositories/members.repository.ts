@@ -69,32 +69,36 @@ export class MembersRepository {
         eq(organizationEndUsers.organizationId, organizationId),
         eq(organizationEndUsers.id, memberId),
       );
-      const [before] = await tx
-        .select({ status: organizationEndUsers.status })
-        .from(organizationEndUsers)
-        .where(ofMember)
-        .for('update');
+      const [before] = await tx.select().from(organizationEndUsers).where(ofMember).for('update');
       if (!before) throw new ConsoleNotFoundError();
       await tx
         .update(organizationEndUsers)
         .set({ ...input, updatedAt: new Date() })
         .where(ofMember);
-      // Personal values stay out of the audit log: which fields changed, and the status itself.
-      await recordAudit(tx, {
-        organizationId,
-        action:
-          input.status === 'BLOCKED' && before.status !== 'BLOCKED'
-            ? 'member.blocked'
-            : input.status === 'ACTIVE' && before.status !== 'ACTIVE'
-              ? 'member.unblocked'
-              : 'member.updated',
-        targetType: 'member',
-        targetId: memberId,
-        changes: {
-          fields: Object.keys(input).sort(),
-          ...(input.status !== undefined ? { status: { from: before.status, to: input.status } } : {}),
-        },
-      });
+      // Only what actually changed; personal values stay out: field names, and the status itself.
+      const previous = before as Record<string, unknown>;
+      const changed = Object.entries(input)
+        .filter(([key, value]) => JSON.stringify(previous[key] ?? null) !== JSON.stringify(value ?? null))
+        .map(([key]) => key)
+        .sort();
+      if (changed.length > 0) {
+        const statusChanged = changed.includes('status');
+        await recordAudit(tx, {
+          organizationId,
+          action:
+            statusChanged && input.status === 'BLOCKED'
+              ? 'member.blocked'
+              : statusChanged && before.status === 'BLOCKED'
+                ? 'member.unblocked'
+                : 'member.updated',
+          targetType: 'member',
+          targetId: memberId,
+          changes: {
+            fields: changed,
+            ...(statusChanged ? { status: { from: before.status, to: input.status } } : {}),
+          },
+        });
+      }
       return { updated: true };
     });
   }

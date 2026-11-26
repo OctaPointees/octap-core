@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import type { OrganizationStreamEvent } from '@octap/contracts';
 import { OrganizationEventsRepository, type OrganizationEvent } from '#infra/db/repositories/events.repository.js';
 import { toStreamEvent } from './event-subjects.js';
+import { outsideRequestContext } from '#observability/request-context.js';
 
 const POLL_INTERVAL_MS = Number(process.env.CONSOLE_EVENTS_POLL_INTERVAL_MS ?? 1000);
 /**
@@ -45,7 +46,8 @@ export class OrganizationEventHub implements OnModuleDestroy {
       this.listeners.set(organizationId, set);
     }
     set.add(listener);
-    this.timer ??= setInterval(() => void this.pollOnce(), POLL_INTERVAL_MS);
+    // Started by the first stream's request: outside its context, so the poll never acts as that user.
+    this.timer ??= outsideRequestContext(() => setInterval(() => void this.pollOnce(), POLL_INTERVAL_MS));
     return () => {
       const current = this.listeners.get(organizationId);
       current?.delete(listener);

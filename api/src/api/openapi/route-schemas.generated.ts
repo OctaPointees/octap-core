@@ -6320,10 +6320,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "id": {
         "type": "string"
       },
-      "sequence": {
-        "description": "Orders the log.",
-        "type": "number"
-      },
       "occurredAt": {
         "type": "string"
       },
@@ -6378,7 +6374,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "id",
       "occurredAt",
       "requestId",
-      "sequence",
       "target"
     ]
   },

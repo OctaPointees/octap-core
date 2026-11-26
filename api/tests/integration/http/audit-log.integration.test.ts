@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createTestApp } from '../support/app.js';
 import { resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from '../support/db.js';
 
@@ -111,33 +111,57 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
 
   it('records member blocks, staff suspension, webhook endpoints and settings, with no personal data', async () => {
     const { memberId } = await seedMember(ctx.db, orgId);
-    await ctx
-      .http()
-      .patch(consolePath(`/members/${memberId}`))
-      .set(as('owner'))
-      .send({ status: 'BLOCKED' })
-      .expect(200);
-    await ctx
-      .http()
-      .patch(consolePath(`/staff/${ids.developer}`))
-      .set(as('owner'))
-      .send({ status: 'SUSPENDED' })
-      .expect(200);
+    const member = (body: Record<string, unknown>) =>
+      ctx
+        .http()
+        .patch(consolePath(`/members/${memberId}`))
+        .set(as('owner'))
+        .send(body)
+        .expect(200);
+    await member({ status: 'BLOCKED' });
+    await member({ status: 'BLOCKED' }); // nothing changed: no row
+    await member({ status: 'ACTIVE' });
+    const [invitation] = await ctx.db
+      .insert(schema.invitations)
+      .values({
+        organizationId: orgId,
+        invitedById: ids.owner,
+        email: 'developer@example.com',
+        role: 'BUSINESS_DEVELOPER',
+        token: `t-${randomUUID()}`,
+        expiresAt: new Date(Date.now() + 86_400_000),
+      })
+      .returning();
+    const staff = (status: string) =>
+      ctx
+        .http()
+        .patch(consolePath(`/staff/${ids.developer}`))
+        .set(as('owner'))
+        .send({ status })
+        .expect(200);
+    await staff('SUSPENDED');
+    await staff('SUSPENDED'); // already suspended: no second row
+    // A token in the path must never reach the permanent log.
     const endpoint = await ctx
       .http()
       .post(consolePath('/webhooks/endpoints'))
       .set(as('owner'))
-      .send({ url: 'https://hooks.example.com/octap' })
+      .send({ url: 'https://hooks.example.com/services/T000/B000/SECRET-TOKEN' })
       .expect(201);
-    await ctx
-      .http()
-      .post(consolePath(`/webhooks/endpoints/${endpoint.body.id}/disable`))
-      .set(as('owner'))
-      .expect(201);
+    const disable = () =>
+      ctx
+        .http()
+        .post(consolePath(`/webhooks/endpoints/${endpoint.body.id}/disable`))
+        .set(as('owner'))
+        .expect(201);
+    await disable();
+    await disable(); // already disabled: no second row
 
     const rows = await auditRows();
     expect(rows.map((row) => row.action).sort()).toEqual([
+      'invitation.revoked',
       'member.blocked',
+      'member.unblocked',
       'staff.suspended',
       'webhook_endpoint.disabled',
       'webhook_endpoint.registered',
@@ -146,8 +170,61 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
       fields: ['status'],
       status: { from: 'ACTIVE', to: 'BLOCKED' },
     });
+    expect(rows.find((row) => row.action === 'invitation.revoked')).toMatchObject({
+      targetId: invitation.id,
+      changes: { reason: 'staff_suspended' },
+    });
+    expect(rows.find((row) => row.action === 'webhook_endpoint.registered')!.changes).toEqual({
+      origin: 'https://hooks.example.com',
+    });
     expect(rows.every((row) => row.actorType === 'USER' && row.actorId === ids.owner)).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('developer@example.com');
+    expect(JSON.stringify(rows)).not.toContain('SECRET-TOKEN');
+  });
+
+  it('calls a pending member activated an update, not an unblock', async () => {
+    const { memberId } = await seedMember(ctx.db, orgId);
+    await ctx.db
+      .update(schema.organizationEndUsers)
+      .set({ status: 'PENDING_VERIFICATION' })
+      .where(eq(schema.organizationEndUsers.id, memberId));
+    await ctx
+      .http()
+      .patch(consolePath(`/members/${memberId}`))
+      .set(as('owner'))
+      .send({ status: 'ACTIVE' })
+      .expect(200);
+    const [row] = await auditRows();
+    expect(row).toMatchObject({
+      action: 'member.updated',
+      changes: { fields: ['status'], status: { from: 'PENDING_VERIFICATION', to: 'ACTIVE' } },
+    });
+  });
+
+  it('records a voucher edit by field name, also when its status stays the same', async () => {
+    await seedProgram(ctx.db, orgId);
+    const vouchers = consolePath('/vouchers');
+    const created = await ctx
+      .http()
+      .post(vouchers)
+      .set(as('developer'))
+      .send({ code: 'coffee', title: 'Free coffee', discountType: 'FREE_ITEM', pointsCost: 100, totalSupply: 10 })
+      .expect(201);
+    await ctx
+      .http()
+      .patch(`${vouchers}/${created.body.id}`)
+      .set(as('developer'))
+      .send({ totalSupply: 20, title: 'Free coffee' })
+      .expect(200);
+    const updated = (await auditRows()).filter((row) => row.action === 'voucher.updated');
+    expect(updated).toHaveLength(1);
+    expect(updated[0]).toMatchObject({
+      actorType: 'USER',
+      actorId: ids.developer,
+      targetType: 'voucher',
+      targetId: created.body.id,
+      changes: { fields: ['totalSupply'] },
+    });
   });
 
   it('records a webhook test ping, which has its own writer, with its event and delivery', async () => {
@@ -201,7 +278,11 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
     }
     const page = (await readLog('owner', { limit: '2' }).expect(200)).body;
     expect(page.items).toHaveLength(2);
-    expect(page.items[0].sequence).toBeGreaterThan(page.items[1].sequence);
+    const [newest] = (await auditRows()).sort((a, b) => b.sequence - a.sequence);
+    expect(page.items[0].id).toBe(newest.id);
+    // Opaque: the cursor is a row id, and the shared sequence is never on the wire.
+    expect(page.nextCursor).toBe(page.items[1].id);
+    expect(page.items[0]).not.toHaveProperty('sequence');
     expect(page.items[0]).toMatchObject({
       action: 'api_key.issued',
       actor: { type: 'USER', id: ids.owner, label: 'owner name' },
@@ -215,6 +296,9 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
     expect((await readLog('owner', { action: 'member.' }).expect(200)).body.items).toHaveLength(0);
     expect((await readLog('owner', { actorType: 'CREDENTIAL' }).expect(200)).body.items).toHaveLength(0);
     await readLog('owner', { actorType: 'ROBOT' }).expect(400);
+    await readLog('owner', { from: 'Nov 1 2026' }).expect(400);
+    await readLog('owner', { from: '2026-11-01T00:00:00' }).expect(400); // no offset
+    await readLog('owner', { from: '2026-11-01T00:00:00Z' }).expect(200);
     await readLog('developer').expect(403);
   });
 
@@ -229,6 +313,7 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
     await expect(ctx.db.delete(schema.auditLog).where(eq(schema.auditLog.id, row.id))).rejects.toMatchObject(
       appendOnly,
     );
+    await expect(ctx.db.execute(sql`truncate table audit_log`)).rejects.toMatchObject(appendOnly);
   });
 
   it('never shows another organization’s rows', async () => {

@@ -18,7 +18,7 @@ import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 import { SCOPES_KEY } from './scopes.decorator.js';
 import { SANDBOX_NOT_SUPPORTED, SANDBOX_SUPPORTED_KEY } from './sandbox.decorator.js';
 import type { TenantContext } from './tenant-context.js';
-import { setRequestActor } from '#observability/request-context.js';
+import { outsideRequestContext, setRequestActor } from '#observability/request-context.js';
 
 /**
  * Authenticates server-to-server requests via `Authorization: Bearer <api key>`, resolving
@@ -108,11 +108,14 @@ export class ApiKeyGuard implements CanActivate {
 
     // Not awaited, so the request doesn't wait on it; caught, so a failed write is logged instead
     // of becoming an unhandled rejection, which would stop the process.
-    void this.credentials.touchLastUsed(credential.organizationId, credential.id).catch((error: unknown) => {
-      this.logger.error(
-        `Could not record lastUsedAt for API credential ${credential.id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
+    // Outside the request context: bookkeeping, not an action of the caller.
+    void outsideRequestContext(() => this.credentials.touchLastUsed(credential.organizationId, credential.id)).catch(
+      (error: unknown) => {
+        this.logger.error(
+          `Could not record lastUsedAt for API credential ${credential.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
 
     return true;
   }

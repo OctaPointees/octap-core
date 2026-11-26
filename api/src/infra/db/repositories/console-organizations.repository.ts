@@ -400,20 +400,21 @@ export class ConsoleOrganizationsRepository {
         .update(organizationMemberships)
         .set({ status, updatedAt: new Date() })
         .where(eq(organizationMemberships.id, target.id));
-      await recordAudit(tx, {
-        organizationId,
-        action: status === 'SUSPENDED' ? 'staff.suspended' : 'staff.restored',
-        targetType: 'system_user',
-        targetId: targetId,
-        changes: { status: { from: target.status, to: status } },
-      });
+      if (target.status !== status)
+        await recordAudit(tx, {
+          organizationId,
+          action: status === 'SUSPENDED' ? 'staff.suspended' : 'staff.restored',
+          targetType: 'system_user',
+          targetId: targetId,
+          changes: { status: { from: target.status, to: status } },
+        });
       // A pending invitation must not restore access after an Owner suspends it.
       if (status === 'SUSPENDED') {
         const [user] = await tx
           .select({ email: systemUsers.email })
           .from(systemUsers)
           .where(eq(systemUsers.id, targetId));
-        await tx
+        const revoked = await tx
           .update(invitations)
           .set({ status: 'REVOKED', updatedAt: new Date() })
           .where(
@@ -422,7 +423,16 @@ export class ConsoleOrganizationsRepository {
               eq(invitations.email, user.email.toLowerCase()),
               eq(invitations.status, 'PENDING'),
             ),
-          );
+          )
+          .returning({ id: invitations.id });
+        for (const invitation of revoked)
+          await recordAudit(tx, {
+            organizationId,
+            action: 'invitation.revoked',
+            targetType: 'invitation',
+            targetId: invitation.id,
+            changes: { reason: 'staff_suspended' },
+          });
       }
     });
   }
@@ -459,6 +469,13 @@ export class ConsoleOrganizationsRepository {
         payload: { bootstrap: true, previousOwnerId: null, targetUserId: targetId },
         reason: 'System Admin assigned the first Owner of an active ownerless organization',
         reviewedAt: new Date(),
+      });
+      await recordAudit(tx, {
+        organizationId,
+        action: 'organization.owner_assigned',
+        targetType: 'system_user',
+        targetId: targetId,
+        changes: { bootstrap: true },
       });
     });
   }

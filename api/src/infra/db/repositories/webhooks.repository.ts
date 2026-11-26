@@ -84,7 +84,8 @@ export class WebhooksRepository {
         action: 'webhook_endpoint.registered',
         targetType: 'webhook_endpoint',
         targetId: created.id,
-        changes: { url: created.url },
+        // Only the origin: a webhook path often carries a token, and this row can never be purged.
+        changes: { origin: new URL(created.url).origin },
       });
       return created;
     });
@@ -120,17 +121,23 @@ export class WebhooksRepository {
     db: DrizzleDb = this.db,
   ) {
     return withTenant(db, organizationId, async (tx) => {
+      const [before] = await tx
+        .select({ status: webhookEndpoints.status })
+        .from(webhookEndpoints)
+        .where(eq(webhookEndpoints.id, endpointId))
+        .for('update');
       const [updated] = await tx
         .update(webhookEndpoints)
         .set({ status, updatedAt: new Date() })
         .where(eq(webhookEndpoints.id, endpointId))
         .returning();
-      await recordAudit(tx, {
-        organizationId,
-        action: status === 'ACTIVE' ? 'webhook_endpoint.enabled' : 'webhook_endpoint.disabled',
-        targetType: 'webhook_endpoint',
-        targetId: endpointId,
-      });
+      if (before && before.status !== status)
+        await recordAudit(tx, {
+          organizationId,
+          action: status === 'ACTIVE' ? 'webhook_endpoint.enabled' : 'webhook_endpoint.disabled',
+          targetType: 'webhook_endpoint',
+          targetId: endpointId,
+        });
       return updated;
     });
   }

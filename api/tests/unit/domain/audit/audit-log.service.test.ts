@@ -9,7 +9,7 @@ import { stub } from '../../../helpers/stub.js';
 const ORG = 'org-1';
 
 function setup(denied = false) {
-  const page = vi.fn<(tx: unknown, org: string, q: AuditQuery, limit: number, cursor?: number) => Promise<unknown>>(
+  const page = vi.fn<(tx: unknown, org: string, q: AuditQuery, limit: number, cursor?: string) => Promise<unknown>>(
     async () => ({
       rows: [
         {
@@ -27,7 +27,7 @@ function setup(denied = false) {
           changes: null,
         },
       ],
-      nextCursor: 7,
+      nextCursor: 'a1',
     }),
   );
   const withOwnerAccess = vi.fn(async (_u: string, _o: string, action: (tx: unknown) => Promise<unknown>) => {
@@ -47,14 +47,14 @@ function setup(denied = false) {
 describe('AuditLogService', () => {
   it('reads under the Owner check and maps rows', async () => {
     const { service, withOwnerAccess, page } = setup();
-    const result = await service.list('u', ORG, { action: 'api_key.', limit: '10', cursor: '9' });
+    const cursor = '00000000-0000-4000-8000-000000000009';
+    const result = await service.list('u', ORG, { action: 'api_key.', limit: '10', cursor });
     expect(withOwnerAccess).toHaveBeenCalledWith('u', ORG, expect.any(Function));
-    expect(page).toHaveBeenCalledWith({}, ORG, { action: 'api_key.' }, 10, 9);
+    expect(page).toHaveBeenCalledWith({}, ORG, { action: 'api_key.' }, 10, cursor);
     expect(result).toEqual({
       items: [
         {
           id: 'a1',
-          sequence: 7,
           occurredAt: '2026-11-26T00:00:00.000Z',
           actor: { type: 'USER', id: 'u1', label: 'Owner One' },
           action: 'api_key.revoked',
@@ -63,7 +63,7 @@ describe('AuditLogService', () => {
           changes: null,
         },
       ],
-      nextCursor: '7',
+      nextCursor: 'a1',
     });
   });
 
@@ -74,6 +74,9 @@ describe('AuditLogService', () => {
   it.each([
     [{ limit: '0' }],
     [{ cursor: 'abc' }],
+    [{ cursor: '9' }],
+    [{ from: 'Nov 1 2026' }],
+    [{ from: '2026-11-01T00:00:00' }],
     [{ actorType: 'ROBOT' }],
     [{ actorId: 'nope' }],
     [{ from: 'yesterday' }],

@@ -36,6 +36,8 @@ try {
   await sql.unsafe(`
     grant select, insert, update, delete on all tables in schema public to authenticated;
     grant all privileges on all tables in schema public to service_role;
+    -- The audit log is append-only (OCT-333): the tenant role reads and inserts, nothing else.
+    revoke update, delete, truncate on audit_log from authenticated;
   `);
   console.log('Migrations applied');
 } finally {

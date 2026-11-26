@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, like, lt, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, like, lt, sql, type SQL } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { auditLog } from '../schema/audit.schema.js';
 import { apiCredentials } from '../schema/organizations.schema.js';
 import { systemUsers } from '../schema/auth.schema.js';
-import { withTenant } from '../rls.js';
+import { asOwnRole, withTenant } from '../rls.js';
 import { currentActor, currentRequestId, type AuditActor } from '#observability/request-context.js';
 
 export type AuditEntry = typeof auditLog.$inferSelect;
@@ -75,26 +75,37 @@ export type AuditRow = AuditEntry & { actorLabel: string | null };
 export class AuditRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
-  /** Newest first. `cursor` is the last row's `sequence`; `null` for a cursor outside this organization. */
-  async page(tx: DrizzleDb, organizationId: string, query: AuditQuery, limit: number, cursor?: number) {
+  /**
+   * Newest first. `cursor` is the last row's id, so it is opaque: `sequence` is shared by every
+   * organization, and two cursors compared would tell how many actions others took in between.
+   * `null` for a cursor outside this organization.
+   */
+  async page(tx: DrizzleDb, organizationId: string, query: AuditQuery, limit: number, cursor?: string) {
     return withTenant(tx, organizationId, async (db) => {
       const where = this.filters(organizationId, query);
       if (cursor !== undefined) {
         const [anchor] = await db
-          .select({ sequence: auditLog.sequence })
+          .select({ id: auditLog.id })
           .from(auditLog)
-          .where(and(eq(auditLog.organizationId, organizationId), eq(auditLog.sequence, cursor)));
+          .where(and(eq(auditLog.organizationId, organizationId), eq(auditLog.id, cursor)));
         if (!anchor) return null;
       }
       const rows = await db
         .select()
         .from(auditLog)
-        .where(and(where, cursor !== undefined ? lt(auditLog.sequence, cursor) : undefined))
+        .where(
+          and(
+            where,
+            cursor !== undefined
+              ? lt(auditLog.sequence, sql`(select a.sequence from ${auditLog} a where a.id = ${cursor})`)
+              : undefined,
+          ),
+        )
         .orderBy(desc(auditLog.sequence))
         .limit(limit + 1);
       const more = rows.length > limit;
       if (more) rows.pop();
-      return { rows: await this.labelled(db, organizationId, rows), nextCursor: more ? rows.at(-1)!.sequence : null };
+      return { rows: await this.labelled(db, organizationId, rows), nextCursor: more ? rows.at(-1)!.id : null };
     });
   }
 
@@ -108,12 +119,16 @@ export class AuditRepository {
     ];
     const userIds = ids('USER');
     const keyIds = ids('CREDENTIAL');
-    // `system_users` has no tenant policy: read it as the connection's own role, ids from this page only.
+    // `system_users` has no tenant policy: read it as the connection's own role, ids from this page
+    // only, on the caller's transaction. A second pool connection here would let concurrent reads
+    // hold every connection while each waits for another.
     const users = userIds.length
-      ? await this.db
-          .select({ id: systemUsers.id, fullName: systemUsers.fullName, email: systemUsers.email })
-          .from(systemUsers)
-          .where(inArray(systemUsers.id, userIds))
+      ? await asOwnRole(db, (own) =>
+          own
+            .select({ id: systemUsers.id, fullName: systemUsers.fullName, email: systemUsers.email })
+            .from(systemUsers)
+            .where(inArray(systemUsers.id, userIds)),
+        )
       : [];
     const keys = keyIds.length
       ? await db

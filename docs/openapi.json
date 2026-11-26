@@ -13843,10 +13843,6 @@
           "id": {
             "type": "string"
           },
-          "sequence": {
-            "description": "Orders the log.",
-            "type": "number"
-          },
           "occurredAt": {
             "type": "string"
           },
@@ -13901,7 +13897,6 @@
           "id",
           "occurredAt",
           "requestId",
-          "sequence",
           "target"
         ]
       },

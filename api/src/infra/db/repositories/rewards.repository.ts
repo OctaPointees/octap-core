@@ -24,6 +24,7 @@ import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
 import { recordEvent } from './events.repository.js';
+import { recordAudit } from './audit.repository.js';
 import { recordVoucherEvent, recordVoucherReturned, recordVoucherSubmitted } from './voucher-events.js';
 import {
   ABANDONED_POS_HOLD_GRACE_MS,
@@ -454,6 +455,20 @@ export class RewardsRepository {
       const depleted = merged.totalSupply !== null && merged.claimedCount >= merged.totalSupply;
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
+      // An edit is audited by field name only (OCT-333); a status change has its own event.
+      const current_ = current as Record<string, unknown>;
+      const edited = Object.entries(fields)
+        .filter(([key, value]) => JSON.stringify(current_[key] ?? null) !== JSON.stringify(value ?? null))
+        .map(([key]) => key)
+        .sort();
+      if (edited.length > 0)
+        await recordAudit(tx, {
+          organizationId,
+          action: 'voucher.updated',
+          targetType: 'voucher',
+          targetId: id,
+          changes: { fields: edited },
+        });
       if (requestedStatus === 'ACTIVE' && !onChain) {
         const activation = await this.activation(tx, organizationId, actor);
         // While approval is required, an Owner's activation is the approval of whatever the draft holds,
