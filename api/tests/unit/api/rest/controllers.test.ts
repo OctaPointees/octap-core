@@ -16,6 +16,7 @@ import type { WebhookEndpointsService } from '#domain/webhooks/webhook-endpoints
 import type { WebhookDeliveryService } from '#domain/webhooks/webhook-delivery.service.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type { SandboxCreditsService } from '#domain/sandbox/sandbox-credits.service.js';
+import type { LedgerEvidenceService } from '#domain/credits/ledger-evidence.service.js';
 import { stub } from '../../../helpers/stub.js';
 import { POS_BENEFIT } from '../../../helpers/fixtures.js';
 
@@ -47,6 +48,7 @@ describe('CreditsController', () => {
       stub<PosRedemptionService>(overrides.pos),
       stub<IssuanceBudgetService>(),
       stub<SandboxCreditsService>(),
+      stub<LedgerEvidenceService>(),
     );
   }
   const body = { organizationEndUserId: 'user-1', pointsAmount: 10, idempotencyKey: 'k', ...POS_BENEFIT };

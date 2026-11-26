@@ -8,6 +8,16 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "BalanceReconciliationStatus": {
+    "description": "How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the\nchain's own `credit_account::spendable`:\n- `MATCH`: the two are equal.\n- `PENDING`: something for this member is still on its way to the chain (a pending earn or\n  redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.\n- `MISMATCH`: nothing is in flight and they differ.\n- `UNAVAILABLE`: the chain could not be read just now.",
+    "enum": [
+      "MATCH",
+      "MISMATCH",
+      "PENDING",
+      "UNAVAILABLE"
+    ],
+    "type": "string"
+  },
   "ConsoleApiCredentialsController_issue_Body": {
     "type": "object",
     "properties": {
@@ -523,6 +533,164 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "remaining",
       "shards",
       "warningThreshold"
+    ]
+  },
+  "ConsoleLedgerController_program_Response": {
+    "description": "`GET /v1/credits/program` and `GET /v1/console/organizations/{organizationId}/program`: the\nloyalty program and the on-chain policy behind it. `policyStatus` is `MATCH` when the chain's\nrules are the ones OctaP applies, `MISMATCH` otherwise, `UNAVAILABLE` when the chain could not be\nread (then `policy` is null).",
+    "type": "object",
+    "properties": {
+      "programId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "programControlId": {
+        "type": "string"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "provisionedAt": {
+        "type": "string"
+      },
+      "policyStatus": {
+        "enum": [
+          "MATCH",
+          "MISMATCH",
+          "UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "policy": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ProgramPolicyEvidence"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policy",
+      "policyStatus",
+      "programControlId",
+      "programId",
+      "provisionedAt",
+      "status"
+    ]
+  },
+  "ConsoleLedgerController_reconciliation_Response": {
+    "description": "`GET …/members/{memberId}/reconciliation`. Cached for up to 30 seconds.",
+    "type": "object",
+    "properties": {
+      "organizationEndUserId": {
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/BalanceReconciliationStatus"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object; null before their first earn (the ledger then holds 0).",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recordedBalance": {
+        "description": "OctaP's `confirmedBalance`.",
+        "type": "number"
+      },
+      "ledgerBalance": {
+        "description": "What the chain says is spendable now; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "difference": {
+        "description": "`ledgerBalance - recordedBalance`; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "checkedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "creditAccountId",
+      "difference",
+      "ledgerBalance",
+      "organizationEndUserId",
+      "recordedBalance",
+      "status"
+    ]
+  },
+  "ConsoleLedgerController_transactions_Query": {
+    "description": "`GET /v1/credits/transactions` and the console's organization history. See `OrganizationTransactionQuery`.",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "ADJUSTMENT",
+          "EARN",
+          "EXPIRY",
+          "REDEEM",
+          "REVERSAL",
+          "TRANSFER"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "CONFIRMED",
+          "FAILED",
+          "PENDING",
+          "REVERSED"
+        ],
+        "type": "string"
+      },
+      "memberId": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleLedgerController_transactions_Response": {
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
     ]
   },
   "ConsoleMcpTokenController_token_Response": {
@@ -2602,11 +2770,19 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "stale": {
         "description": "True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change.",
         "type": "boolean"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object on Sui; null until their first earn opens it.",
+        "type": [
+          "null",
+          "string"
+        ]
       }
     },
     "required": [
       "asOfCheckpoint",
       "confirmedBalance",
+      "creditAccountId",
       "lifetimeEarned",
       "lifetimeRedeemed",
       "observedAt",
@@ -2677,6 +2853,164 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "remaining",
       "shards",
       "warningThreshold"
+    ]
+  },
+  "CreditsController_getOrganizationTransactions_Query": {
+    "description": "`GET /v1/credits/transactions` and the console's organization history. See `OrganizationTransactionQuery`.",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "ADJUSTMENT",
+          "EARN",
+          "EXPIRY",
+          "REDEEM",
+          "REVERSAL",
+          "TRANSFER"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "CONFIRMED",
+          "FAILED",
+          "PENDING",
+          "REVERSED"
+        ],
+        "type": "string"
+      },
+      "memberId": {
+        "type": "string"
+      }
+    }
+  },
+  "CreditsController_getOrganizationTransactions_Response": {
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ]
+  },
+  "CreditsController_getProgram_Response": {
+    "description": "`GET /v1/credits/program` and `GET /v1/console/organizations/{organizationId}/program`: the\nloyalty program and the on-chain policy behind it. `policyStatus` is `MATCH` when the chain's\nrules are the ones OctaP applies, `MISMATCH` otherwise, `UNAVAILABLE` when the chain could not be\nread (then `policy` is null).",
+    "type": "object",
+    "properties": {
+      "programId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "programControlId": {
+        "type": "string"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "provisionedAt": {
+        "type": "string"
+      },
+      "policyStatus": {
+        "enum": [
+          "MATCH",
+          "MISMATCH",
+          "UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "policy": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ProgramPolicyEvidence"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policy",
+      "policyStatus",
+      "programControlId",
+      "programId",
+      "provisionedAt",
+      "status"
+    ]
+  },
+  "CreditsController_getReconciliation_Response": {
+    "description": "`GET …/members/{memberId}/reconciliation`. Cached for up to 30 seconds.",
+    "type": "object",
+    "properties": {
+      "organizationEndUserId": {
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/BalanceReconciliationStatus"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object; null before their first earn (the ledger then holds 0).",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recordedBalance": {
+        "description": "OctaP's `confirmedBalance`.",
+        "type": "number"
+      },
+      "ledgerBalance": {
+        "description": "What the chain says is spendable now; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "difference": {
+        "description": "`ledgerBalance - recordedBalance`; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "checkedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "creditAccountId",
+      "difference",
+      "ledgerBalance",
+      "organizationEndUserId",
+      "recordedBalance",
+      "status"
     ]
   },
   "CreditsController_getTransactions_Query": {
@@ -2816,16 +3150,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "newBalance": {
         "type": "number"
       },
-      "balanceWentNegative": {
-        "description": "True when `newBalance` went negative — the member owes points back (clawback debt).",
-        "type": "boolean"
-      },
       "idempotencyKey": {
         "type": "string"
       }
     },
     "required": [
-      "balanceWentNegative",
       "idempotencyKey",
       "newBalance",
       "organizationEndUserId",
@@ -6007,11 +6336,19 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "stale": {
         "description": "True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change.",
         "type": "boolean"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object on Sui; null until their first earn opens it.",
+        "type": [
+          "null",
+          "string"
+        ]
       }
     },
     "required": [
       "asOfCheckpoint",
       "confirmedBalance",
+      "creditAccountId",
       "lifetimeEarned",
       "lifetimeRedeemed",
       "observedAt",
@@ -6096,6 +6433,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "confirmedAt": {
+        "description": "When the chain confirmed it; null until then.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "transactionType": {
         "$ref": "#/components/schemas/LoyaltyTxType"
       },
@@ -6157,6 +6501,45 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "status",
       "transactionType",
       "updatedAt"
+    ]
+  },
+  "ProgramPolicyEvidence": {
+    "description": "The program's published rules as the chain holds them, beside what OctaP applies.",
+    "type": "object",
+    "properties": {
+      "policyVersionId": {
+        "type": "string"
+      },
+      "version": {
+        "type": "number"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "publishedDigest": {
+        "description": "The transaction that published the policy; null if the chain did not report one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "publishedAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policyVersionId",
+      "publishedAt",
+      "publishedDigest",
+      "version"
     ]
   },
   "LatencyPercentiles": {

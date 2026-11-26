@@ -64,9 +64,10 @@ ProgramAdminCap must stay outside API workers. Points are non-transferable and t
   supported (its recorded keys live in the old shards).
 - **Campaigns, audit manifests**: not built. See the roadmap's object map.
 - **No on-chain clawback debt**: reversing an earn whose credits were already spent aborts
-  (`EBucketUnavailable`) rather than recording a debt. Postgres still records the reversal (the
-  balance goes negative there), so that account's chain and Postgres balances differ by what was
-  spent until a human settles it — the worker marks the mirror command FAILED with the abort.
+  (`EBucketUnavailable`) rather than recording a debt. Postgres refuses the same reversals first
+  (OCT-334): an earn is reversed only while its bucket is whole, not held by a redemption in
+  progress, and more than 10 minutes from expiry, so the mirror never meets this abort. Clawback
+  debt is a roadmap follow-up.
 - **`reverse_earn` of an expired bucket aborts** for the same reason: the credits are gone.
 
 ## Tests

@@ -6,7 +6,7 @@ import {
   type PosRedemptionBenefit,
   type VoucherRefundPolicySnapshot,
 } from '@octap/contracts';
-import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, gt, lt, lte, ne, inArray, isNull, or, sql } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
   blockchainTransactions,
@@ -149,7 +149,7 @@ async function consumeBuckets(tx: DrizzleDb, creditOwnershipId: string, amount: 
  *
  * The forfeit is capped at the current balance (never below zero): a bucket can outlive points
  * spent off-chain without a matching bucket debit (e.g. a voucher claim before buckets existed),
- * and expiry must not invent debt — only a reversal can create clawback debt.
+ * and expiry must not invent a negative balance.
  */
 export async function expireDueBuckets(
   tx: DrizzleDb,
@@ -269,6 +269,26 @@ export class VoucherClaimNotReversibleError extends Error {
   }
 }
 
+/**
+ * An earn is not reversed when its points expire this soon: the chain checks expiry again when the
+ * outbox worker submits `reverse_earn`, and a bucket that expired in between would make the mirror
+ * fail after the ledger already took the points back.
+ */
+export const REVERSAL_EXPIRY_MARGIN_MS = 10 * 60 * 1000;
+
+/**
+ * Thrown by `recordReversalTransaction` for an earn whose points are no longer all there to take
+ * back: part of its bucket was spent, a redemption in progress holds them, or it expired or expires
+ * within `REVERSAL_EXPIRY_MARGIN_MS`. The chain's `reverse_earn` refuses these (or would, by the
+ * time the worker submits), so the ledger refuses them too instead of drifting from the chain.
+ */
+export class EarnNotReversibleError extends Error {
+  constructor(reason: string) {
+    super(`This earn cannot be reversed: ${reason}. Issue a separate adjustment if needed.`);
+    this.name = 'EarnNotReversibleError';
+  }
+}
+
 export interface VoucherRefundContext {
   status: string;
   claimedAt: Date;
@@ -340,6 +360,18 @@ export function requireReceiptReference(transaction: { id: string; receiptRefere
 
 /** Every command whose hold settles through a customer-signed `credit_account::redeem`. */
 export const CUSTOMER_REDEEM_COMMAND_TYPES = [POS_RESERVE_COMMAND_TYPE, VOUCHER_CLAIM_RESERVE_COMMAND_TYPE];
+
+/**
+ * Durable commands that change a member's balance once they settle (OCT-334 reconciliation).
+ * `VOUCHER_CLAIM` is a claim not yet decided: it becomes a paid `VOUCHER_CLAIM_RESERVE` or a free
+ * `VOUCHER_GRANT`.
+ */
+const BALANCE_COMMAND_TYPES = [
+  'CREDIT_EARN_CHAIN_SUBMIT',
+  'CREDIT_REVERSAL_CHAIN_SUBMIT',
+  'VOUCHER_CLAIM',
+  ...CUSTOMER_REDEEM_COMMAND_TYPES,
+];
 
 /**
  * How long a POS reserve that was never finalized keeps its points held before the member's next
@@ -1231,10 +1263,11 @@ export class CreditsRepository {
 
   /**
    * Reverses a CONFIRMED EARN or REDEEM: marks the original REVERSED, inserts a REVERSAL row
-   * linked to it via `reversesTransactionId`, and applies the opposite balance effect. A
-   * reversed EARN that was already (partly) spent is allowed to drive `confirmedBalance`
-   * negative — that negative balance *is* the clawback debt, and it already blocks further
-   * redemptions via the balance check in `reservePosRedemption`.
+   * linked to it via `reversesTransactionId`, and applies the opposite balance effect. An EARN is
+   * reversible only while its bucket is whole, not held by a pending redemption, and more than
+   * `REVERSAL_EXPIRY_MARGIN_MS` from expiry, the chain's `reverse_earn` rule with room for the
+   * worker's delay; otherwise `EarnNotReversibleError`, with no writes. So a reversal never drives
+   * `confirmedBalance` negative, and the ledger never records a reversal the chain will refuse.
    *
    * `original` must already be loaded and verified (right organization, CONFIRMED, EARN or
    * REDEEM) by the caller; the unique index on `reversesTransactionId` is the atomic backstop
@@ -1290,18 +1323,38 @@ export class CreditsRepository {
         };
       }
 
+      // Ownership before bucket, the same lock order as a redemption's finalize.
+      const ownership = await lockOwnership(tx, params.original.organizationEndUserId);
+      if (!ownership) {
+        throw new Error('Credit ownership not found for this member');
+      }
+      const magnitude = Number(params.original.pointsAmount);
+
+      if (params.original.transactionType === 'EARN') {
+        const [bucket] = await tx
+          .select()
+          .from(creditBuckets)
+          .where(eq(creditBuckets.earnTransactionId, params.original.id))
+          .for('update');
+        if (!bucket) throw new EarnNotReversibleError('it has no points bucket');
+        // The chain checks expiry when the worker submits `reverse_earn`, not now: leave it room.
+        if (Number(bucket.expiresAtMs) - Date.now() <= REVERSAL_EXPIRY_MARGIN_MS)
+          throw new EarnNotReversibleError('its points have expired or expire within 10 minutes');
+        if (Number(bucket.remaining) !== Number(bucket.amount))
+          throw new EarnNotReversibleError('some of its points were already spent');
+        // A reserved redemption consumes buckets only at finalize, so a held bucket still looks
+        // whole. Taking these points back must not leave the hold uncovered.
+        if (Number(ownership.confirmedBalance) - Number(ownership.pendingRedemption) < magnitude)
+          throw new EarnNotReversibleError('its points are held by a redemption in progress');
+      }
+
       const [reversedOriginal] = await tx
         .update(loyaltyTransactions)
         .set({ status: 'REVERSED', updatedAt: new Date() })
         .where(eq(loyaltyTransactions.id, params.original.id))
         .returning();
-      const ownership = await lockOwnership(tx, params.original.organizationEndUserId);
-      if (!ownership) {
-        throw new Error('Credit ownership not found for this member');
-      }
 
-      const magnitude = Number(params.original.pointsAmount);
-      // EARN added to confirmedBalance -> reversing subtracts (may go negative: clawback debt).
+      // EARN added to confirmedBalance -> reversing subtracts its whole, unspent bucket.
       // REDEEM subtracted from confirmedBalance -> reversing adds it back.
       const balanceDelta = params.original.transactionType === 'EARN' ? -magnitude : magnitude;
       const newConfirmedBalance = Number(ownership.confirmedBalance) + balanceDelta;
@@ -1311,8 +1364,8 @@ export class CreditsRepository {
         .set({ confirmedBalance: newConfirmedBalance, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
       if (params.original.transactionType === 'EARN') {
-        // Clawed-back points must not be forfeited a second time when the earn's bucket expires.
-        // (A reversed REDEEM's add-back gets no bucket: it doesn't expire here — known gap.)
+        // The reversed points must not be forfeited again when the bucket's expiry comes.
+        // A reversed REDEEM's add-back gets no bucket: like the chain's `non_expiring`, it never expires.
         await tx
           .update(creditBuckets)
           .set({ remaining: 0 })
@@ -1369,7 +1422,6 @@ export class CreditsRepository {
           organizationEndUserId: params.original.organizationEndUserId,
           pointsAmount: magnitude,
           newBalance: newConfirmedBalance,
-          balanceWentNegative: newConfirmedBalance < 0,
         },
       });
 
@@ -1421,25 +1473,97 @@ export class CreditsRepository {
     limit: number,
     cursor?: string,
   ) {
+    return this.transactionPage(organizationId, organizationEndUserId, [], limit, cursor);
+  }
+
+  /**
+   * The organization's whole points history, newest first (OCT-334), narrowed by type, status or
+   * member. `null` for a cursor that is not one of the organization's (or that member's)
+   * transactions. The type and status filters do not apply to the cursor: a row that changed
+   * status after it ended a page (a PENDING earn the worker confirmed) still anchors the next one.
+   */
+  async listTransactionPageByOrganization(
+    organizationId: string,
+    filters: {
+      type?: (typeof loyaltyTransactions.$inferSelect)['transactionType'];
+      status?: (typeof loyaltyTransactions.$inferSelect)['status'];
+      memberId?: string;
+    },
+    limit: number,
+    cursor?: string,
+  ) {
+    return this.transactionPage(
+      organizationId,
+      filters.memberId,
+      [
+        filters.type ? eq(loyaltyTransactions.transactionType, filters.type) : undefined,
+        filters.status ? eq(loyaltyTransactions.status, filters.status) : undefined,
+      ],
+      limit,
+      cursor,
+    );
+  }
+
+  /**
+   * True while a durable command that changes this member's balance is still on its way to the
+   * chain (PENDING, PROCESSING or UNKNOWN): an earn, a POS or paid voucher hold, a reversal mirror,
+   * or a voucher claim not yet decided paid or free. Until it settles, the recorded balance and the
+   * chain are not comparable. A voucher use or a free grant never changes the balance, so it does
+   * not count. A claim is first recorded with `memberId` only, so both payload keys are matched.
+   */
+  async hasUnsettledChainWork(organizationId: string, organizationEndUserId: string): Promise<boolean> {
     return withTenant(this.db, organizationId, async (tx) => {
-      const ofMember = and(
+      const [row] = await tx
+        .select({ id: operations.id })
+        .from(operations)
+        .where(
+          and(
+            eq(operations.tenantId, organizationId),
+            inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+            inArray(operations.commandType, BALANCE_COMMAND_TYPES),
+            or(
+              sql`${operations.payload} ->> 'organizationEndUserId' = ${organizationEndUserId}`,
+              sql`${operations.payload} ->> 'memberId' = ${organizationEndUserId}`,
+            ),
+          ),
+        )
+        .limit(1);
+      return Boolean(row);
+    });
+  }
+
+  private async transactionPage(
+    organizationId: string,
+    memberId: string | undefined,
+    filters: (ReturnType<typeof eq> | undefined)[],
+    limit: number,
+    cursor?: string,
+  ) {
+    return withTenant(this.db, organizationId, async (tx) => {
+      // The cursor is checked against whose history this is, never against the filters.
+      const owner = and(
         eq(loyaltyTransactions.organizationId, organizationId),
-        eq(loyaltyTransactions.organizationEndUserId, organizationEndUserId),
+        memberId ? eq(loyaltyTransactions.organizationEndUserId, memberId) : undefined,
       );
+      const scope = and(owner, ...filters);
       if (cursor) {
         const [anchor] = await tx
           .select({ id: loyaltyTransactions.id })
           .from(loyaltyTransactions)
-          .where(and(ofMember, eq(loyaltyTransactions.id, cursor)));
+          .where(and(owner, eq(loyaltyTransactions.id, cursor)));
         if (!anchor) return null;
       }
       const rows = await tx
-        .select({ row: loyaltyTransactions, digest: blockchainTransactions.digest })
+        .select({
+          row: loyaltyTransactions,
+          digest: blockchainTransactions.digest,
+          confirmedAt: blockchainTransactions.confirmedAt,
+        })
         .from(loyaltyTransactions)
         .leftJoin(blockchainTransactions, eq(blockchainTransactions.id, loyaltyTransactions.blockchainTransactionId))
         .where(
           and(
-            ofMember,
+            scope,
             cursor
               ? sql`(${loyaltyTransactions.createdAt}, ${loyaltyTransactions.id}) < (select a.created_at, a.id from ${loyaltyTransactions} a where a.id = ${cursor})`
               : undefined,

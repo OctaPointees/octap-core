@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ReversalService } from '#domain/credits/reversal.service.js';
-import { VoucherClaimNotReversibleError, type CreditsRepository } from '#infra/db/repositories/credits.repository.js';
+import {
+  EarnNotReversibleError,
+  VoucherClaimNotReversibleError,
+  type CreditsRepository,
+} from '#infra/db/repositories/credits.repository.js';
 import { stub } from '../../../helpers/stub.js';
 import { buildLoyaltyTransaction } from '../../../helpers/fixtures.js';
 
@@ -13,7 +17,7 @@ const reverse = (overrides: Partial<{ transactionId: string; idempotencyKey: str
 });
 
 describe('ReversalService', () => {
-  it('reverses a CONFIRMED earn and can drive the balance negative (clawback debt)', async () => {
+  it('reverses a CONFIRMED earn', async () => {
     const recordReversalTransaction = vi.fn(
       async (params: { idempotencyKey: string; original: { pointsAmount: number } }) => ({
         reversal: buildLoyaltyTransaction({
@@ -23,7 +27,7 @@ describe('ReversalService', () => {
           pointsAmount: params.original.pointsAmount,
         }),
         reversedOriginal: confirmedEarn({ status: 'REVERSED' }),
-        newBalance: -20,
+        newBalance: 20,
       }),
     );
     const repo = stub<CreditsRepository>({
@@ -40,8 +44,7 @@ describe('ReversalService', () => {
       reversedTransactionId: 'tx-earn-1',
       organizationEndUserId: 'user-1',
       pointsAmount: 50,
-      newBalance: -20,
-      balanceWentNegative: true,
+      newBalance: 20,
       idempotencyKey: 'reverse-1',
     });
     expect(recordReversalTransaction).toHaveBeenCalledWith({
@@ -53,7 +56,7 @@ describe('ReversalService', () => {
     });
   });
 
-  it('reverses a CONFIRMED redeem and reports a non-negative balance', async () => {
+  it('reverses a CONFIRMED redeem', async () => {
     const repo = stub<CreditsRepository>({
       findTransactionByIdempotency: async () => undefined,
       findTransactionByIdForOrganization: async () => confirmedEarn({ transactionType: 'REDEEM' }),
@@ -66,7 +69,6 @@ describe('ReversalService', () => {
 
     const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
 
-    expect(result.balanceWentNegative).toBe(false);
     expect(result.newBalance).toBe(80);
   });
 
@@ -91,20 +93,22 @@ describe('ReversalService', () => {
       reversalTransactionId: 'tx-reversal-1',
       reversedTransactionId: 'tx-earn-1',
       newBalance: 30,
-      balanceWentNegative: false,
     });
   });
 
-  it('a replayed key whose reversal left the balance negative still reports the debt', async () => {
+  it('a spent or expired earn is a 409, as the chain would refuse it', async () => {
     const repo = stub<CreditsRepository>({
-      findTransactionByIdempotency: async () =>
-        buildLoyaltyTransaction({ transactionType: 'REVERSAL', reversesTransactionId: 'tx-earn-1' }),
-      getOrCreateCreditOwnership: async () => ({ confirmedBalance: -5 }),
+      findTransactionByIdempotency: async () => undefined,
+      findTransactionByIdForOrganization: async () => confirmedEarn(),
+      recordReversalTransaction: async () => {
+        throw new EarnNotReversibleError('some of its points were already spent');
+      },
     });
 
-    const result = await new ReversalService(repo).reverseTransaction('org-1', reverse());
-
-    expect(result.balanceWentNegative).toBe(true);
+    await expect(new ReversalService(repo).reverseTransaction('org-1', reverse())).rejects.toMatchObject({
+      name: 'ConflictException',
+      message: expect.stringMatching(/already spent/),
+    });
   });
 
   it('an idempotency key already used by a non-reversal operation is a conflict', async () => {

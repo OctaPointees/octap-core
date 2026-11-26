@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Body, Param, Query, BadRequestException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
 import { CreditsService } from '#domain/credits/credits.service.js';
 import { EarnService } from '#domain/credits/earn.service.js';
 import { IssuanceBudgetService } from '#domain/credits/issuance-budget.service.js';
@@ -6,6 +16,7 @@ import { ReversalService } from '#domain/credits/reversal.service.js';
 import { PosRedemptionService } from '#domain/credits/pos-redemption.service.js';
 import { isSandboxDigest, SandboxCreditsService } from '#domain/sandbox/sandbox-credits.service.js';
 import { SandboxSupported } from '#infra/auth/sandbox.decorator.js';
+import { LedgerEvidenceService } from '#domain/credits/ledger-evidence.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { PublicRateLimitGuard } from '#infra/auth/public-rate-limit.guard.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
@@ -16,6 +27,7 @@ import type {
   ReverseTransactionBodyDto,
   ReservePosRedemptionBodyDto,
   FinalizePosRedemptionBodyDto,
+  OrganizationTransactionQueryDto,
 } from '../dto/credits.dto.js';
 import type {
   EarnPointsResponse,
@@ -25,6 +37,8 @@ import type {
   ReverseTransactionResponse,
   ReservePosRedemptionResponse,
   FinalizePosRedemptionResponse,
+  BalanceReconciliation,
+  ProgramEvidence,
 } from '@octap/contracts';
 
 @Controller('v1/credits')
@@ -36,6 +50,7 @@ export class CreditsController {
     private readonly posRedemptionService: PosRedemptionService,
     private readonly issuanceBudget: IssuanceBudgetService,
     private readonly sandbox: SandboxCreditsService,
+    private readonly evidence: LedgerEvidenceService,
   ) {}
 
   @Post('earn')
@@ -101,6 +116,33 @@ export class CreditsController {
   @Scopes('read')
   async getBudget(@Tenant() tenant: TenantContext): Promise<IssuanceBudgetDto> {
     return this.issuanceBudget.read(tenant.organizationId);
+  }
+
+  /** The organization's points history, newest first, with each confirmed row's digest and time. */
+  @Get('transactions')
+  @Scopes('read')
+  async getOrganizationTransactions(
+    @Tenant() tenant: TenantContext,
+    @Query() query: OrganizationTransactionQueryDto,
+  ): Promise<LoyaltyTransactionPage> {
+    return this.creditsService.listOrganizationTransactions(tenant.organizationId, { ...query });
+  }
+
+  /** The program and its published on-chain policy, compared with the rules OctaP applies. */
+  @Get('program')
+  @Scopes('read')
+  async getProgram(@Tenant() tenant: TenantContext): Promise<ProgramEvidence> {
+    return this.evidence.program(tenant.organizationId);
+  }
+
+  /** The member's recorded balance against their `CreditAccount` on Sui. Cached 30 seconds. */
+  @Get('members/:memberId/reconciliation')
+  @Scopes('read')
+  async getReconciliation(
+    @Tenant() tenant: TenantContext,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<BalanceReconciliation> {
+    return this.evidence.reconcile(tenant.organizationId, memberId);
   }
 
   @Get('members/:memberId/balance')

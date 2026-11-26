@@ -117,6 +117,8 @@ export const loyaltyTransactions = pgTable(
   },
   (t) => [
     uniqueIndex('loyalty_tx_org_idempotency_idx').on(t.organizationId, t.idempotencyKey),
+    // The organization's history, newest first (OCT-334), and its keyset cursor.
+    index('loyalty_tx_org_created_idx').on(t.organizationId, t.createdAt, t.id),
     pgPolicy('tenant_isolation_loyalty_transactions', {
       for: 'all',
       to: authenticatedRole,

@@ -79,7 +79,6 @@ Có cùng các field với `credits.earn.confirmed`, trong đó `pointsAmount` l
 | `organizationEndUserId` | `string` | |
 | `pointsAmount` | `number` | |
 | `newBalance` | `number` | |
-| `balanceWentNegative` | `boolean` | True khi đảo một lệnh earn đã bị tiêu và để lại khoản nợ |
 
 ## voucher.granted
 

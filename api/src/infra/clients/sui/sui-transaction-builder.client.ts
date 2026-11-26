@@ -7,6 +7,7 @@ import {
   type OctapPackageConfig,
   type SubmittedChainTransaction,
   type CreditAccountEventPage,
+  type PolicyVersionDetails,
 } from '@octap/chain';
 
 function packageConfig(network: OctapNetwork): OctapPackageConfig {
@@ -98,6 +99,16 @@ export class SuiTransactionBuilderClient {
   /** A budget shard's remaining points. No signer involved. */
   async budgetShardRemaining(shardId: string): Promise<bigint> {
     return this.client.budgetShardRemaining(shardId);
+  }
+
+  /** The chain's own spendable total for a `CreditAccount` (a simulated read); null if none. */
+  async creditAccountSpendable(accountId: string): Promise<bigint | null> {
+    return this.client.creditAccountSpendable(accountId);
+  }
+
+  /** A published policy version's rules and publication, from the frozen object; null if none. */
+  async policyVersionDetails(policyVersionId: string): Promise<PolicyVersionDetails | null> {
+    return this.client.policyVersionDetails(policyVersionId);
   }
 
   /** One lookup by digest, no polling; null if the chain has no such transaction. Read-only. */

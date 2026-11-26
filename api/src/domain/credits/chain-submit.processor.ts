@@ -240,8 +240,8 @@ export class ChainSubmitProcessor {
    * Mirrors an already-CONFIRMED Postgres reversal on-chain (OCT-50): `reverse_earn` or
    * `reverse_redeem`, signed with the IssuerCap. There is no hold to release on failure — the
    * Postgres reversal stands either way — so a definitive on-chain failure only marks the command
-   * FAILED with the chain's reason (e.g. `EBucketUnavailable` for an earn whose credits were
-   * already spent: that clawback debt exists in Postgres only, see docs/roadmap.md).
+   * FAILED with the chain's reason. `recordReversalTransaction` only accepts what the chain does
+   * (an earn's whole, unexpired bucket), so a failure here means something else went wrong.
    */
   private async processReversal(
     operation: typeof operations.$inferSelect,

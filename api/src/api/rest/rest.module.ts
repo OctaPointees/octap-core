@@ -26,6 +26,7 @@ import { ConsoleChangeRequestsController, PlatformChangeRequestsController } fro
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
 import { HealthController, PlatformHealthController } from './health.controller.js';
+import { ConsoleLedgerController } from './console-ledger.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
 @Module({
@@ -44,6 +45,7 @@ import { ConsoleRequestLogsController } from './console-request-logs.controller.
     ConsoleChangeRequestsController,
     PlatformChangeRequestsController,
     MembersController,
+    ConsoleLedgerController,
     ConsoleRewardsController,
     ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,
