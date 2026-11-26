@@ -121,6 +121,11 @@ export default defineConfig({
               translations: { vi: 'Kết nối MCP host' },
               slug: 'mcp/connect-an-mcp-host',
             },
+            {
+              label: 'Tools and prompts',
+              translations: { vi: 'Tool và prompt' },
+              slug: 'mcp/tools-and-prompts',
+            },
           ],
         },
         {
