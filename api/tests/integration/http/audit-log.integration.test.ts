@@ -227,6 +227,51 @@ describe('audit log: who did what, durable, Owner-readable (OCT-333)', () => {
     });
   });
 
+  it('writes no row when an edit sends the same values in another form', async () => {
+    await seedProgram(ctx.db, orgId);
+    const vouchers = consolePath('/vouchers');
+    const created = await ctx
+      .http()
+      .post(vouchers)
+      .set(as('developer'))
+      .send({
+        code: 'half',
+        title: 'Half off',
+        discountType: 'PERCENTAGE',
+        discountValue: '50.00',
+        pointsCost: 100,
+        terms: { size: 'large', drinks: { hot: true, iced: false } },
+        metadata: { source: 'pos', tags: { a: 1, b: 2 } },
+      })
+      .expect(201);
+    // "50" is the stored "50.00", and Postgres reorders jsonb keys: none of this is a change.
+    await ctx
+      .http()
+      .patch(`${vouchers}/${created.body.id}`)
+      .set(as('developer'))
+      .send({
+        discountValue: '50',
+        terms: { drinks: { iced: false, hot: true }, size: 'large' },
+        metadata: { tags: { b: 2, a: 1 }, source: 'pos' },
+      })
+      .expect(200);
+
+    const { memberId } = await seedMember(ctx.db, orgId);
+    const member = (metadata: Record<string, unknown>) =>
+      ctx
+        .http()
+        .patch(consolePath(`/members/${memberId}`))
+        .set(as('owner'))
+        .send({ metadata })
+        .expect(200);
+    await member({ tier: 'gold', since: { year: 2026, month: 11 } });
+    await member({ since: { month: 11, year: 2026 }, tier: 'gold' });
+
+    const rows = await auditRows();
+    expect(rows.filter((row) => row.action === 'voucher.updated')).toHaveLength(0);
+    expect(rows.filter((row) => row.action === 'member.updated')).toHaveLength(1);
+  });
+
   it('records a webhook test ping, which has its own writer, with its event and delivery', async () => {
     const endpoint = await ctx
       .http()

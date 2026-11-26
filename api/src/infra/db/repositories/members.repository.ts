@@ -4,6 +4,7 @@ import type { MemberDirectoryQuery, MemberProfilePatch } from '@octap/contracts'
 import { ConsoleNotFoundError, ConsoleOrganizationsRepository } from './console-organizations.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { recordAudit } from './audit.repository.js';
+import { canonicalJson } from './operations.repository.js';
 
 const fields = {
   id: organizationEndUsers.id,
@@ -75,10 +76,11 @@ export class MembersRepository {
         .update(organizationEndUsers)
         .set({ ...input, updatedAt: new Date() })
         .where(ofMember);
-      // Only what actually changed; personal values stay out: field names, and the status itself.
+      // Only what actually changed, `metadata` by content (Postgres reorders jsonb keys). Personal
+      // values stay out: field names, and the status itself.
       const previous = before as Record<string, unknown>;
       const changed = Object.entries(input)
-        .filter(([key, value]) => JSON.stringify(previous[key] ?? null) !== JSON.stringify(value ?? null))
+        .filter(([key, value]) => canonicalJson(previous[key] ?? null) !== canonicalJson(value ?? null))
         .map(([key]) => key)
         .sort();
       if (changed.length > 0) {

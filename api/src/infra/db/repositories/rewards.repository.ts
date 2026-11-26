@@ -98,15 +98,18 @@ export class RewardsRuleError extends Error {
   }
 }
 
-function sameVoucherField(key: (typeof PUBLISHED_FIELDS)[number], before: unknown, after: unknown): boolean {
+/**
+ * Whether a voucher field keeps its value: `numeric` is compared as a number ("50.00" is 50), a date by
+ * its time, and `jsonb` (`terms`, `metadata`) by content, since Postgres reorders an object's keys.
+ */
+function sameVoucherField(key: string, before: unknown, after: unknown): boolean {
   if (before instanceof Date || after instanceof Date) {
     return (before as Date | null)?.getTime() === (after as Date | null)?.getTime();
   }
   if (key === 'discountValue' && before !== null && after !== null && before !== undefined && after !== undefined) {
     return Number(before) === Number(after);
   }
-  if (key === 'terms') return canonicalJson(before ?? null) === canonicalJson(after ?? null);
-  return (before ?? null) === (after ?? null);
+  return canonicalJson(before ?? null) === canonicalJson(after ?? null);
 }
 
 const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message);
@@ -458,7 +461,7 @@ export class RewardsRepository {
       // An edit is audited by field name only (OCT-333); a status change has its own event.
       const current_ = current as Record<string, unknown>;
       const edited = Object.entries(fields)
-        .filter(([key, value]) => JSON.stringify(current_[key] ?? null) !== JSON.stringify(value ?? null))
+        .filter(([key, value]) => !sameVoucherField(key, current_[key], value))
         .map(([key]) => key)
         .sort();
       if (edited.length > 0)
