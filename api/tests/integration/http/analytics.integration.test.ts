@@ -74,7 +74,7 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
 
   it('sums circulation CONFIRMED-only, counts active vs enrolled members, and buckets the trend by day', async () => {
     // Inside the window: counts.
-    await insertLoyaltyTransaction(ctx.db, {
+    const earnAlice = await insertLoyaltyTransaction(ctx.db, {
       organizationId: orgId,
       organizationEndUserId: alice,
       transactionType: 'EARN',
@@ -92,7 +92,7 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
       status: 'CONFIRMED',
       createdAt: day(1, 1),
     });
-    await insertLoyaltyTransaction(ctx.db, {
+    const redeemAlice = await insertLoyaltyTransaction(ctx.db, {
       organizationId: orgId,
       organizationEndUserId: alice,
       transactionType: 'REDEEM',
@@ -108,7 +108,19 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
       pointsAmount: 10,
       idempotencyKey: 'reversal-alice',
       status: 'CONFIRMED',
+      reversesTransactionId: earnAlice.id,
       createdAt: day(2, 1),
+    });
+    // Reversing a redemption gives the points back: it raises `net`, it does not lower it.
+    await insertLoyaltyTransaction(ctx.db, {
+      organizationId: orgId,
+      organizationEndUserId: alice,
+      transactionType: 'REVERSAL',
+      pointsAmount: 30,
+      idempotencyKey: 'reversal-redeem-alice',
+      status: 'CONFIRMED',
+      reversesTransactionId: redeemAlice.id,
+      createdAt: day(2, 2),
     });
     // Outside what counts: PENDING (not yet real) and before the window.
     await insertLoyaltyTransaction(ctx.db, {
@@ -136,7 +148,7 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
     expect(body).toMatchObject({
       from: WINDOW_FROM.toISOString(),
       to: WINDOW_TO.toISOString(),
-      circulation: { earned: 150, redeemed: 30, reversed: 10, net: 110 },
+      circulation: { earned: 150, redeemed: 30, reversed: 40, net: 140 },
       engagement: { activeMembers: 2, enrolledMembers: 3 },
     });
     expect(body.dailyTrend).toEqual([
@@ -164,14 +176,18 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
       status: 'EXPIRED',
       expiresAt: day(2, 4),
     });
+    // Nothing writes EXPIRED when the time passes: an unused one past its expiry is still AVAILABLE.
+    await claimVoucher(alice, { claimedAt: day(0, 6), expiresAt: day(2, 6) });
     // Claimed in the window, still sitting unused — counts as claimed only.
     await claimVoucher(alice, { claimedAt: day(2, 5) });
+    // Not expired yet: counts as claimed only.
+    await claimVoucher(bob, { claimedAt: day(2, 7), expiresAt: new Date(Date.now() + DAY_MS) });
     // Claimed before the window: does not count.
     await claimVoucher(bob, { claimedAt: new Date(WINDOW_FROM.getTime() - DAY_MS) });
 
     const body = (await summary('owner', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200))
       .body;
-    expect(body.vouchers).toEqual({ claimed: 3, redeemed: 1, expiredUnused: 1 });
+    expect(body.vouchers).toEqual({ claimed: 5, redeemed: 1, expiredUnused: 2 });
     expect(used.status).toBe('REDEEMED');
     expect(expired.status).toBe('EXPIRED');
   });
@@ -184,5 +200,25 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
     await summary('owner', { from: WINDOW_TO.toISOString(), to: WINDOW_FROM.toISOString() }).expect(400);
     await summary('owner', { from: 'not-a-date', to: WINDOW_TO.toISOString() }).expect(400);
     await summary('owner', { bogus: 'x' } as unknown as Record<string, string>).expect(400);
+    // One row per day comes back, so the window is bounded.
+    await summary('owner', { from: '1970-01-01T00:00:00Z', to: WINDOW_TO.toISOString() }).expect(400);
+  });
+
+  it('starts every day at UTC midnight, whatever time the window starts', async () => {
+    await insertLoyaltyTransaction(ctx.db, {
+      organizationId: orgId,
+      organizationEndUserId: alice,
+      transactionType: 'EARN',
+      pointsAmount: 7,
+      idempotencyKey: 'earn-late',
+      status: 'CONFIRMED',
+      createdAt: day(1, 2),
+    });
+    const body = (await summary('owner', { from: day(0, 12).toISOString(), to: day(1, 12).toISOString() }).expect(200))
+      .body;
+    expect(body.dailyTrend).toEqual([
+      { start: day(0, 0).toISOString(), earned: 0, redeemed: 0 },
+      { start: day(1, 0).toISOString(), earned: 7, redeemed: 0 },
+    ]);
   });
 });

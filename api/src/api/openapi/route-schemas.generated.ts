@@ -31,7 +31,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "object",
     "properties": {
       "from": {
-        "description": "ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`.",
+        "description": "ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`; at most 366 days before it.",
         "type": "string"
       },
       "to": {
@@ -6544,7 +6544,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "object",
     "properties": {
       "start": {
-        "description": "Start of the day, UTC, ISO 8601.",
+        "description": "Start of the day (UTC midnight), ISO 8601. The first and last day count only what falls inside the window.",
         "type": "string"
       },
       "earned": {
@@ -6561,7 +6561,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ProgramCirculation": {
-    "description": "The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned\nmagnitudes (a REVERSAL row never says which direction it moved, only how much).",
+    "description": "The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned magnitudes.",
     "type": "object",
     "properties": {
       "earned": {
@@ -6573,11 +6573,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "number"
       },
       "reversed": {
-        "description": "Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL). High relative to `earned` flags an issuance quality problem, not a healthy program.",
+        "description": "Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL of an earn or of a redemption). High relative to `earned` flags an issuance quality problem, not a healthy program.",
         "type": "number"
       },
       "net": {
-        "description": "`earned - redeemed - reversed`: how much the outstanding balance grew this window. A number that only ever grows means the program is a one-way liability with no redemption behind it.",
+        "description": "How much the outstanding balance grew this window: `earned - redeemed`, minus reversed earns, plus reversed redemptions (their points go back to the customer). A number that only ever grows means the program is a one-way liability with no redemption behind it.",
         "type": "number"
       }
     },
@@ -6619,7 +6619,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "number"
       },
       "expiredUnused": {
-        "description": "Claimed vouchers that expired unused in the window: lost value for the customer and wasted issuance budget for the merchant.",
+        "description": "Claimed vouchers whose `expiresAt` passed unused in the window (up to now): lost value for the customer and wasted issuance budget for the merchant.",
         "type": "number"
       }
     },

@@ -6,7 +6,10 @@ import { ConsoleOrganizationsRepository } from '#infra/db/repositories/console-o
 
 /** ISO 8601 date-time with an explicit offset or Z, so the server's time zone never decides. */
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/;
-const DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_WINDOW_MS = 30 * DAY_MS;
+/** One row per day comes back, so the window is bounded: a year, plus a day for a leap year. */
+const MAX_WINDOW_MS = 366 * DAY_MS;
 const KEYS = ['from', 'to'];
 
 /**
@@ -61,8 +64,8 @@ export class ProgramAnalyticsService {
       circulation: {
         earned: totals.earned,
         redeemed: totals.redeemed,
-        reversed: totals.reversed,
-        net: totals.earned - totals.redeemed - totals.reversed,
+        reversed: totals.reversedEarned + totals.reversedRedeemed,
+        net: totals.earned - totals.redeemed - totals.reversedEarned + totals.reversedRedeemed,
       },
       engagement: { activeMembers: totals.activeMembers, enrolledMembers },
       vouchers,
@@ -75,6 +78,8 @@ function parseRange(input: Record<string, unknown>): { from: Date; to: Date } {
   const to = input.to === undefined ? new Date() : parseIso(input.to, 'to');
   const from = input.from === undefined ? new Date(to.getTime() - DEFAULT_WINDOW_MS) : parseIso(input.from, 'from');
   if (from >= to) throw new BadRequestException('from must be before to');
+  if (to.getTime() - from.getTime() > MAX_WINDOW_MS)
+    throw new BadRequestException('The window can be at most 366 days');
   return { from, to };
 }
 

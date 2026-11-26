@@ -7,24 +7,21 @@
  * live payment flow.
  */
 export interface ProgramAnalyticsQuery {
-  /** ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`. */
+  /** ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`; at most 366 days before it. */
   from?: string;
   /** ISO 8601 date-time with an offset or Z. Defaults to now. */
   to?: string;
 }
 
-/**
- * The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned
- * magnitudes (a REVERSAL row never says which direction it moved, only how much).
- */
+/** The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned magnitudes. */
 export interface ProgramCirculation {
   /** Points actually granted (CONFIRMED EARN). The liability side: what the organization now owes its customers. */
   earned: number;
   /** Points actually spent (CONFIRMED REDEEM). The proof side: evidence the points are used, not just handed out. */
   redeemed: number;
-  /** Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL). High relative to `earned` flags an issuance quality problem, not a healthy program. */
+  /** Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL of an earn or of a redemption). High relative to `earned` flags an issuance quality problem, not a healthy program. */
   reversed: number;
-  /** `earned - redeemed - reversed`: how much the outstanding balance grew this window. A number that only ever grows means the program is a one-way liability with no redemption behind it. */
+  /** How much the outstanding balance grew this window: `earned - redeemed`, minus reversed earns, plus reversed redemptions (their points go back to the customer). A number that only ever grows means the program is a one-way liability with no redemption behind it. */
   net: number;
 }
 
@@ -42,13 +39,13 @@ export interface VoucherPerformance {
   claimed: number;
   /** Of all vouchers redeemed at the merchant in the window — the only number here that proves the voucher did its job. */
   redeemed: number;
-  /** Claimed vouchers that expired unused in the window: lost value for the customer and wasted issuance budget for the merchant. */
+  /** Claimed vouchers whose `expiresAt` passed unused in the window (up to now): lost value for the customer and wasted issuance budget for the merchant. */
   expiredUnused: number;
 }
 
 /** One day's earn/redeem totals — the trend behind `circulation`, for a chart. */
 export interface ProgramAnalyticsDay {
-  /** Start of the day, UTC, ISO 8601. */
+  /** Start of the day (UTC midnight), ISO 8601. The first and last day count only what falls inside the window. */
   start: string;
   earned: number;
   redeemed: number;
