@@ -1652,9 +1652,6 @@
     "/v1/console/organizations/{organizationId}/transactions": {
       "get": {
         "operationId": "ConsoleLedgerController_transactions",
-    "/v1/console/organizations/{organizationId}/audit-log": {
-      "get": {
-        "operationId": "ConsoleAuditLogController_list",
         "parameters": [
           {
             "name": "organizationId",
@@ -1670,7 +1667,6 @@
             "required": false,
             "schema": {
               "type": "string"
-              "type": "number"
             }
           },
           {
@@ -1693,31 +1689,6 @@
                 "REDEEM",
                 "REVERSAL",
                 "TRANSFER"
-            "name": "from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "actorType",
-            "in": "query",
-            "required": false,
-            "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
-            "schema": {
-              "enum": [
-                "CREDENTIAL",
-                "SYSTEM",
-                "USER"
               ],
               "type": "string"
             }
@@ -1733,32 +1704,11 @@
                 "PENDING",
                 "REVERSED"
               ],
-            "name": "actorId",
-            "in": "query",
-            "required": false,
-            "schema": {
               "type": "string"
             }
           },
           {
             "name": "memberId",
-            "name": "action",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "targetType",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "targetId",
             "in": "query",
             "required": false,
             "schema": {
@@ -1773,11 +1723,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConsoleLedgerController_transactions_Response"
-                }
-              }
-            }
-            "description": "Success."
-                  "$ref": "#/components/schemas/ConsoleAuditLogController_list_Response"
                 }
               }
             }
@@ -1903,6 +1848,133 @@
         },
         "tags": [
           "Console Ledger"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/audit-log": {
+      "get": {
+        "operationId": "ConsoleAuditLogController_list",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorType",
+            "in": "query",
+            "required": false,
+            "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+            "schema": {
+              "enum": [
+                "CREDENTIAL",
+                "SYSTEM",
+                "USER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleAuditLogController_list_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
           "Console Audit Log"
         ],
         "security": [
@@ -7531,6 +7603,15 @@
         ],
         "type": "string"
       },
+      "AuditActorType": {
+        "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+        "enum": [
+          "CREDENTIAL",
+          "SYSTEM",
+          "USER"
+        ],
+        "type": "string"
+      },
       "BalanceReconciliationStatus": {
         "description": "How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the\nchain's own `credit_account::spendable`:\n- `MATCH`: the two are equal.\n- `PENDING`: something for this member is still on its way to the chain (a pending earn or\n  redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.\n- `MISMATCH`: nothing is in flight and they differ.\n- `UNAVAILABLE`: the chain could not be read just now.",
         "enum": [
@@ -7538,12 +7619,6 @@
           "MISMATCH",
           "PENDING",
           "UNAVAILABLE"
-      "AuditActorType": {
-        "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
-        "enum": [
-          "CREDENTIAL",
-          "SYSTEM",
-          "USER"
         ],
         "type": "string"
       },

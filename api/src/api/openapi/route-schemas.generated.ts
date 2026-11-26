@@ -8,6 +8,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "AuditActorType": {
+    "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+    "enum": [
+      "CREDENTIAL",
+      "SYSTEM",
+      "USER"
+    ],
+    "type": "string"
+  },
   "BalanceReconciliationStatus": {
     "description": "How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the\nchain's own `credit_account::spendable`:\n- `MATCH`: the two are equal.\n- `PENDING`: something for this member is still on its way to the chain (a pending earn or\n  redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.\n- `MISMATCH`: nothing is in flight and they differ.\n- `UNAVAILABLE`: the chain could not be read just now.",
     "enum": [
@@ -15,12 +24,6 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "MISMATCH",
       "PENDING",
       "UNAVAILABLE"
-  "AuditActorType": {
-    "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
-    "enum": [
-      "CREDENTIAL",
-      "SYSTEM",
-      "USER"
     ],
     "type": "string"
   },
