@@ -349,6 +349,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
         "type": "string"
@@ -697,7 +698,100 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "user"
     ]
   },
-  "ConsoleIdentityController_me_Response": {},
+  "ConsoleIdentityController_me_Response": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "systemRole": {
+            "$ref": "#/components/schemas/SystemRole"
+          }
+        },
+        "required": [
+          "avatarUrl",
+          "email",
+          "fullName",
+          "id",
+          "systemRole"
+        ]
+      },
+      "organizations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "organizationId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "persona": {
+              "$ref": "#/components/schemas/OrganizationPersona"
+            },
+            "organizationType": {
+              "description": "The registered legal type, or null when the organization has none yet.",
+              "anyOf": [
+                {
+                  "enum": [
+                    "COMPANY",
+                    "INDIVIDUAL_HOUSEHOLD"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "representativeName": {
+              "description": "The registered legal representative, or null when the organization has none yet.",
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "organizationId",
+            "organizationType",
+            "persona",
+            "representativeName",
+            "slug"
+          ]
+        }
+      },
+      "expiresAt": {
+        "description": "Expiration of the Google credential; Core does not issue a separate console token.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "expiresAt",
+      "organizations",
+      "user"
+    ]
+  },
   "ConsoleIssuanceBudgetController_read_Response": {
     "description": "How many more points a program may issue. Points, not money: no payment is involved.",
     "type": "object",
@@ -1288,18 +1382,29 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "null",
           "string"
         ]
+      },
+      "logoUrl": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "voucherApprovalRequired": {
+        "type": "boolean"
       }
     },
     "required": [
       "id",
       "legalName",
+      "logoUrl",
       "name",
       "organizationType",
       "persona",
       "representativeName",
       "slug",
       "status",
-      "taxId"
+      "taxId",
+      "voucherApprovalRequired"
     ]
   },
   "ConsoleOrganizationsController_profile_Body": {
@@ -1352,7 +1457,17 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "voucherApprovalRequired"
     ]
   },
-  "ConsoleOrganizationsController_settings_Response": {},
+  "ConsoleOrganizationsController_settings_Response": {
+    "type": "object",
+    "properties": {
+      "updated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "updated"
+    ]
+  },
   "ConsoleOrganizationsController_staffAccess_Body": {
     "type": "object",
     "properties": {
@@ -2513,10 +2628,147 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "vouchers"
     ]
   },
-  "ConsoleWebhooksController_disableEndpoint_Response": {},
-  "ConsoleWebhooksController_enableEndpoint_Response": {},
-  "ConsoleWebhooksController_listDeliveries_Response": {},
-  "ConsoleWebhooksController_listEndpoints_Response": {},
+  "ConsoleWebhooksController_disableEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_enableEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_listDeliveries_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
+    }
+  },
+  "ConsoleWebhooksController_listEndpoints_Response": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "organizationId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ACTIVE",
+            "DISABLED"
+          ],
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "createdAt",
+        "description",
+        "id",
+        "organizationId",
+        "status",
+        "updatedAt",
+        "url"
+      ]
+    }
+  },
   "ConsoleWebhooksController_registerEndpoint_Body": {
     "type": "object",
     "properties": {
@@ -2531,10 +2783,134 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "url"
     ]
   },
-  "ConsoleWebhooksController_registerEndpoint_Response": {},
-  "ConsoleWebhooksController_replayDelivery_Response": {},
-  "ConsoleWebhooksController_rotateSecret_Response": {},
-  "ConsoleWebhooksController_sendTestEvent_Response": {},
+  "ConsoleWebhooksController_registerEndpoint_Response": {
+    "type": "object",
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "secret",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_replayDelivery_Response": {
+    "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
+  },
+  "ConsoleWebhooksController_rotateSecret_Response": {
+    "type": "object",
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "status": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "createdAt",
+      "description",
+      "id",
+      "organizationId",
+      "secret",
+      "status",
+      "updatedAt",
+      "url"
+    ]
+  },
+  "ConsoleWebhooksController_sendTestEvent_Response": {
+    "type": "object",
+    "properties": {
+      "endpointId": {
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string",
+        "const": "webhook.test"
+      },
+      "status": {
+        "type": "string",
+        "const": "PENDING"
+      },
+      "eventId": {
+        "type": "string"
+      },
+      "deliveryId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "deliveryId",
+      "endpointId",
+      "eventId",
+      "eventType",
+      "status"
+    ]
+  },
   "CreditsController_earn_Body": {
     "type": "object",
     "properties": {
@@ -3180,7 +3556,34 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
-  "HealthController_check_Response": {},
+  "HealthController_check_Response": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "$ref": "#/components/schemas/HealthStatus"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "checks": {
+        "$ref": "#/components/schemas/HealthChecks"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "checks",
+      "status"
+    ]
+  },
+  "HealthStatus": {
+    "description": "`down`: the database or Redis is unreachable, so this process cannot serve requests (every\nauthenticated route needs both) — `/health` answers 503. `degraded`: only the Sui RPC is\nunreachable; reads and accepted commands still work and chain work queues up — still 200, so a\nload balancer does not pull every instance over a flaky public RPC.",
+    "enum": [
+      "degraded",
+      "down",
+      "ok"
+    ],
+    "type": "string"
+  },
   "IdentityController_createNonce_Body": {
     "type": "object",
     "properties": {
@@ -3355,7 +3758,19 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
-  "McpOAuthController_authorize_Query": {},
+  "McpOAuthController_authorize_Query": {
+    "type": "object",
+    "properties": {
+      "response_type": {},
+      "client_id": {},
+      "redirect_uri": {},
+      "code_challenge": {},
+      "code_challenge_method": {},
+      "state": {},
+      "scope": {},
+      "resource": {}
+    }
+  },
   "McpOAuthController_authorize_Response": {
     "type": "string"
   },
@@ -3370,8 +3785,120 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       }
     }
   },
-  "McpOAuthController_google_Response": {},
-  "McpOAuthController_metadata_Response": {},
+  "McpOAuthController_google_Response": {
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "redirectTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirectTo"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "persona": {
+                  "$ref": "#/components/schemas/OrganizationPersona"
+                }
+              },
+              "required": [
+                "name",
+                "organizationId",
+                "persona"
+              ]
+            }
+          }
+        },
+        "required": [
+          "organizations"
+        ]
+      }
+    ]
+  },
+  "McpOAuthController_metadata_Response": {
+    "type": "object",
+    "properties": {
+      "issuer": {
+        "type": "string"
+      },
+      "authorization_endpoint": {
+        "type": "string"
+      },
+      "token_endpoint": {
+        "type": "string"
+      },
+      "registration_endpoint": {
+        "type": "string"
+      },
+      "revocation_endpoint": {
+        "type": "string"
+      },
+      "response_types_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "grant_types_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "code_challenge_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "token_endpoint_auth_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "revocation_endpoint_auth_methods_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "scopes_supported": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "authorization_endpoint",
+      "code_challenge_methods_supported",
+      "grant_types_supported",
+      "issuer",
+      "registration_endpoint",
+      "response_types_supported",
+      "revocation_endpoint",
+      "revocation_endpoint_auth_methods_supported",
+      "scopes_supported",
+      "token_endpoint",
+      "token_endpoint_auth_methods_supported"
+    ]
+  },
   "McpOAuthController_organization_Body": {
     "type": "object",
     "properties": {
@@ -3383,19 +3910,131 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       }
     }
   },
-  "McpOAuthController_organization_Response": {},
+  "McpOAuthController_organization_Response": {
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "redirectTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirectTo"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "persona": {
+                  "$ref": "#/components/schemas/OrganizationPersona"
+                }
+              },
+              "required": [
+                "name",
+                "organizationId",
+                "persona"
+              ]
+            }
+          }
+        },
+        "required": [
+          "organizations"
+        ]
+      }
+    ]
+  },
   "McpOAuthController_register_Body": {
     "$ref": "#/components/schemas/Record_string_unknown"
   },
-  "McpOAuthController_register_Response": {},
+  "McpOAuthController_register_Response": {
+    "type": "object",
+    "properties": {
+      "client_id": {
+        "type": "string"
+      },
+      "client_id_issued_at": {
+        "type": "number"
+      },
+      "client_name": {
+        "type": "string"
+      },
+      "redirect_uris": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "grant_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "response_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "token_endpoint_auth_method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "client_id",
+      "client_id_issued_at",
+      "client_name",
+      "grant_types",
+      "redirect_uris",
+      "response_types",
+      "token_endpoint_auth_method"
+    ]
+  },
   "McpOAuthController_revoke_Body": {
     "$ref": "#/components/schemas/Record_string_unknown"
   },
-  "McpOAuthController_revoke_Response": {},
+  "McpOAuthController_revoke_Response": {
+    "type": "object",
+    "properties": {}
+  },
   "McpOAuthController_token_Body": {
     "$ref": "#/components/schemas/Record_string_unknown"
   },
-  "McpOAuthController_token_Response": {},
+  "McpOAuthController_token_Response": {
+    "type": "object",
+    "properties": {
+      "access_token": {
+        "type": "string"
+      },
+      "token_type": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "number"
+      },
+      "scope": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "access_token",
+      "expires_in",
+      "scope",
+      "token_type"
+    ]
+  },
   "MembersController_detail_Response": {
     "type": "object",
     "properties": {
@@ -3752,6 +4391,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                     "REINSTATE",
                     "SUSPEND",
                     "TRANSFER_OWNERSHIP",
+                    "UPDATE_IDENTITY",
                     "UPDATE_PROFILE"
                   ],
                   "type": "string"
@@ -3928,6 +4568,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
         "type": "string"
@@ -3988,7 +4629,37 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationId"
     ]
   },
-  "PlatformHealthController_report_Response": {},
+  "PlatformHealthController_report_Response": {
+    "type": "object",
+    "properties": {
+      "workerLag": {
+        "description": "Null when the database is down: every lag figure is read from it.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/WorkerLag"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status": {
+        "$ref": "#/components/schemas/HealthStatus"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "checks": {
+        "$ref": "#/components/schemas/HealthChecks"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "checks",
+      "status",
+      "workerLag"
+    ]
+  },
   "PlatformIssuanceBudgetController_read_Response": {
     "description": "How many more points a program may issue. Points, not money: no payment is involved.",
     "type": "object",
@@ -4365,6 +5036,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "logoUrl": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "createdAt": {
         "type": "string",
         "format": "date-time"
@@ -4386,6 +5063,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "createdAt",
       "id",
       "legalName",
+      "logoUrl",
       "name",
       "organizationType",
       "programControlId",
@@ -4519,6 +5197,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                 "string"
               ]
             },
+            "logoUrl": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time"
@@ -4540,6 +5224,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
             "createdAt",
             "id",
             "legalName",
+            "logoUrl",
             "name",
             "organizationType",
             "programControlId",
@@ -5549,71 +6234,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "WebhooksController_listDeliveries_Response": {
     "type": "array",
     "items": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "DEAD_LETTER",
-            "DELIVERED",
-            "PENDING"
-          ],
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "organizationId": {
-          "type": "string"
-        },
-        "payload": {},
-        "endpointId": {
-          "type": "string"
-        },
-        "eventType": {
-          "type": "string"
-        },
-        "attemptCount": {
-          "type": "number"
-        },
-        "nextAttemptAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastResponseStatus": {
-          "type": [
-            "null",
-            "number"
-          ]
-        },
-        "lastError": {
-          "type": [
-            "null",
-            "string"
-          ]
-        }
-      },
-      "required": [
-        "attemptCount",
-        "createdAt",
-        "endpointId",
-        "eventType",
-        "id",
-        "lastError",
-        "lastResponseStatus",
-        "nextAttemptAt",
-        "organizationId",
-        "payload",
-        "status",
-        "updatedAt"
-      ]
+      "$ref": "#/components/schemas/WebhookDeliveryWithEvent"
     }
   },
   "WebhooksController_listEndpoints_Response": {
@@ -5662,6 +6283,261 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "url"
       ]
     }
+  },
+  "WebhookDeliveryWithEvent": {
+    "description": "A delivery with the event it carries, the shape every delivery read returns.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "description": "This delivery, to replay it.",
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "endpointId": {
+        "type": "string"
+      },
+      "eventId": {
+        "description": "The event delivered: the body's `id` and `x-octap-event-id`, the same for every endpoint.",
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string"
+      },
+      "payload": {},
+      "status": {
+        "enum": [
+          "DEAD_LETTER",
+          "DELIVERED",
+          "PENDING"
+        ],
+        "type": "string"
+      },
+      "attemptCount": {
+        "type": "number"
+      },
+      "nextAttemptAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastResponseStatus": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "lastError": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "attemptCount",
+      "createdAt",
+      "endpointId",
+      "eventId",
+      "eventType",
+      "id",
+      "lastError",
+      "lastResponseStatus",
+      "nextAttemptAt",
+      "organizationId",
+      "payload",
+      "status",
+      "updatedAt"
+    ]
+  },
+  "DependencyCheck": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "enum": [
+          "down",
+          "up"
+        ],
+        "type": "string"
+      },
+      "latencyMs": {
+        "type": "number"
+      },
+      "error": {
+        "description": "Why it is down. Only in the platform report: the public one does not describe internals.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "latencyMs",
+      "status"
+    ]
+  },
+  "HealthChecks": {
+    "description": "Spelled out rather than a `Record<…>`: the OpenAPI schema generator names a `Record` after its source path.",
+    "type": "object",
+    "properties": {
+      "database": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "redis": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      },
+      "sui": {
+        "$ref": "#/components/schemas/DependencyCheck"
+      }
+    },
+    "required": [
+      "database",
+      "redis",
+      "sui"
+    ]
+  },
+  "IndexerLag": {
+    "type": "object",
+    "properties": {
+      "streamName": {
+        "type": "string"
+      },
+      "lastCheckpoint": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "caughtUpCheckpoint": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "chainCheckpoint": {
+        "description": "The chain's latest checkpoint from this same report's Sui probe; null when the probe failed.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "checkpointsBehind": {
+        "description": "How far the stream's furthest-known position trails the chain; null when either side is unknown.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "sinceUpdateSeconds": {
+        "description": "Since the indexer last wrote this stream's cursor row (a page or a caught-up poll).",
+        "type": "number"
+      }
+    },
+    "required": [
+      "caughtUpCheckpoint",
+      "chainCheckpoint",
+      "checkpointsBehind",
+      "lastCheckpoint",
+      "sinceUpdateSeconds",
+      "streamName"
+    ]
+  },
+  "OperationLag": {
+    "type": "object",
+    "properties": {
+      "commandType": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "count": {
+        "type": "number"
+      },
+      "oldestAgeSeconds": {
+        "type": "number"
+      },
+      "awaitingCustomer": {
+        "description": "PENDING and waiting on the customer's signature, not on a worker: left out of `oldestWorkerOwedAgeSeconds`.",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "awaitingCustomer",
+      "commandType",
+      "count",
+      "oldestAgeSeconds",
+      "status"
+    ]
+  },
+  "WorkerLag": {
+    "type": "object",
+    "properties": {
+      "operations": {
+        "type": "object",
+        "properties": {
+          "oldestWorkerOwedAgeSeconds": {
+            "description": "Age of the oldest PENDING, PROCESSING or UNKNOWN command a worker owes something to (every\ngroup without `awaitingCustomer`) — the figure to alert on. Null when there is none.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "byCommandType": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationLag"
+            }
+          }
+        },
+        "required": [
+          "byCommandType",
+          "oldestWorkerOwedAgeSeconds"
+        ]
+      },
+      "webhookDeliveries": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number"
+          },
+          "due": {
+            "type": "number"
+          },
+          "oldestDueAgeSeconds": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "deadLettered": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "deadLettered",
+          "due",
+          "oldestDueAgeSeconds",
+          "pending"
+        ]
+      },
+      "indexer": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IndexerLag"
+        }
+      }
+    },
+    "required": [
+      "indexer",
+      "operations",
+      "webhookDeliveries"
+    ]
   },
   "ProgramAnalyticsDay": {
     "description": "One day's earn/redeem totals — the trend behind `circulation`, for a chart.",
