@@ -31,6 +31,7 @@ import { ConsoleAuditLogController } from './console-audit-log.controller.js';
 import { ConsoleEvidenceController } from './console-evidence.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
+import { ConsoleAnalyticsController } from './console-analytics.controller.js';
 @Module({
   imports: [DomainModule, AuthModule, ObservabilityModule],
   providers: [ConsoleAccessGuard],
@@ -57,6 +58,7 @@ import { ConsoleRequestLogsController } from './console-request-logs.controller.
     ConsoleEventsController,
     ConsoleApiCredentialsController,
     ConsoleRequestLogsController,
+    ConsoleAnalyticsController,
     CreditsController,
     RewardsController,
     VoucherBatchesController,

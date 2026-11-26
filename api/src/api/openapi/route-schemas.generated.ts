@@ -27,6 +27,53 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "ConsoleAnalyticsController_summary_Query": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "description": "ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`; at most 366 days before it.",
+        "type": "string"
+      },
+      "to": {
+        "description": "ISO 8601 date-time with an offset or Z. Defaults to now.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleAnalyticsController_summary_Response": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "circulation": {
+        "$ref": "#/components/schemas/ProgramCirculation"
+      },
+      "engagement": {
+        "$ref": "#/components/schemas/ProgramEngagement"
+      },
+      "vouchers": {
+        "$ref": "#/components/schemas/VoucherPerformance"
+      },
+      "dailyTrend": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ProgramAnalyticsDay"
+        }
+      }
+    },
+    "required": [
+      "circulation",
+      "dailyTrend",
+      "engagement",
+      "from",
+      "to",
+      "vouchers"
+    ]
+  },
   "ConsoleApiCredentialsController_issue_Body": {
     "type": "object",
     "properties": {
@@ -6490,6 +6537,96 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "indexer",
       "operations",
       "webhookDeliveries"
+    ]
+  },
+  "ProgramAnalyticsDay": {
+    "description": "One day's earn/redeem totals — the trend behind `circulation`, for a chart.",
+    "type": "object",
+    "properties": {
+      "start": {
+        "description": "Start of the day (UTC midnight), ISO 8601. The first and last day count only what falls inside the window.",
+        "type": "string"
+      },
+      "earned": {
+        "type": "number"
+      },
+      "redeemed": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "earned",
+      "redeemed",
+      "start"
+    ]
+  },
+  "ProgramCirculation": {
+    "description": "The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned magnitudes.",
+    "type": "object",
+    "properties": {
+      "earned": {
+        "description": "Points actually granted (CONFIRMED EARN). The liability side: what the organization now owes its customers.",
+        "type": "number"
+      },
+      "redeemed": {
+        "description": "Points actually spent (CONFIRMED REDEEM). The proof side: evidence the points are used, not just handed out.",
+        "type": "number"
+      },
+      "reversed": {
+        "description": "Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL of an earn or of a redemption). High relative to `earned` flags an issuance quality problem, not a healthy program.",
+        "type": "number"
+      },
+      "net": {
+        "description": "How much the outstanding balance grew this window: `earned - redeemed`, minus reversed earns, plus reversed redemptions (their points go back to the customer). A number that only ever grows means the program is a one-way liability with no redemption behind it.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "earned",
+      "net",
+      "redeemed",
+      "reversed"
+    ]
+  },
+  "ProgramEngagement": {
+    "description": "Whether enrollment is converting into actual use, not just sign-ups.",
+    "type": "object",
+    "properties": {
+      "activeMembers": {
+        "description": "Distinct customers with at least one CONFIRMED earn or redeem in the window — people actually using the program now.",
+        "type": "number"
+      },
+      "enrolledMembers": {
+        "description": "Everyone ever enrolled in this organization, regardless of the window. Compare to `activeMembers`: a wide gap means enrollment isn't converting to use.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "activeMembers",
+      "enrolledMembers"
+    ]
+  },
+  "VoucherPerformance": {
+    "description": "Whether issued vouchers get used, not just claimed and forgotten.",
+    "type": "object",
+    "properties": {
+      "claimed": {
+        "description": "Vouchers a customer claimed in the window (points spent or a free one taken).",
+        "type": "number"
+      },
+      "redeemed": {
+        "description": "Of all vouchers redeemed at the merchant in the window — the only number here that proves the voucher did its job.",
+        "type": "number"
+      },
+      "expiredUnused": {
+        "description": "Claimed vouchers whose `expiresAt` passed unused in the window (up to now): lost value for the customer and wasted issuance budget for the merchant.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "claimed",
+      "expiredUnused",
+      "redeemed"
     ]
   },
   "AssistantTurn": {
