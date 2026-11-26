@@ -1,12 +1,13 @@
+import type { LicenseFeature } from '@octap/contracts';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, gte, inArray, lt, lte } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lte } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { licensePlans, licenses } from '../schema/licensing.schema.js';
-import { loyaltyTransactions } from '../schema/credits.schema.js';
 import { organizationEndUsers } from '../schema/members.schema.js';
 import { apiCredentials } from '../schema/organizations.schema.js';
 import { organizationMemberships } from '../schema/auth.schema.js';
 import { asOwnRole, withTenant } from '../rls.js';
+import { licenseTransactionsUsed, requireLicenseFeature } from './license-enforcement.js';
 
 export type LicensePlan = typeof licensePlans.$inferSelect;
 export type License = typeof licenses.$inferSelect;
@@ -33,6 +34,11 @@ export interface LicenseUsageCounts {
 @Injectable()
 export class LicensesRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+
+  /** 402 unless the organization's license includes `feature`; nothing is enforced without one. */
+  requireFeature(organizationId: string, feature: LicenseFeature): Promise<void> {
+    return requireLicenseFeature(this.db, organizationId, feature);
+  }
 
   /** The whole catalogue, or only what an Owner may buy (active and purchasable). */
   listPlans(offeredOnly: boolean): Promise<LicensePlan[]> {
@@ -106,24 +112,13 @@ export class LicensesRepository {
   }
 
   /**
-   * What counts against the limits now. Transactions are the confirmed earns and redeems created in
-   * `[from, to)`, the current license month; the rest are counted as they stand.
+   * What counts against the limits now. Transactions are this license month's counter (accepted
+   * earns, redeems and paid voucher claims, less the ones that failed); the rest are counted as they
+   * stand.
    */
-  async usage(organizationId: string, from: Date, to: Date): Promise<LicenseUsageCounts> {
+  async usage(organizationId: string, license: Pick<License, 'id'>, periodStart: Date): Promise<LicenseUsageCounts> {
     return withTenant(this.db, organizationId, async (tx) => {
       // One connection per transaction: the queries run one after another.
-      const [transactions] = await tx
-        .select({ n: count() })
-        .from(loyaltyTransactions)
-        .where(
-          and(
-            eq(loyaltyTransactions.organizationId, organizationId),
-            inArray(loyaltyTransactions.transactionType, ['EARN', 'REDEEM']),
-            eq(loyaltyTransactions.status, 'CONFIRMED'),
-            gte(loyaltyTransactions.createdAt, from),
-            lt(loyaltyTransactions.createdAt, to),
-          ),
-        );
       const [members] = await tx
         .select({ n: count() })
         .from(organizationEndUsers)
@@ -146,7 +141,12 @@ export class LicensesRepository {
             ),
           ),
       );
-      return { transactions: transactions.n, members: members.n, apiKeys: apiKeys.n, teamMembers: team.n };
+      return {
+        transactions: await licenseTransactionsUsed(tx, organizationId, license, periodStart),
+        members: members.n,
+        apiKeys: apiKeys.n,
+        teamMembers: team.n,
+      };
     });
   }
 }

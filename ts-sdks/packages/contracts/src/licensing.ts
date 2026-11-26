@@ -136,3 +136,41 @@ export interface UpdateLicensePlanRequest {
   purchasable?: boolean;
   active?: boolean;
 }
+
+/**
+ * Why a request was refused with 402 (OCT-329): the license doesn't include the feature, or the
+ * organization has used up a limit. 403 stays for "not allowed whatever the plan".
+ */
+export type LicenseErrorCode = 'LICENSE_FEATURE_NOT_INCLUDED' | 'LICENSE_LIMIT_REACHED';
+
+/** The body of a 402. `feature` or `limit` says which; `used` and `allowed` come with a limit. */
+export interface LicenseErrorBody {
+  statusCode: 402;
+  code: LicenseErrorCode;
+  message: string;
+  feature?: LicenseFeature;
+  limit?: keyof LicenseLimits;
+  used?: number;
+  allowed?: number;
+}
+
+/**
+ * New transactions are refused once a license month's count reaches this share of
+ * `transactionsMonthly`: the 10% above the limit gives the partner time to upgrade or renew.
+ */
+export const LICENSE_TRANSACTION_HARD_LIMIT_PERCENT = 110;
+
+/** The shares of `transactionsMonthly` that send a warning, once each per license month. */
+export type LicenseUsageThreshold = 80 | 100;
+export const LICENSE_USAGE_THRESHOLDS: readonly LicenseUsageThreshold[] = [80, 100];
+
+/** `license.usage_threshold`: this license month's transactions reached 80% or 100% of the limit. */
+export interface LicenseUsageThresholdEventData {
+  limit: 'transactionsMonthly';
+  threshold: LicenseUsageThreshold;
+  used: number;
+  /** The plan's `transactionsMonthly`. New transactions stop at 110% of it. */
+  allowed: number;
+  periodStart: string;
+  periodEnd: string;
+}

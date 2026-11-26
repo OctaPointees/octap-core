@@ -22,7 +22,7 @@ import {
   type LicensePlan,
   type LicensePlanPatch,
 } from '#infra/db/repositories/licenses.repository.js';
-import { daysLeft, graceEndsAt, licensePeriod, licenseState } from './license-state.js';
+import { daysLeft, graceEndsAt, licensePeriod, licenseState } from '#infra/db/repositories/license-period.js';
 
 const MAX_NAME_LENGTH = 80;
 const MAX_PRICE_VND = 2_000_000_000;
@@ -49,7 +49,7 @@ export class LicenseService {
     const license = await this.licenses.current(organizationId, now);
     if (!license) return { organizationId, license: null, usage: null };
     const period = licensePeriod(license.startsAt, now);
-    const counts = await this.licenses.usage(organizationId, period.start, period.end);
+    const counts = await this.licenses.usage(organizationId, license, period.start);
     return {
       organizationId,
       license: toLicenseDto(license, now),

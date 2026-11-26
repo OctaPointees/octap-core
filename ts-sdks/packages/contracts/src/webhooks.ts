@@ -1,3 +1,4 @@
+import type { LicenseUsageThresholdEventData } from './licensing.js';
 import type { BudgetWarningThreshold } from './loyalty.js';
 import type {
   RedeemVoucherResponse,
@@ -63,6 +64,7 @@ export type WebhookEventType =
   | 'voucher.paused'
   | 'voucher.archived'
   | 'budget.low'
+  | 'license.usage_threshold'
   | 'webhook.test';
 
 /**
@@ -250,6 +252,7 @@ export type WebhookEvent =
   | WebhookEventOf<'voucher.paused', VoucherLifecycleEventData>
   | WebhookEventOf<'voucher.archived', VoucherLifecycleEventData>
   | WebhookEventOf<'budget.low', BudgetLowEventData>
+  | WebhookEventOf<'license.usage_threshold', LicenseUsageThresholdEventData>
   | WebhookEventOf<'webhook.test', WebhookTestEventData>;
 
 /** The `data` of each event type. */

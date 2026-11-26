@@ -4,7 +4,7 @@ import { organizations, apiCredentials } from './organizations.schema.js';
 import { endUsers, organizationEndUsers } from './members.schema.js';
 import { creditOwnerships, blockchainTransactions, loyaltyTransactions } from './credits.schema.js';
 import { vouchers, voucherOwnerships } from './rewards.schema.js';
-import { licensePlans, licenses } from './licensing.schema.js';
+import { licensePlans, licenses, licenseUsage } from './licensing.schema.js';
 import { webhookEndpoints, webhookDeliveries } from './webhooks.schema.js';
 import { organizationEvents } from './events.schema.js';
 
@@ -171,7 +171,7 @@ export const licensePlansRelations = relations(licensePlans, ({ many }) => ({
 }));
 
 // LICENSES RELATIONS
-export const licensesRelations = relations(licenses, ({ one }) => ({
+export const licensesRelations = relations(licenses, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [licenses.organizationId],
     references: [organizations.id],
@@ -179,6 +179,15 @@ export const licensesRelations = relations(licenses, ({ one }) => ({
   plan: one(licensePlans, {
     fields: [licenses.planId],
     references: [licensePlans.id],
+  }),
+  usage: many(licenseUsage),
+}));
+
+// LICENSE USAGE RELATIONS
+export const licenseUsageRelations = relations(licenseUsage, ({ one }) => ({
+  license: one(licenses, {
+    fields: [licenseUsage.licenseId],
+    references: [licenses.id],
   }),
 }));
 

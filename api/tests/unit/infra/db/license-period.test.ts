@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, daysLeft, graceEndsAt, licensePeriod, licenseState } from '#domain/licensing/license-state.js';
+import {
+  addMonths,
+  daysLeft,
+  graceEndsAt,
+  licensePeriod,
+  licenseState,
+} from '#infra/db/repositories/license-period.js';
 
 const at = (iso: string) => new Date(iso);
 

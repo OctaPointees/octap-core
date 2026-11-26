@@ -32,6 +32,7 @@ import { OctaApiError, OctaNetworkError, OctaRequestAbortedError } from '@octap/
 | --- | --- | --- |
 | 400 | The request is invalid, or a rule refused it | Fix the request. On finalize, read the state first, because the transaction may have been sent. |
 | 401 | The API key or customer token is missing, invalid or expired | Check the key, or ask the customer to sign in again |
+| 402 | Your organization's license doesn't cover this. `code` says how: `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`) or `LICENSE_FEATURE_NOT_INCLUDED` (`feature`) | Upgrade the license. A full monthly transaction limit frees up when the next license month starts; read it with `getLicense()` |
 | 403 | The key lacks a scope, or the organization or member isn't active | Check the [scopes](/concepts/api-keys-and-scopes/#scopes) and the member's status |
 | 404 | Not found in your organization | Check the ID |
 | 409 | The key was used for another request, or the state doesn't allow this | Read the state. Don't switch keys to get past it. |

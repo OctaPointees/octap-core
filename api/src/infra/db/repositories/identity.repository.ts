@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
+import { requireLicenseCapacity } from './license-enforcement.js';
 
 /** Eligibility changed after the service's early check, so nothing was written. */
 export class EnrollmentRefusedError extends Error {
@@ -67,6 +68,25 @@ export class IdentityRepository {
         .where(eq(endUsers.id, params.endUserId))
         .for('share');
       if (endUser?.status !== 'ACTIVE') throw new EnrollmentRefusedError('CUSTOMER_NOT_ACTIVE');
+
+      // A new member counts against the license (OCT-329); one already enrolled doesn't.
+      const enrolled = await tx
+        .select({ id: organizationEndUsers.id })
+        .from(organizationEndUsers)
+        .where(
+          and(
+            eq(organizationEndUsers.organizationId, params.organizationId),
+            eq(organizationEndUsers.endUserId, params.endUserId),
+          ),
+        );
+      if (!enrolled.length)
+        await requireLicenseCapacity(tx, params.organizationId, 'members', async () => {
+          const [{ members }] = await tx
+            .select({ members: count() })
+            .from(organizationEndUsers)
+            .where(eq(organizationEndUsers.organizationId, params.organizationId));
+          return members;
+        });
 
       const [created] = await tx
         .insert(organizationEndUsers)

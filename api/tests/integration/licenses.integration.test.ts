@@ -11,6 +11,7 @@ import {
   seedMember,
   seedOrganization,
 } from './support/db.js';
+import { takeLicenseTransaction } from '#infra/db/repositories/license-enforcement.js';
 
 describe('licenses (OCT-329, part 1)', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
@@ -120,26 +121,15 @@ describe('licenses (OCT-329, part 1)', () => {
       expect(await read()).toMatchObject({ tier: 'STARTER' });
     });
 
-    it('counts usage: this license month’s confirmed earns and redeems, members, active keys and team', async () => {
+    it('counts usage: this license month’s accepted transactions, members, active keys and team', async () => {
       const startsAt = new Date(Date.now() - 40 * 86_400_000);
       await seedLicense(ctx.db, orgId, plans.STARTER, { startsAt, endsAt: new Date(Date.now() + 50 * 86_400_000) });
-      const members = [await seedMember(ctx.db, orgId), await seedMember(ctx.db, orgId)];
-      const tx = (type: 'EARN' | 'REDEEM' | 'REVERSAL', status: 'CONFIRMED' | 'PENDING', createdAt = new Date()) =>
-        ctx.db.insert(schema.loyaltyTransactions).values({
-          organizationId: orgId,
-          organizationEndUserId: members[0].memberId,
-          transactionType: type,
-          status,
-          pointsAmount: 10,
-          idempotencyKey: `k-${Math.random()}`,
-          createdAt,
-        });
-      await tx('EARN', 'CONFIRMED');
-      await tx('REDEEM', 'CONFIRMED');
-      await tx('EARN', 'PENDING');
-      await tx('REVERSAL', 'CONFIRMED');
-      // Last license month: not counted.
-      await tx('EARN', 'CONFIRMED', new Date(Date.now() - 35 * 86_400_000));
+      await seedMember(ctx.db, orgId);
+      await seedMember(ctx.db, orgId);
+      // The counter earn, POS reserve and paid claims take from (part 2); last month's doesn't count.
+      await takeLicenseTransaction(ctx.db, orgId, new Date(Date.now() - 35 * 86_400_000));
+      await takeLicenseTransaction(ctx.db, orgId);
+      await takeLicenseTransaction(ctx.db, orgId);
       await seedCredential(ctx.db, orgId);
       await seedCredential(ctx.db, orgId, { status: 'REVOKED' });
 

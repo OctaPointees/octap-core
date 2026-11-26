@@ -11,6 +11,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
@@ -80,6 +81,40 @@ export const licenses = pgTable(
     index('licenses_organization_starts_idx').on(t.organizationId, t.startsAt),
     check('licenses_ends_after_start', sql`${t.endsAt} > ${t.startsAt}`),
     pgPolicy('tenant_isolation_licenses', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
+    }),
+  ],
+);
+
+/**
+ * LICENSE USAGE: the transactions counted against one license month (OCT-329). A transaction takes
+ * one when it is accepted, in the same transaction, with a conditional update that stops at 110% of
+ * `transactionsMonthly`, so concurrent accepts can't overshoot; one that ends FAILED gives it back.
+ * `warned_80_at` and `warned_100_at` make each warning go out once per month.
+ */
+export const licenseUsage = pgTable(
+  'license_usage',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    licenseId: uuid('license_id')
+      .notNull()
+      .references(() => licenses.id, { onDelete: 'cascade' }),
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    transactions: integer('transactions').default(0).notNull(),
+    warned80At: timestamp('warned_80_at', { withTimezone: true }),
+    warned100At: timestamp('warned_100_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('license_usage_license_period_idx').on(t.licenseId, t.periodStart),
+    check('license_usage_transactions_not_negative', sql`${t.transactions} >= 0`),
+    pgPolicy('tenant_isolation_license_usage', {
       for: 'all',
       to: authenticatedRole,
       using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,

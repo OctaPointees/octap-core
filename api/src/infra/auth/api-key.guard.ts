@@ -18,6 +18,7 @@ import { checkRateLimit, rateLimitExceeded } from './rate-limit.util.js';
 import { SCOPES_KEY } from './scopes.decorator.js';
 import { SANDBOX_NOT_SUPPORTED, SANDBOX_SUPPORTED_KEY } from './sandbox.decorator.js';
 import type { TenantContext } from './tenant-context.js';
+import { LicensesRepository } from '../db/repositories/licenses.repository.js';
 
 /**
  * Authenticates server-to-server requests via `Authorization: Bearer <api key>`, resolving
@@ -33,6 +34,7 @@ export class ApiKeyGuard implements CanActivate {
     private readonly credentials: ApiCredentialsRepository,
     private readonly reflector: Reflector,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly licenses: LicensesRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -79,6 +81,9 @@ export class ApiKeyGuard implements CanActivate {
     if (missingScope) {
       throw new ForbiddenException(`This API credential is missing the required "${missingScope}" scope`);
     }
+
+    // A sandbox key works only while the organization's license includes the sandbox (OCT-329).
+    if (tenant.environment === 'SANDBOX') await this.licenses.requireFeature(tenant.organizationId, 'sandbox');
 
     // The sandbox boundary (OCT-297): a sandbox key may read, and may write only where the route
     // handles sandbox itself. Everything else is refused here, before any handler runs.

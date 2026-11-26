@@ -3,6 +3,7 @@ import { and, count, eq, getTableColumns } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { apiCredentials, organizations } from '../schema/organizations.schema.js';
 import { withTenant } from '../rls.js';
+import { requireLicenseCapacity } from './license-enforcement.js';
 
 export type ApiCredential = typeof apiCredentials.$inferSelect;
 
@@ -66,6 +67,8 @@ export class ApiCredentialsRepository {
           .from(apiCredentials)
           .where(and(eq(apiCredentials.organizationId, data.organizationId), eq(apiCredentials.status, 'ACTIVE')));
         if (active >= limit) return undefined;
+        // The license's own cap, usually lower than the platform's (OCT-329). 402 when reached.
+        await requireLicenseCapacity(scoped, data.organizationId, 'apiKeys', async () => active);
         const [created] = await scoped.insert(apiCredentials).values(data).returning();
         return created;
       });

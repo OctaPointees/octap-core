@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import type {
   CreateVoucherBatchResponse,
   VoucherBatchActionResponse,
@@ -10,6 +10,8 @@ import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
+import { RequiresFeature } from '#infra/auth/requires-feature.decorator.js';
+import { LicenseFeatureGuard } from './license-feature.guard.js';
 
 /**
  * Voucher batches with a merchant API key (OCT-303): create many vouchers as one DRAFT batch (with
@@ -21,6 +23,8 @@ export class VoucherBatchesController {
   constructor(private readonly batches: VoucherBatchService) {}
 
   @Post()
+  @RequiresFeature('voucher.batches')
+  @UseGuards(LicenseFeatureGuard)
   @Scopes('write')
   create(
     @Tenant() tenant: TenantContext,
@@ -48,6 +52,8 @@ export class VoucherBatchesController {
   }
 
   @Post(':batchId/activate')
+  @RequiresFeature('voucher.batches')
+  @UseGuards(LicenseFeatureGuard)
   @Scopes('write')
   activate(
     @Tenant() tenant: TenantContext,

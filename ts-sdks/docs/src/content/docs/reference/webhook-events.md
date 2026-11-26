@@ -21,6 +21,7 @@ Every event has this shape, and `data` depends on `type`:
 | [`voucher.granted`](#vouchergranted) | The chain recorded a grant or free claim | Exactly one per voucher is queued |
 | [`voucher.redeemed`](#voucherredeemed) | The customer signed and the chain marked a voucher used | Exactly one per voucher is queued |
 | [`budget.low`](#budgetlow) | The issuance budget crossed 80% or 95% used | Checked every few minutes, one per crossing |
+| [`license.usage_threshold`](#licenseusage_threshold) | This license month's transactions reached 80% or 100% of the license's limit | Queued with the transaction, once per threshold and license month |
 | [`voucher.created` and the other voucher events](#voucher-lifecycle-events) | A voucher was created, submitted, returned, activated, failed to publish, paused or archived | Queued with the change |
 
 Queued events can still be retried, so your receiver may see the same `id` more than once.
@@ -121,6 +122,19 @@ Your [issuance budget](/concepts/issuance-budget/) is running low. [Request a to
 | `threshold` | `80 \| 95` | The percentage used that was crossed |
 | `remaining` | `number` | Points left across all shards |
 | `capacity` | `number` | Initial budget plus every applied top-up |
+
+## license.usage_threshold
+
+Your organization's transactions this license month (earns, POS redemptions and paid voucher claims) reached 80% or 100% of what its license allows. Past 100% they keep going until 110%, then each is refused with 402 `LICENSE_LIMIT_REACHED` until the next license month starts at `periodEnd`. Upgrade the license to raise the limit.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `limit` | `'transactionsMonthly'` | The limit it is about |
+| `threshold` | `80 \| 100` | The percentage reached |
+| `used` | `number` | Transactions counted this license month, this one included |
+| `allowed` | `number` | The license's monthly limit |
+| `periodStart` | `string` | When this license month started |
+| `periodEnd` | `string` | When it ends and the count starts again |
 
 ## Voucher lifecycle events
 

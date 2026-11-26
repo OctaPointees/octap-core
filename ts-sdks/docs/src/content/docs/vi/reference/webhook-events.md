@@ -21,6 +21,7 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`voucher.granted`](#vouchergranted) | Chain ghi nhận voucher được tặng hoặc claim miễn phí | Xếp hàng đúng một lần cho mỗi voucher |
 | [`voucher.redeemed`](#voucherredeemed) | Khách hàng đã ký và chain đánh dấu voucher đã dùng | Xếp hàng đúng một lần cho mỗi voucher |
 | [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
+| [`license.usage_threshold`](#licenseusage_threshold) | Số giao dịch trong tháng license chạm 80% hoặc 100% hạn mức của license | Xếp hàng cùng giao dịch, mỗi mốc một lần mỗi tháng license |
 | [`voucher.created` và các event voucher khác](#event-vòng-đời-voucher) | Voucher được tạo, gửi duyệt, trả về, activate, publish thất bại, tạm dừng hoặc archive | Xếp hàng cùng thay đổi |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
@@ -121,6 +122,20 @@ Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào tha
 | `threshold` | `80 \| 95` | Mức phần trăm đã dùng vừa vượt |
 | `remaining` | `number` | Số điểm còn lại trên mọi shard |
 | `capacity` | `number` | Ngân sách ban đầu cộng mọi lần top-up đã áp dụng |
+
+
+## license.usage_threshold
+
+Số giao dịch của tổ chức bạn trong tháng license này (earn, đổi điểm tại POS và nhận voucher trả phí) đã chạm 80% hoặc 100% mức license cho phép. Quá 100% vẫn nhận tiếp tới 110%, sau đó mỗi giao dịch bị từ chối với 402 `LICENSE_LIMIT_REACHED` cho tới khi tháng license mới bắt đầu ở `periodEnd`. Nâng gói license để tăng hạn mức.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `limit` | `'transactionsMonthly'` | Hạn mức được nói tới |
+| `threshold` | `80 \| 100` | Mốc phần trăm đã chạm |
+| `used` | `number` | Số giao dịch đã đếm trong tháng license, tính cả giao dịch này |
+| `allowed` | `number` | Hạn mức mỗi tháng của license |
+| `periodStart` | `string` | Lúc tháng license này bắt đầu |
+| `periodEnd` | `string` | Lúc tháng kết thúc và bộ đếm bắt đầu lại |
 
 ## Event vòng đời voucher
 

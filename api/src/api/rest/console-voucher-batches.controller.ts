@@ -10,6 +10,8 @@ import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
 import type { ActivateVoucherBatchBodyDto } from '../dto/console.dto.js';
 import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
+import { RequiresFeature } from '#infra/auth/requires-feature.decorator.js';
+import { LicenseFeatureGuard } from './license-feature.guard.js';
 
 /**
  * Voucher batches from the console (OCT-303): the Owner and a Business Developer create, activate and
@@ -24,6 +26,8 @@ export class ConsoleVoucherBatchesController {
   constructor(private readonly batches: ConsoleVoucherBatchService) {}
 
   @Post()
+  @RequiresFeature('voucher.batches')
+  @UseGuards(LicenseFeatureGuard)
   @Header('Cache-Control', 'no-store')
   create(
     @Req() req: ConsoleRequest,
@@ -54,6 +58,8 @@ export class ConsoleVoucherBatchesController {
   }
 
   @Post(':batchId/activate')
+  @RequiresFeature('voucher.batches')
+  @UseGuards(LicenseFeatureGuard)
   @Header('Cache-Control', 'no-store')
   activate(
     @Req() req: ConsoleRequest,

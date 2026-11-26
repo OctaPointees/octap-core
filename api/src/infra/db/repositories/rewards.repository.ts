@@ -42,6 +42,7 @@ import {
 import { MemberEligibilityError } from './member-eligibility.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { tenantOf, withTenantOf } from './tenant-lookup.js';
+import { takeLicenseTransaction } from './license-enforcement.js';
 
 type Voucher = typeof vouchers.$inferSelect;
 
@@ -830,6 +831,8 @@ export class RewardsRepository {
       .update(creditOwnerships)
       .set({ pendingRedemption: Number(balance.pendingRedemption) + pointsCost, updatedAt: new Date() })
       .where(eq(creditOwnerships.id, balance.id));
+    // A paid claim is a redeem: counted against the license month (OCT-329).
+    await takeLicenseTransaction(tx, organizationId);
     return transaction.id;
   }
 

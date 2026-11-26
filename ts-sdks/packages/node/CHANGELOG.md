@@ -7,6 +7,13 @@
 - `getLicense()` (OCT-329): your organization's license (plan, `startsAt`, `endsAt`, `state`
   `ACTIVE`/`GRACE`/`EXPIRED`, what it includes) and how much of each limit is in use this license
   month. `read` scope.
+- License limits (OCT-329): a request the license doesn't cover answers **402** with `code`
+  `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`) or `LICENSE_FEATURE_NOT_INCLUDED`
+  (`feature`). Earn, POS reserve and paid claims stop at 110% of the monthly transactions; voucher
+  batches need `voucher.batches`, sandbox keys need `sandbox`. Types: `LicenseErrorBody`,
+  `LicenseErrorCode`.
+- Webhook `license.usage_threshold` (`LicenseUsageThresholdEventData`): sent once per license month
+  at 80% and at 100% of the monthly transactions.
 - Voucher batches (OCT-303): `createVouchers(items, { dryRun, name })` creates up to 100 vouchers
   as one DRAFT batch (`dryRun` previews each item's result and writes nothing), then
   `activateVoucherBatch`, `pauseVoucherBatch`, `resumeVoucherBatch` and `archiveVoucherBatch` act

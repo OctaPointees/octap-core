@@ -35,8 +35,9 @@ import {
   PlatformLicensePlansController,
   PlatformOrganizationLicenseController,
 } from './licenses.controller.js';
+import { PostgresModule } from '#infra/db/postgres.module.js';
 @Module({
-  imports: [DomainModule, AuthModule, ObservabilityModule],
+  imports: [DomainModule, AuthModule, ObservabilityModule, PostgresModule],
   providers: [ConsoleAccessGuard],
   controllers: [
     HealthController,

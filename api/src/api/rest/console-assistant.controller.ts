@@ -16,6 +16,8 @@ import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
 import { EventStream } from './event-stream.decorator.js';
 import type { AssistantMessageBodyDto } from '../dto/assistant.dto.js';
+import { RequiresFeature } from '#infra/auth/requires-feature.decorator.js';
+import { LicenseFeatureGuard } from './license-feature.guard.js';
 
 /** How often an idle answer stream gets an SSE comment. */
 export const HEARTBEAT_MS = 15_000;
@@ -46,6 +48,8 @@ export class ConsoleAssistantController {
    * membership and rate-limit errors come back as plain JSON errors before the stream starts.
    */
   @Post('messages')
+  @RequiresFeature('assistant')
+  @UseGuards(LicenseFeatureGuard)
   @HttpCode(200)
   @EventStream({
     description:

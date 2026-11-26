@@ -25,6 +25,7 @@ import {
 import { recordEvent } from './events.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
 import { asOwnRole, withRls, withTenant } from '../rls.js';
+import { releaseLicenseTransaction, takeLicenseTransaction } from './license-enforcement.js';
 import { inTenantOf, tenantOf } from './tenant-lookup.js';
 import { withActiveMember } from './member-eligibility.js';
 
@@ -42,6 +43,7 @@ async function lockPendingTransaction(tx: DrizzleDb, loyaltyTransactionId: strin
       organizationId: loyaltyTransactions.organizationId,
       pointsAmount: loyaltyTransactions.pointsAmount,
       purchaseAmount: loyaltyTransactions.purchaseAmount,
+      createdAt: loyaltyTransactions.createdAt,
     })
     .from(loyaltyTransactions)
     .where(eq(loyaltyTransactions.id, loyaltyTransactionId))
@@ -410,9 +412,15 @@ export async function releaseAbandonedPosHolds(
         ),
       ),
     )
-    .returning({ id: loyaltyTransactions.id, pointsAmount: loyaltyTransactions.pointsAmount });
+    .returning({
+      id: loyaltyTransactions.id,
+      pointsAmount: loyaltyTransactions.pointsAmount,
+      createdAt: loyaltyTransactions.createdAt,
+    });
   // Voucher claims share this command pipeline: release their coupon/stock in the same transaction.
   for (const row of released) await settleVoucherClaim(tx, row.id, { confirmed: false });
+  // Each abandoned hold gives its count back to the license month (OCT-329).
+  for (const row of released) await releaseLicenseTransaction(tx, member.organizationId, row.createdAt);
   const total = released.reduce((sum, row) => sum + Number(row.pointsAmount), 0);
   if (total === 0) {
     return 0;
@@ -641,6 +649,8 @@ export class CreditsRepository {
           .set({ pendingEarn: sql`${creditOwnerships.pendingEarn} + ${params.estimatedPoints}`, updatedAt: new Date() })
           .where(eq(creditOwnerships.id, ownership.id));
 
+        // Counted against the license month last, to hold its counter's row briefly (OCT-329).
+        await takeLicenseTransaction(tx, params.organizationId);
         // Unchanged until chain confirmation; see pendingEarn above for the in-flight amount.
         const newBalance = Number(ownership.confirmedBalance);
         // Outbox (OCT-325): accepted exactly when the earn is; a retry under the same key never gets here.
@@ -882,6 +892,8 @@ export class CreditsRepository {
           .update(loyaltyTransactions)
           .set({ status: 'FAILED', updatedAt: new Date() })
           .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+        // A failed earn gives its count back to the license month (OCT-329).
+        await releaseLicenseTransaction(tx, pending.organizationId, pending.createdAt);
 
         const ownership = await lockOwnership(tx, params.organizationEndUserId);
         if (ownership) {
@@ -1079,6 +1091,8 @@ export class CreditsRepository {
         .update(creditOwnerships)
         .set({ pendingRedemption: Number(ownership.pendingRedemption) + params.pointsAmount, updatedAt: new Date() })
         .where(eq(creditOwnerships.id, ownership.id));
+      // Counted against the license month last, to hold its counter's row briefly (OCT-329).
+      await takeLicenseTransaction(tx, params.organizationId);
 
       return { transaction, accountId: ownership.suiCreditAccountId, isNew: true, submittedDigest: null };
     });
@@ -1198,7 +1212,8 @@ export class CreditsRepository {
           if (!command || command.suiTxDigest) return false;
           abandonedCommandId = command.id;
         }
-        if (!(await lockPendingTransaction(tx, params.loyaltyTransactionId))) {
+        const pending = await lockPendingTransaction(tx, params.loyaltyTransactionId);
+        if (!pending) {
           return 'already-settled' as const;
         }
 
@@ -1213,6 +1228,8 @@ export class CreditsRepository {
           .update(loyaltyTransactions)
           .set({ status: 'FAILED', updatedAt: new Date() })
           .where(eq(loyaltyTransactions.id, params.loyaltyTransactionId));
+        // A failed redeem or voucher claim gives its count back to the license month (OCT-329).
+        await releaseLicenseTransaction(tx, pending.organizationId, pending.createdAt);
 
         const ownership = await lockOwnership(tx, params.organizationEndUserId);
         if (ownership) {
