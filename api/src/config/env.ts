@@ -104,6 +104,14 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   { name: 'ORG_PROVISION_WORKER_ENABLED', kind: bool, readBy: WORKER },
   { name: 'ORG_PROVISION_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'BUDGET_WARNING_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
+  // Audit evidence (OCT-77): sealing on Sui, and the encrypted copy on Walrus Console
+  { name: 'EVIDENCE_SEAL_ENABLED', kind: bool, readBy: WORKER },
+  { name: 'EVIDENCE_PERIOD_MS', kind: positive, readBy: WORKER },
+  { name: 'EVIDENCE_SEAL_DELAY_MS', kind: { type: 'int', min: 0 }, readBy: WORKER },
+  { name: 'EVIDENCE_SEAL_INTERVAL_MS', kind: positive, readBy: WORKER },
+  { name: 'WALRUS_CONSOLE_NETWORK', kind: { type: 'enum', values: ['mainnet', 'testnet'] }, readBy: WORKER },
+  { name: 'WALRUS_CONSOLE_API_KEY', kind: text, readBy: WORKER },
+  { name: 'WALRUS_CONSOLE_BUCKET_ID', kind: text, readBy: WORKER },
 ];
 
 export interface EnvValidation {

@@ -3,6 +3,7 @@ import type { ConsoleChangeRequestsController, PlatformChangeRequestsController 
 import type { ConsoleApiCredentialsController } from '../rest/console-api-credentials.controller.js';
 import type { ConsoleAssistantController } from '../rest/console-assistant.controller.js';
 import type { ConsoleAuditLogController } from '../rest/console-audit-log.controller.js';
+import type { ConsoleEvidenceController } from '../rest/console-evidence.controller.js';
 import type { ConsoleIdentityController } from '../rest/console-identity.controller.js';
 import type { ConsoleLedgerController } from '../rest/console-ledger.controller.js';
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
@@ -41,6 +42,11 @@ export type ConsoleApiCredentialsController_revoke_Response = Awaited<ReturnType
 export type ConsoleAssistantController_message_Body = Parameters<ConsoleAssistantController['message']>[2];
 export type ConsoleAuditLogController_list_Response = Awaited<ReturnType<ConsoleAuditLogController['list']>>;
 export type ConsoleAuditLogController_list_Query = Parameters<ConsoleAuditLogController['list']>[2];
+export type ConsoleEvidenceController_list_Response = Awaited<ReturnType<ConsoleEvidenceController['list']>>;
+export type ConsoleEvidenceController_list_Query = Parameters<ConsoleEvidenceController['list']>[2];
+export type ConsoleEvidenceController_detail_Response = Awaited<ReturnType<ConsoleEvidenceController['detail']>>;
+export type ConsoleEvidenceController_verification_Response = Awaited<ReturnType<ConsoleEvidenceController['verification']>>;
+export type ConsoleEvidenceController_bundle_Response = Awaited<ReturnType<ConsoleEvidenceController['bundle']>>;
 export type ConsoleIdentityController_login_Response = Awaited<ReturnType<ConsoleIdentityController['login']>>;
 export type ConsoleIdentityController_login_Body = Parameters<ConsoleIdentityController['login']>[0];
 export type ConsoleIdentityController_me_Response = Awaited<ReturnType<ConsoleIdentityController['me']>>;

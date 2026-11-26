@@ -17,14 +17,17 @@ import { OrganizationProvisioningProcessor } from './domain/organizations/provis
 import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.processor.js';
 import { EventRetentionWorker } from './domain/events/event-retention.worker.js';
 import { RequestLogRetentionWorker } from './domain/developer/request-log-retention.worker.js';
+import { EvidenceSealWorker } from './domain/audit/evidence-seal.worker.js';
+import { EvidenceSealProcessor } from './domain/audit/evidence-seal.processor.js';
+import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.module.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
 // the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
 // admin signer (AWS KMS keys, or raw keys off mainnet; infra/clients/sui/signer.ts). ProgramsService lives here rather than in
 // domain/domain.module.ts for the same reason ChainSubmitProcessor does: that module reaches
-// AppModule too.
+// AppModule too. WalrusConsoleModule (OCT-77) is here for the same reason: only the worker archives.
 @Module({
-  imports: [DomainModule, InfrastructureModule, SuiModule, ProgramAdminModule],
+  imports: [DomainModule, InfrastructureModule, SuiModule, ProgramAdminModule, WalrusConsoleModule],
   providers: [
     OrganizationProvisioningWorker,
     OrganizationProvisioningProcessor,
@@ -40,6 +43,8 @@ import { RequestLogRetentionWorker } from './domain/developer/request-log-retent
     CheckpointIndexerProcessor,
     ProgramsService,
     RequestLogRetentionWorker,
+    EvidenceSealWorker,
+    EvidenceSealProcessor,
   ],
 })
 export class WorkerModule {}

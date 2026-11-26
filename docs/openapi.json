@@ -1989,6 +1989,246 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/evidence": {
+      "get": {
+        "operationId": "ConsoleEvidenceController_list",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleEvidenceController_list_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Evidence"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/evidence/{periodId}": {
+      "get": {
+        "operationId": "ConsoleEvidenceController_detail",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "periodId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleEvidenceController_detail_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Evidence"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/evidence/{periodId}/verification": {
+      "get": {
+        "operationId": "ConsoleEvidenceController_verification",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "periodId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleEvidenceController_verification_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Evidence"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/evidence/{periodId}/bundle": {
+      "get": {
+        "operationId": "ConsoleEvidenceController_bundle",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "periodId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleEvidenceController_bundle_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Evidence"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/vouchers": {
       "get": {
         "operationId": "ConsoleRewardsController_list",
@@ -7500,6 +7740,9 @@
       "name": "Console Events"
     },
     {
+      "name": "Console Evidence"
+    },
+    {
       "name": "Console Identity"
     },
     {
@@ -7933,6 +8176,211 @@
           "reviewedById",
           "status",
           "updatedAt"
+        ]
+      },
+      "ConsoleEvidenceController_bundle_Response": {
+        "description": "The file an Owner downloads and hands to an auditor. The same period always gives the same file.",
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "octap.evidence/v1"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/EvidenceManifest"
+          },
+          "manifestHash": {
+            "type": "string"
+          },
+          "seal": {
+            "$ref": "#/components/schemas/EvidenceSealReference"
+          },
+          "ledger": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceLedgerFact"
+            }
+          },
+          "audit": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceAuditFact"
+            }
+          }
+        },
+        "required": [
+          "audit",
+          "format",
+          "ledger",
+          "manifest",
+          "manifestHash",
+          "seal"
+        ]
+      },
+      "ConsoleEvidenceController_detail_Response": {
+        "type": "object",
+        "properties": {
+          "manifestHash": {
+            "type": "string"
+          },
+          "previousManifestHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "seal": {
+            "description": "Null while SEALING.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceSealReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/EvidenceArchiveStatus"
+              },
+              "walrusBlobId": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "archivedAt": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "archivedAt",
+              "status",
+              "walrusBlobId"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "periodStart": {
+            "type": "string"
+          },
+          "periodEnd": {
+            "type": "string"
+          },
+          "ledgerCount": {
+            "type": "number"
+          },
+          "auditCount": {
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidencePeriodStatus"
+          },
+          "archiveStatus": {
+            "$ref": "#/components/schemas/EvidenceArchiveStatus"
+          }
+        },
+        "required": [
+          "archive",
+          "archiveStatus",
+          "auditCount",
+          "id",
+          "ledgerCount",
+          "manifestHash",
+          "periodEnd",
+          "periodStart",
+          "previousManifestHash",
+          "seal",
+          "status"
+        ]
+      },
+      "ConsoleEvidenceController_list_Query": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "ConsoleEvidenceController_list_Response": {
+        "type": "object",
+        "properties": {
+          "sealedThrough": {
+            "description": "The end of the organization's latest sealed period, null before its first.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "periodCount": {
+            "description": "How many periods are sealed.",
+            "type": "number"
+          },
+          "items": {
+            "description": "Newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidencePeriodSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "periodCount",
+          "sealedThrough"
+        ]
+      },
+      "ConsoleEvidenceController_verification_Response": {
+        "description": "For the Console's Verify button: the manifest as sealed, and the same period recomputed from the\ndatabase now. The browser checks both against the seal read straight from Sui\n(`verifyRecomputation` in `@octap/verify`), so the verdict never rests on OctaP's word.",
+        "type": "object",
+        "properties": {
+          "periodId": {
+            "type": "string"
+          },
+          "sealedManifest": {
+            "$ref": "#/components/schemas/EvidenceManifest"
+          },
+          "recomputedManifest": {
+            "$ref": "#/components/schemas/EvidenceManifest"
+          },
+          "seal": {
+            "description": "Null while SEALING: there is nothing on-chain to check against yet.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceSealReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "computedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "computedAt",
+          "periodId",
+          "recomputedManifest",
+          "seal",
+          "sealedManifest"
         ]
       },
       "ConsoleIdentityController_login_Body": {
@@ -10868,6 +11316,24 @@
           "memberId",
           "suiAddress"
         ]
+      },
+      "EvidenceArchiveStatus": {
+        "description": "The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy, `SKIPPED` for an empty period.",
+        "enum": [
+          "ARCHIVED",
+          "DISABLED",
+          "PENDING",
+          "SKIPPED"
+        ],
+        "type": "string"
+      },
+      "EvidencePeriodStatus": {
+        "description": "`SEALING` while the seal is on its way to the chain, then `SEALED` for good.",
+        "enum": [
+          "SEALED",
+          "SEALING"
+        ],
+        "type": "string"
       },
       "GovernanceRequestType": {
         "enum": [
@@ -14021,6 +14487,242 @@
           "name",
           "scopes",
           "status"
+        ]
+      },
+      "EvidenceAuditFact": {
+        "description": "One audit log row of the period (OCT-333). Append-only, so it never changes.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "actorType": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "changes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Record_string_unknown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "actorId",
+          "actorType",
+          "changes",
+          "id",
+          "occurredAt",
+          "requestId",
+          "targetId",
+          "targetType"
+        ]
+      },
+      "EvidenceLedgerFact": {
+        "description": "One loyalty transaction confirmed on-chain during the period. Only facts that never change once\nconfirmed: no status (a reversal is its own fact, in the period it happened) and no checkpoint\n(filled in later by the indexer).",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "pointsAmount": {
+            "type": "number"
+          },
+          "purchaseAmount": {
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "memberId": {
+            "description": "The member's id in the organization.",
+            "type": "string"
+          },
+          "receiptReference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reversesTransactionId": {
+            "description": "On a REVERSAL, the transaction it reverses.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "digest": {
+            "description": "The Sui transaction that carried it.",
+            "type": "string"
+          },
+          "confirmedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmedAt",
+          "digest",
+          "id",
+          "memberId",
+          "pointsAmount",
+          "purchaseAmount",
+          "receiptReference",
+          "reversesTransactionId",
+          "type"
+        ]
+      },
+      "EvidenceManifest": {
+        "description": "What is sealed: its sha256 is the seal's `manifest_hash`.",
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "octap.evidence.manifest/v1"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "periodStart": {
+            "type": "string"
+          },
+          "periodEnd": {
+            "type": "string"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/EvidenceSection"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/EvidenceSection"
+          },
+          "previousManifestHash": {
+            "description": "The organization's previous sealed manifest, null on its first.",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "audit",
+          "format",
+          "ledger",
+          "organizationId",
+          "periodEnd",
+          "periodStart",
+          "previousManifestHash"
+        ]
+      },
+      "EvidencePeriodSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "periodStart": {
+            "type": "string"
+          },
+          "periodEnd": {
+            "type": "string"
+          },
+          "ledgerCount": {
+            "type": "number"
+          },
+          "auditCount": {
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidencePeriodStatus"
+          },
+          "archiveStatus": {
+            "$ref": "#/components/schemas/EvidenceArchiveStatus"
+          }
+        },
+        "required": [
+          "archiveStatus",
+          "auditCount",
+          "id",
+          "ledgerCount",
+          "periodEnd",
+          "periodStart",
+          "status"
+        ]
+      },
+      "EvidenceSealReference": {
+        "description": "Where a period's seal is on Sui.",
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string"
+          },
+          "packageId": {
+            "type": "string"
+          },
+          "sealObjectId": {
+            "type": "string"
+          },
+          "transactionDigest": {
+            "type": "string"
+          },
+          "sealedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "network",
+          "packageId",
+          "sealObjectId",
+          "sealedAt",
+          "transactionDigest"
+        ]
+      },
+      "EvidenceSection": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "sha256": {
+            "description": "sha256 (hex) of the section's facts, one canonical JSON line each.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "sha256"
         ]
       },
       "IdentityChangePayload": {

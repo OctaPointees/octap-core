@@ -92,6 +92,9 @@ async function prepareDatabase(databaseUrl: string): Promise<void> {
     await client.unsafe(`
       grant select, insert, update, delete on all tables in schema public to authenticated;
       grant all privileges on all tables in schema public to service_role;
+      -- Same revokes as scripts/migrate.mjs, so tests see production's privileges.
+      revoke update, delete, truncate on audit_log from authenticated;
+      revoke insert, update, delete, truncate on evidence_periods from authenticated;
     `);
   } finally {
     await client.end();

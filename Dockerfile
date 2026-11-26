@@ -12,6 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY api/package.json api/
 COPY ts-sdks/packages/contracts/package.json ts-sdks/packages/contracts/
+COPY ts-sdks/packages/verify/package.json ts-sdks/packages/verify/
 COPY ts-sdks/packages/chain/package.json ts-sdks/packages/chain/
 COPY ts-sdks/packages/node/package.json ts-sdks/packages/node/
 COPY ts-sdks/packages/mcp/package.json ts-sdks/packages/mcp/
@@ -41,6 +42,8 @@ COPY --from=build /app/api/db api/db
 # Workspace packages are symlinked from node_modules/@octap/*; they need their manifest and build.
 COPY --from=build /app/ts-sdks/packages/contracts/package.json ts-sdks/packages/contracts/
 COPY --from=build /app/ts-sdks/packages/contracts/dist ts-sdks/packages/contracts/dist
+COPY --from=build /app/ts-sdks/packages/verify/package.json ts-sdks/packages/verify/
+COPY --from=build /app/ts-sdks/packages/verify/dist ts-sdks/packages/verify/dist
 COPY --from=build /app/ts-sdks/packages/chain/package.json ts-sdks/packages/chain/
 COPY --from=build /app/ts-sdks/packages/chain/dist ts-sdks/packages/chain/dist
 COPY --from=build /app/ts-sdks/packages/node/package.json ts-sdks/packages/node/

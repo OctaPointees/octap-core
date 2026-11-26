@@ -8,6 +8,7 @@
   },
   "workspaces": [
     "ts-sdks/packages/contracts",
+    "ts-sdks/packages/verify",
     "ts-sdks/packages/chain",
     "ts-sdks/packages/node",
     "ts-sdks/packages/mcp",
