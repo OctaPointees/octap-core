@@ -1,0 +1,38 @@
+{
+  "name": "@octap/verify",
+  "version": "0.1.0",
+  "description": "Check an Octap audit evidence bundle against its seal on Sui, without trusting Octap.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctaPointees/OctaP_Core.git",
+    "directory": "ts-sdks/packages/verify"
+  },
+  "type": "module",
+  "bin": {
+    "octap-verify": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.38.0",
+    "@noble/hashes": "^2.3.0",
+    "@octap/contracts": "^0.1.1"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

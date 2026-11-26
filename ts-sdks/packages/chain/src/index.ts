@@ -26,3 +26,11 @@ export {
 } from './client.js';
 export { TESTNET_OCTAP_PACKAGE_CONFIG, MAINNET_OCTAP_PACKAGE_CONFIG, type OctapPackageConfig } from './constants.js';
 export { operationShardIndex } from './shards.js';
+export {
+  TESTNET_OCTAP_AUDIT_CONFIG,
+  MAINNET_OCTAP_AUDIT_CONFIG,
+  buildSealEvidenceTransaction,
+  latestEvidenceSealId,
+  type OctapAuditConfig,
+  type SealEvidenceParams,
+} from './evidence.js';
