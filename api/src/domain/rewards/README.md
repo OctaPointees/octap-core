@@ -150,7 +150,15 @@ Supply cannot fall below claimed count; an exhausted voucher, or one with less t
 
 Dates must be real calendar dates in ISO date-time format with seconds and a timezone (for example `2030-01-01T00:00:00Z`). Impossible dates and out-of-range times are rejected. Numerically equivalent discount strings such as `10` and `10.00` represent the same benefit.
 
-Claims and voucher use reject inactive organizations, blocked global identities or inactive organization members. An expired voucher cannot be used. The successful transition queues exactly one `voucher.redeemed` webhook in the same database transaction, retaining OCT-244's outbox guarantee.
+Claims and voucher use reject inactive organizations, blocked global identities or inactive organization members. An expired voucher cannot be used.
+
+### Expiry
+
+`expires_at` is the truth, and the status follows it. Once a deadline passes, `expireDueVouchers` writes `EXPIRED`, and records one event per row in the same transaction:
+- A customer's voucher (`voucher_ownerships`) goes `AVAILABLE → EXPIRED` at its own `expires_at`, and sends `voucher.member_expired`. One that is `RESERVED` is in a use or a claim the chain decides; if it comes back `AVAILABLE`, the next run expires it.
+- A voucher (`vouchers`) goes `ACTIVE`, `PAUSED` or `DEPLETED` → `EXPIRED` when its claim window (`expires_at`) closes, and sends `voucher.expired`. A `DRAFT` or `PENDING_APPROVAL` one keeps its status: it can't go live past its expiry anyway. An `EXPIRED` voucher refuses a status change (409), since it would only be expired again; its supply and metadata stay editable, and it stays `EXPIRED`. Customers who already hold it keep their own deadline.
+
+Two paths call it. `VoucherExpiryWorker` sweeps every organization at start and every `VOUCHER_EXPIRY_SWEEP_INTERVAL_MS` (60 s by default), batch after batch. Before a read returns vouchers (the voucher list and detail, a member's vouchers, a claim, voucher batches), `RewardsRepository.expireDueFor` expires that organization's due rows first, so no read shows something expired as usable. Both skip rows another transaction holds (`SKIP LOCKED`) and repeat the status condition in the update, so they never block a use or a claim and never write a row or its event twice. The expiry runs outside the request context: it is the system's change, not the reader's, and is not audited. The chain needs nothing: it checks deadlines when a voucher is claimed or used, and so do the use and claim checks here. The successful transition queues exactly one `voucher.redeemed` webhook in the same database transaction, retaining OCT-244's outbox guarantee.
 
 ## Configurable organization refund policies
 
@@ -183,7 +191,7 @@ An allowed redeemed/expired refund preserves usage/expiry history and never retu
 
 For example, `refundWindowDays: 1` permits a points refund strictly before 24 elapsed hours after claiming. This is not an appointment-relative deadline: returning a booking voucher when canceling at least 24 hours before an appointment needs appointment data and a separately designed reactivation/reissuance operation. An explicit used-coupon refund is an exceptional service recovery action, such as a benefit delivered incorrectly; it retains the delivered-benefit history, and the Owner opts into it with `allowRedeemed`.
 
-RESERVED and CANCELLED coupons remain ineligible under every policy. Approval queues, staff-role rules, expiry extensions and reissuance are not provided by these endpoints. A `write` credential refunds whatever the coupon's snapshot allows, redeemed and expired coupons included, judged on the locked coupon state; an expired AVAILABLE coupon counts as expired. There is no separate scope for these refunds: the `admin` scope was retired in OCT-301, and a legacy key that still lists it gains nothing from it.
+RESERVED and CANCELLED coupons remain ineligible under every policy. Approval queues, staff-role rules, expiry extensions and reissuance are not provided by these endpoints. A `write` credential refunds whatever the coupon's snapshot allows, redeemed and expired coupons included, judged on the locked coupon state; an AVAILABLE coupon past its deadline that the sweep has not reached yet still counts as expired. There is no separate scope for these refunds: the `admin` scope was retired in OCT-301, and a legacy key that still lists it gains nothing from it.
 
 Node SDK: `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory(query?, options?)`; both accept `RequestOptions`. `setVoucherRefundPolicy` was removed in 0.2.0. Never put an API key in a browser.
 

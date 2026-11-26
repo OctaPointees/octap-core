@@ -43,6 +43,11 @@ import {
 import { MemberEligibilityError } from './member-eligibility.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { tenantOf, withTenantOf } from './tenant-lookup.js';
+import { expireDueVouchers, type ExpiredVouchers } from './voucher-expiry.js';
+import { outsideRequestContext } from '#observability/request-context.js';
+
+/** Rows of each kind one expiry pass writes in a transaction. */
+export const VOUCHER_EXPIRY_BATCH_SIZE = 500;
 
 type Voucher = typeof vouchers.$inferSelect;
 
@@ -223,6 +228,31 @@ const neverPublished = (voucher: Voucher): boolean =>
 @Injectable()
 export class RewardsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+
+  /**
+   * One batch of the expiry sweep (`VoucherExpiryWorker`), across every organization: an RLS exception,
+   * by design, like the outbox trim. See `expireDueVouchers`.
+   */
+  async expireDue(limit = VOUCHER_EXPIRY_BATCH_SIZE, now = new Date()): Promise<ExpiredVouchers> {
+    return this.db.transaction((tx) => expireDueVouchers(tx, { limit, now }));
+  }
+
+  /**
+   * Expires what is past its deadline in one organization before a read returns its vouchers, so a
+   * read never shows `AVAILABLE` or `ACTIVE` for something already expired, whenever the sweep last
+   * ran. It is the system's change, not the caller's: it runs outside the request context, so the
+   * events it records carry no actor and are not audited as the reader's.
+   */
+  async expireDueFor(organizationId: string, db: DrizzleDb = this.db): Promise<void> {
+    await outsideRequestContext(() =>
+      withTenant(db, organizationId, async (tx) => {
+        for (;;) {
+          const done = await expireDueVouchers(tx, { organizationId, limit: VOUCHER_EXPIRY_BATCH_SIZE });
+          if (done.vouchers < VOUCHER_EXPIRY_BATCH_SIZE && done.memberVouchers < VOUCHER_EXPIRY_BATCH_SIZE) return;
+        }
+      }),
+    );
+  }
 
   /**
    * Pass `tx` to join the caller's transaction (it runs in a savepoint there), e.g. so the console's
@@ -438,6 +468,9 @@ export class RewardsRepository {
         throw conflict('The voucher is waiting for approval; withdraw it to make changes');
       if (current.status === 'ARCHIVED')
         throw conflict("This voucher's batch was archived; import its code again to use it");
+      // Past its claim window it stays EXPIRED: a status change would only be expired again.
+      if (current.status === 'EXPIRED' && patch.status !== undefined && patch.status !== 'EXPIRED')
+        throw conflict('This voucher has expired; create a new voucher instead');
       const merged = { ...current, ...patch };
       validate(merged);
       const onChain = current.publishStatus === 'PUBLISHING' || current.publishStatus === 'PUBLISHED';
@@ -494,7 +527,7 @@ export class RewardsRepository {
         .set({
           ...fields,
           ...(status ? { status } : {}),
-          ...(depleted ? { status: 'DEPLETED' as const } : {}),
+          ...(depleted && current.status !== 'EXPIRED' ? { status: 'DEPLETED' as const } : {}),
           updatedAt: new Date(),
         })
         .where(eq(vouchers.id, id))

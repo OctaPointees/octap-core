@@ -223,6 +223,10 @@ export const voucherOwnerships = pgTable(
     uniqueIndex('voucher_ownership_serial_idx').on(t.serialCode),
     // Serves the per-member count; the limit itself is `vouchers.per_member_limit`.
     index('voucher_ownership_voucher_member_count_idx').on(t.voucherId, t.organizationEndUserId),
+    // The expiry sweep's scan: unused customer vouchers by deadline.
+    index('voucher_ownership_available_expiry_idx')
+      .on(t.expiresAt)
+      .where(sql`${t.status} = 'AVAILABLE'`),
     // No organization column: both sides must be the tenant's, the member and the voucher. Checking
     // the member alone would let a tenant link its own member to another organization's voucher on
     // insert (the foreign key check does not go through RLS, and `WITH CHECK` falls back to `USING`).

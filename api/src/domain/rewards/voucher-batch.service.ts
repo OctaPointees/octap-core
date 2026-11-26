@@ -75,6 +75,7 @@ export class VoucherBatchService {
   }
 
   async list(organizationId: string, includeArchived: unknown, tx?: DrizzleDb): Promise<VoucherBatchDto[]> {
+    await this.rewardsRepo.expireDueFor(organizationId, tx);
     const batches = await this.rewardsRepo.listVoucherBatches(organizationId, parseFlag(includeArchived), tx);
     const counts = await this.rewardsRepo.voucherBatchStatusCounts(
       organizationId,
@@ -86,6 +87,7 @@ export class VoucherBatchService {
 
   /** Another organization's batch is a 404. */
   async get(organizationId: string, batchId: string, tx?: DrizzleDb): Promise<VoucherBatchDetailDto> {
+    await this.rewardsRepo.expireDueFor(organizationId, tx);
     const found = await this.rewardsRepo.findVoucherBatch(organizationId, batchId, tx);
     if (!found) throw new NotFoundException('Voucher batch not found');
     const approvals = await this.rewardsRepo.latestApprovals(
