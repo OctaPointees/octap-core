@@ -44,4 +44,4 @@ Points expire according to your program's policy. OctaP removes expired points f
 
 ## Reversals
 
-A reversal undoes a confirmed earn or redemption in the ledger straight away, and a chain-confirmed original is also mirrored on-chain afterwards. An earn can be reversed only while all of its points are unspent and unexpired, so a reversal never leaves a negative balance.
+A reversal undoes a confirmed earn or redemption in the ledger straight away, and a chain-confirmed original is also mirrored on-chain afterwards. An earn can be reversed only while all of its points are unspent, not held by a pending redemption, and more than 10 minutes from expiry, so a reversal never leaves a negative balance.

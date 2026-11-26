@@ -284,6 +284,17 @@ export function eventField<T = unknown>(
   return (event?.parsedJson as Record<string, unknown> | undefined)?.[field] as T | undefined;
 }
 
+/** A published policy version as the chain holds it. */
+export interface PolicyVersionDetails {
+  version: bigint;
+  earnBps: bigint;
+  expiryMs: bigint;
+  /** The transaction that published (and froze) it. */
+  publishedDigest: string | null;
+  /** Its checkpoint time; null if not checkpointed yet. */
+  publishedAtMs: number | null;
+}
+
 /**
  * Thin, backend-only wrapper around the generated `octap` Move bindings.
  *
@@ -299,17 +310,6 @@ export function eventField<T = unknown>(
  * decommissioned (confirmed live against testnet: `getCoins` returns
  * `-32601 Method not found`, not a soft deprecation warning).
  */
-/** A published policy version as the chain holds it. */
-export interface PolicyVersionDetails {
-  version: bigint;
-  earnBps: bigint;
-  expiryMs: bigint;
-  /** The transaction that published (and froze) it. */
-  publishedDigest: string | null;
-  /** Its checkpoint time; null if not checkpointed yet. */
-  publishedAtMs: number | null;
-}
-
 export class OctapChainClient {
   readonly rpc: SuiGrpcClient;
   private readonly packageId: string;

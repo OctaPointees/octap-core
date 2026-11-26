@@ -824,6 +824,26 @@ describe('reversal', () => {
       /already spent/,
     ],
     ['expired', async () => confirmedEarn(100, { expiresInMs: -1000 }), /expired/],
+    // The chain checks expiry when the worker submits, later than now.
+    ['nearly expired', async () => confirmedEarn(100, { expiresInMs: 5 * 60 * 1000 }), /within 10 minutes/],
+    [
+      'held (a reserved, unsigned redemption)',
+      async () => {
+        const earn = await confirmedEarn(100);
+        const ownership = await repo.getOrCreateCreditOwnership(orgId, memberId);
+        await repo.setSuiCreditAccountId(ownership.id, '0xacc');
+        // Buckets are consumed at finalize, so the earn's bucket still looks whole.
+        await repo.reservePosRedemption({
+          organizationId: orgId,
+          organizationEndUserId: memberId,
+          pointsAmount: 100,
+          idempotencyKey: 'hold',
+          benefit: POS_BENEFIT,
+        });
+        return earn;
+      },
+      /held by a redemption in progress/,
+    ],
   ])('refuses to reverse a %s earn, as the chain would, and writes nothing', async (_label, setup, reason) => {
     const earn = await setup();
     const before = await getOwnership(db, memberId);

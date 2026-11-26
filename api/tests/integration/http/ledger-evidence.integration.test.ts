@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
 import { createTestApp } from '../support/app.js';
 import {
   insertLoyaltyTransaction,
@@ -105,6 +106,31 @@ describe('on-chain evidence: org history, account ids, policy and balance reconc
     await console_('stranger', '/transactions').expect(403);
   });
 
+  it('keeps paging a status filter after the last row of a page changed status', async () => {
+    const first = await confirmedEarn(alice, 100, new Date('2026-11-01T00:00:00Z'));
+    const second = await confirmedEarn(bob, 200, new Date('2026-11-02T00:00:00Z'));
+    const page = (
+      await ctx.http().get('/v1/credits/transactions').query({ status: 'CONFIRMED', limit: '1' }).set(key).expect(200)
+    ).body;
+    expect(page.nextCursor).toBe(second.id);
+    // The anchor leaves the filter (a PENDING earn the worker confirmed is the routine case).
+    await ctx.db
+      .update(schema.loyaltyTransactions)
+      .set({ status: 'REVERSED' })
+      .where(eq(schema.loyaltyTransactions.id, second.id));
+    const next = (
+      await ctx
+        .http()
+        .get('/v1/credits/transactions')
+        .query({ status: 'CONFIRMED', limit: '1', cursor: page.nextCursor })
+        .set(key)
+        .expect(200)
+    ).body;
+    expect(next.items.map((item: { id: string }) => item.id)).toEqual([first.id]);
+    // A cursor from another member's history is still refused.
+    await ctx.http().get('/v1/credits/transactions').query({ memberId: alice, cursor: second.id }).set(key).expect(400);
+  });
+
   it('shows the member’s CreditAccount id on their balance', async () => {
     await setOwnership(ctx.db, alice, { suiCreditAccountId: '0xalice', confirmedBalance: 0 });
     const balance = (await ctx.http().get(`/v1/credits/members/${alice}/balance`).set(key).expect(200)).body;
@@ -140,6 +166,33 @@ describe('on-chain evidence: org history, account ids, policy and balance reconc
     ctx.adapters.suiBuilder.creditAccountSpendable.mockResolvedValueOnce(150n);
     const pending = (await ctx.http().get(`/v1/credits/members/${carol}/reconciliation`).set(key).expect(200)).body;
     expect(pending.status).toBe('PENDING');
+
+    // A voucher claim is first recorded with `memberId` only; a voucher use never moves the balance.
+    const dave = (await seedMember(ctx.db, orgId)).memberId;
+    await setOwnership(ctx.db, dave, { suiCreditAccountId: '0xdave', confirmedBalance: 100 });
+    await ctx.db.insert(schema.operations).values([
+      {
+        tenantId: orgId,
+        idempotencyKey: 'claim',
+        commandType: 'VOUCHER_CLAIM',
+        status: 'PENDING',
+        payload: { voucherId: randomUUID(), memberId: dave },
+      },
+    ]);
+    ctx.adapters.suiBuilder.creditAccountSpendable.mockResolvedValueOnce(100n);
+    expect((await ctx.http().get(`/v1/credits/members/${dave}/reconciliation`).set(key)).body.status).toBe('PENDING');
+
+    const erin = (await seedMember(ctx.db, orgId)).memberId;
+    await setOwnership(ctx.db, erin, { suiCreditAccountId: '0xerin', confirmedBalance: 100 });
+    await ctx.db.insert(schema.operations).values({
+      tenantId: orgId,
+      idempotencyKey: 'use',
+      commandType: 'VOUCHER_USE_RESERVE',
+      status: 'PENDING',
+      payload: { organizationEndUserId: erin },
+    });
+    ctx.adapters.suiBuilder.creditAccountSpendable.mockResolvedValueOnce(100n);
+    expect((await ctx.http().get(`/v1/credits/members/${erin}/reconciliation`).set(key)).body.status).toBe('MATCH');
 
     await ctx.http().get(`/v1/credits/members/${randomUUID()}/reconciliation`).set(key).expect(404);
     await console_('stranger', `/members/${alice}/reconciliation`).expect(403);

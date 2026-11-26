@@ -62,6 +62,6 @@ const reversal = await client.reverseTransaction({
 });
 ```
 
-Bạn có thể đảo giao dịch `EARN` và `REDEEM` đã xác nhận. Một lệnh `EARN` chỉ đảo được khi toàn bộ số điểm của nó chưa bị tiêu và chưa hết hạn, giống quy tắc trên chain. Nếu không, lệnh trả `409`, và bạn bù cho khách ngoài sổ cái. Giao dịch `PENDING` không đảo được: nó sẽ được xử lý xong hoặc được giải phóng.
+Bạn có thể đảo giao dịch `EARN` và `REDEEM` đã xác nhận. Một lệnh `EARN` chỉ đảo được khi toàn bộ số điểm của nó chưa bị tiêu, không bị một lệnh đổi điểm đang chờ giữ lại, và còn hơn 10 phút mới hết hạn, giống quy tắc trên chain. Nếu không, lệnh trả `409`, và bạn bù cho khách ngoài sổ cái. Giao dịch `PENDING` không đảo được: nó sẽ được xử lý xong hoặc được giải phóng.
 
 Để đảo một claim voucher trả phí, hãy đảo giao dịch `REDEEM` của nó. Xem phần hoàn tiền trong [Quản lý voucher](/vi/guides/manage-vouchers/).

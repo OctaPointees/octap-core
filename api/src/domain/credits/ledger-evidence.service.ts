@@ -18,6 +18,11 @@ import { ProgramsRepository } from '#infra/db/repositories/programs.repository.j
 export const RECONCILIATION_CACHE_SECONDS = 30;
 /** A published policy is frozen on-chain and never changes: its read is cached for an hour. */
 const POLICY_CACHE_SECONDS = 3600;
+/**
+ * A not-found is cached only briefly: right after provisioning, a lagging fullnode may not have
+ * the object yet, and an hour of MISMATCH for that would be wrong.
+ */
+const MISSING_POLICY_CACHE_SECONDS = 30;
 
 type PolicyDetails = NonNullable<ProgramEvidence['policy']>;
 
@@ -171,7 +176,12 @@ export class LedgerEvidenceService {
         publishedDigest: details.publishedDigest,
         publishedAt: details.publishedAtMs === null ? null : new Date(details.publishedAtMs).toISOString(),
       };
-      await this.redis.set(key, JSON.stringify(policy), 'EX', POLICY_CACHE_SECONDS);
+      await this.redis.set(
+        key,
+        JSON.stringify(policy),
+        'EX',
+        policy ? POLICY_CACHE_SECONDS : MISSING_POLICY_CACHE_SECONDS,
+      );
       return policy;
     } catch (error: unknown) {
       this.logger.warn(

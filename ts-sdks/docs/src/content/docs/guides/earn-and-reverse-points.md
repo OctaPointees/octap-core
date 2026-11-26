@@ -62,6 +62,6 @@ const reversal = await client.reverseTransaction({
 });
 ```
 
-You can reverse confirmed `EARN` and `REDEEM` transactions. An `EARN` can be reversed only while all of its points are still unspent and unexpired, the same rule the chain applies. Otherwise the call fails with `409`, and you compensate the customer outside the ledger. A `PENDING` transaction can't be reversed: it either settles or gets released.
+You can reverse confirmed `EARN` and `REDEEM` transactions. An `EARN` can be reversed only while all of its points are still unspent, not held by a redemption in progress, and more than 10 minutes from expiry, the same rule the chain applies. Otherwise the call fails with `409`, and you compensate the customer outside the ledger. A `PENDING` transaction can't be reversed: it either settles or gets released.
 
 To reverse a paid voucher claim, reverse its `REDEEM` transaction. See [Refunds](/guides/manage-vouchers/#refunds).

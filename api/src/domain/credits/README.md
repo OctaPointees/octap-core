@@ -9,7 +9,8 @@ Unsigned POS/voucher holds are released after 30 minutes on the next balance rea
 
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
   is unique), idempotent on its own `idempotencyKey`. An earn is reversible only while its bucket
-  is whole and unexpired, the chain's own rule for `reverse_earn`: a spent or expired one is a 409
+  is whole, not held by a pending redemption, and more than 10 minutes from expiry, the chain's own
+  rule for `reverse_earn` with room for the worker's delay: otherwise a 409
   (OCT-334), so a reversal never drives the balance negative or diverges from the chain. If the
   original reached the chain (it has a `blockchainTransactionId`), the same transaction queues a
   `CREDIT_REVERSAL_CHAIN_SUBMIT` command, which `chain-submit.processor.ts` mirrors with

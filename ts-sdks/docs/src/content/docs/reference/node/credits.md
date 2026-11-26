@@ -179,4 +179,4 @@ reverseTransaction(request: ReverseTransactionRequest, options?): Promise<Revers
 | `idempotencyKey` | `string` | **Required.** |
 | `reason` | `string` | **Required.** |
 
-Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance` and `idempotencyKey`. A spent or expired earn can't be reversed: `409`.
+Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance` and `idempotencyKey`. An earn whose points are spent, held by a pending redemption, or expire within 10 minutes can't be reversed: `409`.
