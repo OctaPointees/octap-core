@@ -130,9 +130,8 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
       createdAt: new Date(WINDOW_FROM.getTime() - DAY_MS),
     });
 
-    const body = (
-      await summary('owner', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200)
-    ).body;
+    const body = (await summary('owner', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200))
+      .body;
 
     expect(body).toMatchObject({
       from: WINDOW_FROM.toISOString(),
@@ -146,9 +145,9 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
       { start: day(2, 0).toISOString(), earned: 0, redeemed: 0 },
     ]);
 
-    expect((await summary('developer', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200)).body).toMatchObject(
-      { circulation: { earned: 150 } },
-    );
+    expect(
+      (await summary('developer', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200)).body,
+    ).toMatchObject({ circulation: { earned: 150 } });
     await summary('stranger').expect(403);
   });
 
@@ -170,9 +169,8 @@ describe('program analytics: how points and vouchers actually moved, for Owner a
     // Claimed before the window: does not count.
     await claimVoucher(bob, { claimedAt: new Date(WINDOW_FROM.getTime() - DAY_MS) });
 
-    const body = (
-      await summary('owner', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200)
-    ).body;
+    const body = (await summary('owner', { from: WINDOW_FROM.toISOString(), to: WINDOW_TO.toISOString() }).expect(200))
+      .body;
     expect(body.vouchers).toEqual({ claimed: 3, redeemed: 1, expiredUnused: 1 });
     expect(used.status).toBe('REDEEMED');
     expect(expired.status).toBe('EXPIRED');
