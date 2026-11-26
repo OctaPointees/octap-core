@@ -110,7 +110,8 @@ export class SandboxRepository {
 
   /**
    * Holds `points` of the sandbox balance under a PENDING redemption. A replay of the same key and
-   * payload returns the same hold (or its outcome). Releases the member's abandoned holds first.
+   * payload returns the same hold (or its outcome). Releases the member's abandoned holds first,
+   * before the replay too, so a retry after the hold expired answers FAILED, never a dead PENDING.
    */
   async reserve(params: {
     organizationId: string;
@@ -128,12 +129,12 @@ export class SandboxRepository {
       ...params.benefit,
     });
     return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
+      await this.releaseAbandoned(tx, params.organizationEndUserId);
       const existing = await this.byKey(tx, params.organizationId, params.idempotencyKey, false);
       if (existing) {
         if (existing.payloadHash !== payloadHash) throw new OperationPayloadConflictError(params.idempotencyKey);
         return existing;
       }
-      await this.releaseAbandoned(tx, params.organizationEndUserId);
       const balance = await this.lockBalance(tx, params.organizationId, params.organizationEndUserId);
       const available = balance.confirmedBalance - balance.pendingRedemption;
       if (available < params.points) throw new SandboxInsufficientPointsError(available);
@@ -171,7 +172,8 @@ export class SandboxRepository {
    * Settles a sandbox hold by its digest, as the customer's device would with a signature. The
    * digest is the only thing that identifies it (finalize carries no key), so the lookup is the
    * one RLS exception here; everything after it runs under the hold's organization. Returns
-   * `undefined` for an unknown digest.
+   * `undefined` for an unknown digest. An expired hold is released in a transaction that commits,
+   * and only then refused.
    */
   async finalize(
     digest: string,
@@ -184,7 +186,7 @@ export class SandboxRepository {
         and(eq(sandboxLoyaltyTransactions.digest, digest), eq(sandboxLoyaltyTransactions.transactionType, 'REDEEM')),
       );
     if (!found) return undefined;
-    return withTenant(this.db, found.organizationId, async (tx) => {
+    const outcome = await withTenant(this.db, found.organizationId, async (tx) => {
       const [hold] = await tx
         .select()
         .from(sandboxLoyaltyTransactions)
@@ -198,11 +200,15 @@ export class SandboxRepository {
       await this.lockBalance(tx, hold.organizationId, hold.organizationEndUserId);
       if (now.getTime() - hold.createdAt.getTime() > SANDBOX_HOLD_TTL_MS) {
         await this.settleHold(tx, hold, 'FAILED');
-        throw new SandboxHoldReleasedError('This reserved redemption expired unsigned and was released; reserve again');
+        return 'EXPIRED' as const;
       }
       const [confirmed] = await this.settleHold(tx, hold, 'CONFIRMED');
       return { transaction: confirmed, balance: await this.readBalance(tx, hold.organizationEndUserId) };
     });
+    // Refused outside the transaction: a throw inside it would roll the release back.
+    if (outcome === 'EXPIRED')
+      throw new SandboxHoldReleasedError('This reserved redemption expired unsigned and was released; reserve again');
+    return outcome;
   }
 
   /** The member's sandbox balance, zero before their first sandbox earn. Releases abandoned holds first. */
@@ -213,9 +219,13 @@ export class SandboxRepository {
     });
   }
 
-  /** Newest first; `null` when `cursor` is not one of this member's sandbox transactions. */
+  /**
+   * Newest first; `null` when `cursor` is not one of this member's sandbox transactions. Releases
+   * abandoned holds first, as `balance` does, so history and balance agree.
+   */
   async listByMember(organizationId: string, organizationEndUserId: string, limit: number, cursor?: string) {
     return withTenant(this.db, organizationId, async (tx) => {
+      await this.releaseAbandoned(tx, organizationEndUserId);
       const ofMember = and(
         eq(sandboxLoyaltyTransactions.organizationId, organizationId),
         eq(sandboxLoyaltyTransactions.organizationEndUserId, organizationEndUserId),

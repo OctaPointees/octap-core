@@ -41,8 +41,8 @@ function isUniqueViolation(err: unknown): boolean {
 
 /** The request checks every POS reserve makes, live or sandbox (OCT-297). */
 export function assertValidReserveRequest(request: ReservePosRedemptionRequest): void {
-  if (request.pointsAmount <= 0) {
-    throw new BadRequestException('Points amount must be greater than zero');
+  if (!Number.isSafeInteger(request.pointsAmount) || request.pointsAmount <= 0) {
+    throw new BadRequestException('Points amount must be a whole number greater than zero');
   }
   if (!request.orderReference?.trim() || request.orderReference.length > 100) {
     throw new BadRequestException('orderReference must be 1-100 characters');

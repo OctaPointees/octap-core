@@ -176,6 +176,63 @@ describe('sandbox mode: a sandbox key never touches real points, the chain or we
     await reserve({ pointsAmount: 5000 }).expect(400);
   });
 
+  it('refuses a non-integer amount with 400, like live', async () => {
+    await earn(sandbox).expect(201);
+    await reserve({ pointsAmount: 1.5 }).expect(400);
+  });
+
+  it('releases a hold that expired unsigned, for good, and a retry under its key answers FAILED', async () => {
+    await earn(sandbox).expect(201);
+    const reserved = (await reserve().expect(201)).body;
+    const expired = new Date(Date.now() - 31 * 60 * 1000);
+    await ctx.db
+      .update(schema.sandboxLoyaltyTransactions)
+      .set({ createdAt: expired })
+      .where(eq(schema.sandboxLoyaltyTransactions.id, reserved.transactionId));
+
+    // History alone (no balance read first) already shows it released.
+    const history = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(sandbox).expect(200))
+      .body;
+    expect(history.items[0]).toMatchObject({ transactionType: 'REDEEM', status: 'FAILED' });
+
+    const finalize = () =>
+      ctx.http().post('/v1/credits/redeem/finalize').send({ digest: reserved.digest, signature: 'late' }).expect(409);
+    await finalize();
+    await finalize();
+    const balance = (await ctx.http().get(`/v1/credits/members/${memberId}/balance`).set(sandbox).expect(200)).body;
+    expect(balance).toMatchObject({ confirmedBalance: 1000, pendingRedemption: 0 });
+
+    const retried = (await reserve().expect(201)).body;
+    expect(retried).toMatchObject({ transactionId: reserved.transactionId, status: 'FAILED', digest: null });
+  });
+
+  it('finalize releases an expired hold it finds, and the release sticks', async () => {
+    await earn(sandbox).expect(201);
+    const reserved = (await reserve().expect(201)).body;
+    await ctx.db
+      .update(schema.sandboxLoyaltyTransactions)
+      .set({ createdAt: new Date(Date.now() - 31 * 60 * 1000) })
+      .where(eq(schema.sandboxLoyaltyTransactions.id, reserved.transactionId));
+    await ctx.http().post('/v1/credits/redeem/finalize').send({ digest: reserved.digest, signature: 's' }).expect(409);
+    const [hold] = await ctx.db
+      .select()
+      .from(schema.sandboxLoyaltyTransactions)
+      .where(eq(schema.sandboxLoyaltyTransactions.id, reserved.transactionId));
+    expect(hold.status).toBe('FAILED');
+    const [balance] = await ctx.db.select().from(schema.sandboxCreditBalances);
+    expect(balance).toMatchObject({ confirmedBalance: 1000, pendingRedemption: 0 });
+  });
+
+  it('verifies a customer with a sandbox key: the first step of the POS flow', async () => {
+    const verified = await ctx
+      .http()
+      .post('/v1/identity/verify')
+      .set(sandbox)
+      .send({ idToken: 'google-jwt' })
+      .expect(200);
+    expect(verified.body).toMatchObject({ suiAddress: '0xzklogin' });
+  });
+
   it('is refused (403 SANDBOX_NOT_SUPPORTED) on every write route that does not handle sandbox', async () => {
     const reverse = await ctx
       .http()
