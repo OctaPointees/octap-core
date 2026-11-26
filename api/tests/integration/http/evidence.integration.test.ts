@@ -258,6 +258,9 @@ describe('audit evidence: sealed periods, bundles and checks, Owner only (OCT-77
           .set({ manifestHash: 'forged' })
           .where(eq(schema.evidencePeriods.id, periodId));
       }),
-    ).rejects.toThrow(/permission denied/);
+      // drizzle wraps the Postgres error: the refusal is on its cause.
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: expect.stringMatching(/permission denied/) }),
+    });
   });
 });
