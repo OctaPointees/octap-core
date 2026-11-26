@@ -193,7 +193,11 @@ describe('sandbox mode: a sandbox key never touches real points, the chain or we
     // History alone (no balance read first) already shows it released.
     const history = (await ctx.http().get(`/v1/credits/members/${memberId}/transactions`).set(sandbox).expect(200))
       .body;
-    expect(history.items[0]).toMatchObject({ transactionType: 'REDEEM', status: 'FAILED' });
+    // Backdating the hold put it behind the earn: find it by id, not by position.
+    expect(history.items.find((item: { id: string }) => item.id === reserved.transactionId)).toMatchObject({
+      transactionType: 'REDEEM',
+      status: 'FAILED',
+    });
 
     const finalize = () =>
       ctx.http().post('/v1/credits/redeem/finalize').send({ digest: reserved.digest, signature: 'late' }).expect(409);
