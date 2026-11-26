@@ -9,8 +9,8 @@
 /** `SEALING` while the seal is on its way to the chain, then `SEALED` for good. */
 export type EvidencePeriodStatus = 'SEALING' | 'SEALED';
 
-/** The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy. */
-export type EvidenceArchiveStatus = 'PENDING' | 'ARCHIVED' | 'DISABLED';
+/** The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy, `SKIPPED` for an empty period. */
+export type EvidenceArchiveStatus = 'PENDING' | 'ARCHIVED' | 'DISABLED' | 'SKIPPED';
 
 /**
  * One loyalty transaction confirmed on-chain during the period. Only facts that never change once

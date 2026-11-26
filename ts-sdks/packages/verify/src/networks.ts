@@ -16,8 +16,8 @@ export type AuditNetwork = 'testnet' | 'mainnet';
 
 export const AUDIT_NETWORKS: Record<AuditNetwork, AuditNetworkConfig | undefined> = {
   testnet: {
-    packageId: '0xe72b14575bfabc48732c0cda1e5eef7d2ebfa0a81481b5fd1cd8547edfb74b84',
-    registryId: '0x23615d46f0727903f35b096a63ea02fa7cfa050c76742a37fddb307a7cdc8807',
+    packageId: '0xd6cf2cfc77078d64b7a4a8b2cc7facc747812a43a38fc82096f2a0a181799c6c',
+    registryId: '0x117e9bdacdde8b491b51326c29d72ba2f4c756fac46eff52ab10782c95907784',
     rpcUrl: 'https://fullnode.testnet.sui.io:443',
   },
   /** Not published yet; see contracts/audit/DEPLOYMENTS.md. */

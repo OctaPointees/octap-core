@@ -15,7 +15,7 @@ export interface OctapAuditConfig extends AuditNetworkConfig {
 
 export const TESTNET_OCTAP_AUDIT_CONFIG: OctapAuditConfig = {
   ...AUDIT_NETWORKS.testnet!,
-  sealerCapId: '0xf9863f1252dadd5306075039b26d9baa79548379a192276751a3efb0b3c056d7',
+  sealerCapId: '0xac58eb84562fc7ffd110e06d7b94f76b97ee518e04ac7e5b89997d90d7f2cad4',
 };
 
 /** Not published yet; see contracts/audit/DEPLOYMENTS.md. */

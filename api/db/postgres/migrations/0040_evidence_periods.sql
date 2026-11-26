@@ -1,4 +1,4 @@
-CREATE TYPE "public"."evidence_archive_status" AS ENUM('PENDING', 'ARCHIVED', 'DISABLED');--> statement-breakpoint
+CREATE TYPE "public"."evidence_archive_status" AS ENUM('PENDING', 'ARCHIVED', 'DISABLED', 'SKIPPED');--> statement-breakpoint
 CREATE TYPE "public"."evidence_period_status" AS ENUM('SEALING', 'SEALED');--> statement-breakpoint
 CREATE TABLE "evidence_periods" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

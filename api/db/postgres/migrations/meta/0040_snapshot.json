@@ -1,5 +1,5 @@
 {
-  "id": "1c0404da-57e6-4aaa-8d8c-18563b050f05",
+  "id": "5d13b0e0-7f50-4f4c-9737-36945f5bd780",
   "prevId": "ea3384ee-8312-47c7-9c36-4b1a6a724b79",
   "version": "7",
   "dialect": "postgresql",
@@ -5291,7 +5291,8 @@
       "values": [
         "PENDING",
         "ARCHIVED",
-        "DISABLED"
+        "DISABLED",
+        "SKIPPED"
       ]
     },
     "public.evidence_period_status": {

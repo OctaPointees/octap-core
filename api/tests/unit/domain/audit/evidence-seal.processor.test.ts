@@ -120,21 +120,32 @@ describe('EvidenceSealProcessor', () => {
     vi.stubEnv('EVIDENCE_SEAL_DELAY_MS', '600000');
   });
 
-  it('seals each finished day with activity, in order, chaining each to the last and skipping empty days', async () => {
+  it('seals every finished day from the first activity on, contiguously, empty days included', async () => {
     const { repo, sui, processor } = setup([
       new Date(day(20).getTime() + 3600_000),
       new Date(day(20).getTime() + 7200_000),
       new Date(day(23).getTime() + 60_000),
     ]);
     const result = await processor.runOnce(new Date(day(24).getTime() + 3600_000));
-    expect(result.sealed).toBe(2);
-    const [first, second] = repo.periods;
-    expect(first).toMatchObject({ periodStart: day(20), periodEnd: day(21), ledgerCount: 2, status: 'SEALED' });
-    expect(first.previousManifestHash).toBeNull();
-    expect(second).toMatchObject({ periodStart: day(23), ledgerCount: 1, status: 'SEALED' });
-    expect(second.previousManifestHash).toBe(first.manifestHash);
-    expect(sui.sealEvidence).toHaveBeenCalledTimes(2);
-    expect(first.archiveStatus).toBe('DISABLED');
+    expect(result.sealed).toBe(4);
+    expect(repo.periods.map((p) => [p.periodStart, p.ledgerCount, p.status, p.archiveStatus])).toEqual([
+      [day(20), 2, 'SEALED', 'DISABLED'],
+      [day(21), 0, 'SEALED', 'SKIPPED'],
+      [day(22), 0, 'SEALED', 'SKIPPED'],
+      [day(23), 1, 'SEALED', 'DISABLED'],
+    ]);
+    expect(repo.periods[0].previousManifestHash).toBeNull();
+    for (let i = 1; i < 4; i++) {
+      expect(repo.periods[i].periodStart).toEqual(repo.periods[i - 1].periodEnd);
+      expect(repo.periods[i].previousManifestHash).toBe(repo.periods[i - 1].manifestHash);
+    }
+    expect(sui.sealEvidence).toHaveBeenCalledTimes(4);
+  });
+
+  it('seals nothing for an organization that never had activity', async () => {
+    const { repo, processor } = setup([]);
+    await processor.runOnce(day(24));
+    expect(repo.periods).toHaveLength(0);
   });
 
   it('leaves a day until its delay has passed', async () => {

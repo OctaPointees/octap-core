@@ -3480,11 +3480,12 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "EvidenceArchiveStatus": {
-    "description": "The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy.",
+    "description": "The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy, `SKIPPED` for an empty period.",
     "enum": [
       "ARCHIVED",
       "DISABLED",
-      "PENDING"
+      "PENDING",
+      "SKIPPED"
     ],
     "type": "string"
   },

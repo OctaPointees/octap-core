@@ -59,8 +59,11 @@ was when the period ended?* Sui already proves the on-chain ledger. What it cann
 the off-chain record: who did what (the audit log above), receipts, purchase amounts, and which
 receipt went with which chain transaction. Sealing makes any later change to them detectable.
 
-- **Periods.** One per organization per period with activity: a UTC day (`EVIDENCE_PERIOD_MS`,
-  five minutes for a demo). A period with no activity has no row. The worker
+- **Periods.** A UTC day (`EVIDENCE_PERIOD_MS`, five minutes for a demo). An organization's
+  periods start at the period of its first activity and are contiguous from then on: a period with
+  no activity is sealed too, as empty (archive status `SKIPPED`), so leaving a period out is not
+  possible and data that later appears in an empty period is caught. An organization that never had
+  activity has no periods. The worker
   (`evidence-seal.processor.ts`, on when `EVIDENCE_SEAL_ENABLED=true`) seals a period
   `EVIDENCE_SEAL_DELAY_MS` after it ends (10 minutes), which leaves room for writes still committing
   at the boundary. Nobody creates, edits or deletes a period by hand.
@@ -75,8 +78,8 @@ receipt went with which chain transaction. Sealing makes any later change to the
   auditor compute the same value.
 - **Seal.** `octap_audit::evidence_seal::seal` (`contracts/audit`), signed by the issuer key, which
   holds the package's `SealerCap`. A seal is frozen and stamped by the chain's clock. The package's
-  registry refuses a seal that does not follow the organization's latest one, so a sealed period can't
-  be resealed, replaced or have another inserted before it. The package is immutable. A seal that
+  registry refuses a seal that does not start exactly where the organization's latest one ended, so a
+  sealed period can't be resealed, replaced, skipped or have another inserted before it. The package is immutable. A seal that
   may have landed on an interrupted try is looked up on-chain before it is sent again.
 - **Copy on Walrus.** When `WALRUS_CONSOLE_API_KEY` and `WALRUS_CONSOLE_BUCKET_ID` are set, each sealed
   bundle is Seal-encrypted and uploaded to a Walrus Console private folder

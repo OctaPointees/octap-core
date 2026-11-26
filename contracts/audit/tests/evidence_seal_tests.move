@@ -45,7 +45,7 @@ fun seal(
 }
 
 #[test]
-fun seals_a_chain_of_periods_and_freezes_each_seal() {
+fun seals_contiguous_periods_and_freezes_each_seal() {
     let mut scenario = ts::begin(SEALER);
     let clock = setup(&mut scenario);
 
@@ -65,8 +65,8 @@ fun seals_a_chain_of_periods_and_freezes_each_seal() {
     ts::return_shared(registry);
     ts::next_tx(&mut scenario, SEALER);
 
-    // A gap of empty days is allowed.
-    seal(&mut scenario, &clock, 3 * DAY_MS, 4 * DAY_MS, hash(2), hash(1));
+    // The next period starts exactly where the first ended.
+    seal(&mut scenario, &clock, DAY_MS, 2 * DAY_MS, hash(2), hash(1));
     let registry = ts::take_shared<SealRegistry>(&scenario);
     assert!(evidence_seal::latest_seal_id(&registry, org()) != option::some(first_id));
     ts::return_shared(registry);
@@ -75,7 +75,7 @@ fun seals_a_chain_of_periods_and_freezes_each_seal() {
     ts::end(scenario);
 }
 
-#[test, expected_failure(abort_code = evidence_seal::EOutOfOrder)]
+#[test, expected_failure(abort_code = evidence_seal::ENotContiguous)]
 fun refuses_a_period_before_the_latest_seal() {
     let mut scenario = ts::begin(SEALER);
     let clock = setup(&mut scenario);
@@ -85,7 +85,7 @@ fun refuses_a_period_before_the_latest_seal() {
     ts::end(scenario);
 }
 
-#[test, expected_failure(abort_code = evidence_seal::EOutOfOrder)]
+#[test, expected_failure(abort_code = evidence_seal::ENotContiguous)]
 fun refuses_to_seal_the_same_period_again() {
     let mut scenario = ts::begin(SEALER);
     let clock = setup(&mut scenario);
@@ -137,6 +137,16 @@ fun refuses_an_empty_period() {
     let mut scenario = ts::begin(SEALER);
     let clock = setup(&mut scenario);
     seal(&mut scenario, &clock, DAY_MS, DAY_MS, hash(1), vector[]);
+    clock.destroy_for_testing();
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = evidence_seal::ENotContiguous)]
+fun refuses_to_skip_a_period() {
+    let mut scenario = ts::begin(SEALER);
+    let clock = setup(&mut scenario);
+    seal(&mut scenario, &clock, 0, DAY_MS, hash(1), vector[]);
+    seal(&mut scenario, &clock, 2 * DAY_MS, 3 * DAY_MS, hash(2), hash(1));
     clock.destroy_for_testing();
     ts::end(scenario);
 }

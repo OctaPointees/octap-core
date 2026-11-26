@@ -4,7 +4,12 @@ import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 
 export const evidencePeriodStatusEnum = pgEnum('evidence_period_status', ['SEALING', 'SEALED']);
-export const evidenceArchiveStatusEnum = pgEnum('evidence_archive_status', ['PENDING', 'ARCHIVED', 'DISABLED']);
+export const evidenceArchiveStatusEnum = pgEnum('evidence_archive_status', [
+  'PENDING',
+  'ARCHIVED',
+  'DISABLED',
+  'SKIPPED',
+]);
 
 /**
  * EVIDENCE PERIOD (OCT-77): one sealed period of an organization's activity. The worker builds its

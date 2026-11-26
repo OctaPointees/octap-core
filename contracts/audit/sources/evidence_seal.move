@@ -7,10 +7,11 @@
 ///
 /// The registry keeps each organization's latest seal and enforces the chain
 /// of periods on-chain. A seal must name the previous seal's manifest hash,
-/// and it must start where that seal ended or later. So a sealed period can't
-/// be sealed again or replaced, and no period can be inserted before the
-/// latest one. Days with no activity are skipped: a later seal may start
-/// after a gap.
+/// and it must start exactly where that seal ended: an organization's periods
+/// are contiguous from its first seal on. So a sealed period can't be sealed
+/// again or replaced, nothing can be inserted before the latest one, and no
+/// period can be skipped: a period with no activity is sealed too, as empty,
+/// so data that appears in it later is caught like any other change.
 ///
 /// This is its own package, apart from `octap`, so that it is published once
 /// and never forces a fresh `octap` publish or a re-provision of every program.
@@ -23,7 +24,8 @@ use sui::table::{Self, Table};
 const EInvalidHash: u64 = 0;
 const EInvalidPeriod: u64 = 1;
 const EPeriodNotOver: u64 = 2;
-const EOutOfOrder: u64 = 3;
+/// The period does not start where the organization's latest seal ended.
+const ENotContiguous: u64 = 3;
 const EWrongPrevious: u64 = 4;
 const EInvalidOrganization: u64 = 5;
 
@@ -80,8 +82,8 @@ fun init(ctx: &mut TxContext) {
 }
 
 /// Seals one evidence period of `organization_id`. The period must be over,
-/// and it must follow the organization's latest seal, naming that seal's
-/// manifest hash as `previous_manifest_hash` (empty on the first seal).
+/// and it must start where the organization's latest seal ended, naming that
+/// seal's manifest hash as `previous_manifest_hash` (empty on the first seal).
 entry fun seal(
     _: &SealerCap,
     registry: &mut SealRegistry,
@@ -101,7 +103,7 @@ entry fun seal(
 
     if (registry.latest.contains(organization_id)) {
         let latest = &registry.latest[organization_id];
-        assert!(period_start_ms >= latest.period_end_ms, EOutOfOrder);
+        assert!(period_start_ms == latest.period_end_ms, ENotContiguous);
         assert!(previous_manifest_hash == latest.manifest_hash, EWrongPrevious);
     } else {
         assert!(previous_manifest_hash.is_empty(), EWrongPrevious);

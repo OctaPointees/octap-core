@@ -9,8 +9,9 @@ Anyone can then check a period against its seal, without trusting OctaP (`npx @o
 - **`SealerCap`** is the only way to create a seal, so the type proves who sealed it. It is held
   by the issuer address, the key `ChainSubmitWorker` already signs with.
 - **`SealRegistry`** is shared. It keeps each organization's latest seal and enforces the chain:
-  a seal names the previous seal's manifest hash and starts where it ended or later. A sealed
-  period can't be sealed again, replaced, or have another period inserted before it.
+  a seal names the previous seal's manifest hash and starts exactly where it ended
+  (`ENotContiguous` otherwise). A sealed period can't be sealed again or replaced, no period can be
+  skipped or inserted, and an empty period is sealed as empty.
 - **Immutable package.** The `UpgradeCap` was destroyed (`0x2::package::make_immutable`), so no
   upgrade can ever add another way to create a seal. A change is a fresh publish under a new id.
 

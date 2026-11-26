@@ -16,9 +16,11 @@ export function evidenceSealDelayMs(): number {
 
 /**
  * Seals each organization's finished periods on Sui, then keeps an encrypted copy of each on Walrus
- * (OCT-77). A period with no activity is skipped. An organization's periods are sealed strictly in
- * order: the chain refuses any other (`evidence_seal::seal`), so one that fails to seal holds the
- * organization's later ones until a later run gets it through.
+ * (OCT-77). An organization's chain starts at the period of its first activity and is contiguous
+ * from then on: the chain refuses a period that does not start where the last one ended
+ * (`evidence_seal::seal`), so a period with no activity is sealed too, as empty, and nothing can be
+ * left out by skipping it. An empty period has nothing to archive (`SKIPPED`). One that fails to
+ * seal holds the organization's later ones until a later run gets it through.
  */
 @Injectable()
 export class EvidenceSealProcessor {
@@ -53,13 +55,18 @@ export class EvidenceSealProcessor {
         sealed++;
         continue;
       }
-      const activity = await this.evidence.firstActivityFrom(organizationId, latest?.periodEnd ?? new Date(0));
-      if (!activity) return sealed;
-      const start = periodStartOf(activity, periodMs);
+      // The next period starts where the last one ended; the first, at the period of the first activity.
+      let start = latest?.periodEnd;
+      if (!start) {
+        const activity = await this.evidence.firstActivityFrom(organizationId, new Date(0));
+        if (!activity) return sealed;
+        start = periodStartOf(activity, periodMs);
+      }
       const end = new Date(start.getTime() + periodMs);
       if (end.getTime() + evidenceSealDelayMs() > now.getTime()) return sealed;
 
       const built = await this.builder.build(this.db, organizationId, start, end, latest?.manifestHash ?? null);
+      const empty = built.manifest.ledger.count === 0 && built.manifest.audit.count === 0;
       const period = await this.evidence.insert({
         organizationId,
         periodStart: start,
@@ -71,7 +78,7 @@ export class EvidenceSealProcessor {
         previousManifestHash: built.manifest.previousManifestHash,
         manifestHash: built.manifestHash,
         network: this.sui.evidenceNetwork,
-        archiveStatus: this.walrus.enabled ? 'PENDING' : 'DISABLED',
+        archiveStatus: empty ? 'SKIPPED' : this.walrus.enabled ? 'PENDING' : 'DISABLED',
       });
       if (!(await this.seal(period))) return sealed;
       sealed++;
