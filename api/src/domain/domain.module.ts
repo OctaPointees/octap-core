@@ -9,6 +9,7 @@ import { OrganizationsModule } from './organizations/organizations.module.js';
 import { McpAuthModule } from './mcp-auth/mcp-auth.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
 import { EventsModule } from './events/events.module.js';
+import { DeveloperModule } from './developer/developer.module.js';
 const featureModules = [
   OrganizationsModule,
   AdministrationModule,
@@ -20,6 +21,7 @@ const featureModules = [
   McpAuthModule,
   AssistantModule,
   EventsModule,
+  DeveloperModule,
 ];
 @Module({ imports: featureModules, exports: featureModules })
 export class DomainModule {}

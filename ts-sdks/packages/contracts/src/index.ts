@@ -11,3 +11,4 @@ export * from './governance.js';
 export * from './organizations.js';
 export * from './mcp-auth.js';
 export * from './assistant.js';
+export * from './request-logs.js';

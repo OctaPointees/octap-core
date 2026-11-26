@@ -95,6 +95,7 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   { name: 'WEBHOOK_DELIVERY_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'WEBHOOK_DELIVERY_BATCH_SIZE', kind: positive, readBy: WORKER },
   { name: 'EVENT_RETENTION_SWEEP_INTERVAL_MS', kind: positive, readBy: WORKER },
+  { name: 'REQUEST_LOG_RETENTION_SWEEP_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'CONSOLE_EVENTS_POLL_INTERVAL_MS', kind: positive, readBy: API },
   { name: 'CONSOLE_EVENTS_HEARTBEAT_MS', kind: positive, readBy: API },
   { name: 'INDEXER_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },

@@ -16,6 +16,7 @@ import { OrganizationProvisioningWorker } from './domain/organizations/provision
 import { OrganizationProvisioningProcessor } from './domain/organizations/provisioning.processor.js';
 import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.processor.js';
 import { EventRetentionWorker } from './domain/events/event-retention.worker.js';
+import { RequestLogRetentionWorker } from './domain/developer/request-log-retention.worker.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
 // the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
@@ -38,6 +39,7 @@ import { EventRetentionWorker } from './domain/events/event-retention.worker.js'
     CheckpointIndexerWorker,
     CheckpointIndexerProcessor,
     ProgramsService,
+    RequestLogRetentionWorker,
   ],
 })
 export class WorkerModule {}

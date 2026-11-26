@@ -5,6 +5,7 @@ import { asc, eq, getTableColumns } from 'drizzle-orm';
 import * as schema from '#infra/db/schema/index.js';
 import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 import { generateApiKey } from '#infra/auth/api-key-hash.util.js';
+import { drainRequestLogWrites } from '#domain/developer/request-log.middleware.js';
 
 export { schema };
 
@@ -18,8 +19,13 @@ export function connectTestDb(): { db: DrizzleDb; client: postgres.Sql } {
   return { db: drizzle(client, { schema }), client };
 }
 
-/** Empties every application table (drizzle's own migration journal lives in another schema). */
+/**
+ * Empties every application table (drizzle's own migration journal lives in another schema). Waits
+ * for request-log writes still in flight first: one landing during the truncate deadlocks with it,
+ * since its foreign keys lock the organization and key rows the truncate is also locking (PR #84).
+ */
 export async function resetDb(target: postgres.Sql | DrizzleDb): Promise<void> {
+  await drainRequestLogWrites();
   const client: postgres.Sql = '$client' in target ? (target.$client as postgres.Sql) : (target as postgres.Sql);
   const tables = await client<{ tablename: string }[]>`select tablename from pg_tables where schemaname = 'public'`;
   if (tables.length > 0) {

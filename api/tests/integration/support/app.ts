@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module.js';
 import { EnokiClient } from '#infra/clients/enoki/enoki.client.js';
+import { drainRequestLogWrites } from '#domain/developer/request-log.middleware.js';
 import { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
 import { SuiTransactionBuilderClient } from '#infra/clients/sui/sui-transaction-builder.client.js';
 import { DRIZZLE_DB, type DrizzleDb } from '#infra/db/postgres.provider.js';
@@ -82,6 +83,9 @@ export async function createTestApp(
     adapters,
     db: app.get<DrizzleDb>(DRIZZLE_DB),
     http: () => request(app.getHttpServer()),
-    close: () => app.close(),
+    close: async () => {
+      await drainRequestLogWrites();
+      await app.close();
+    },
   };
 }

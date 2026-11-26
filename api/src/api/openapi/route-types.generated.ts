@@ -5,6 +5,7 @@ import type { ConsoleAssistantController } from '../rest/console-assistant.contr
 import type { ConsoleIdentityController } from '../rest/console-identity.controller.js';
 import type { ConsoleOrganizationsController, PlatformOrganizationOwnersController, PlatformOrganizationRequestsController } from '../rest/console-organizations.controller.js';
 import type { ConsoleRefundPolicyController } from '../rest/console-refund-policy.controller.js';
+import type { ConsoleRequestLogsController } from '../rest/console-request-logs.controller.js';
 import type { ConsoleRewardsController } from '../rest/console-rewards.controller.js';
 import type { ConsoleVoucherBatchesController } from '../rest/console-voucher-batches.controller.js';
 import type { ConsoleWebhooksController } from '../rest/console-webhooks.controller.js';
@@ -67,6 +68,17 @@ export type ConsoleRefundPolicyController_history_Response = Awaited<ReturnType<
 export type ConsoleRefundPolicyController_history_Query = { "limit"?: Parameters<ConsoleRefundPolicyController['history']>[2]; "beforeVersion"?: Parameters<ConsoleRefundPolicyController['history']>[3] };
 export type ConsoleRefundPolicyController_publish_Response = Awaited<ReturnType<ConsoleRefundPolicyController['publish']>>;
 export type ConsoleRefundPolicyController_publish_Body = Parameters<ConsoleRefundPolicyController['publish']>[2];
+export type ConsoleRequestLogsController_list_Response = Awaited<ReturnType<ConsoleRequestLogsController['list']>>;
+export type ConsoleRequestLogsController_list_Query = Parameters<ConsoleRequestLogsController['list']>[2];
+export type ConsoleRequestLogsController_summary_Response = Awaited<ReturnType<ConsoleRequestLogsController['summary']>>;
+export type ConsoleRequestLogsController_summary_Query = Parameters<ConsoleRequestLogsController['summary']>[2];
+export type ConsoleRequestLogsController_timeseries_Response = Awaited<ReturnType<ConsoleRequestLogsController['timeseries']>>;
+export type ConsoleRequestLogsController_timeseries_Query = Parameters<ConsoleRequestLogsController['timeseries']>[2];
+export type ConsoleRequestLogsController_errors_Response = Awaited<ReturnType<ConsoleRequestLogsController['errors']>>;
+export type ConsoleRequestLogsController_errors_Query = Parameters<ConsoleRequestLogsController['errors']>[2];
+export type ConsoleRequestLogsController_tail_Response = Awaited<ReturnType<ConsoleRequestLogsController['tail']>>;
+export type ConsoleRequestLogsController_tail_Query = Parameters<ConsoleRequestLogsController['tail']>[2];
+export type ConsoleRequestLogsController_detail_Response = Awaited<ReturnType<ConsoleRequestLogsController['detail']>>;
 export type ConsoleRewardsController_list_Response = Awaited<ReturnType<ConsoleRewardsController['list']>>;
 export type ConsoleRewardsController_detail_Response = Awaited<ReturnType<ConsoleRewardsController['detail']>>;
 export type ConsoleRewardsController_create_Response = Awaited<ReturnType<ConsoleRewardsController['create']>>;
