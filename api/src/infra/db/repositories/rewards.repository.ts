@@ -24,6 +24,7 @@ import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
 import { recordEvent } from './events.repository.js';
+import { recordAudit } from './audit.repository.js';
 import { recordVoucherEvent, recordVoucherReturned, recordVoucherSubmitted } from './voucher-events.js';
 import {
   ABANDONED_POS_HOLD_GRACE_MS,
@@ -97,15 +98,18 @@ export class RewardsRuleError extends Error {
   }
 }
 
-function sameVoucherField(key: (typeof PUBLISHED_FIELDS)[number], before: unknown, after: unknown): boolean {
+/**
+ * Whether a voucher field keeps its value: `numeric` is compared as a number ("50.00" is 50), a date by
+ * its time, and `jsonb` (`terms`, `metadata`) by content, since Postgres reorders an object's keys.
+ */
+function sameVoucherField(key: string, before: unknown, after: unknown): boolean {
   if (before instanceof Date || after instanceof Date) {
     return (before as Date | null)?.getTime() === (after as Date | null)?.getTime();
   }
   if (key === 'discountValue' && before !== null && after !== null && before !== undefined && after !== undefined) {
     return Number(before) === Number(after);
   }
-  if (key === 'terms') return canonicalJson(before ?? null) === canonicalJson(after ?? null);
-  return (before ?? null) === (after ?? null);
+  return canonicalJson(before ?? null) === canonicalJson(after ?? null);
 }
 
 const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message);
@@ -454,6 +458,20 @@ export class RewardsRepository {
       const depleted = merged.totalSupply !== null && merged.claimedCount >= merged.totalSupply;
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
+      // An edit is audited by field name only (OCT-333); a status change has its own event.
+      const current_ = current as Record<string, unknown>;
+      const edited = Object.entries(fields)
+        .filter(([key, value]) => !sameVoucherField(key, current_[key], value))
+        .map(([key]) => key)
+        .sort();
+      if (edited.length > 0)
+        await recordAudit(tx, {
+          organizationId,
+          action: 'voucher.updated',
+          targetType: 'voucher',
+          targetId: id,
+          changes: { fields: edited },
+        });
       if (requestedStatus === 'ACTIVE' && !onChain) {
         const activation = await this.activation(tx, organizationId, actor);
         // While approval is required, an Owner's activation is the approval of whatever the draft holds,

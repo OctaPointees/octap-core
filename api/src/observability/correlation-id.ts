@@ -1,5 +1,6 @@
 import { Injectable, Logger, type NestMiddleware } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { runInRequestContext } from './request-context.js';
 
 /** Response header carrying the request's correlation id, so a caller can quote it to support. */
 export const CORRELATION_ID_HEADER = 'X-Request-Id';
@@ -58,6 +59,7 @@ export class CorrelationIdMiddleware implements NestMiddleware {
       if (response.statusCode >= 500) this.logger.error(line);
       else this.logger.log(line);
     });
-    next();
+    // The rest of the request (guards, handler, every await after them) runs in its context.
+    runInRequestContext(correlationId, next);
   }
 }

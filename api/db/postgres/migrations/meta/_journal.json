@@ -274,6 +274,13 @@
       "when": 1795679008387,
       "tag": "0038_loyalty_tx_org_history_index",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795701629245,
+      "tag": "0039_audit_log",
+      "breakpoints": true
     }
   ]
 }

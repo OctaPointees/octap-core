@@ -1,3 +1,4 @@
+import { setRequestActor } from '#observability/request-context.js';
 import {
   CanActivate,
   ExecutionContext,
@@ -63,9 +64,11 @@ export class ConsoleAccessGuard implements CanActivate {
         throw new ForbiddenException('This MCP access token is for another organization');
       request.consoleIdentity = identity;
       request.mcpToken = token;
+      setRequestActor({ type: 'USER', id: identity.user.id });
       return true;
     }
     request.consoleIdentity = await this.identity.authenticate(credential);
+    setRequestActor({ type: 'USER', id: request.consoleIdentity.user.id });
     if (platformAdminOnly && request.consoleIdentity.user.systemRole !== 'SYSTEM_ADMIN')
       throw new ForbiddenException('System Admin access is required');
     return true;

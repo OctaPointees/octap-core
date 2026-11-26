@@ -8,6 +8,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "AuditActorType": {
+    "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+    "enum": [
+      "CREDENTIAL",
+      "SYSTEM",
+      "USER"
+    ],
+    "type": "string"
+  },
   "BalanceReconciliationStatus": {
     "description": "How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the\nchain's own `credit_account::spendable`:\n- `MATCH`: the two are equal.\n- `PENDING`: something for this member is still on its way to the chain (a pending earn or\n  redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.\n- `MISMATCH`: nothing is in flight and they differ.\n- `UNAVAILABLE`: the chain could not be read just now.",
     "enum": [
@@ -149,6 +158,65 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     },
     "required": [
       "message"
+    ]
+  },
+  "ConsoleAuditLogController_list_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "actorType": {
+        "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+        "enum": [
+          "CREDENTIAL",
+          "SYSTEM",
+          "USER"
+        ],
+        "type": "string"
+      },
+      "actorId": {
+        "type": "string"
+      },
+      "action": {
+        "type": "string"
+      },
+      "targetType": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleAuditLogController_list_Response": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AuditLogEntry"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
     ]
   },
   "ConsoleChangeRequestsController_propose_Body": {
@@ -6220,6 +6288,96 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "role",
       "text"
+    ]
+  },
+  "AuditActorRef": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "$ref": "#/components/schemas/AuditActorType"
+      },
+      "id": {
+        "description": "A user id or an API key id; null for SYSTEM.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "label": {
+        "description": "The user's name, or the key's name and prefix, as they are now. Null for SYSTEM or a removed record.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "type"
+    ]
+  },
+  "AuditLogEntry": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "occurredAt": {
+        "type": "string"
+      },
+      "actor": {
+        "$ref": "#/components/schemas/AuditActorRef"
+      },
+      "action": {
+        "description": "`<target>.<verb>` (e.g. `api_key.revoked`, `member.blocked`) or an event type (`credits.earned`).",
+        "type": "string"
+      },
+      "target": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ]
+      },
+      "requestId": {
+        "description": "The request's `X-Request-Id`, to match the request log and OctaP's own logs.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "changes": {
+        "description": "Field names and non-personal values only, e.g. `{ status: { from: 'ACTIVE', to: 'BLOCKED' } }`.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "action",
+      "actor",
+      "changes",
+      "id",
+      "occurredAt",
+      "requestId",
+      "target"
     ]
   },
   "ConsoleCredential": {

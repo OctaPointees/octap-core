@@ -5,6 +5,8 @@ import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { organizationEvents } from '../schema/events.schema.js';
 import { webhookDeliveries, webhookEndpoints } from '../schema/webhooks.schema.js';
 import { withTenant } from '../rls.js';
+import { auditTargetOfEvent, recordAudit } from './audit.repository.js';
+import { hasRequestActor } from '#observability/request-context.js';
 
 export type OrganizationEvent = typeof organizationEvents.$inferSelect;
 
@@ -37,6 +39,18 @@ export async function recordEvent<T extends WebhookEventType>(
       })),
     );
   }
+  // A change someone made (an API key or a console user, not a worker or the chain) is also
+  // audited, durably, in the same transaction (OCT-333). The event itself is trimmed after 30 days.
+  if (hasRequestActor()) {
+    const target = auditTargetOfEvent(params.type, params.payload as unknown as Record<string, unknown>);
+    await recordAudit(tx, {
+      organizationId: params.organizationId,
+      action: params.type,
+      targetType: target.type,
+      targetId: target.id,
+      changes: { eventId: event.id },
+    });
+  }
   return event;
 }
 
@@ -62,6 +76,14 @@ export async function recordTestEvent(
     .insert(webhookDeliveries)
     .values({ organizationId: params.organizationId, endpointId: params.endpointId, eventId: event.id })
     .returning({ id: webhookDeliveries.id });
+  // Its own writer, not `recordEvent`, so the automatic event audit does not cover it (OCT-333).
+  await recordAudit(tx, {
+    organizationId: params.organizationId,
+    action: 'webhook_endpoint.tested',
+    targetType: 'webhook_endpoint',
+    targetId: params.endpointId,
+    changes: { eventId: event.id, deliveryId: delivery.id },
+  });
   return { eventId: event.id, deliveryId: delivery.id };
 }
 
