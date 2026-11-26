@@ -80,8 +80,9 @@ receipt went with which chain transaction. Sealing makes any later change to the
   may have landed on an interrupted try is looked up on-chain before it is sent again.
 - **Copy on Walrus.** When `WALRUS_CONSOLE_API_KEY` and `WALRUS_CONSOLE_BUCKET_ID` are set, each sealed
   bundle is Seal-encrypted and uploaded to a Walrus Console private folder
-  (`infra/clients/walrus`). Sealing never waits on it. The folder is created once with
-  `scripts/walrus-console-folder.mjs`. The Console network (`WALRUS_CONSOLE_NETWORK`, mainnet by
+  (`infra/clients/walrus`). Sealing never waits on it. Create the folder in Console first, then
+  mint the `read_write` key and sign its access grant: a key is granted the private folders that
+  exist when it is minted. The Console network (`WALRUS_CONSOLE_NETWORK`, mainnet by
   default) is independent of `SUI_NETWORK`: the copy is only stored there.
 - **Reading** (Owner only, like the audit log), under
   `/v1/console/organizations/:organizationId/evidence`:

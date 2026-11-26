@@ -184,4 +184,42 @@ describe('EvidenceSealProcessor', () => {
     await processor.archivePending();
     expect(repo.periods[0]).toMatchObject({ archiveStatus: 'ARCHIVED', walrusBlobId: 'blob-1' });
   });
+
+  it('keeps a period SEALING when the seal transaction emitted no seal event', async () => {
+    const { repo, sui, processor } = setup([new Date(day(20).getTime() + 1)]);
+    sui.sealEvidence.mockResolvedValueOnce({ digest: 'Tx', eventField: () => undefined } as never);
+    await processor.runOnce(day(22));
+    expect(repo.periods[0].status).toBe('SEALING');
+  });
+
+  it('retries an upload Walrus failed, records upload errors, and waits while it is still uploading', async () => {
+    const walrus = {
+      enabled: true,
+      upload: vi.fn(async () => 'file-1'),
+      fileState: vi.fn(async (): Promise<{ state: string; error?: string }> => ({ state: 'uploading' })),
+    };
+    const { repo, processor } = setup([new Date(day(20).getTime() + 1)], walrus);
+    await processor.runOnce(day(22));
+    await processor.archivePending();
+    expect(repo.periods[0]).toMatchObject({ archiveStatus: 'PENDING', archiveFileId: 'file-1' });
+
+    walrus.fileState.mockResolvedValueOnce({ state: 'failed', error: 'walrus: down' });
+    await processor.archivePending();
+    expect(repo.periods[0]).toMatchObject({ archiveFileId: null, archiveError: 'walrus: down' });
+
+    walrus.upload.mockRejectedValueOnce(new Error('policy missing'));
+    await processor.archivePending();
+    expect(repo.periods[0]).toMatchObject({ archiveStatus: 'PENDING', archiveError: 'policy missing' });
+  });
+
+  it('marks pending copies DISABLED once the archive is switched off', async () => {
+    const walrus = { enabled: true, upload: vi.fn(async () => 'f'), fileState: vi.fn() };
+    const { repo, processor } = setup([new Date(day(20).getTime() + 1)], walrus);
+    walrus.enabled = false;
+    await processor.sealOrganization(ORG, day(22));
+    repo.periods[0].archiveStatus = 'PENDING';
+    await processor.archivePending();
+    expect(repo.periods[0].archiveStatus).toBe('DISABLED');
+    expect(walrus.upload).not.toHaveBeenCalled();
+  });
 });

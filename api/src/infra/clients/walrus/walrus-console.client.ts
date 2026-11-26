@@ -43,8 +43,8 @@ export type ArchivedFileState =
  * and only holders of the folder's access policy can decrypt.
  *
  * Off unless `WALRUS_CONSOLE_API_KEY` and `WALRUS_CONSOLE_BUCKET_ID` are both set: sealing never
- * waits on it, and each period's archive status then reads `DISABLED`. The folder is created once
- * with `scripts/walrus-console-folder.mjs`.
+ * waits on it, and each period's archive status then reads `DISABLED`. The folder is made in Console
+ * before the key is minted, so the key's access grant covers it.
  */
 @Injectable()
 export class WalrusConsoleClient {
