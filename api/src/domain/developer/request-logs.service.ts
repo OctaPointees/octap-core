@@ -80,13 +80,14 @@ export class RequestLogsService {
     allowOnly(input, ['cursor', 'credentialId', 'category', 'method', 'status', 'route']);
     const filters = filtersOf(input);
     if (input.cursor === undefined) {
-      const start = await this.read(userId, orgId, (tx) => this.logs.tailStart(tx, orgId));
+      const start = await this.read(userId, orgId, (tx) => this.logs.tailStart(tx, orgId, Date.now()));
       return { items: [], cursor: encodeCursor(start) };
     }
     const after = decodeCursor(input.cursor);
     const rows = await this.read(userId, orgId, (tx) => this.logs.since(tx, orgId, after, filters, TAIL_LIMIT));
     const last = rows.at(-1);
-    return { items: rows.map(toEntry), cursor: last ? encodeCursor(last) : encodeCursor(after) };
+    const position = last ? { txId: last.txId, sequence: last.sequence, openedAt: after.openedAt } : after;
+    return { items: rows.map(toEntry), cursor: encodeCursor(position) };
   }
 
   async summary(userId: string, orgId: string, input: Query): Promise<RequestLogSummary> {
@@ -159,18 +160,17 @@ export class RequestLogsService {
   }
 }
 
-/** Opaque to the caller: `<txId>.<sequence>` of the last row returned. */
+/** Opaque to the caller: `<txId>.<sequence>.<openedAt>`, the last row returned and when the tail opened. */
 function encodeCursor(position: TailPosition): string {
-  return `${position.txId}.${position.sequence}`;
+  return `${position.txId}.${position.sequence}.${position.openedAt}`;
 }
 
 function decodeCursor(value: unknown): TailPosition {
-  const match = typeof value === 'string' ? /^(-?\d+)\.(\d+)$/.exec(value) : null;
-  const txId = match ? Number(match[1]) : NaN;
-  const sequence = match ? Number(match[2]) : NaN;
-  if (!Number.isSafeInteger(txId) || !Number.isSafeInteger(sequence))
+  const match = typeof value === 'string' ? /^(-?\d+)\.(\d+)\.(\d+)$/.exec(value) : null;
+  const [txId, sequence, openedAt] = match ? [match[1], match[2], match[3]].map(Number) : [NaN, NaN, NaN];
+  if (!Number.isSafeInteger(txId) || !Number.isSafeInteger(sequence) || !Number.isSafeInteger(openedAt))
     throw new BadRequestException('cursor must be one a previous tail returned');
-  return { txId, sequence };
+  return { txId, sequence, openedAt };
 }
 
 function allowOnly(input: Query, keys: string[]): void {

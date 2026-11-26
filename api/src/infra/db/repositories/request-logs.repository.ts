@@ -23,10 +23,14 @@ export interface RequestLogQuery {
 /** One log row with the key that made it: never the key itself. */
 export type RequestLogRow = ApiRequestLog & { credentialName: string; credentialKeyPrefix: string };
 
-/** A position in the tail: the last row returned, by writing transaction and sequence. */
+/**
+ * A position in the tail: the last row returned, by writing transaction and sequence, and when the
+ * tail was opened (epoch ms). Only calls that arrived at or after `openedAt` are returned.
+ */
 export interface TailPosition {
   txId: number;
   sequence: number;
+  openedAt: number;
 }
 
 export interface RawStats {
@@ -103,12 +107,16 @@ export class RequestLogsRepository {
 
   /**
    * Where a new tail starts: just below the oldest transaction still running, so every row written
-   * by a transaction that has not finished yet will still come.
+   * by a transaction that has not finished yet will still come. Rows at or above that `xmin` can
+   * also include calls that had already finished before the tail opened (they committed while an
+   * older transaction was still open), so the position also carries `openedAt`: a call that arrived
+   * before it is history, not live, and `since` leaves it out.
    */
-  async tailStart(tx: DrizzleDb, organizationId: string): Promise<TailPosition> {
+  async tailStart(tx: DrizzleDb, organizationId: string, openedAt: number): Promise<TailPosition> {
     return withTenant(tx, organizationId, async (db) => ({
       txId: (await this.settledBelow(db)) - 1,
       sequence: Number.MAX_SAFE_INTEGER,
+      openedAt,
     }));
   }
 
@@ -137,6 +145,7 @@ export class RequestLogsRepository {
             this.filters(organizationId, query),
             sql`(${apiRequestLogs.txId}, ${apiRequestLogs.sequence}) > (${after.txId}, ${after.sequence})`,
             lt(apiRequestLogs.txId, settled),
+            gte(apiRequestLogs.createdAt, new Date(after.openedAt)),
           ),
         )
         .orderBy(asc(apiRequestLogs.txId), asc(apiRequestLogs.sequence))

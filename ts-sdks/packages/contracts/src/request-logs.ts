@@ -89,8 +89,9 @@ export interface RequestLogPage {
 
 /**
  * `GET …/request-logs/tail`: what arrived after `cursor` (at most 100). Without a cursor nothing is
- * returned, only the cursor to poll from: a tail starts now, like `stripe logs tail`. A call is
- * never skipped, even one whose row committed late; it may arrive a moment after newer ones.
+ * returned, only the cursor to poll from: a tail starts now, like `stripe logs tail`, and only shows
+ * calls that arrived after it opened. A call is never skipped, even one whose row committed late; it
+ * may arrive a moment after newer ones.
  */
 export interface RequestLogTailQuery extends Omit<RequestLogFilters, 'from' | 'to'> {
   cursor?: string;
