@@ -281,6 +281,13 @@
       "when": 1795701629245,
       "tag": "0039_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795702666557,
+      "tag": "0040_evidence_periods",
+      "breakpoints": true
     }
   ]
 }

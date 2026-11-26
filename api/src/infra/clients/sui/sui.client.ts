@@ -9,7 +9,14 @@ import {
   type OctapProgramConfig,
   type SignedChainTransaction,
   type SubmittedChainTransaction,
+  TESTNET_OCTAP_AUDIT_CONFIG,
+  MAINNET_OCTAP_AUDIT_CONFIG,
+  buildSealEvidenceTransaction,
+  latestEvidenceSealId,
+  type OctapAuditConfig,
+  type SealEvidenceParams,
 } from '@octap/chain';
+import { suiSealReader, type OnChainSeal, type SealReader } from '@octap/verify';
 import { configForNetwork } from './network-config.js';
 import { ISSUER_SIGNER, loadSigner, memoizeSigner } from './signer.js';
 
@@ -206,6 +213,47 @@ export class SuiClientService {
     this.logger.log(`executing ${signed.digest}`);
     return toChainCallResult(await this.client.executeSigned(signed));
   }
+
+  /** The Sui network evidence seals go to (OCT-77): the same one as the ledger. */
+  get evidenceNetwork(): OctapNetwork {
+    return this.network;
+  }
+
+  private get auditConfig(): OctapAuditConfig {
+    return configForNetwork(
+      this.network,
+      { testnet: TESTNET_OCTAP_AUDIT_CONFIG, mainnet: MAINNET_OCTAP_AUDIT_CONFIG },
+      'octap_audit package',
+    );
+  }
+
+  /** The `octap_audit` package seals are made under, for the seal's reference. */
+  get evidencePackageId(): string {
+    return this.auditConfig.packageId;
+  }
+
+  /**
+   * Seals one evidence period (`evidence_seal::seal`), signed by the issuer key, which holds the
+   * `SealerCap`. Throwing after the send means the outcome is unknown: ask `latestEvidenceSeal`.
+   */
+  async sealEvidence(params: SealEvidenceParams): Promise<ChainCallResult> {
+    const tx = buildSealEvidenceTransaction(this.auditConfig, params);
+    tx.setGasBudget(20_000_000);
+    this.logger.log(`sealing evidence of ${params.organizationId} for ${new Date(params.periodStartMs).toISOString()}`);
+    return toChainCallResult(await this.client.signAndExecute(tx, await this.issuerSigner()));
+  }
+
+  /** The organization's latest seal as the chain holds it, or null before its first. */
+  async latestEvidenceSeal(organizationId: string): Promise<OnChainSeal | null> {
+    const id = await latestEvidenceSealId(this.client.rpc, this.auditConfig, organizationId);
+    return id ? this.sealReader.readSeal(id) : null;
+  }
+
+  private get sealReader(): SealReader {
+    this.evidenceSealReader ??= suiSealReader(this.network);
+    return this.evidenceSealReader;
+  }
+  private evidenceSealReader?: SealReader;
 
   // No `redeem()` wrapper here, deliberately: `credit_account::redeem` requires
   // `sender == beneficiary` (contracts/sui/credit_account.move), and this service only ever signs

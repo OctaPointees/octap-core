@@ -28,6 +28,7 @@ import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } fro
 import { HealthController, PlatformHealthController } from './health.controller.js';
 import { ConsoleLedgerController } from './console-ledger.controller.js';
 import { ConsoleAuditLogController } from './console-audit-log.controller.js';
+import { ConsoleEvidenceController } from './console-evidence.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
 @Module({
@@ -48,6 +49,7 @@ import { ConsoleRequestLogsController } from './console-request-logs.controller.
     MembersController,
     ConsoleLedgerController,
     ConsoleAuditLogController,
+    ConsoleEvidenceController,
     ConsoleRewardsController,
     ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,

@@ -15,3 +15,4 @@ export * from './programs.schema.js';
 export * from './documents.schema.js';
 export * from './indexer.schema.js';
 export * from './relations.js';
+export * from './evidence.schema.js';
