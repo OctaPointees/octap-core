@@ -1,0 +1,88 @@
+import { sql } from 'drizzle-orm';
+import type { LicenseEntitlements } from '@octap/contracts';
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { authenticatedRole } from 'drizzle-orm/supabase';
+import { organizations } from './organizations.schema.js';
+
+export const licenseTierEnum = pgEnum('license_tier', ['TRIAL', 'STARTER', 'GROWTH', 'ENTERPRISE']);
+export const licenseSourceEnum = pgEnum('license_source', ['TRIAL', 'MIGRATION', 'PURCHASE', 'ADMIN']);
+
+/**
+ * LICENSE PLAN: one tier of the catalogue, managed by the System Admin (OCT-329). Platform data, not a
+ * tenant's: every organization reads the same catalogue. A plan is never deleted, only made
+ * inactive, because licenses keep pointing at the plan they were granted from.
+ */
+export const licensePlans = pgTable(
+  'license_plans',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tier: licenseTierEnum('tier').notNull(),
+    name: text('name').notNull(),
+    /** One month, an integer in VND: an order costs this times the months bought. */
+    monthlyPriceVnd: integer('monthly_price_vnd').notNull(),
+    /** The terms it is sold for, in months; empty for a plan that runs `durationDays` instead. */
+    termMonthsAllowed: integer('term_months_allowed')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    /** A fixed length in days (the trial), instead of months. */
+    durationDays: integer('duration_days'),
+    entitlements: jsonb('entitlements').$type<LicenseEntitlements>().notNull(),
+    /** Offered to Owners. The trial and contract plans are granted, not bought. */
+    purchasable: boolean('purchasable').default(true).notNull(),
+    active: boolean('active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    check('license_plans_price_not_negative', sql`${t.monthlyPriceVnd} >= 0`),
+    check('license_plans_duration_positive', sql`${t.durationDays} is null or ${t.durationDays} > 0`),
+  ],
+);
+
+/**
+ * LICENSE: what one organization may use, from `starts_at` to `ends_at` (OCT-329). The plan's
+ * entitlements are copied in when it is created, so editing a plan never changes a license already
+ * granted. Its state (ACTIVE, GRACE, EXPIRED) is worked out from the dates, never stored. An
+ * organization keeps every license it had; the current one is the latest that has started.
+ */
+export const licenses = pgTable(
+  'licenses',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => licensePlans.id),
+    tier: licenseTierEnum('tier').notNull(),
+    planName: text('plan_name').notNull(),
+    entitlements: jsonb('entitlements').$type<LicenseEntitlements>().notNull(),
+    source: licenseSourceEnum('source').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('licenses_organization_starts_idx').on(t.organizationId, t.startsAt),
+    check('licenses_ends_after_start', sql`${t.endsAt} > ${t.startsAt}`),
+    pgPolicy('tenant_isolation_licenses', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
+    }),
+  ],
+);

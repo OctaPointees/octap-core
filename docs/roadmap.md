@@ -54,6 +54,7 @@ then move the row to **Implemented** in the same pull request.
 | Programs: per-organization on-chain program provisioning (create program, publish+activate policy, mint IssuerCap), worker-only | api/src/domain/programs; api/src/infra/clients/sui/program-admin.client.ts; scripts/provision-program.mjs |
 | Programs: issuance budget. Owners propose top-ups and System Admins approve them through change requests, a worker executes them with `AdminCap`, sessions and API keys read the live remaining amount, an earn it cannot cover gets 422, and `budget.low` warns at 80% and 95% used | api/src/domain/credits/issuance-budget.service.ts; api/src/domain/organizations/budget-top-up.processor.ts; contracts/sui/sources/budget_shard.move |
 | Voucher refunds: tenant-specific immutable policy versions and claim-time snapshots, Owner-only console publication recording the publishing user (`createdByUserId`; legacy key versions keep `createdByCredentialId`), history readable with a `read` key, atomic coupon/stock/refund decisions; the policy is the only gate on used/expired refunds by a `write` key (OCT-301) | api/src/domain/rewards/console-refund-policy.service.ts; api/src/domain/rewards/refund-policy.ts; api/src/domain/rewards/refund-policy.service.ts; api/src/infra/db/repositories/voucher-refund-policies.repository.ts; Node SDK |
+| Licenses (OCT-329, part 1): a plan catalogue (`license_plans`: tier, monthly price in VND, terms sold, entitlements = features + limits) managed by the System Admin, never deleted; each organization's `licenses` copy a plan's entitlements when granted, so editing a plan never changes a license; state ACTIVE / GRACE (7 days) / EXPIRED worked out from the dates; existing organizations got Growth for 12 months (migration 0038), a newly approved organization gets the trial in the approval's transaction; Owners and Business Developers, `read` API keys and the System Admin read the license and its usage (confirmed transactions this license month, members, API keys, team) | api/src/domain/licensing; api/src/api/rest/licenses.controller.ts; api/src/infra/db/schema/licensing.schema.ts |
 
 ### Known gaps in implemented features
 
@@ -243,7 +244,7 @@ and vendor clients.
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
 | Campaigns: draft, preview, approval | domain/campaigns | Executes only an approved immutable manifest |
-| Billing: Stripe test billing, reconciliation | domain/billing; infra/clients/stripe | Schema exists in billing.schema.ts; distinct from points |
+| Licenses: limits enforced with 402, usage counter, 80/100% warnings, expiry and reminders (OCT-329 parts 2–3); buying and renewing with SePay, reconciliation (OCT-330) | domain/licensing; infra/clients/sepay | Plans and licenses exist (part 1); nothing is enforced yet. Distinct from points |
 | Analytics: derived analytics export | domain/analytics; infra/clients/clickhouse; api/db/clickhouse | Analytics-only store |
 | Audit: export, Walrus/Seal evidence, verifier | domain/audit; infra/clients/walrus, seal | Outside checkout path |
 | Notifications | domain/notifications | |
@@ -262,7 +263,7 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 | Webhook delivery | webhooks |
 | Analytics export | analytics |
 | Audit export | audit |
-| Billing reconciliation | billing |
+| SePay transfer reconciliation (OCT-330) | licensing |
 | Notification delivery | notifications |
 
 ### Cross-cutting API

@@ -11,6 +11,7 @@ import { SandboxModule } from './sandbox/sandbox.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
 import { EventsModule } from './events/events.module.js';
 import { DeveloperModule } from './developer/developer.module.js';
+import { LicensingModule } from './licensing/licensing.module.js';
 const featureModules = [
   OrganizationsModule,
   AdministrationModule,
@@ -24,6 +25,7 @@ const featureModules = [
   AssistantModule,
   EventsModule,
   DeveloperModule,
+  LicensingModule,
 ];
 @Module({ imports: featureModules, exports: featureModules })
 export class DomainModule {}

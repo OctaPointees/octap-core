@@ -525,6 +525,46 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "warningThreshold"
     ]
   },
+  "ConsoleLicenseController_read_Response": {
+    "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
+    "type": "object",
+    "properties": {
+      "organizationId": {
+        "type": "string"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseDto"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseUsage"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "license",
+      "organizationId",
+      "usage"
+    ]
+  },
+  "ConsoleLicensePlansController_list_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/LicensePlanDto"
+    }
+  },
   "ConsoleMcpTokenController_token_Response": {
     "description": "`GET /v1/console/mcp/token`: what an MCP access token is bound to, for the MCP server (an OAuth\nresource server) to check on every request. Answered only for a live token; any other is a 401.",
     "type": "object",
@@ -3071,6 +3111,69 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
   "Iterable_string": {
     "type": "object"
   },
+  "LicenseController_read_Response": {
+    "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
+    "type": "object",
+    "properties": {
+      "organizationId": {
+        "type": "string"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseDto"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseUsage"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "license",
+      "organizationId",
+      "usage"
+    ]
+  },
+  "LicenseSource": {
+    "description": "How a license came about.",
+    "enum": [
+      "ADMIN",
+      "MIGRATION",
+      "PURCHASE",
+      "TRIAL"
+    ],
+    "type": "string"
+  },
+  "LicenseState": {
+    "description": "Worked out from the dates, never stored: ACTIVE before `endsAt`, GRACE for\n`LICENSE_GRACE_DAYS` after it, EXPIRED from then on.",
+    "enum": [
+      "ACTIVE",
+      "EXPIRED",
+      "GRACE"
+    ],
+    "type": "string"
+  },
+  "LicenseTier": {
+    "description": "Licenses (OCT-329): what an organization may use, and until when. A license plan is a tier in the\ncatalogue the System Admin manages; a license is one organization's copy of a plan's\nentitlements for a period. Billing never touches customers' points or vouchers.",
+    "enum": [
+      "ENTERPRISE",
+      "GROWTH",
+      "STARTER",
+      "TRIAL"
+    ],
+    "type": "string"
+  },
   "LoyaltyTxStatus": {
     "enum": [
       "CONFIRMED",
@@ -4054,6 +4157,128 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "remaining",
       "shards",
       "warningThreshold"
+    ]
+  },
+  "PlatformLicensePlansController_create_Body": {
+    "description": "`POST /v1/platform/license-plans`.",
+    "type": "object",
+    "properties": {
+      "tier": {
+        "$ref": "#/components/schemas/LicenseTier"
+      },
+      "name": {
+        "type": "string"
+      },
+      "monthlyPriceVnd": {
+        "type": "number"
+      },
+      "termMonthsAllowed": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      },
+      "durationDays": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "entitlements": {
+        "$ref": "#/components/schemas/LicenseEntitlements"
+      },
+      "purchasable": {
+        "type": "boolean"
+      },
+      "active": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "entitlements",
+      "monthlyPriceVnd",
+      "name",
+      "tier"
+    ]
+  },
+  "PlatformLicensePlansController_create_Response": {
+    "$ref": "#/components/schemas/LicensePlanDto"
+  },
+  "PlatformLicensePlansController_list_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/LicensePlanDto"
+    }
+  },
+  "PlatformLicensePlansController_update_Body": {
+    "description": "`PATCH /v1/platform/license-plans/:id`. Licenses already granted keep their own copy. A named\ninterface, not `Partial<Omit<…>>`: the OpenAPI generator names an inline generic after the file's\nabsolute path.",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "monthlyPriceVnd": {
+        "type": "number"
+      },
+      "termMonthsAllowed": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      },
+      "durationDays": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "entitlements": {
+        "description": "What a plan grants, copied onto each license when it is created.",
+        "$ref": "#/components/schemas/LicenseEntitlements"
+      },
+      "purchasable": {
+        "type": "boolean"
+      },
+      "active": {
+        "type": "boolean"
+      }
+    }
+  },
+  "PlatformLicensePlansController_update_Response": {
+    "$ref": "#/components/schemas/LicensePlanDto"
+  },
+  "PlatformOrganizationLicenseController_read_Response": {
+    "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
+    "type": "object",
+    "properties": {
+      "organizationId": {
+        "type": "string"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseDto"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseUsage"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "license",
+      "organizationId",
+      "usage"
     ]
   },
   "PlatformOrganizationOwnersController_bootstrap_Body": {
@@ -5966,6 +6191,228 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       }
     }
+  },
+  "LicenseDto": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "planId": {
+        "type": "string"
+      },
+      "tier": {
+        "$ref": "#/components/schemas/LicenseTier"
+      },
+      "planName": {
+        "type": "string"
+      },
+      "entitlements": {
+        "$ref": "#/components/schemas/LicenseEntitlements",
+        "description": "The plan's entitlements as they were when this license was created."
+      },
+      "source": {
+        "$ref": "#/components/schemas/LicenseSource"
+      },
+      "startsAt": {
+        "type": "string"
+      },
+      "endsAt": {
+        "type": "string"
+      },
+      "graceEndsAt": {
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/components/schemas/LicenseState"
+      },
+      "daysLeft": {
+        "description": "Whole days until `endsAt`, 0 once it has passed.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "daysLeft",
+      "endsAt",
+      "entitlements",
+      "graceEndsAt",
+      "id",
+      "organizationId",
+      "planId",
+      "planName",
+      "source",
+      "startsAt",
+      "state",
+      "tier"
+    ]
+  },
+  "LicenseEntitlements": {
+    "description": "What a plan grants, copied onto each license when it is created.",
+    "type": "object",
+    "properties": {
+      "features": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LicenseFeature"
+        }
+      },
+      "limits": {
+        "$ref": "#/components/schemas/LicenseLimits"
+      }
+    },
+    "required": [
+      "features",
+      "limits"
+    ]
+  },
+  "LicenseFeature": {
+    "description": "Features a plan switches on. `core` (earn, redeem, vouchers, members, console) is never listed:\nevery license has it.",
+    "enum": [
+      "assistant",
+      "mcp",
+      "sandbox",
+      "voucher.approval",
+      "voucher.batches",
+      "webhooks"
+    ],
+    "type": "string"
+  },
+  "LicenseLimits": {
+    "description": "Caps a plan sets. `null` is no limit.",
+    "type": "object",
+    "properties": {
+      "transactionsMonthly": {
+        "description": "Confirmed earns and redeems per license month.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "members": {
+        "description": "The organization's members (customers).",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "apiKeys": {
+        "description": "ACTIVE API keys. Core's own cap of 25 still applies.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "teamMembers": {
+        "description": "ACTIVE Owners and Business Developers.",
+        "type": [
+          "null",
+          "number"
+        ]
+      }
+    },
+    "required": [
+      "apiKeys",
+      "members",
+      "teamMembers",
+      "transactionsMonthly"
+    ]
+  },
+  "LicensePlanDto": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "tier": {
+        "$ref": "#/components/schemas/LicenseTier"
+      },
+      "name": {
+        "type": "string"
+      },
+      "monthlyPriceVnd": {
+        "description": "Price of one month, an integer in VND. An order costs this times the months bought.",
+        "type": "number"
+      },
+      "termMonthsAllowed": {
+        "description": "The terms, in months, it can be bought for; empty when it isn't bought by the month.",
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      },
+      "durationDays": {
+        "description": "A fixed length in days instead of months (the trial).",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "entitlements": {
+        "$ref": "#/components/schemas/LicenseEntitlements"
+      },
+      "purchasable": {
+        "description": "Offered to Owners to buy. A plan that isn't (the trial, a contract) is still granted.",
+        "type": "boolean"
+      },
+      "active": {
+        "description": "Inactive plans are kept for the licenses already on them but are no longer offered.",
+        "type": "boolean"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "active",
+      "createdAt",
+      "durationDays",
+      "entitlements",
+      "id",
+      "monthlyPriceVnd",
+      "name",
+      "purchasable",
+      "termMonthsAllowed",
+      "tier",
+      "updatedAt"
+    ]
+  },
+  "LicenseUsage": {
+    "description": "How much of each limit is in use. `transactionsMonthly` counts the current license month.",
+    "type": "object",
+    "properties": {
+      "periodStart": {
+        "type": "string"
+      },
+      "periodEnd": {
+        "type": "string"
+      },
+      "transactionsMonthly": {
+        "type": "number"
+      },
+      "members": {
+        "type": "number"
+      },
+      "apiKeys": {
+        "type": "number"
+      },
+      "teamMembers": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "apiKeys",
+      "members",
+      "periodEnd",
+      "periodStart",
+      "teamMembers",
+      "transactionsMonthly"
+    ]
   },
   "CreditBalanceSnapshot": {
     "type": "object",

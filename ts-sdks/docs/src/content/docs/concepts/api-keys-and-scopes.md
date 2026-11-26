@@ -15,7 +15,7 @@ A key's scopes are what it can do, whoever holds it: a route never checks the ro
 
 | Scope | SDK methods |
 | --- | --- |
-| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
+| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getLicense`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
 | `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
 | None | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: the customer's signature authorizes these |
 

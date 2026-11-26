@@ -276,3 +276,51 @@ describe('0033_voucher_approval_snapshot_and_actors', () => {
     });
   });
 });
+
+describe('0038_licensing', () => {
+  it('replaces the billing tables, seeds the plans, and gives every organization but archived ones Growth for 12 months', async () => {
+    await withDatabaseAt(37, async (client) => {
+      const org = async (status: string) =>
+        (
+          await client`insert into organizations (slug, name, status) values (${randomUUID()}, ${status}, ${status})
+            returning id`
+        )[0].id as string;
+      const active = await org('ACTIVE');
+      const suspended = await org('SUSPENDED');
+      await org('ARCHIVED');
+
+      await migrate(drizzle(client), { migrationsFolder: migrations });
+
+      const plans = await client`select tier, monthly_price_vnd, term_months_allowed, duration_days, purchasable
+        from license_plans order by monthly_price_vnd, tier`;
+      expect(plans.map((p) => ({ ...p }))).toEqual([
+        { tier: 'TRIAL', monthly_price_vnd: 0, term_months_allowed: [], duration_days: 14, purchasable: false },
+        { tier: 'ENTERPRISE', monthly_price_vnd: 0, term_months_allowed: [], duration_days: null, purchasable: false },
+        {
+          tier: 'STARTER',
+          monthly_price_vnd: 990000,
+          term_months_allowed: [3, 6, 12],
+          duration_days: null,
+          purchasable: true,
+        },
+        {
+          tier: 'GROWTH',
+          monthly_price_vnd: 2990000,
+          term_months_allowed: [3, 6, 12],
+          duration_days: null,
+          purchasable: true,
+        },
+      ]);
+      const licenses = await client`select organization_id, tier, source, entitlements,
+        ends_at = starts_at + interval '12 months' as twelve_months from licenses order by organization_id`;
+      expect(licenses.map((l) => l.organization_id).sort()).toEqual([active, suspended].sort());
+      for (const license of licenses) {
+        expect(license).toMatchObject({ tier: 'GROWTH', source: 'MIGRATION', twelve_months: true });
+        expect(license.entitlements.features).toContain('mcp');
+      }
+      const [old] = await client`select to_regclass('public.subscriptions') as subscriptions,
+        to_regclass('public.billing_plans') as plans`;
+      expect(old).toEqual({ subscriptions: null, plans: null });
+    });
+  });
+});

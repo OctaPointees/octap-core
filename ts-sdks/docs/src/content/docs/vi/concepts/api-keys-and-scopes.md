@@ -15,7 +15,7 @@ Key có scope nào thì làm được việc đó, bất kể ai đang cầm key
 
 | Scope | Method của SDK |
 | --- | --- |
-| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
+| `read` | `verifyCustomer`, `getBalance`, `listTransactions`, `getIssuanceBudget`, `getLicense`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`, `listVouchers`, `getVoucher`, `getVoucherClaim`, `listMemberVouchers`, `listWebhookEndpoints`, `listWebhookDeliveries` |
 | `write` | `earnPoints`, `reservePosRedemption`, `reverseTransaction`, `createVoucher`, `updateVoucher`, `claimVoucher`, `grantVoucher`, `prepareVoucherUse` |
 | Không cần | `finalizePosRedemption`, `finalizeVoucherClaim`, `finalizeVoucherUse`: chữ ký của khách hàng xác nhận các lệnh này |
 

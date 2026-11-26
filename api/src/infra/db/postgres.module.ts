@@ -22,6 +22,7 @@ import { OperationalHealthRepository } from './repositories/operational-health.r
 import { SandboxRepository } from './repositories/sandbox.repository.js';
 import { OrganizationEventsRepository } from './repositories/events.repository.js';
 import { RequestLogsRepository } from './repositories/request-logs.repository.js';
+import { LicensesRepository } from './repositories/licenses.repository.js';
 const repositories = [
   OrganizationsRepository,
   GovernanceRepository,
@@ -42,6 +43,7 @@ const repositories = [
   OrganizationEventsRepository,
   RequestLogsRepository,
   SandboxRepository,
+  LicensesRepository,
 ];
 
 @Module({

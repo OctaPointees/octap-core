@@ -26,6 +26,7 @@ import {
   requireSystemAdmin,
   withInitialOwners,
 } from './console-access.js';
+import { grantTrialLicense } from './licenses.repository.js';
 export {
   ConsoleAccessError,
   ConsoleConflictError,
@@ -228,6 +229,8 @@ export class ConsoleOrganizationsRepository {
         await tx
           .insert(organizationMemberships)
           .values({ organizationId: org.id, systemUserId: initialOwnerId, role: 'OWNER' });
+        // An approved organization starts on the trial (OCT-329).
+        await grantTrialLicense(tx, org.id);
       }
       await tx
         .update(organizationChangeRequests)

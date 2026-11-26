@@ -4,6 +4,9 @@
 
 ### Added
 
+- `getLicense()` (OCT-329): your organization's license (plan, `startsAt`, `endsAt`, `state`
+  `ACTIVE`/`GRACE`/`EXPIRED`, what it includes) and how much of each limit is in use this license
+  month. `read` scope.
 - Voucher batches (OCT-303): `createVouchers(items, { dryRun, name })` creates up to 100 vouchers
   as one DRAFT batch (`dryRun` previews each item's result and writes nothing), then
   `activateVoucherBatch`, `pauseVoucherBatch`, `resumeVoucherBatch` and `archiveVoucherBatch` act
