@@ -14,3 +14,4 @@ export * from './assistant.js';
 export * from './request-logs.js';
 export * from './audit.js';
 export * from './evidence.js';
+export * from './analytics.js';

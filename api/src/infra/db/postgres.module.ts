@@ -24,6 +24,7 @@ import { AuditRepository } from './repositories/audit.repository.js';
 import { OrganizationEventsRepository } from './repositories/events.repository.js';
 import { RequestLogsRepository } from './repositories/request-logs.repository.js';
 import { EvidenceRepository } from './repositories/evidence.repository.js';
+import { ProgramAnalyticsRepository } from './repositories/program-analytics.repository.js';
 const repositories = [
   OrganizationsRepository,
   GovernanceRepository,
@@ -46,6 +47,7 @@ const repositories = [
   SandboxRepository,
   AuditRepository,
   EvidenceRepository,
+  ProgramAnalyticsRepository,
 ];
 
 @Module({
