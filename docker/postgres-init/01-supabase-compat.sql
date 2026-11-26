@@ -14,9 +14,10 @@ begin
     create role authenticated nologin noinherit;
   end if;
   if not exists (select 1 from pg_roles where rolname = 'service_role') then
-    -- BYPASSRLS needs a superuser, which a managed Postgres (RDS) does not give. Nothing in
-    -- Core runs as service_role (the API connects as the table owner, and withRls() switches to
-    -- `authenticated`), so without it the role only exists for the grants below.
+    -- Only a role with BYPASSRLS (or a superuser) may grant it. RDS's admin may (staging's
+    -- service_role has it), but a plain non-superuser may not, so fall back to a role without it.
+    -- Nothing in Core runs as service_role (the API connects as the table owner, and withRls()
+    -- switches to `authenticated`), so without it the role only exists for the grants below.
     begin
       create role service_role nologin noinherit bypassrls;
     exception when insufficient_privilege then

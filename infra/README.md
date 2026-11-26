@@ -72,8 +72,9 @@ than `DATABASE_URL` are set by hand, never in a file in this repo:
    Its log is in CloudWatch, `/octap/staging/migrate`.
 
 The migrations were written for Supabase. `scripts/migrate.mjs` creates Supabase's roles first on
-a plain Postgres. RDS's admin user is not a superuser, so `service_role` is created without
-`BYPASSRLS` there; nothing in Core runs as `service_role`.
+a plain Postgres. RDS's admin user is not a superuser, but it may still create `service_role`
+with `BYPASSRLS` (staging's has it). On a Postgres where the user may not, it is created without
+`BYPASSRLS`. Nothing in Core runs as `service_role`.
 
 ## Rules
 
