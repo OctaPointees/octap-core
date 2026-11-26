@@ -10026,7 +10026,35 @@
           "url"
         ]
       },
-      "ConsoleWebhooksController_sendTestEvent_Response": {},
+      "ConsoleWebhooksController_sendTestEvent_Response": {
+        "type": "object",
+        "properties": {
+          "endpointId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string",
+            "const": "webhook.test"
+          },
+          "status": {
+            "type": "string",
+            "const": "PENDING"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deliveryId",
+          "endpointId",
+          "eventId",
+          "eventType",
+          "status"
+        ]
+      },
       "CreditsController_earn_Body": {
         "type": "object",
         "properties": {
