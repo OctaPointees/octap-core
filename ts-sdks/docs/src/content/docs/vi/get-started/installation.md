@@ -16,7 +16,7 @@ description: Các package của OctaP SDK, công dụng của từng package và
 
 ## Cài đặt package
 
-Tất cả package đều public trên npm dưới scope `@octap`, ở phiên bản 0.1.0. Vì còn trước 1.0, một bản minor vẫn có thể có thay đổi không tương thích.
+Tất cả package đều public trên npm dưới scope `@octap`. Vì còn trước 1.0, một bản minor vẫn có thể có thay đổi không tương thích.
 
 ```sh
 # Trên server của bạn

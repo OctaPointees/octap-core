@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 ### Added
 
@@ -36,8 +36,6 @@
   live. `listVouchers` and `getVoucher` can return it. It can't be edited, submitted or claimed;
   importing its code in a new batch brings it back as `DRAFT`. Code that switches on `status`
   should handle it.
-
-## 0.2.0
 
 ### Breaking changes
 
