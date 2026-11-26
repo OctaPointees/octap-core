@@ -68,7 +68,9 @@ resource "aws_db_instance" "postgres" {
   publicly_accessible    = false
   multi_az               = false
 
-  backup_retention_period    = 7
+  # 1 day: the account is on the AWS free plan, which refuses longer retention
+  # (FreeTierRestrictionError). Raise it to 7 once the account is upgraded.
+  backup_retention_period    = 1
   copy_tags_to_snapshot      = true
   deletion_protection        = true
   skip_final_snapshot        = false
