@@ -2,9 +2,9 @@
 
 Implements the credit-earn/redeem slice of the object map in
 [the roadmap](../../docs/roadmap.md): `capabilities`, `program_control`, `policy_version`,
-`credit_account`, `operation_shard`, `budget_shard`. `campaign_authorization` and
-`audit_manifest` are not built yet — they stay roadmap rows until a feature actually needs the
-campaign machinery they require.
+`credit_account`, `operation_shard`, `budget_shard`. `campaign_authorization` is not built yet: it
+stays a roadmap row until a feature needs the campaign machinery. Audit evidence seals (OCT-77) are
+its own package, [`../audit`](../audit/README.md), so adding them never forces a fresh publish here.
 
 ## Modules
 
