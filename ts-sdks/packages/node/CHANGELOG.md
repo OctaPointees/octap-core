@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
@@ -75,4 +75,3 @@ unchanged.
 ## 0.1.0
 
 First public release.
-
