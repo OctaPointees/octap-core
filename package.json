@@ -21,6 +21,7 @@
     "test:mcp:e2e": "node scripts/mcp-cli-e2e.mjs",
     "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs scripts/tests/browser-auth-example.test.mjs",
     "build": "node scripts/build.mjs",
+    "prepare": "npm run build",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json",
     "lint": "eslint api/src api/tests ts-sdks/packages scripts vitest.config.ts",
     "format": "prettier --write .",
