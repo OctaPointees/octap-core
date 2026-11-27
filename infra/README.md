@@ -49,7 +49,8 @@ than `DATABASE_URL` are set by hand, never in a file in this repo:
 2. **`DATABASE_URL`: nothing to do.** Terraform generates the database password and writes the
    whole URL (with `sslmode=require`: RDS refuses connections without TLS) into the secret. Both
    are write-only, so the password is never in state. For a new password, bump
-   `db_password_version` and apply.
+   `db_password_version` and apply. If an apply fails halfway, bump `db_password_version` again:
+   rerunning with the same number won't resend the password, and the secret could keep the old one.
 
 3. **The other secrets** (`ENOKI_API_KEY`, `MCP_OAUTH_SIGNING_KEY`, `OPENAI_API_KEY`,
    `ORGANIZATION_IDENTITY_ENCRYPTION_KEY`; what each one is: `.env.example`):

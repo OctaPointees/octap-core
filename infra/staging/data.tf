@@ -127,4 +127,8 @@ resource "aws_elasticache_replication_group" "redis" {
   transit_encryption_enabled = true
   automatic_failover_enabled = false
   apply_immediately          = false
+  # A single node goes offline while AWS patches it. A fixed window keeps that out of working hours:
+  # Monday 01:00-02:00 in Vietnam (UTC+7). The API's /health turns 503 meanwhile, and the load
+  # balancer has ECS replace the task (api.tf).
+  maintenance_window = "sun:18:00-sun:19:00"
 }
