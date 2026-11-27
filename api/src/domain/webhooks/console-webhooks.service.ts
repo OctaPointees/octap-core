@@ -90,5 +90,5 @@ export class ConsoleWebhooksService {
   }
 }
 
-const DENIED = 'Only an active Owner or Business Developer of an active organization can view its webhooks';
+const DENIED = 'Only an active Owner or Business Developer of an active organization can see, test or replay its webhooks';
 const OWNER_ONLY = 'Only an active Owner of an active organization can register or change its webhook endpoints';

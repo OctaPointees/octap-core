@@ -35,5 +35,5 @@ Every sandbox response carries `isSandbox: true`. Live responses do not have the
 
 Sandbox writes record no events, so a developer checks their endpoint with
 `POST /v1/console/organizations/:id/webhooks/endpoints/:endpointId/test` (Owner or Business
-Developer) instead: one
-`webhook.test` event, delivered to that endpoint only, signed and retried like any other.
+Developer) instead: one `webhook.test` event, delivered to that endpoint only, signed and retried
+like any other.
