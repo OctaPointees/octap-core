@@ -1,6 +1,6 @@
 {
   "name": "@octap/contracts",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed request/response contracts for the Octap Core REST API.",
   "license": "MIT",
   "repository": {

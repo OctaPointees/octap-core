@@ -1,6 +1,6 @@
 {
   "name": "@octap/verify",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Check an Octap audit evidence bundle against its seal on Sui, without trusting Octap.",
   "license": "MIT",
   "repository": {
