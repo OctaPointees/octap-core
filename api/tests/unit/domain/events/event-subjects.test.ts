@@ -34,6 +34,12 @@ describe('toStreamEvent', () => {
     ['voucher.publish.failed', { voucherId: 'v', batchId: null }, { kind: 'voucher', id: 'v', batchId: null }],
     ['voucher.paused', { voucherId: 'v', batchId: null }, { kind: 'voucher', id: 'v', batchId: null }],
     ['voucher.archived', { voucherId: 'v', batchId: 'b' }, { kind: 'voucher', id: 'v', batchId: 'b' }],
+    ['voucher.expired', { voucherId: 'v', batchId: null }, { kind: 'voucher', id: 'v', batchId: null }],
+    [
+      'voucher.member_expired',
+      { voucherOwnershipId: 'o', voucherId: 'v', organizationEndUserId: 'm' },
+      { kind: 'voucherOwnership', id: 'o', voucherId: 'v', memberId: 'm' },
+    ],
     [
       'voucher.granted',
       { voucherOwnershipId: 'o', voucherId: 'v', organizationEndUserId: 'm' },

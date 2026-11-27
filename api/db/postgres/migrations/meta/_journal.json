@@ -288,6 +288,13 @@
       "when": 1795709338981,
       "tag": "0040_evidence_periods",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795719494696,
+      "tag": "0041_voucher_expiry_index",
+      "breakpoints": true
     }
   ]
 }

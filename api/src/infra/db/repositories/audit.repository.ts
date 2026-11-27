@@ -50,7 +50,7 @@ export function auditTargetOfEvent(
   const id = (key: string) => (typeof payload[key] === 'string' ? (payload[key] as string) : null);
   if (type === 'credits.reversed') return { type: 'loyalty_transaction', id: id('reversalTransactionId') };
   if (type.startsWith('credits.')) return { type: 'loyalty_transaction', id: id('transactionId') };
-  if (type === 'voucher.granted' || type === 'voucher.redeemed')
+  if (type === 'voucher.granted' || type === 'voucher.redeemed' || type === 'voucher.member_expired')
     return { type: 'voucher_ownership', id: id('voucherOwnershipId') };
   if (type.startsWith('voucher.')) return { type: 'voucher', id: id('voucherId') };
   if (type.startsWith('webhook.')) return { type: 'webhook_endpoint', id: id('endpointId') };

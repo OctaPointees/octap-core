@@ -4,6 +4,10 @@
 
 ### Added
 
+- Voucher expiry webhooks (OCT-336): `voucher.expired` (a voucher's claim window closed while it was
+  live, paused or sold out; `VoucherLifecycleEventData`) and `voucher.member_expired` (a customer's
+  voucher reached its own deadline unused; `VoucherMemberExpiredEventData`). Each arrives once,
+  within about a minute of the deadline.
 - Voucher batches (OCT-303): `createVouchers(items, { dryRun, name })` creates up to 100 vouchers
   as one DRAFT batch (`dryRun` previews each item's result and writes nothing), then
   `activateVoucherBatch`, `pauseVoucherBatch`, `resumeVoucherBatch` and `archiveVoucherBatch` act
@@ -22,6 +26,11 @@
   submitted, which is what approving publishes.
 
 ### Changed
+
+- `EXPIRED` is now actually written (OCT-336). A voucher past its claim window is `EXPIRED`, not
+  `ACTIVE`, and a customer's voucher past its deadline is `EXPIRED`, not `AVAILABLE`, in every read:
+  `listVouchers`, `getVoucher`, `listMemberVouchers`, `getClaim` and voucher batches. Pausing or
+  resuming an `EXPIRED` voucher is a 409; its supply and metadata stay editable.
 
 - `VoucherStatus` has a new value, `ARCHIVED`: a voucher of an archived batch that never went
   live. `listVouchers` and `getVoucher` can return it. It can't be edited, submitted or claimed;

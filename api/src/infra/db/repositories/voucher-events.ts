@@ -39,7 +39,13 @@ function lifecycleData(voucher: Voucher): VoucherLifecycleEventData {
  */
 export function recordVoucherEvent(
   tx: DrizzleDb,
-  type: 'voucher.created' | 'voucher.activated' | 'voucher.publish.failed' | 'voucher.paused' | 'voucher.archived',
+  type:
+    | 'voucher.created'
+    | 'voucher.activated'
+    | 'voucher.publish.failed'
+    | 'voucher.paused'
+    | 'voucher.archived'
+    | 'voucher.expired',
   voucher: Voucher,
 ) {
   return recordEvent(tx, { organizationId: voucher.organizationId, type, payload: lifecycleData(voucher) });
