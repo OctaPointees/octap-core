@@ -22,8 +22,8 @@ implementations, copy their shape).
 - **No AI-tool attribution anywhere** — no `Co-Authored-By: Claude`, no "Generated with" lines, in
   commits, PR descriptions, or code. This repo's history should read as the author's own work.
 - **Releasing `@octap/*` packages goes through Changesets** (`.changeset/README.md`). A PR that changes a
-  published package adds a changeset (`npx changeset`). A release is a PR that runs `npm run
-  version-packages`, then `npm run release` from `dev` once it is merged. Never edit a package's
+  published package adds a changeset (`npx changeset`; CI checks). The Release workflow opens the
+  "version packages" PR and, once it is merged, publishes to npm. Never edit a package's
   `version` or an `@octap/*` range by hand: npm has no `workspace:*`, so when a range stops covering
   the version in this repo, npm silently installs the published copy instead of linking this one.
 - **`npm install` builds every package** (the root `prepare` runs `npm run build`, in dependency

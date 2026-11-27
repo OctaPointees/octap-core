@@ -1,0 +1,43 @@
+name: Release
+# The @octap/* packages (.changeset/README.md). On every push to dev:
+# - changesets waiting: opens or updates the "Version Packages" PR (versions, dependents' ranges,
+#   CHANGELOGs);
+# - none waiting, and a version not on npm yet (that PR was just merged): publishes it and tags it.
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the version branch, and the tags
+  pull-requests: write # the Version Packages PR
+  id-token: write # npm trusted publishing (OIDC), and provenance
+
+jobs:
+  release:
+    if: github.repository == 'OctaPointees/octap-core'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      # The root `prepare` builds every package.
+      - run: npm ci
+      - uses: changesets/action@v2
+        with:
+          version-script: npm run version-packages
+          publish-script: npm run release
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unset once every package has a trusted publisher on npmjs.com: npm then signs in with OIDC.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
