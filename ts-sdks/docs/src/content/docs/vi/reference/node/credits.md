@@ -118,7 +118,7 @@ getLicense(options?): Promise<OrganizationLicenseDto>
 | `license.state` | `'ACTIVE' \| 'GRACE' \| 'EXPIRED'` | `GRACE` trong 7 ngày sau `endsAt` (`graceEndsAt`), sau đó là `EXPIRED` |
 | `license.daysLeft` | `number` | Số ngày còn lại tới `endsAt`, 0 khi đã qua |
 | `license.entitlements` | `{ features, limits }` | License gồm những gì, đúng như lúc được cấp. Hạn mức `null` là không giới hạn |
-| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (giao dịch tích và đổi điểm đã xác nhận trong tháng license, từ `periodStart` tới `periodEnd`), `members`, `apiKeys`, `teamMembers` |
+| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (giao dịch tích và đổi điểm đã xác nhận trong tháng license, từ `periodStart` tới `periodEnd`; tháng cuối kết thúc ở `endsAt`), `members` (đang hoạt động, không bị chặn hay chưa xác minh), `apiKeys` (đang hoạt động), `teamMembers` (Owner và Business Developer đang hoạt động) |
 
 ## listTransactions
 

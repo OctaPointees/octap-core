@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { LicensePlanDto, OrganizationLicenseDto } from '@octap/contracts';
 import { LicenseService } from '#domain/licensing/license.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
@@ -63,6 +75,10 @@ export class PlatformLicensePlansController {
   @Post()
   @Header('Cache-Control', 'no-store')
   create(@Body() body: CreateLicensePlanBodyDto): Promise<LicensePlanDto> {
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Body must be an object');
+    for (const field of ['tier', 'name', 'monthlyPriceVnd', 'entitlements'] as const)
+      if (body[field] === undefined) throw new BadRequestException(`${field} is required`);
     return this.licenses.createPlan(body);
   }
   @Patch(':id')
@@ -82,6 +98,6 @@ export class PlatformOrganizationLicenseController {
   @Get()
   @Header('Cache-Control', 'no-store')
   read(@Param('organizationId', ParseUUIDPipe) organizationId: string): Promise<OrganizationLicenseDto> {
-    return this.licenses.read(organizationId);
+    return this.licenses.readForPlatform(organizationId);
   }
 }

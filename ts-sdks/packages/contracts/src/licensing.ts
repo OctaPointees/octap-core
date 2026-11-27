@@ -93,13 +93,20 @@ export interface LicenseDto {
   daysLeft: number;
 }
 
-/** How much of each limit is in use. `transactionsMonthly` counts the current license month. */
+/**
+ * How much of each limit is in use. `transactionsMonthly` counts the current license month, which
+ * runs from `periodStart` to `periodEnd`; the last month ends at the license's `endsAt`, and once that
+ * has passed it stays the last month.
+ */
 export interface LicenseUsage {
   periodStart: string;
   periodEnd: string;
   transactionsMonthly: number;
+  /** ACTIVE members who aren't blocked or unverified. */
   members: number;
+  /** ACTIVE API keys, sandbox ones included. */
   apiKeys: number;
+  /** ACTIVE Owners and Business Developers. */
   teamMembers: number;
 }
 

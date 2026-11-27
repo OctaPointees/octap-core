@@ -33,12 +33,16 @@ export const addDays = (date: Date, days: number): Date => new Date(date.getTime
 
 /**
  * The license month `now` falls in: months are counted from `startsAt`, not from the calendar, so
- * a license started on the 15th resets its monthly usage on every 15th.
+ * a license started on the 15th resets its monthly usage on every 15th. The last month ends at
+ * `endsAt` (a 14-day trial has one 14-day month), and once `endsAt` has passed it stays the last
+ * month: a license in grace or expired doesn't roll new months forward.
  */
-export function licensePeriod(startsAt: Date, now: Date): { start: Date; end: Date } {
-  let months = (now.getUTCFullYear() - startsAt.getUTCFullYear()) * 12 + (now.getUTCMonth() - startsAt.getUTCMonth());
+export function licensePeriod(startsAt: Date, endsAt: Date, now: Date): { start: Date; end: Date } {
+  const at = now < endsAt ? now : new Date(endsAt.getTime() - 1);
+  let months = (at.getUTCFullYear() - startsAt.getUTCFullYear()) * 12 + (at.getUTCMonth() - startsAt.getUTCMonth());
   if (months < 0) months = 0;
-  while (months > 0 && addMonths(startsAt, months) > now) months -= 1;
-  while (addMonths(startsAt, months + 1) <= now) months += 1;
-  return { start: addMonths(startsAt, months), end: addMonths(startsAt, months + 1) };
+  while (months > 0 && addMonths(startsAt, months) > at) months -= 1;
+  while (addMonths(startsAt, months + 1) <= at) months += 1;
+  const end = addMonths(startsAt, months + 1);
+  return { start: addMonths(startsAt, months), end: end < endsAt ? end : endsAt };
 }

@@ -21,10 +21,13 @@ customers' balances, vouchers or reversals.
 
 ## Where licenses come from
 
-- Migration `0038_licensing` seeds the four plans (sample prices and limits) and gives every
-  organization that isn't `ARCHIVED` a free Growth license for 12 months.
+- Migration `0042_licensing` seeds the four plans (sample prices and limits) and gives every
+  `ACTIVE` or `SUSPENDED` organization a free Growth license for 12 months. One waiting for approval
+  gets the trial when it is approved.
 - Approving a `CREATE_ORGANIZATION` request grants the trial in the same transaction
-  (`grantTrialLicense`). Without an active trial plan nothing is granted.
+  (`grantTrialLicense`), from the newest active trial plan. An organization that already has a license
+  keeps it and gets no trial; without an active trial plan nothing is granted. Every license is
+  written by `insertLicense`, which copies the plan's entitlements.
 
 ## Routes
 
@@ -34,11 +37,13 @@ customers' balances, vouchers or reversals.
 | `GET /v1/console/license-plans` | Any signed-in console user: the active, purchasable plans |
 | `GET /v1/license` | API key with `read` |
 | `GET`, `POST /v1/platform/license-plans`; `PATCH …/:id` | System Admin |
-| `GET /v1/platform/organizations/:organizationId/license` | System Admin |
+| `GET /v1/platform/organizations/:organizationId/license` | System Admin (404 for an unknown organization) |
 
 The license response is `{ organizationId, license, usage }`; `license` and `usage` are `null` for an
 organization that has none. Usage counts confirmed `EARN` and `REDEEM` transactions in the current
-license month, members, ACTIVE API keys and ACTIVE Owners and Business Developers.
+license month, ACTIVE members who aren't blocked or unverified, ACTIVE API keys and ACTIVE Owners and
+Business Developers. The license month is counted from `starts_at`; the last one ends at `ends_at`,
+and once that has passed it stays the last month instead of rolling on.
 
 ## Not yet
 

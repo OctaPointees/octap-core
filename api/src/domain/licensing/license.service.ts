@@ -48,7 +48,7 @@ export class LicenseService {
   async read(organizationId: string, now = new Date()): Promise<OrganizationLicenseDto> {
     const license = await this.licenses.current(organizationId, now);
     if (!license) return { organizationId, license: null, usage: null };
-    const period = licensePeriod(license.startsAt, now);
+    const period = licensePeriod(license.startsAt, license.endsAt, now);
     const counts = await this.licenses.usage(organizationId, period.start, period.end);
     return {
       organizationId,
@@ -65,6 +65,13 @@ export class LicenseService {
   }
 
   /** For an active Owner or Business Developer of an active organization; anyone else gets 403. */
+  /** For the System Admin: an organization that doesn't exist is a 404, not "no license". */
+  async readForPlatform(organizationId: string): Promise<OrganizationLicenseDto> {
+    if (!(await this.licenses.organizationExists(organizationId)))
+      throw new NotFoundException('Organization not found');
+    return this.read(organizationId);
+  }
+
   async readAsMember(userId: string, organizationId: string): Promise<OrganizationLicenseDto> {
     try {
       await this.access.withAccess(userId, organizationId, false, async () => undefined);
@@ -89,8 +96,6 @@ export class LicenseService {
     const body = objectOf(input);
     if (!LICENSE_TIERS.includes(body.tier as LicenseTier))
       throw new BadRequestException(`tier must be one of ${LICENSE_TIERS.join(', ')}`);
-    for (const field of ['name', 'monthlyPriceVnd', 'entitlements'] as const)
-      if (body[field] === undefined) throw new BadRequestException(`${field} is required`);
     const values = checkPlanFields(body, ['tier']);
     const plan = {
       termMonthsAllowed: [],

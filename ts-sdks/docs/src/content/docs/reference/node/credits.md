@@ -118,7 +118,7 @@ getLicense(options?): Promise<OrganizationLicenseDto>
 | `license.state` | `'ACTIVE' \| 'GRACE' \| 'EXPIRED'` | `GRACE` for 7 days after `endsAt` (`graceEndsAt`), then `EXPIRED` |
 | `license.daysLeft` | `number` | Whole days until `endsAt`, 0 once it has passed |
 | `license.entitlements` | `{ features, limits }` | What the license includes, as it was when granted. A `null` limit is no limit |
-| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (confirmed earns and redeems this license month, from `periodStart` to `periodEnd`), `members`, `apiKeys`, `teamMembers` |
+| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (confirmed earns and redeems this license month, from `periodStart` to `periodEnd`; the last month ends at `endsAt`), `members` (active, not blocked or unverified), `apiKeys` (active), `teamMembers` (active Owners and Business Developers) |
 
 ## listTransactions
 
