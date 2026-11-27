@@ -89,6 +89,16 @@ Trả về các voucher thành viên đang giữ gồm `ownershipId`, `voucherId
 | `list_staff` | Owner | Không | Nhân sự có quyền vào Console (`name`, `email`, `persona`, `status`: active hoặc suspended) |
 | `list_invitations` | Owner | Không | Lời mời vào Console (`email`, `role`, `status`, `expiresAt`; ẩn token/link mời) |
 
+### Thống kê chương trình & tích hợp
+
+| Tool | Persona | Trả lời câu hỏi |
+| --- | --- | --- |
+| `list_transactions` | Developer, Owner | Giao dịch điểm của cả tổ chức, lọc theo loại, trạng thái hoặc thành viên, có phân trang |
+| `get_program_analytics` | Developer, Owner | Điểm phát, tiêu và đảo; thành viên hoạt động/đã đăng ký; voucher được nhận, dùng và hết hạn; xu hướng theo ngày |
+| `search_request_logs`, `get_request_log` | Developer, Owner | Các lời gọi API theo thời gian, trạng thái hoặc route, và một lời gọi theo request id |
+| `get_api_errors` | Developer, Owner | Các lời gọi lỗi, nhóm theo route, mã trạng thái và lỗi |
+| `get_api_usage` | Developer, Owner | Số request, tỉ lệ lỗi và độ trễ theo nhóm, route và API key |
+
 ## Tool ghi (`serve-http`, chỉ khi người dùng cho phép thay đổi)
 
 Khi host xin scope `mcp:write`, trang đăng nhập của Core hiện ô **Also allow it to make changes** (mặc định không chọn). Chỉ khi người dùng chọn ô này thì các tool dưới đây mới xuất hiện; nếu không, kết nối vẫn chỉ đọc và Core từ chối mọi thao tác ghi.
@@ -104,6 +114,19 @@ Mỗi thay đổi gồm hai bước. Tool tương ứng chỉ **chuẩn bị** t
 | `activate_voucher` | Phát hành bản nháp, hoặc mở lại voucher đang tạm dừng | ✅ | khi Core cho phép |
 | `pause_voucher` | Tạm dừng nhận mới | ✅ | — |
 | `approve_voucher`, `reject_voucher` | Duyệt hoặc từ chối voucher đang chờ | ✅ | — |
+| `import_vouchers` | Tối đa 100 voucher thành một lô nháp; mã đã tồn tại được báo lại, không bị ghi đè | ✅ | ✅ |
+| `activate_voucher_batch` | Phát hành các voucher nháp/đang chờ của lô, đúng như người dùng đã xem | ✅ | ✅ (gửi Owner duyệt khi bật duyệt) |
+| `pause_voucher_batch`, `resume_voucher_batch` | Tạm dừng hoặc mở lại việc nhận voucher của lô | ✅ | — |
+| `archive_voucher_batch` | Cất lô đi; voucher đang chạy vẫn chạy | ✅ | ✅ |
+| `update_member_details` | Mã POS hoặc metadata của thành viên | ✅ | — |
+| `block_member`, `unblock_member` | Chặn hoặc bỏ chặn thành viên | ✅ | — |
+| `rename_api_key`, `revoke_api_key` | Theo tiền tố khóa; không bao giờ tạo khóa mới (bí mật sẽ lộ vào hội thoại) | ✅ | ✅ khóa chỉ đọc |
+| `set_refund_policy` | Phiên bản chính sách hoàn mới, chỉ hiện các thay đổi | ✅ | — |
+| `set_voucher_approval_required` | Bật/tắt Owner duyệt voucher của Developer | ✅ | — |
+| `update_organization_display` | Tên hiển thị hoặc logo (thông tin pháp lý đi qua System Admin) | ✅ | — |
+| `enable_webhook_endpoint`, `disable_webhook_endpoint` | Bật/tắt gửi sự kiện tới endpoint; không bao giờ đăng ký hay xoay secret | ✅ | — |
+| `replay_webhook_delivery` | Gửi lại một lần giao thất bại | ✅ | ✅ |
+| `send_test_webhook` | Gửi sự kiện `webhook.test` tới một endpoint | ✅ | ✅ |
 | `confirm_change` | Thực hiện thay đổi đã chuẩn bị | ✅ | ✅ |
 
 ---
@@ -122,3 +145,7 @@ Các MCP host có thể hiển thị trực tiếp các prompt sau cho người 
 | `check_budget` | Owner | Không | Kiểm tra ngân sách điểm còn lại và có cần nạp thêm hay không |
 | `check_webhooks` | Developer, Owner | Không | Nhóm các webhook delivery lỗi/đang retry theo endpoint và gợi ý nguyên nhân |
 | `review_console_access` | Owner | Không | Rà soát danh sách Owner, Business Developer, tài khoản bị tạm ngưng và lời mời đang chờ |
+| `draft_voucher` | Developer, Owner (cần `mcp:write`) | `description` | Tạo voucher nháp từ một câu mô tả, xác nhận trước khi tạo |
+| `program_summary` | Developer, Owner | `days` (tùy chọn, mặc định 7) | Chương trình hoạt động thế nào, so với kỳ trước |
+| `debug_integration` | Developer, Owner | Không | Các lời gọi API lỗi, nhóm theo nguyên nhân, kèm cách sửa |
+| `decide_pending_vouchers` | Owner (cần `mcp:write`) | Không | Duyệt hoặc từ chối từng voucher đang chờ, xác nhận từng cái |

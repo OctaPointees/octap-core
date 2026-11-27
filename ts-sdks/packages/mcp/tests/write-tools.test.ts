@@ -33,7 +33,7 @@ const voucher = (overrides: Partial<VoucherDto> = {}) =>
 function fakeCore(current = voucher(), answer: unknown = voucher()) {
   const prepared = new Map<string, PreparedChange>();
   const writes = {
-    voucherPath: (id?: string) => `${ORG}/vouchers${id ? `/${id}` : ''}`,
+    organizationPath: (suffix = '') => `${ORG}${suffix}`,
     consoleVoucher: vi.fn(async () => current),
     prepareChange: vi.fn(async (change: ChangeInput) => {
       const confirmation = { ...change, confirmationId: `c${prepared.size + 1}`, expiresAt: '2026-11-27T00:05:00Z' };
@@ -166,7 +166,7 @@ describe('MCP write tools (OCT-314)', () => {
     expect(JSON.stringify(refused.content)).toContain('Only the Owner can approve vouchers');
 
     const unknown = await mcp.callTool({ name: 'confirm_change', arguments: { confirmationId: 'nope' } });
-    expect(JSON.stringify(unknown.content)).toContain('prepare it again');
+    expect(JSON.stringify(unknown.content)).toContain('Prepare it again');
   });
 
   it('prepares each voucher change against the right route, with a summary naming the voucher', async () => {
@@ -231,7 +231,7 @@ describe('MCP write tools (OCT-314)', () => {
     [409, null, 'Core refused this change.'],
     [401, null, 'sign in again'],
     [403, null, 'may not do this'],
-    [404, null, 'prepare it again'],
+    [404, null, 'Prepare it again'],
     [429, null, 'Rate limited'],
     [503, null, 'temporarily unavailable'],
   ])('explains a %i from Core without leaking anything else', async (status, body, message) => {

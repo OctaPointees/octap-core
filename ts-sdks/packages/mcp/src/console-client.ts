@@ -9,6 +9,7 @@ import type {
   ConnectionInfo,
   ConsoleReads,
   ConsoleWrites,
+  InsightReads,
   CoreClientLike,
   InvitationView,
   MemberDetailView,
@@ -55,7 +56,7 @@ export function consoleCoreClient(
   apiUrl: string,
   accessToken: string,
   organizationId: string,
-): CoreClientLike & ConsoleReads & ConsoleWrites {
+): CoreClientLike & ConsoleReads & InsightReads & ConsoleWrites {
   const root = apiUrl.replace(/\/+$/, '');
   const organization = `/v1/console/organizations/${encodeURIComponent(organizationId)}`;
   const get = async <T>(path: string, options?: RequestOptions): Promise<T> => {
@@ -160,7 +161,17 @@ export function consoleCoreClient(
     },
     listMemberVouchers: async (memberId, options) =>
       get<VoucherOwnershipDto[]>(`${member(memberId)}/vouchers`, options),
-    voucherPath: (voucherId) => `${organization}/vouchers${voucherId ? `/${encodeURIComponent(voucherId)}` : ''}`,
+    consoleTransactions: async (search, options) =>
+      get(withQuery(`${organization}/transactions`, { ...search }), options),
+    getProgramAnalytics: async (range, options) => get(withQuery(`${organization}/analytics/summary`, range), options),
+    searchRequestLogs: async (query, options) => get(withQuery(`${organization}/request-logs`, { ...query }), options),
+    getRequestLog: async (requestId, options) =>
+      get(`${organization}/request-logs/${encodeURIComponent(requestId)}`, options),
+    getApiErrors: async (filters, options) =>
+      get(withQuery(`${organization}/request-logs/errors`, { ...filters }), options),
+    getApiUsage: async (filters, options) =>
+      get(withQuery(`${organization}/request-logs/summary`, { ...filters }), options),
+    organizationPath: (suffix = '') => `${organization}${suffix}`,
     prepareChange: async (change, options) => send<PreparedChange>('POST', confirmations, change, {}, options),
     getChange: async (confirmationId, options) =>
       get<PreparedChange>(`${confirmations}/${encodeURIComponent(confirmationId)}`, options),

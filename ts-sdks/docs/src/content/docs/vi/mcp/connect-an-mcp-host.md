@@ -8,7 +8,7 @@ description: Cho phép trợ lý AI đọc dữ liệu thành viên, voucher, ng
 Trang này mô tả `@octap/mcp` được xây dựng từ repository `octap-core` (`ts-sdks/packages/mcp`).
 
 :::caution[Mặc định chỉ đọc (read-only)]
-Mọi tool trong `@octap/mcp` chỉ đọc, trừ khi người dùng đăng nhập qua `serve-http` chọn **Also allow it to make changes**. Khi đó cũng chỉ quản lý được voucher, và mỗi thay đổi đều được hiển thị cho người dùng xác nhận trước. Server không bao giờ phát, tiêu hay đảo điểm, không giữ khóa Sui và không chạm trực tiếp vào database.
+Mọi tool trong `@octap/mcp` chỉ đọc, trừ khi người dùng đăng nhập qua `serve-http` chọn **Also allow it to make changes**. Khi đó cũng chỉ thực hiện các thay đổi thường ngày (voucher và lô, thành viên, đổi tên/thu hồi API key, chính sách hoàn, cài đặt, webhook endpoint), và mỗi thay đổi đều được hiển thị cho người dùng xác nhận trước. Server không bao giờ phát, tiêu hay đảo điểm, không giữ khóa Sui và không chạm trực tiếp vào database.
 :::
 
 ## Chọn cách kết nối

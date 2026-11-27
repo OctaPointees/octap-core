@@ -34,6 +34,13 @@ export const DEVELOPER_TOOLS: readonly ToolName[] = [
   'list_api_keys',
   'list_webhook_endpoints',
   'list_webhook_deliveries',
+  // Insight reads (OCT-314 part 2): Core opens them to both personas.
+  'list_transactions',
+  'get_program_analytics',
+  'search_request_logs',
+  'get_request_log',
+  'get_api_errors',
+  'get_api_usage',
 ];
 
 export const OWNER_TOOLS: readonly ToolName[] = [
@@ -51,9 +58,11 @@ export const PERSONA_TOOLS: Readonly<Record<Persona, readonly ToolName[]>> = {
 
 /**
  * Write tools (OCT-314), offered only to a connection the user allowed to make changes (`mcp:write`).
- * Both personas draft vouchers, edit them, take them back and activate them (Core refuses a Developer
- * where approval is required); a Developer submits a draft to an Owner. Pausing and deciding an
- * approval are an Owner's. As with reads, Core checks the persona again on every write.
+ * Both personas draft vouchers and batches, edit them, take them back and activate them (a Developer's
+ * activation goes to an Owner where approval is on), archive batches, rename and revoke read-only API
+ * keys, and replay a failed webhook delivery; a Developer submits a draft to an Owner. Pausing,
+ * deciding an approval, members, the refund policy, settings, the organization's display and webhook
+ * endpoints are an Owner's. As with reads, Core checks the persona again on every write.
  */
 export const DEVELOPER_WRITE_TOOLS: readonly ToolName[] = [
   'create_voucher',
@@ -61,6 +70,13 @@ export const DEVELOPER_WRITE_TOOLS: readonly ToolName[] = [
   'submit_voucher',
   'withdraw_voucher',
   'activate_voucher',
+  'import_vouchers',
+  'activate_voucher_batch',
+  'archive_voucher_batch',
+  'rename_api_key',
+  'revoke_api_key',
+  'replay_webhook_delivery',
+  'send_test_webhook',
   'confirm_change',
 ];
 
@@ -72,6 +88,23 @@ export const OWNER_WRITE_TOOLS: readonly ToolName[] = [
   'pause_voucher',
   'approve_voucher',
   'reject_voucher',
+  'import_vouchers',
+  'activate_voucher_batch',
+  'pause_voucher_batch',
+  'resume_voucher_batch',
+  'archive_voucher_batch',
+  'update_member_details',
+  'block_member',
+  'unblock_member',
+  'rename_api_key',
+  'revoke_api_key',
+  'set_refund_policy',
+  'set_voucher_approval_required',
+  'update_organization_display',
+  'enable_webhook_endpoint',
+  'disable_webhook_endpoint',
+  'replay_webhook_delivery',
+  'send_test_webhook',
   'confirm_change',
 ];
 
@@ -90,6 +123,10 @@ export const DEVELOPER_PROMPTS: readonly PromptName[] = [
   'summarize_member',
   'review_api_keys',
   'check_webhooks',
+  'program_summary',
+  'debug_integration',
+  // Offered only with the write tools they use (OCT-314).
+  'draft_voucher',
 ];
 
 export const OWNER_PROMPTS: readonly PromptName[] = [
@@ -97,6 +134,7 @@ export const OWNER_PROMPTS: readonly PromptName[] = [
   'review_pending_vouchers',
   'check_budget',
   'review_console_access',
+  'decide_pending_vouchers',
 ];
 
 export const PERSONA_PROMPTS: Readonly<Record<Persona, readonly PromptName[]>> = {

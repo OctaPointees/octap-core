@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { MembersService } from '#domain/members/members.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 import type { LoyaltyTransactionPage, VoucherOwnershipDto } from '@octap/contracts';
 import type {
   MemberDirectoryQueryDto,
@@ -51,6 +51,7 @@ export class MembersController {
     return this.members.vouchers(req.consoleIdentity.user.id, orgId, memberId);
   }
   @Patch(':memberId')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   patch(
     @Req() req: ConsoleRequest,

@@ -34,7 +34,11 @@ still run. `GET /v1/console/mcp/token` tells the MCP server what a token is boun
   to make changes" box, unticked by default; the token gets `mcp:write` only when the user ticks it
   (`completeGoogleSignIn`'s `allowWrite`). The dashboard assistant's token never has it.
 - **Opt-in routes.** A non-GET request with an MCP token passes only on a route marked
-  `@McpWritable()` (today: the console voucher writes) and only with `mcp:write`. Every other write
+  `@McpWritable()` and only with `mcp:write`. Today: vouchers, voucher batches, a member's `PATCH`,
+  renaming and revoking an API key, the refund policy, the organization's profile and settings, and
+  enabling, disabling and replaying webhooks. Never a route that returns a secret (creating an API
+  key, registering a webhook endpoint, rotating its secret) or one that changes access (staff,
+  invitations). Every other write
   is 403.
 - **Confirmation.** The host first prepares the change (`POST .../mcp/confirmations`, `@McpPrepare()`):
   `McpConfirmationService` stores the exact method, path and body, bound to the user, organization

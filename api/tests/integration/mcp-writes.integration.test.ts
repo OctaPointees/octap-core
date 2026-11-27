@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createTestApp } from './support/app.js';
-import { resetDb, schema, seedMember, seedOrganization, seedProgram } from './support/db.js';
+import { resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from './support/db.js';
 
 const REDIRECT = 'http://localhost:6274/oauth/callback';
 const RESOURCE = 'http://localhost:4100/mcp';
@@ -239,6 +239,86 @@ describe('MCP writes: mcp:write, confirmation and idempotency (OCT-314)', () => 
     const activated = await confirmed('patch', path, { status: 'ACTIVE', expectedUpdatedAt: created.body.updatedAt });
     expect(activated.status).toBe(200);
     expect(activated.body.publishStatus).toBe('PUBLISHING');
+  });
+
+  it('makes every part 2 change once confirmed, and keeps secrets and access control out of reach', async () => {
+    const { token } = await signIn({ scope: 'mcp mcp:write', allowWrite: true, organizationId: ownerOf });
+    const org = `/v1/console/organizations/${ownerOf}`;
+    const owner = { Authorization: 'Bearer owner' };
+    const confirmed = async (
+      method: 'post' | 'patch' | 'put' | 'delete',
+      path: string,
+      body: Record<string, unknown>,
+    ) => {
+      const prepared = await prepare(token, ownerOf, { method: method.toUpperCase(), path, body, summary: 'Change' });
+      expect(prepared.status).toBe(201);
+      const request = ctx.http()[method](path).set('Authorization', `Bearer ${token}`);
+      return request.set('X-Mcp-Confirmation', prepared.body.confirmationId).send(body);
+    };
+
+    // Anything that returns a secret, or changes who has access, never opts in.
+    const { credential } = await seedCredential(ctx.db, ownerOf, { scopes: ['read'] });
+    const endpoint = (
+      await ctx
+        .http()
+        .post(`${org}/webhooks/endpoints`)
+        .set(owner)
+        .send({ url: 'https://merchant.example/hooks' })
+        .expect(201)
+    ).body as { id: string };
+    for (const [method, path, body] of [
+      ['post', `${org}/api-credentials`, { name: 'k', scopes: ['read'] }],
+      ['post', `${org}/webhooks/endpoints`, { url: 'https://merchant.example/x' }],
+      ['post', `${org}/webhooks/endpoints/${endpoint.id}/rotate-secret`, {}],
+      ['post', `${org}/invitations`, { email: 'new@example.com' }],
+      ['patch', `${org}/staff/${userId}`, { status: 'SUSPENDED' }],
+    ] as const) {
+      const refused = await confirmed(method, path, body);
+      expect(refused.status).toBe(403);
+      expect(refused.body.message).toBe('MCP access cannot make this change');
+    }
+
+    expect((await confirmed('patch', `${org}/settings`, { voucherApprovalRequired: true })).status).toBe(200);
+    expect((await confirmed('patch', `${org}/profile`, { name: 'A Coffee House' })).status).toBe(200);
+    const policy = {
+      allowUnused: true,
+      allowExpired: true,
+      allowRedeemed: false,
+      restockUnused: true,
+      refundWindowDays: 30,
+    };
+    expect((await confirmed('put', `${org}/refund-policy`, { ...policy, reason: 'Tet' })).body).toMatchObject({
+      allowExpired: true,
+      refundWindowDays: 30,
+    });
+    expect((await confirmed('patch', `${org}/members/${memberId}`, { status: 'BLOCKED' })).status).toBe(200);
+    expect((await confirmed('patch', `${org}/api-credentials/${credential.id}`, { name: 'Till 2' })).status).toBe(200);
+    expect([200, 204]).toContain((await confirmed('delete', `${org}/api-credentials/${credential.id}`, {})).status);
+    expect((await confirmed('post', `${org}/webhooks/endpoints/${endpoint.id}/disable`, {})).status).toBe(201);
+    expect((await confirmed('post', `${org}/webhooks/endpoints/${endpoint.id}/enable`, {})).status).toBe(201);
+    const tested = await confirmed('post', `${org}/webhooks/endpoints/${endpoint.id}/test`, {});
+    expect(tested.body).toMatchObject({ eventType: 'webhook.test', status: 'PENDING' });
+
+    const imported = await confirmed('post', `${org}/voucher-batches`, { name: 'Tet', items: [reward] });
+    expect(imported.status).toBe(201);
+    expect(imported.body.items).toMatchObject([{ code: 'coffee', status: 'created' }]);
+    const archived = await confirmed('post', `${org}/voucher-batches/${imported.body.batch.id}/archive`, {});
+    expect(archived.status).toBe(201);
+
+    const audit = await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.organizationId, ownerOf));
+    expect(audit.map((row) => row.action)).toEqual(
+      expect.arrayContaining([
+        'organization.settings_updated',
+        'organization.profile_updated',
+        'refund_policy.published',
+        'member.blocked',
+        'api_key.renamed',
+        'api_key.revoked',
+        'webhook_endpoint.disabled',
+        'webhook_endpoint.enabled',
+      ]),
+    );
+    expect(audit.every((row) => row.actorType === 'USER' && row.actorId === userId)).toBe(true);
   });
 
   it("keeps Core's persona rules: a Developer can't approve through MCP", async () => {

@@ -2,8 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { VoucherDto } from '@octap/sdk';
 import * as z from 'zod/v4';
 import type { PreparedChange } from './console-client.js';
-import { VOUCHER_DETAIL, voucherDetailOf } from './console-tools.js';
-import { combineSignal, isOctaApiError, result, type ToolExtra } from './tool-kit.js';
+import { VOUCHER_DETAIL, voucherDetailOf, type ConsoleReads } from './console-tools.js';
+import { combineSignal, isOctaApiError, nullableString, result, type ToolExtra } from './tool-kit.js';
 
 interface RequestOptions {
   signal?: AbortSignal;
@@ -22,8 +22,8 @@ export interface ChangeInput {
  * applying sends it with its confirmation id, and Core makes it once.
  */
 export interface ConsoleWrites {
-  /** The console path of the organization's vouchers, or of one voucher. */
-  voucherPath(voucherId?: string): string;
+  /** A console path of the connected organization: `organizationPath('/vouchers')`. */
+  organizationPath(suffix?: string): string;
   /** Reads one voucher, to describe it before changing it. */
   consoleVoucher(voucherId: string, options?: RequestOptions): Promise<VoucherDto>;
   prepareChange(change: ChangeInput, options?: RequestOptions): Promise<PreparedChange>;
@@ -40,6 +40,23 @@ export type WriteToolName =
   | 'pause_voucher'
   | 'approve_voucher'
   | 'reject_voucher'
+  | 'import_vouchers'
+  | 'activate_voucher_batch'
+  | 'pause_voucher_batch'
+  | 'resume_voucher_batch'
+  | 'archive_voucher_batch'
+  | 'update_member_details'
+  | 'block_member'
+  | 'unblock_member'
+  | 'rename_api_key'
+  | 'revoke_api_key'
+  | 'set_refund_policy'
+  | 'set_voucher_approval_required'
+  | 'update_organization_display'
+  | 'enable_webhook_endpoint'
+  | 'disable_webhook_endpoint'
+  | 'replay_webhook_delivery'
+  | 'send_test_webhook'
   | 'confirm_change';
 
 export const WRITE_TOOLS: WriteToolName[] = [
@@ -51,11 +68,28 @@ export const WRITE_TOOLS: WriteToolName[] = [
   'pause_voucher',
   'approve_voucher',
   'reject_voucher',
+  'import_vouchers',
+  'activate_voucher_batch',
+  'pause_voucher_batch',
+  'resume_voucher_batch',
+  'archive_voucher_batch',
+  'update_member_details',
+  'block_member',
+  'unblock_member',
+  'rename_api_key',
+  'revoke_api_key',
+  'set_refund_policy',
+  'set_voucher_approval_required',
+  'update_organization_display',
+  'enable_webhook_endpoint',
+  'disable_webhook_endpoint',
+  'replay_webhook_delivery',
+  'send_test_webhook',
   'confirm_change',
 ];
 
 const WRITE_METHODS: Array<keyof ConsoleWrites> = [
-  'voucherPath',
+  'organizationPath',
   'consoleVoucher',
   'prepareChange',
   'getChange',
@@ -153,7 +187,11 @@ const PREPARED = z.object({
 const APPLIED = z.object({
   done: z.literal(true),
   summary: z.string().describe('What was changed'),
-  voucher: VOUCHER_DETAIL.nullable().describe('The voucher as it is now'),
+  voucher: VOUCHER_DETAIL.nullable().describe('The voucher as it is now, when the change was to one voucher'),
+  outcomes: z
+    .array(z.object({ code: nullableString, result: z.string(), reason: nullableString }))
+    .nullable()
+    .describe("Each voucher's result when the change was to a batch: created, conflict, error, activated, failed…"),
 });
 
 const NEXT_STEP =
@@ -166,14 +204,20 @@ const NEXT_STEP =
  * user agreed. Core checks the persona, the organization and the confirmation again on the write, so
  * these tools hold no authority: a wrong persona map can show a tool Core then refuses.
  */
-export function registerWriteTools(server: McpServer, core: ConsoleWrites, allowed: ReadonlySet<string>) {
+export function registerWriteTools(
+  server: McpServer,
+  core: ConsoleWrites & Partial<ConsoleReads>,
+  allowed: ReadonlySet<string>,
+) {
   const prepare = <Args>(
     name: WriteToolName,
     description: string,
     input: z.ZodType<Args>,
     build: (args: Args, signal: AbortSignal) => Promise<ChangeInput>,
+    /** The reads the tool describes the change with; it is offered only when the client has them. */
+    needs: Array<keyof ConsoleReads> = [],
   ) => {
-    if (!allowed.has(name)) return;
+    if (!allowed.has(name) || !needs.every((read) => typeof core[read] === 'function')) return;
     server.registerTool(
       name,
       {
@@ -211,7 +255,7 @@ export function registerWriteTools(server: McpServer, core: ConsoleWrites, allow
   ): Promise<ChangeInput> => {
     const voucher = await core.consoleVoucher(voucherId, { signal });
     const { suffix, ...change } = describe(voucher);
-    return { ...change, path: `${core.voucherPath(voucherId)}${suffix ?? ''}` };
+    return { ...change, path: core.organizationPath(`/vouchers/${encodeURIComponent(voucherId)}${suffix ?? ''}`) };
   };
 
   prepare(
@@ -221,7 +265,7 @@ export function registerWriteTools(server: McpServer, core: ConsoleWrites, allow
     CREATE_INPUT,
     async (args) => ({
       method: 'POST',
-      path: core.voucherPath(),
+      path: core.organizationPath('/vouchers'),
       body: definedOnly({ ...args, status: 'DRAFT' }),
       summary: `Create a draft voucher ${describeFields(args)}.`,
     }),
@@ -328,6 +372,381 @@ export function registerWriteTools(server: McpServer, core: ConsoleWrites, allow
       })),
   );
 
+  // --- Batches (OCT-303) ------------------------------------------------------------------------
+
+  const batchOf = (batchId: string, signal: AbortSignal) => core.consoleVoucherBatch!(batchId, { signal });
+  const batchLabel = (batch: { name?: string | null; id: string }) =>
+    batch.name ? `"${batch.name}"` : `${batch.id.slice(0, 8)}…`;
+  const batchPath = (batchId: string, action: string) =>
+    core.organizationPath(`/voucher-batches/${encodeURIComponent(batchId)}/${action}`);
+  const BATCH_ONLY = z.object({ batchId: z.string().uuid().describe('From list_voucher_batches') }).strict();
+
+  prepare(
+    'import_vouchers',
+    'Import up to 100 vouchers as one draft batch, e.g. from a list the user pasted. Every voucher is a ' +
+      'draft until the batch is activated. A code that already exists is reported, not overwritten (only a ' +
+      'draft of an archived batch is replaced).',
+    z
+      .object({
+        name: z.string().trim().max(120).optional().describe('A label, e.g. the file name or "Tet 2027"'),
+        items: z.array(CREATE_INPUT).min(1).max(100),
+      })
+      .strict(),
+    async (args) => ({
+      method: 'POST',
+      path: core.organizationPath('/voucher-batches'),
+      body: definedOnly({ name: args.name, items: args.items.map((item) => definedOnly(item)) }),
+      summary:
+        `Import ${count(args.items.length, 'voucher')} as one draft batch${args.name ? ` "${args.name}"` : ''}: ` +
+        args.items.map((item) => `${item.code} "${item.title}" (${item.pointsCost} points)`).join('; ') +
+        '. A code that already exists is reported and left as it is.',
+    }),
+  );
+
+  prepare(
+    'activate_voucher_batch',
+    "Activate a batch's draft and waiting vouchers. For an Owner they are published on-chain (terms can't " +
+      'change afterwards) and go live; for a Business Developer, they go to an Owner for approval when ' +
+      'approval is on.',
+    BATCH_ONLY,
+    async (args, signal) => {
+      const batch = await batchOf(args.batchId, signal);
+      const pending = batch.vouchers.filter(
+        (voucher) => voucher.status === 'DRAFT' || voucher.status === 'PENDING_APPROVAL',
+      );
+      if (pending.length === 0)
+        throw new WriteInputError(`Batch ${batchLabel(batch)} has no draft or waiting voucher to activate.`);
+      return {
+        method: 'POST',
+        path: batchPath(args.batchId, 'activate'),
+        // The vouchers as the user saw them: one changed since fails alone instead of going live unseen.
+        body: { seen: pending.map((voucher) => ({ voucherId: voucher.id, updatedAt: voucher.updatedAt })) },
+        summary:
+          `Activate batch ${batchLabel(batch)}: ${count(pending.length, 'voucher')} (` +
+          pending.map((voucher) => voucher.code).join(', ') +
+          "). For an Owner, their terms are published on-chain and can't change afterwards, and members can claim them.",
+      };
+    },
+    ['consoleVoucherBatch'],
+  );
+
+  const BATCH_ACTIONS = [
+    [
+      'pause_voucher_batch',
+      'pause',
+      'Pause every live voucher of a batch (Owner).',
+      "members can't claim them until resumed",
+    ],
+    [
+      'resume_voucher_batch',
+      'resume',
+      'Resume the paused vouchers of a batch (Owner).',
+      'members can claim them again',
+    ],
+    [
+      'archive_voucher_batch',
+      'archive',
+      'Archive a batch: it leaves the batch list. Live vouchers stay live.',
+      'it leaves the batch list; live vouchers stay live',
+    ],
+  ] as const;
+  for (const [name, action, description, effect] of BATCH_ACTIONS) {
+    prepare(
+      name,
+      description,
+      BATCH_ONLY,
+      async (args, signal) => {
+        const batch = await batchOf(args.batchId, signal);
+        return {
+          method: 'POST',
+          path: batchPath(args.batchId, action),
+          body: {},
+          summary: `${action[0].toUpperCase()}${action.slice(1)} batch ${batchLabel(batch)}: ${effect}.`,
+        };
+      },
+      ['consoleVoucherBatch'],
+    );
+  }
+
+  // --- Members ----------------------------------------------------------------------------------
+
+  const MEMBER = z.string().uuid().describe('From find_member');
+  const memberChange = async (
+    memberId: string,
+    signal: AbortSignal,
+    describe: (label: string, status: string | null | undefined) => Pick<ChangeInput, 'body' | 'summary'>,
+  ): Promise<ChangeInput> => {
+    const member = await core.getMember!(memberId, { signal });
+    const label = member.displayName ? `${member.displayName} (${memberId.slice(0, 8)}…)` : memberId;
+    return {
+      method: 'PATCH',
+      path: core.organizationPath(`/members/${encodeURIComponent(memberId)}`),
+      ...describe(label, member.status),
+    };
+  };
+
+  prepare(
+    'update_member_details',
+    "Change a member's POS id (externalMemberId) or metadata (Owner). Their name, email and phone are their " +
+      'own and cannot be changed here.',
+    z
+      .object({
+        memberId: MEMBER,
+        externalMemberId: z.string().trim().min(1).max(128).nullable().optional().describe('null removes it'),
+        metadata: z.record(z.string(), z.unknown()).optional().describe('Replaces the whole metadata object'),
+      })
+      .strict()
+      .refine(
+        (value) => value.externalMemberId !== undefined || value.metadata !== undefined,
+        'Change at least one field',
+      ),
+    async (args, signal) =>
+      memberChange(args.memberId, signal, (label) => ({
+        body: definedOnly({ externalMemberId: args.externalMemberId, metadata: args.metadata }),
+        summary:
+          `Change member ${label}: ` +
+          [
+            args.externalMemberId !== undefined ? `POS id: ${args.externalMemberId ?? 'none'}` : null,
+            args.metadata !== undefined ? `metadata: ${JSON.stringify(args.metadata)}` : null,
+          ]
+            .filter(Boolean)
+            .join('; ') +
+          '.',
+      })),
+    ['getMember'],
+  );
+
+  prepare(
+    'block_member',
+    'Block a member in this organization (Owner): they cannot earn, claim or redeem here until unblocked.',
+    z.object({ memberId: MEMBER }).strict(),
+    async (args, signal) =>
+      memberChange(args.memberId, signal, (label) => ({
+        body: { status: 'BLOCKED' },
+        summary: `Block member ${label}: they can't earn, claim or redeem here until unblocked.`,
+      })),
+    ['getMember'],
+  );
+
+  prepare(
+    'unblock_member',
+    'Unblock a member blocked in this organization (Owner).',
+    z.object({ memberId: MEMBER }).strict(),
+    async (args, signal) =>
+      memberChange(args.memberId, signal, (label, status) => {
+        if (status !== 'BLOCKED')
+          throw new WriteInputError(`Member ${label} is ${status ?? 'not blocked'}, not BLOCKED.`);
+        return { body: { status: 'ACTIVE' }, summary: `Unblock member ${label}: they can take part again.` };
+      }),
+    ['getMember'],
+  );
+
+  // --- API keys: rename and revoke only. Creating one would put its secret in the conversation. ---
+
+  const KEY_PREFIX = z.string().trim().min(4).max(64).describe('The keyPrefix from list_api_keys');
+  const keyChange = async (
+    keyPrefix: string,
+    signal: AbortSignal,
+    describe: (key: { name: string; scopes: string[] }) => Pick<ChangeInput, 'method' | 'body' | 'summary'>,
+  ): Promise<ChangeInput> => {
+    const key = (await core.listApiKeys!({ signal })).find((candidate) => candidate.keyPrefix === keyPrefix);
+    if (!key?.id)
+      throw new WriteInputError(`No API key with the prefix ${keyPrefix}. Use list_api_keys to look it up.`);
+    return { ...describe(key), path: core.organizationPath(`/api-credentials/${encodeURIComponent(key.id)}`) };
+  };
+
+  prepare(
+    'rename_api_key',
+    'Rename an API key. A Business Developer may rename read-only keys only.',
+    z.object({ keyPrefix: KEY_PREFIX, name: z.string().trim().min(1).max(100) }).strict(),
+    async (args, signal) =>
+      keyChange(args.keyPrefix, signal, (key) => ({
+        method: 'PATCH',
+        body: { name: args.name },
+        summary: `Rename API key ${args.keyPrefix}… from "${key.name}" to "${args.name}".`,
+      })),
+    ['listApiKeys'],
+  );
+
+  prepare(
+    'revoke_api_key',
+    'Revoke an API key: every system using it stops working at once, and it cannot be undone. A Business ' +
+      'Developer may revoke read-only keys only.',
+    z.object({ keyPrefix: KEY_PREFIX }).strict(),
+    async (args, signal) =>
+      keyChange(args.keyPrefix, signal, (key) => ({
+        method: 'DELETE',
+        body: {},
+        summary:
+          `Revoke API key "${key.name}" (${args.keyPrefix}…, ${key.scopes.join(' and ')}): every system using it ` +
+          'stops working at once. This cannot be undone.',
+      })),
+    ['listApiKeys'],
+  );
+
+  // --- Organization settings (Owner) ------------------------------------------------------------
+
+  prepare(
+    'set_refund_policy',
+    'Publish a new version of the voucher refund policy (Owner). Fields left out keep their current value.',
+    z
+      .object({
+        allowUnused: z.boolean().optional(),
+        allowExpired: z.boolean().optional(),
+        allowRedeemed: z.boolean().optional(),
+        restockUnused: z.boolean().optional(),
+        refundWindowDays: z.number().int().min(1).max(3650).nullable().optional().describe('null: no time limit'),
+        reason: z.string().trim().min(1).max(500).describe('Why the policy changes, kept with this version'),
+      })
+      .strict(),
+    async (args, signal) => {
+      const current = await core.getRefundPolicy!({ signal });
+      const next = {
+        allowUnused: args.allowUnused ?? current.allowUnused,
+        allowExpired: args.allowExpired ?? current.allowExpired,
+        allowRedeemed: args.allowRedeemed ?? current.allowRedeemed,
+        restockUnused: args.restockUnused ?? current.restockUnused,
+        refundWindowDays: args.refundWindowDays === undefined ? current.refundWindowDays : args.refundWindowDays,
+      };
+      const changes = (Object.keys(REFUND_FIELDS) as Array<keyof typeof REFUND_FIELDS>)
+        .filter((field) => next[field] !== current[field])
+        .map((field) => `${REFUND_FIELDS[field]}: ${show(current[field])} → ${show(next[field])}`);
+      if (changes.length === 0) throw new WriteInputError('That is already the current refund policy.');
+      return {
+        method: 'PUT',
+        path: core.organizationPath('/refund-policy'),
+        body: { ...next, reason: args.reason },
+        summary: `Publish refund policy version ${current.version + 1}: ${changes.join('; ')}. Reason: "${args.reason}".`,
+      };
+    },
+    ['getRefundPolicy'],
+  );
+
+  prepare(
+    'set_voucher_approval_required',
+    "Turn the Owner's approval of Business Developers' vouchers on or off (Owner).",
+    z.object({ required: z.boolean() }).strict(),
+    async (args) => ({
+      method: 'PATCH',
+      path: core.organizationPath('/settings'),
+      body: { voucherApprovalRequired: args.required },
+      summary: args.required
+        ? "Require an Owner's approval before a Business Developer's voucher goes live."
+        : "Stop requiring an Owner's approval: Business Developers can activate vouchers themselves. Vouchers " +
+          'already waiting stay waiting.',
+    }),
+  );
+
+  prepare(
+    'update_organization_display',
+    "Change the organization's display name or logo (Owner). Legal details change only through a request " +
+      'to the System Admin, not here.',
+    z
+      .object({
+        name: z.string().trim().min(2).max(160).optional(),
+        logoUrl: z
+          .string()
+          .url()
+          .startsWith('https://')
+          .max(2048)
+          .nullable()
+          .optional()
+          .describe('An https URL; null removes the logo'),
+      })
+      .strict()
+      .refine((value) => value.name !== undefined || value.logoUrl !== undefined, 'Change at least one field'),
+    async (args, signal) => {
+      const organization = await core.getOrganization!({ signal });
+      return {
+        method: 'PATCH',
+        path: core.organizationPath('/profile'),
+        body: definedOnly({ name: args.name, logoUrl: args.logoUrl }),
+        summary:
+          'Change the organization: ' +
+          [
+            args.name !== undefined ? `name: "${organization.name}" → "${args.name}"` : null,
+            args.logoUrl !== undefined ? `logo: ${args.logoUrl ?? 'removed'}` : null,
+          ]
+            .filter(Boolean)
+            .join('; ') +
+          '.',
+      };
+    },
+    ['getOrganization'],
+  );
+
+  // --- Webhooks: never registering one or rotating its secret, which would return the secret. ----
+
+  const ENDPOINT_ACTIONS = [
+    [
+      'disable_webhook_endpoint',
+      'disable',
+      'Stop sending events to a webhook endpoint (Owner).',
+      'events stop being sent to it',
+    ],
+    [
+      'enable_webhook_endpoint',
+      'enable',
+      'Send events to a disabled webhook endpoint again (Owner).',
+      'events are sent to it again',
+    ],
+  ] as const;
+  for (const [name, action, description, effect] of ENDPOINT_ACTIONS) {
+    prepare(
+      name,
+      description,
+      z.object({ endpointId: z.string().uuid().describe('From list_webhook_endpoints') }).strict(),
+      async (args, signal) => {
+        const endpoint = (await core.consoleWebhookEndpoints!({ signal })).find((item) => item.id === args.endpointId);
+        if (!endpoint) throw new WriteInputError('No webhook endpoint with this id. Use list_webhook_endpoints.');
+        return {
+          method: 'POST',
+          path: core.organizationPath(`/webhooks/endpoints/${encodeURIComponent(args.endpointId)}/${action}`),
+          body: {},
+          summary: `${action === 'enable' ? 'Enable' : 'Disable'} the webhook endpoint ${withoutQuery(endpoint.url)}: ${effect}.`,
+        };
+      },
+      ['consoleWebhookEndpoints'],
+    );
+  }
+
+  prepare(
+    'send_test_webhook',
+    'Send a webhook.test event to one endpoint through the normal signed delivery, to check the receiver ' +
+      'works. Nothing else changes.',
+    z.object({ endpointId: z.string().uuid().describe('From list_webhook_endpoints') }).strict(),
+    async (args, signal) => {
+      const endpoint = (await core.consoleWebhookEndpoints!({ signal })).find((item) => item.id === args.endpointId);
+      if (!endpoint) throw new WriteInputError('No webhook endpoint with this id. Use list_webhook_endpoints.');
+      return {
+        method: 'POST',
+        path: core.organizationPath(`/webhooks/endpoints/${encodeURIComponent(args.endpointId)}/test`),
+        body: {},
+        summary: `Send a webhook.test event to ${withoutQuery(endpoint.url)}. Check list_webhook_deliveries for the result.`,
+      };
+    },
+    ['consoleWebhookEndpoints'],
+  );
+
+  prepare(
+    'replay_webhook_delivery',
+    'Send a failed (DEAD_LETTER) webhook delivery again, with the same event id.',
+    z.object({ deliveryId: z.string().uuid().describe('From list_webhook_deliveries') }).strict(),
+    async (args, signal) => {
+      const delivery = (await core.consoleWebhookDeliveries!({ signal })).find((item) => item.id === args.deliveryId);
+      if (!delivery) throw new WriteInputError('No recent webhook delivery with this id. Use list_webhook_deliveries.');
+      return {
+        method: 'POST',
+        path: core.organizationPath(`/webhooks/deliveries/${encodeURIComponent(args.deliveryId)}/replay`),
+        body: {},
+        summary:
+          `Send the ${delivery.eventType ?? 'webhook'} event of delivery ${args.deliveryId.slice(0, 8)}… again ` +
+          `(now ${delivery.status ?? 'unknown'}).`,
+      };
+    },
+    ['consoleWebhookDeliveries'],
+  );
+
   if (allowed.has('confirm_change')) {
     server.registerTool(
       'confirm_change',
@@ -347,7 +766,12 @@ export function registerWriteTools(server: McpServer, core: ConsoleWrites, allow
           const answer = await core.applyChange(change, { signal });
           return result(
             'confirm_change',
-            { done: true, summary: change.summary, voucher: isVoucher(answer) ? voucherDetailOf(answer) : null },
+            {
+              done: true,
+              summary: change.summary,
+              voucher: isVoucher(answer) ? voucherDetailOf(answer) : null,
+              outcomes: outcomesOf(answer),
+            },
             true,
           );
         } catch (error) {
@@ -363,6 +787,45 @@ function pendingApproval(voucher: VoucherDto): string {
   if (voucher.status !== 'PENDING_APPROVAL' || voucher.approval?.status !== 'PENDING' || !voucher.approval.id)
     throw new WriteInputError(`Voucher "${voucher.title}" is ${voucher.status}, not waiting for approval.`);
   return voucher.approval.id;
+}
+
+/** Each voucher's result, from a batch import (`items`) or a batch action (`vouchers`). */
+function outcomesOf(answer: unknown): Array<{ code: string | null; result: string; reason: string | null }> | null {
+  const value = answer as { items?: unknown; vouchers?: unknown } | null;
+  if (Array.isArray(value?.items))
+    return (value.items as Array<{ code?: string | null; status?: string; error?: { message?: string } }>).map(
+      (item) => ({ code: item.code ?? null, result: item.status ?? 'unknown', reason: item.error?.message ?? null }),
+    );
+  if (Array.isArray(value?.vouchers) && !isVoucher(value))
+    return (value.vouchers as Array<{ code?: string; outcome?: string; reason?: string | null }>).map((voucher) => ({
+      code: voucher.code ?? null,
+      result: voucher.outcome ?? 'unknown',
+      reason: voucher.reason ?? null,
+    }));
+  return null;
+}
+
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+const REFUND_FIELDS = {
+  allowUnused: 'refund unused vouchers',
+  allowExpired: 'refund expired vouchers',
+  allowRedeemed: 'refund redeemed vouchers',
+  restockUnused: 'return refunded unused vouchers to supply',
+  refundWindowDays: 'refund window (days after claim)',
+} as const;
+
+const show = (value: unknown) =>
+  value === null ? 'none' : value === true ? 'on' : value === false ? 'off' : String(value);
+
+/** A URL without its query string, which often carries a token. */
+function withoutQuery(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return 'the endpoint';
+  }
 }
 
 function isVoucher(value: unknown): value is VoucherDto {
@@ -424,7 +887,7 @@ function writeError(tool: string, error: unknown) {
         );
       case 404:
         return text(
-          'No such voucher or pending change in the connected organization. It may have expired; prepare it again.',
+          'Not found in the connected organization: no such item, or the pending change expired. Prepare it again.',
         );
       case 429:
         return text('Rate limited; do not retry this call in this turn.');

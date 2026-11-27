@@ -10,6 +10,13 @@ import {
   type ConsoleReads,
   type ConsoleToolName,
 } from './console-tools.js';
+import {
+  INSIGHT_READ,
+  INSIGHT_TOOLS,
+  registerInsightTools,
+  type InsightReads,
+  type InsightToolName,
+} from './insight-tools.js';
 import { BALANCE, OWNERSHIP, TRANSACTION, balanceOf, ownershipOf, transactionOf } from './shapes.js';
 import { MemberBindingError, registerRead, type Projection, type ToolExtra } from './tool-kit.js';
 import { WRITE_TOOLS, canServeWrites, registerWriteTools, type WriteToolName } from './write-tools.js';
@@ -33,6 +40,7 @@ export type {
 } from './console-tools.js';
 export { isOctaApiError, result, safeError, REQUEST_TIMEOUT_MS } from './tool-kit.js';
 export type { ChangeInput, ConsoleWrites, WriteToolName } from './write-tools.js';
+export type { InsightReads, InsightToolName } from './insight-tools.js';
 export { WRITE_TOOLS } from './write-tools.js';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -54,14 +62,14 @@ export const LIMIT_SCHEMA = z
 const CURSOR_SCHEMA = z.string().min(1).max(500).optional().describe('nextCursor of the previous page');
 
 export type MemberToolName = 'get_member_balance' | 'list_member_transactions' | 'list_member_vouchers';
-export type ToolName = MemberToolName | ConsoleToolName | WriteToolName;
+export type ToolName = MemberToolName | ConsoleToolName | InsightToolName | WriteToolName;
 export const MEMBER_TOOLS: MemberToolName[] = [
   'get_member_balance',
   'list_member_transactions',
   'list_member_vouchers',
 ];
 /** Every read tool. Write tools are offered only when asked for (`tools`), to a signed-in user. */
-export const ALL_TOOLS: ToolName[] = [...MEMBER_TOOLS, ...CONSOLE_TOOLS];
+export const ALL_TOOLS: ToolName[] = [...MEMBER_TOOLS, ...CONSOLE_TOOLS, ...INSIGHT_TOOLS];
 
 /** The prompts this server can offer. Each needs certain tools; see `registerPrompts`. */
 export type PromptName =
@@ -72,10 +80,15 @@ export type PromptName =
   | 'review_pending_vouchers'
   | 'check_budget'
   | 'check_webhooks'
-  | 'review_console_access';
+  | 'review_console_access'
+  | 'draft_voucher'
+  | 'decide_pending_vouchers'
+  | 'program_summary'
+  | 'debug_integration';
 
 export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransactions' | 'listMemberVouchers'> &
-  Partial<ConsoleReads>;
+  Partial<ConsoleReads> &
+  Partial<InsightReads>;
 
 /** The tools this server offers: the allowed ones the client can actually serve. */
 export function offeredTools(client: CoreClientLike, allowed: readonly ToolName[] = ALL_TOOLS): Set<ToolName> {
@@ -86,7 +99,9 @@ export function offeredTools(client: CoreClientLike, allowed: readonly ToolName[
         ? writes
         : tool in CONSOLE_READ
           ? typeof client[CONSOLE_READ[tool as ConsoleToolName]] === 'function'
-          : true,
+          : tool in INSIGHT_READ
+            ? typeof client[INSIGHT_READ[tool as InsightToolName]] === 'function'
+            : true,
     ),
   );
 }
@@ -126,6 +141,8 @@ export function createServer(options: CreateServerOptions = {}) {
   const allowedTools = offeredTools(core, options.tools);
   registerMemberTools(server, core, allowedTools, options.resolveMemberId, options.project);
   registerConsoleTools(server, core, allowedTools, options.project);
+  // The API-key client has none of these reads; each tool checks its own before registering.
+  registerInsightTools(server, core as Partial<InsightReads>, allowedTools, options.project);
   if (canServeWrites(core)) registerWriteTools(server, core, allowedTools);
   registerPrompts(server, allowedTools, options.prompts);
   return server;
@@ -349,6 +366,93 @@ function registerPrompts(server: McpServer, tools: Set<ToolName>, allowedPrompts
           'Check our webhooks: list the endpoints, then the deliveries that are DEAD_LETTER or still PENDING. ' +
             'Group them by endpoint and event type, and explain the likely cause from the last HTTP status and ' +
             'error (e.g. 401 means our receiver rejected the signature). Use only the OctaP tools.',
+        ),
+    );
+  }
+
+  if (offers('program_summary', 'get_program_analytics')) {
+    server.registerPrompt(
+      'program_summary',
+      {
+        title: 'How is our program doing?',
+        description: 'Points, members and vouchers over a period, compared with the period before.',
+        argsSchema: z.object({
+          days: z
+            .string()
+            .regex(/^\d{1,3}$/)
+            .optional()
+            .describe('Days to look back, default 7'),
+        }),
+      },
+      ({ days }) =>
+        userMessage(
+          `Summarize how our loyalty program did over the last ${days ?? '7'} days with get_program_analytics, and ` +
+            'compare it with the same length of time before it: points earned and redeemed, active versus enrolled ' +
+            'members, and vouchers claimed, redeemed and expired unused. Point out anything that changed a lot. ' +
+            'Use only the OctaP tools, and keep it under 12 lines.',
+        ),
+    );
+  }
+
+  if (offers('debug_integration', 'get_api_errors', 'search_request_logs', 'get_request_log')) {
+    server.registerPrompt(
+      'debug_integration',
+      {
+        title: 'Why are my API calls failing?',
+        description: 'Failing calls grouped by cause, with the likely fix for each.',
+      },
+      () =>
+        userMessage(
+          'Find out why our API calls are failing. Start with get_api_errors for the last 24 hours, then for the ' +
+            'most frequent groups read one call with get_request_log. For each, say which route and API key, the ' +
+            'error, the likely cause (for example a 401 is a wrong or revoked key, a 409 a reused idempotency key) ' +
+            'and what to change in our integration. Use only the OctaP tools.',
+        ),
+    );
+  }
+
+  // Write prompts (OCT-314): offered only to a connection allowed to make changes, as their tools are.
+  if (offers('draft_voucher', 'create_voucher', 'confirm_change')) {
+    server.registerPrompt(
+      'draft_voucher',
+      {
+        title: 'Create a voucher from a description',
+        description: 'Turn a sentence such as "10% off drinks for 200 points until Tet" into a draft voucher.',
+        argsSchema: z.object({ description: z.string().min(1).max(1000).describe('What the voucher should be') }),
+      },
+      ({ description }) =>
+        userMessage(
+          `Create a draft voucher from this description: "${description}". Work out the code, title, points ` +
+            'cost, discount and dates; ask me for anything you cannot tell rather than guessing a price or a ' +
+            'date. Then call create_voucher, show me its summary word for word, and call confirm_change only if ' +
+            'I agree. It stays a draft: do not activate it unless I ask.',
+        ),
+    );
+  }
+
+  if (
+    offers(
+      'decide_pending_vouchers',
+      'list_vouchers',
+      'get_voucher',
+      'approve_voucher',
+      'reject_voucher',
+      'confirm_change',
+    )
+  ) {
+    server.registerPrompt(
+      'decide_pending_vouchers',
+      {
+        title: 'Approve what waits for me',
+        description: 'Go through the vouchers waiting for approval, and approve or reject each one with me.',
+      },
+      () =>
+        userMessage(
+          'List the vouchers waiting for my approval (list_vouchers with status PENDING_APPROVAL). For each one, ' +
+            'read it with get_voucher, summarize what the customer gets, the points cost, supply and dates, and ' +
+            'flag anything worth checking. Ask me whether to approve or reject it (and why, if rejecting), then ' +
+            'prepare that with approve_voucher or reject_voucher, show me the summary and call confirm_change ' +
+            'only once I agree. One voucher at a time.',
         ),
     );
   }

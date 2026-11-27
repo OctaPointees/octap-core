@@ -89,6 +89,16 @@ Returns the member's vouchers with `ownershipId`, `voucherId`, `title`, `status`
 | `list_staff` | Owner | None | Staff with Console access (`name`, `email`, `persona`, `status`: active or suspended) |
 | `list_invitations` | Owner | None | Console invitations (`email`, `role`, `status`, `expiresAt`; invitation tokens/links omitted) |
 
+### Program & integration insights
+
+| Tool | Persona | What it answers |
+| --- | --- | --- |
+| `list_transactions` | Developer, Owner | The organization's points transactions, filtered by type, status or member, paged |
+| `get_program_analytics` | Developer, Owner | Points earned, redeemed and reversed; active vs enrolled members; voucher claims, redemptions and expiries; daily trend |
+| `search_request_logs`, `get_request_log` | Developer, Owner | API calls by time, status or route, and one call by its request id |
+| `get_api_errors` | Developer, Owner | Failing calls grouped by route, status and error |
+| `get_api_usage` | Developer, Owner | Requests, error rate and latency per category, route and API key |
+
 ## Write tools (`serve-http`, only when the user allows changes)
 
 When a host asks for the `mcp:write` scope, Core's sign-in page shows an **Also allow it to make changes** box, unticked by default. Only if the user ticks it do these tools appear; otherwise the connection stays read-only and Core refuses every write.
@@ -104,6 +114,19 @@ Each change takes two steps. The tool named for it only **prepares** the change 
 | `activate_voucher` | Publish a draft, or resume a paused voucher | ✅ | where Core allows |
 | `pause_voucher` | Stop new claims | ✅ | — |
 | `approve_voucher`, `reject_voucher` | Decide a voucher waiting for approval | ✅ | — |
+| `import_vouchers` | Up to 100 vouchers as one draft batch; existing codes are reported, not overwritten | ✅ | ✅ |
+| `activate_voucher_batch` | Publish a batch's draft and waiting vouchers, as the user saw them | ✅ | ✅ (goes to an Owner when approval is on) |
+| `pause_voucher_batch`, `resume_voucher_batch` | Stop or restart claims on a batch | ✅ | — |
+| `archive_voucher_batch` | Put a batch away; live vouchers stay live | ✅ | ✅ |
+| `update_member_details` | A member's POS id or metadata | ✅ | — |
+| `block_member`, `unblock_member` | Stop or allow a member taking part here | ✅ | — |
+| `rename_api_key`, `revoke_api_key` | By key prefix; creating a key is never offered (its secret would land in the chat) | ✅ | ✅ read-only keys |
+| `set_refund_policy` | A new policy version from the current one, showing only what changes | ✅ | — |
+| `set_voucher_approval_required` | Owner approval of Developers' vouchers on or off | ✅ | — |
+| `update_organization_display` | Display name or logo (legal details go through the System Admin) | ✅ | — |
+| `enable_webhook_endpoint`, `disable_webhook_endpoint` | Start or stop sending events to an endpoint; registering one or rotating its secret is never offered | ✅ | — |
+| `replay_webhook_delivery` | Send a failed delivery again | ✅ | ✅ |
+| `send_test_webhook` | A `webhook.test` event to one endpoint | ✅ | ✅ |
 | `confirm_change` | Makes a prepared change | ✅ | ✅ |
 
 ---
@@ -122,3 +145,7 @@ MCP hosts can surface these prompts directly to users:
 | `check_budget` | Owner | None | Check remaining points budget and whether a top-up is needed |
 | `check_webhooks` | Developer, Owner | None | Group failed/retrying webhook deliveries by endpoint and identify likely causes |
 | `review_console_access` | Owner | None | Review active/suspended staff and pending invitations |
+| `draft_voucher` | Developer, Owner (with `mcp:write`) | `description` | Turn a sentence into a draft voucher, confirming before it is created |
+| `program_summary` | Developer, Owner | `days` (optional, default 7) | How the program did, compared with the period before |
+| `debug_integration` | Developer, Owner | None | Failing API calls grouped by cause, with the likely fix |
+| `decide_pending_vouchers` | Owner (with `mcp:write`) | None | Approve or reject each voucher waiting for approval, one at a time, confirming each |

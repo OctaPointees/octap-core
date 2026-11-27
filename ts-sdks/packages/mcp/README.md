@@ -159,6 +159,11 @@ Over `serve-http` only (they read the signed-in user's console routes):
 | `list_webhook_endpoints` | Where events are sent (URLs without their query string) and whether each is enabled |
 | `list_webhook_deliveries` | Recent deliveries by status or endpoint, with attempts and the last HTTP status and error |
 | `list_staff`, `list_invitations` | Who can sign in to the console, and pending invitations |
+| `list_transactions` | The whole organization's points transactions, filtered by type, status or member, paged |
+| `get_program_analytics` | Points earned, redeemed and reversed, active vs enrolled members, voucher claims and redemptions, daily trend |
+| `search_request_logs`, `get_request_log` | The integration's API calls by time, status or route, and one call by its request id (error code and message, the key's name and prefix; never the full error body) |
+| `get_api_errors` | Failing calls grouped by route, status and error, most frequent first |
+| `get_api_usage` | Request count, error rate and latency in total, per category, per route and per API key |
 
 ### Write tools (`serve-http`, only when the user allows changes)
 
@@ -182,6 +187,19 @@ records it in the audit log as the user, like a change from the Console.
 | `activate_voucher` | Publish a draft (terms go on-chain) or resume a paused voucher | ✅ | ✅ where Core allows |
 | `pause_voucher` | Stop new claims | ✅ | — |
 | `approve_voucher`, `reject_voucher` | Decide a voucher waiting for approval | ✅ | — |
+| `import_vouchers` | Up to 100 vouchers as one draft batch; existing codes are reported, not overwritten | ✅ | ✅ |
+| `activate_voucher_batch` | Publish a batch's draft and waiting vouchers, as the user saw them | ✅ | ✅ (goes to an Owner when approval is on) |
+| `pause_voucher_batch`, `resume_voucher_batch` | Stop or restart claims on a batch | ✅ | — |
+| `archive_voucher_batch` | Put a batch away; live vouchers stay live | ✅ | ✅ |
+| `update_member_details` | A member's POS id or metadata | ✅ | — |
+| `block_member`, `unblock_member` | Stop or allow a member taking part here | ✅ | — |
+| `rename_api_key`, `revoke_api_key` | By key prefix; creating a key is never offered (its secret would land in the chat) | ✅ | ✅ read-only keys |
+| `set_refund_policy` | A new policy version from the current one, showing only what changes | ✅ | — |
+| `set_voucher_approval_required` | Owner approval of Developers' vouchers on or off | ✅ | — |
+| `update_organization_display` | Display name or logo (legal details go through the System Admin) | ✅ | — |
+| `enable_webhook_endpoint`, `disable_webhook_endpoint` | Start or stop sending events to an endpoint; registering one or rotating its secret is never offered | ✅ | — |
+| `replay_webhook_delivery` | Send a failed delivery again | ✅ | ✅ |
+| `send_test_webhook` | A `webhook.test` event to one endpoint | ✅ | ✅ |
 | `confirm_change` | Makes a prepared change (the only tool that writes) | ✅ | ✅ |
 
 The prepare tools are annotated `readOnlyHint: true` (they change nothing); `confirm_change` is

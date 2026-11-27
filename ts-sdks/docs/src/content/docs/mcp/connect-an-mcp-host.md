@@ -8,7 +8,7 @@ description: Let an AI assistant read OctaP members, vouchers, budgets and opera
 This page describes `@octap/mcp` built from the `octap-core` repository (`ts-sdks/packages/mcp`).
 
 :::caution[Read-only by default]
-Every tool in `@octap/mcp` is read-only unless a user signed in over `serve-http` ticks **Also allow it to make changes**. Even then it can only manage vouchers, each change shown to the user and confirmed first. It never earns, redeems or reverses points, never holds Sui keys and never touches the database.
+Every tool in `@octap/mcp` is read-only unless a user signed in over `serve-http` ticks **Also allow it to make changes**. Even then it only makes everyday changes (vouchers and batches, members, API key names and revocation, the refund policy, settings, webhook endpoints), each one shown to the user and confirmed first. It never earns, redeems or reverses points, never holds Sui keys and never touches the database.
 :::
 
 ## Choose how to connect

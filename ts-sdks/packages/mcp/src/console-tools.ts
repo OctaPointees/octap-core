@@ -42,6 +42,8 @@ export interface RefundPolicyView {
 
 /** An API key as the console lists it (`ConsoleCredential`). Core never returns the key or its hash. */
 export interface ApiKeyView {
+  /** For the write tools to reach the key; the read tools never show it. */
+  id?: string;
   name: string;
   keyPrefix: string;
   scopes: string[];
