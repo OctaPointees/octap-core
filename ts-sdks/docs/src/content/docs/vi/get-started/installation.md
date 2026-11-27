@@ -11,6 +11,7 @@ description: Các package của OctaP SDK, công dụng của từng package và
 | `@octap/browser-sdk` | Website của bạn | Đăng nhập và ký giao dịch của khách hàng. Không giữ thông tin xác thực của merchant. |
 | `@octap/contracts` | Bất kỳ đâu | Chỉ gồm kiểu TypeScript. `@octap/sdk` đã re-export những kiểu bạn cần. |
 | `@octap/mcp` | Máy tính của nhân viên | MCP server chỉ đọc, cho phép trợ lý AI tra cứu thành viên. Xem [Kết nối MCP host](/vi/mcp/connect-an-mcp-host/). |
+| `@octap/verify` | Máy tính của kiểm toán viên | Kiểm tra một bundle bằng chứng audit với seal của nó trên Sui, không cần tin OctaP: `npx @octap/verify bundle.json`. |
 
 Đừng bao giờ import `@octap/sdk` vào code chạy trên trình duyệt, vì việc đó sẽ làm lộ API key của bạn.
 
