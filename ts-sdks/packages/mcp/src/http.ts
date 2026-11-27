@@ -18,6 +18,8 @@ import { createServer, type CreateServerOptions } from './server.js';
 
 export const MCP_PATH = '/mcp';
 const TOKEN_CHECK_TIMEOUT_MS = 10_000;
+/** The scope a host asks for to make changes (OCT-314). Without it, every tool is read-only. */
+export const MCP_WRITE_SCOPE = 'mcp:write';
 
 export interface HttpServerOptions {
   /** Core's base URL, which is also the OAuth authorization server. */
@@ -38,6 +40,8 @@ export interface OctapAuthExtra extends Record<string, unknown> {
   organizationId: string;
   persona: string;
   userId: string;
+  /** The user allowed this connection to make changes (`mcp:write`, OCT-314). */
+  canWrite: boolean;
 }
 
 /** Verifies every bearer token with Core. A token Core refuses is `invalid_token` (401 with a challenge). */
@@ -50,6 +54,7 @@ export function coreTokenVerifier(apiUrl: string): OAuthTokenVerifier {
         organizationId: introspection.organizationId,
         persona: introspection.persona,
         userId: introspection.userId,
+        canWrite: introspection.scopes.includes(MCP_WRITE_SCOPE),
       };
       return {
         token,
@@ -86,7 +91,7 @@ export async function createHttpHandler(options: HttpServerOptions) {
     oauthMetadata,
     resourceServerUrl: resource,
     resourceName: 'OctaP',
-    scopesSupported: ['mcp'],
+    scopesSupported: ['mcp', MCP_WRITE_SCOPE],
     dangerouslyAllowInsecureIssuerUrl: isLoopback(new URL(oauthMetadata.issuer)),
   };
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
@@ -100,7 +105,7 @@ export async function createHttpHandler(options: HttpServerOptions) {
     // The gate ran first, so this only guards against wiring mistakes.
     if (!authInfo || !extra?.organizationId) throw new Error('Unauthenticated MCP request');
     // The persona comes from Core's token check, never from the request or the model (OCT-294).
-    const personaTools = toolsForPersona(extra.persona);
+    const personaTools = toolsForPersona(extra.persona, extra.canWrite === true);
     const personaPrompts = promptsForPersona(extra.persona);
     const narrowed = options.server?.tools;
     const narrowedPrompts = options.server?.prompts;
@@ -108,7 +113,7 @@ export async function createHttpHandler(options: HttpServerOptions) {
       ...options.server,
       tools: narrowed ? personaTools.filter((tool) => narrowed.includes(tool)) : personaTools,
       prompts: narrowedPrompts ? personaPrompts.filter((prompt) => narrowedPrompts.includes(prompt)) : personaPrompts,
-      instructions: instructionsForPersona(extra.persona),
+      instructions: instructionsForPersona(extra.persona, extra.canWrite === true),
       client: consoleCoreClient(options.apiUrl, authInfo.token, extra.organizationId),
     });
   });

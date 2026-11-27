@@ -276,7 +276,7 @@ function voucherSummaryOf(voucher: VoucherDto): z.infer<typeof VOUCHER_SUMMARY> 
   };
 }
 
-const VOUCHER_DETAIL = VOUCHER_SUMMARY.extend({
+export const VOUCHER_DETAIL = VOUCHER_SUMMARY.extend({
   description: nullableString,
   terms: z.record(z.string(), z.unknown()).nullable().describe('What the customer gets, as the merchant wrote it'),
   perMemberLimit: nullableNumber.describe('Null is no limit'),
@@ -293,7 +293,7 @@ const VOUCHER_DETAIL = VOUCHER_SUMMARY.extend({
   updatedAt: nullableString,
 });
 
-function voucherDetailOf(voucher: VoucherDto): z.infer<typeof VOUCHER_DETAIL> {
+export function voucherDetailOf(voucher: VoucherDto): z.infer<typeof VOUCHER_DETAIL> {
   const approval = voucher.approval;
   return {
     ...voucherSummaryOf(voucher),

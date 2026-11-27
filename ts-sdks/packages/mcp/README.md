@@ -1,6 +1,7 @@
 # @octap/mcp
 
-Read-only Model Context Protocol (MCP) server for Octap Core loyalty points, transactions, and vouchers.
+Model Context Protocol (MCP) server for Octap Core loyalty points, transactions, and vouchers. Read-only by
+default; over `serve-http`, a signed-in user can also allow voucher changes, each one confirmed first.
 
 It translates MCP tool calls from LLM hosts into authorized REST calls via `@octap/sdk`. It never touches PostgreSQL directly, does not hold Sui private keys, and enforces tenant boundaries through the Core API credential.
 
@@ -80,8 +81,9 @@ On startup the server logs to stderr which URL it is using and whether each sett
 ## Remote server with console sign-in (`serve-http`)
 
 Instead of an API key, people can sign in with the Google account they use on the OctaP Console.
-Each sign-in is bound to one organization and the user's persona there, and lasts one hour. All
-tools stay read-only, and Core refuses the token once the user's access changes.
+Each sign-in is bound to one organization and the user's persona there, and lasts one hour. Tools
+are read-only unless the user allows changes at sign-in ([write tools](#write-tools-serve-http-only-when-the-user-allows-changes)),
+and Core refuses the token once the user's access changes.
 
 ```bash
 OCTAP_API_URL=https://api.octap.example OCTAP_MCP_PUBLIC_URL=https://mcp.octap.example OCTAP_MCP_PORT=4100 npx -y @octap/mcp serve-http
@@ -130,7 +132,7 @@ export async function connectCustomerMcp(authenticatedSessions: AuthenticatedSes
 
 ## Available Tools
 
-All tools are strictly read-only. Every tool declares an output schema and returns structured
+The read tools below change nothing. Every tool declares an output schema and returns structured
 content as well as JSON text, built from whitelisted fields only: voucher serials, API keys,
 webhook secrets, invitation tokens, tax and identity numbers never reach the model.
 
@@ -158,6 +160,35 @@ Over `serve-http` only (they read the signed-in user's console routes):
 | `list_webhook_deliveries` | Recent deliveries by status or endpoint, with attempts and the last HTTP status and error |
 | `list_staff`, `list_invitations` | Who can sign in to the console, and pending invitations |
 
+### Write tools (`serve-http`, only when the user allows changes)
+
+A host that asks for the `mcp:write` scope shows the user an **Also allow it to make changes** box on
+Core's sign-in page, unticked by default. Only when the user ticks it do the write tools appear; any
+other connection stays read-only, and Core refuses its writes (403).
+
+Every change takes two calls. The tool named for it only **prepares** the change: Core stores the
+exact request, bound to the user, organization and MCP host, and the tool returns a plain summary and
+a `confirmationId`. Nothing changes yet. **`confirm_change`** makes the change once the user agreed.
+The id works once, for that request only, within 5 minutes; a retry with the same id returns the
+first result instead of changing anything twice. Core checks the persona again on the write, and
+records it in the audit log as the user, like a change from the Console.
+
+| Tool | What it prepares | Owner | Developer |
+| --- | --- | --- | --- |
+| `create_voucher` | A new voucher, always a draft | ✅ | ✅ |
+| `update_voucher` | Field changes (a Developer: drafts only) | ✅ | ✅ |
+| `submit_voucher` | Send a draft to an Owner for approval | — (an Owner activates) | ✅ |
+| `withdraw_voucher` | Take a submitted voucher back to draft | ✅ | ✅ |
+| `activate_voucher` | Publish a draft (terms go on-chain) or resume a paused voucher | ✅ | ✅ where Core allows |
+| `pause_voucher` | Stop new claims | ✅ | — |
+| `approve_voucher`, `reject_voucher` | Decide a voucher waiting for approval | ✅ | — |
+| `confirm_change` | Makes a prepared change (the only tool that writes) | ✅ | ✅ |
+
+The prepare tools are annotated `readOnlyHint: true` (they change nothing); `confirm_change` is
+`readOnlyHint: false`, `destructiveHint: true`, so a host asks the user before running it. MCP
+elicitation is not used yet: the server builds a stateless MCP server per request, which can't hold
+an elicitation round trip.
+
 ### Tools and prompts per persona (`serve-http`)
 
 | Persona | Tools | Prompts |
@@ -166,7 +197,7 @@ Over `serve-http` only (they read the signed-in user's console routes):
 | Business Owner | every Developer tool, plus `get_refund_policy`, `get_refund_policy_history`, `list_staff`, `list_invitations` | every Developer prompt, plus `review_pending_vouchers`, `check_budget`, `review_console_access` |
 
 The map lives in [`src/personas.ts`](https://github.com/OctaPointees/octap-core/blob/dev/ts-sdks/packages/mcp/src/personas.ts). It decides what each persona sees, not what it may read: Core
-checks the organization, the read-only rule and the persona on every call. Every Developer tool reads
+checks the organization, the write rules and the persona on every call. Every Developer tool reads
 a route Core opens to both personas; the Owner extras are the reads Core keeps for Owners (the refund policy, staff and
 invitations). stdio with an API key offers the three member tools.
 

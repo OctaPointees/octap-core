@@ -1,9 +1,9 @@
 ---
 title: Tool và prompt MCP
-description: Danh sách các tool chỉ đọc, phân quyền theo persona, tham số đầu vào/ra và prompt dựng sẵn của @octap/mcp.
+description: Danh sách các tool đọc và ghi, phân quyền theo persona, tham số đầu vào/ra và prompt dựng sẵn của @octap/mcp.
 ---
 
-Mọi tool trong `@octap/mcp` đều chỉ đọc. Mỗi tool đều khai báo output schema và trả về dữ liệu có cấu trúc kèm JSON text.
+Các tool trong `@octap/mcp` chỉ đọc, trừ khi người dùng đã đăng nhập cho phép thay đổi (xem [tool ghi](#tool-ghi-serve-http-chỉ-khi-người-dùng-cho-phép-thay-đổi)). Mỗi tool đều khai báo output schema và trả về dữ liệu có cấu trúc kèm JSON text.
 
 ## Phạm vi theo chế độ & persona
 
@@ -15,7 +15,7 @@ Mọi tool trong `@octap/mcp` đều chỉ đọc. Mỗi tool đều khai báo o
 | **Business Developer** | 15 tool (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`, `list_webhook_endpoints`, `list_webhook_deliveries`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys`, `check_webhooks` |
 | **Business Owner** | Toàn bộ 15 tool của Developer + 4 tool của Owner (`get_refund_policy`, `get_refund_policy_history`, `list_staff`, `list_invitations`) | Toàn bộ 5 prompt của Developer + 3 prompt của Owner (`review_pending_vouchers`, `check_budget`, `review_console_access`) |
 
-Core luôn kiểm tra lại organization, giới hạn chỉ đọc `GET` và persona trên mỗi HTTP request.
+Core luôn kiểm tra lại organization, quy tắc ghi và persona trên mỗi HTTP request.
 
 ---
 
@@ -88,6 +88,23 @@ Trả về các voucher thành viên đang giữ gồm `ownershipId`, `voucherId
 | `list_webhook_deliveries` | Developer, Owner | Tùy chọn `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Các lượt gửi gần đây kèm số lần thử, `lastResponseStatus`, `lastError` và `nextAttemptAt` |
 | `list_staff` | Owner | Không | Nhân sự có quyền vào Console (`name`, `email`, `persona`, `status`: active hoặc suspended) |
 | `list_invitations` | Owner | Không | Lời mời vào Console (`email`, `role`, `status`, `expiresAt`; ẩn token/link mời) |
+
+## Tool ghi (`serve-http`, chỉ khi người dùng cho phép thay đổi)
+
+Khi host xin scope `mcp:write`, trang đăng nhập của Core hiện ô **Also allow it to make changes** (mặc định không chọn). Chỉ khi người dùng chọn ô này thì các tool dưới đây mới xuất hiện; nếu không, kết nối vẫn chỉ đọc và Core từ chối mọi thao tác ghi.
+
+Mỗi thay đổi gồm hai bước. Tool tương ứng chỉ **chuẩn bị** thay đổi và trả về bản tóm tắt cùng `confirmationId`; chưa có gì thay đổi. **`confirm_change`** thực hiện thay đổi sau khi người dùng đồng ý. Mỗi xác nhận chỉ dùng được một lần, cho đúng request đó, trong 5 phút; gọi lại với cùng id sẽ nhận lại kết quả lần đầu, không thay đổi hai lần. Core kiểm tra lại persona khi ghi và lưu vào audit log dưới tên người dùng.
+
+| Tool | Chuẩn bị | Owner | Developer |
+| --- | --- | --- | --- |
+| `create_voucher` | Một voucher nháp mới | ✅ | ✅ |
+| `update_voucher` | Sửa trường (Developer: chỉ bản nháp) | ✅ | ✅ |
+| `submit_voucher` | Gửi bản nháp cho Owner duyệt | — | ✅ |
+| `withdraw_voucher` | Rút voucher đang chờ duyệt về nháp | ✅ | ✅ |
+| `activate_voucher` | Phát hành bản nháp, hoặc mở lại voucher đang tạm dừng | ✅ | khi Core cho phép |
+| `pause_voucher` | Tạm dừng nhận mới | ✅ | — |
+| `approve_voucher`, `reject_voucher` | Duyệt hoặc từ chối voucher đang chờ | ✅ | — |
+| `confirm_change` | Thực hiện thay đổi đã chuẩn bị | ✅ | ✅ |
 
 ---
 

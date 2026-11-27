@@ -7,8 +7,8 @@ description: Let an AI assistant read OctaP members, vouchers, budgets and opera
 
 This page describes `@octap/mcp` built from the `octap-core` repository (`ts-sdks/packages/mcp`).
 
-:::caution[Read-only server]
-Every tool in `@octap/mcp` is strictly read-only: it cannot earn, redeem, reverse, approve or grant anything, and it never holds Sui keys or touches the database.
+:::caution[Read-only by default]
+Every tool in `@octap/mcp` is read-only unless a user signed in over `serve-http` ticks **Also allow it to make changes**. Even then it can only manage vouchers, each change shown to the user and confirmed first. It never earns, redeems or reverses points, never holds Sui keys and never touches the database.
 :::
 
 ## Choose how to connect
@@ -163,7 +163,7 @@ See [MCP tools and prompts](/mcp/tools-and-prompts/) for the full list of stdio 
 
 Every tool returns whitelisted fields only. Voucher `serialCode` values, API key secrets/hashes, webhook signing secrets, webhook URL query strings, invitation tokens, and tax/identity numbers never reach the model.
 
-Over `serve-http`, `src/personas.ts` controls which tools and prompts each persona sees, while Core enforces the organization, read-only `GET` restriction, and persona on every HTTP call.
+Over `serve-http`, `src/personas.ts` controls which tools and prompts each persona sees, while Core enforces the organization, the write rules (only opted-in routes, only with `mcp:write` and a confirmation), and persona on every HTTP call.
 
 ---
 

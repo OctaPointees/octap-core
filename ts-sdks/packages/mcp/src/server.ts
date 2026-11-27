@@ -12,6 +12,7 @@ import {
 } from './console-tools.js';
 import { BALANCE, OWNERSHIP, TRANSACTION, balanceOf, ownershipOf, transactionOf } from './shapes.js';
 import { MemberBindingError, registerRead, type Projection, type ToolExtra } from './tool-kit.js';
+import { WRITE_TOOLS, canServeWrites, registerWriteTools, type WriteToolName } from './write-tools.js';
 
 export type {
   ApiKeyView,
@@ -31,6 +32,8 @@ export type {
   WebhookEndpointView,
 } from './console-tools.js';
 export { isOctaApiError, result, safeError, REQUEST_TIMEOUT_MS } from './tool-kit.js';
+export type { ChangeInput, ConsoleWrites, WriteToolName } from './write-tools.js';
+export { WRITE_TOOLS } from './write-tools.js';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -51,12 +54,13 @@ export const LIMIT_SCHEMA = z
 const CURSOR_SCHEMA = z.string().min(1).max(500).optional().describe('nextCursor of the previous page');
 
 export type MemberToolName = 'get_member_balance' | 'list_member_transactions' | 'list_member_vouchers';
-export type ToolName = MemberToolName | ConsoleToolName;
+export type ToolName = MemberToolName | ConsoleToolName | WriteToolName;
 export const MEMBER_TOOLS: MemberToolName[] = [
   'get_member_balance',
   'list_member_transactions',
   'list_member_vouchers',
 ];
+/** Every read tool. Write tools are offered only when asked for (`tools`), to a signed-in user. */
 export const ALL_TOOLS: ToolName[] = [...MEMBER_TOOLS, ...CONSOLE_TOOLS];
 
 /** The prompts this server can offer. Each needs certain tools; see `registerPrompts`. */
@@ -75,9 +79,14 @@ export type CoreClientLike = Pick<OctaPointClient, 'getBalance' | 'listTransacti
 
 /** The tools this server offers: the allowed ones the client can actually serve. */
 export function offeredTools(client: CoreClientLike, allowed: readonly ToolName[] = ALL_TOOLS): Set<ToolName> {
+  const writes = canServeWrites(client);
   return new Set(
     allowed.filter((tool) =>
-      tool in CONSOLE_READ ? typeof client[CONSOLE_READ[tool as ConsoleToolName]] === 'function' : true,
+      (WRITE_TOOLS as string[]).includes(tool)
+        ? writes
+        : tool in CONSOLE_READ
+          ? typeof client[CONSOLE_READ[tool as ConsoleToolName]] === 'function'
+          : true,
     ),
   );
 }
@@ -89,7 +98,7 @@ export type MemberIdResolver = (
 
 export interface CreateServerOptions {
   client?: CoreClientLike;
-  /** Tools to offer. Defaults to every tool the client can serve. */
+  /** Tools to offer. Defaults to every read tool the client can serve; write tools only when listed. */
   tools?: readonly ToolName[];
   /** Prompts to offer, among those whose tools are offered. Defaults to all of those. */
   prompts?: readonly PromptName[];
@@ -117,6 +126,7 @@ export function createServer(options: CreateServerOptions = {}) {
   const allowedTools = offeredTools(core, options.tools);
   registerMemberTools(server, core, allowedTools, options.resolveMemberId, options.project);
   registerConsoleTools(server, core, allowedTools, options.project);
+  if (canServeWrites(core)) registerWriteTools(server, core, allowedTools);
   registerPrompts(server, allowedTools, options.prompts);
   return server;
 }

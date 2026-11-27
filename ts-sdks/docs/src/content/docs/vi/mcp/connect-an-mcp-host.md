@@ -7,8 +7,8 @@ description: Cho phép trợ lý AI đọc dữ liệu thành viên, voucher, ng
 
 Trang này mô tả `@octap/mcp` được xây dựng từ repository `octap-core` (`ts-sdks/packages/mcp`).
 
-:::caution[Server chỉ đọc (read-only)]
-Mọi tool trong `@octap/mcp` đều chỉ đọc: không thể phát điểm, tiêu điểm, đảo điểm, duyệt hay tặng voucher, không giữ khóa Sui và không chạm trực tiếp vào database.
+:::caution[Mặc định chỉ đọc (read-only)]
+Mọi tool trong `@octap/mcp` chỉ đọc, trừ khi người dùng đăng nhập qua `serve-http` chọn **Also allow it to make changes**. Khi đó cũng chỉ quản lý được voucher, và mỗi thay đổi đều được hiển thị cho người dùng xác nhận trước. Server không bao giờ phát, tiêu hay đảo điểm, không giữ khóa Sui và không chạm trực tiếp vào database.
 :::
 
 ## Chọn cách kết nối
@@ -153,7 +153,7 @@ Xem danh sách đầy đủ toàn bộ tool và prompt theo từng persona tại
 
 Mọi tool chỉ trả về danh sách trường đã được whitelist: mã `serialCode` của voucher, secret/hash của API key, signing secret và query string của webhook, token lời mời, mã số thuế và số giấy tờ định danh **không bao giờ** đi tới model.
 
-Ở chế độ `serve-http`, `src/personas.ts` quyết định tool/prompt nào được hiển thị theo persona, còn Core kiểm tra lại organization, quyền chỉ đọc `GET` và persona trên từng lần gọi.
+Ở chế độ `serve-http`, `src/personas.ts` quyết định tool/prompt nào được hiển thị theo persona, còn Core kiểm tra lại organization, quy tắc ghi (chỉ route cho phép, cần `mcp:write` và xác nhận) và persona trên từng lần gọi.
 
 ---
 

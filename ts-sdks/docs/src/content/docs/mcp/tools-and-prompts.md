@@ -1,9 +1,9 @@
 ---
 title: MCP tools and prompts
-description: Read-only tools, persona permissions, inputs, outputs and built-in prompts exposed by @octap/mcp.
+description: Read and write tools, persona permissions, inputs, outputs and built-in prompts exposed by @octap/mcp.
 ---
 
-All tools in `@octap/mcp` are strictly read-only. Every tool declares an output schema and returns structured content alongside JSON text.
+Tools in `@octap/mcp` are read-only, unless a signed-in user allows changes ([write tools](#write-tools-serve-http-only-when-the-user-allows-changes)). Every tool declares an output schema and returns structured content alongside JSON text.
 
 ## Mode & persona availability
 
@@ -15,7 +15,7 @@ All tools in `@octap/mcp` are strictly read-only. Every tool declares an output 
 | **Business Developer** | 15 tools (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`, `list_webhook_endpoints`, `list_webhook_deliveries`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys`, `check_webhooks` |
 | **Business Owner** | All 15 Developer tools + 4 Owner tools (`get_refund_policy`, `get_refund_policy_history`, `list_staff`, `list_invitations`) | All 5 Developer prompts + 3 Owner prompts (`review_pending_vouchers`, `check_budget`, `review_console_access`) |
 
-Core re-checks the organization, read-only `GET` restriction, and persona on every HTTP request.
+Core re-checks the organization, the write rules, and the persona on every HTTP request.
 
 ---
 
@@ -88,6 +88,23 @@ Returns the member's vouchers with `ownershipId`, `voucherId`, `title`, `status`
 | `list_webhook_deliveries` | Developer, Owner | Optional `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Recent deliveries with attempts, `lastResponseStatus`, `lastError`, and `nextAttemptAt` |
 | `list_staff` | Owner | None | Staff with Console access (`name`, `email`, `persona`, `status`: active or suspended) |
 | `list_invitations` | Owner | None | Console invitations (`email`, `role`, `status`, `expiresAt`; invitation tokens/links omitted) |
+
+## Write tools (`serve-http`, only when the user allows changes)
+
+When a host asks for the `mcp:write` scope, Core's sign-in page shows an **Also allow it to make changes** box, unticked by default. Only if the user ticks it do these tools appear; otherwise the connection stays read-only and Core refuses every write.
+
+Each change takes two steps. The tool named for it only **prepares** the change and returns a summary and a `confirmationId`; nothing changes yet. **`confirm_change`** makes it, after the user agreed. A confirmation works once, for that exact request, within 5 minutes, and a retry with the same id returns the first result instead of changing anything twice. Core checks the persona again on the write and records it in the audit log as the user.
+
+| Tool | Prepares | Owner | Developer |
+| --- | --- | --- | --- |
+| `create_voucher` | A new draft voucher | ✅ | ✅ |
+| `update_voucher` | Field changes (Developer: drafts only) | ✅ | ✅ |
+| `submit_voucher` | Send a draft to an Owner for approval | — | ✅ |
+| `withdraw_voucher` | Take a submitted voucher back to draft | ✅ | ✅ |
+| `activate_voucher` | Publish a draft, or resume a paused voucher | ✅ | where Core allows |
+| `pause_voucher` | Stop new claims | ✅ | — |
+| `approve_voucher`, `reject_voucher` | Decide a voucher waiting for approval | ✅ | — |
+| `confirm_change` | Makes a prepared change | ✅ | ✅ |
 
 ---
 

@@ -17,7 +17,7 @@ import type { CreditsController } from '../rest/credits.controller.js';
 import type { HealthController, PlatformHealthController } from '../rest/health.controller.js';
 import type { CustomerVerificationController, IdentityController } from '../rest/identity.controller.js';
 import type { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from '../rest/issuance-budget.controller.js';
-import type { ConsoleMcpTokenController, McpOAuthController } from '../rest/mcp-oauth.controller.js';
+import type { ConsoleMcpConfirmationsController, ConsoleMcpTokenController, McpOAuthController } from '../rest/mcp-oauth.controller.js';
 import type { MembersController } from '../rest/members.controller.js';
 import type { OrganizationResolutionController, PlatformOrganizationsController } from '../rest/organizations.controller.js';
 import type { RewardsController } from '../rest/rewards.controller.js';
@@ -172,6 +172,9 @@ export type McpOAuthController_token_Body = Parameters<McpOAuthController['token
 export type McpOAuthController_revoke_Response = Awaited<ReturnType<McpOAuthController['revoke']>>;
 export type McpOAuthController_revoke_Body = Parameters<McpOAuthController['revoke']>[0];
 export type ConsoleMcpTokenController_token_Response = Awaited<ReturnType<ConsoleMcpTokenController['token']>>;
+export type ConsoleMcpConfirmationsController_prepare_Response = Awaited<ReturnType<ConsoleMcpConfirmationsController['prepare']>>;
+export type ConsoleMcpConfirmationsController_prepare_Body = Parameters<ConsoleMcpConfirmationsController['prepare']>[2];
+export type ConsoleMcpConfirmationsController_read_Response = Awaited<ReturnType<ConsoleMcpConfirmationsController['read']>>;
 export type MembersController_list_Response = Awaited<ReturnType<MembersController['list']>>;
 export type MembersController_list_Query = Parameters<MembersController['list']>[2];
 export type MembersController_detail_Response = Awaited<ReturnType<MembersController['detail']>>;

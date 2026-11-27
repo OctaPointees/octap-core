@@ -50,6 +50,37 @@ export const PERSONA_TOOLS: Readonly<Record<Persona, readonly ToolName[]>> = {
 };
 
 /**
+ * Write tools (OCT-314), offered only to a connection the user allowed to make changes (`mcp:write`).
+ * Both personas draft vouchers, edit them, take them back and activate them (Core refuses a Developer
+ * where approval is required); a Developer submits a draft to an Owner. Pausing and deciding an
+ * approval are an Owner's. As with reads, Core checks the persona again on every write.
+ */
+export const DEVELOPER_WRITE_TOOLS: readonly ToolName[] = [
+  'create_voucher',
+  'update_voucher',
+  'submit_voucher',
+  'withdraw_voucher',
+  'activate_voucher',
+  'confirm_change',
+];
+
+export const OWNER_WRITE_TOOLS: readonly ToolName[] = [
+  'create_voucher',
+  'update_voucher',
+  'withdraw_voucher',
+  'activate_voucher',
+  'pause_voucher',
+  'approve_voucher',
+  'reject_voucher',
+  'confirm_change',
+];
+
+export const PERSONA_WRITE_TOOLS: Readonly<Record<Persona, readonly ToolName[]>> = {
+  BUSINESS_OWNER: OWNER_WRITE_TOOLS,
+  BUSINESS_DEVELOPER: DEVELOPER_WRITE_TOOLS,
+};
+
+/**
  * Which prompts each persona sees. A prompt is also offered only when its tools are. The approval,
  * budget and access reviews are an Owner's job.
  */
@@ -82,9 +113,13 @@ function isPersona(value: string): value is Persona {
   return Object.hasOwn(PERSONA_TOOLS, value);
 }
 
-/** The persona's tools. An unknown persona gets only `get_connection`, never more. */
-export function toolsForPersona(persona: string): readonly ToolName[] {
-  return isPersona(persona) ? PERSONA_TOOLS[persona] : ['get_connection'];
+/**
+ * The persona's tools, with its write tools when the connection may make changes. An unknown persona
+ * gets only `get_connection`, never more.
+ */
+export function toolsForPersona(persona: string, canWrite = false): readonly ToolName[] {
+  if (!isPersona(persona)) return ['get_connection'];
+  return canWrite ? [...PERSONA_TOOLS[persona], ...PERSONA_WRITE_TOOLS[persona]] : PERSONA_TOOLS[persona];
 }
 
 /** The persona's prompts. An unknown persona gets none. */
@@ -93,12 +128,16 @@ export function promptsForPersona(persona: string): readonly PromptName[] {
 }
 
 /** Server instructions for a session. The persona comes from Core's token check, never from the model. */
-export function instructionsForPersona(persona: string): string {
+export function instructionsForPersona(persona: string, canWrite = false): string {
   const role = isPersona(persona) ? PERSONA_LABEL[persona] : 'an unrecognized role';
+  const access = canWrite
+    ? 'Every tool works on that organization only. Changes take two steps: a tool such as create_voucher ' +
+      'only prepares a change and returns a summary; show that summary to the user word for word, and call ' +
+      'confirm_change only after they clearly agree. Never confirm a change on your own initiative.'
+    : 'Every tool reads that organization only, and every tool is read-only.';
   return (
-    `This session is signed in to one OctaP organization as ${role}. Every tool reads that ` +
-    'organization only, and every tool is read-only. Call get_connection to see which organization ' +
-    'it is. To look a customer up by name, email, phone or POS id, start with find_member. Answer from ' +
-    'tool results only; if a tool is refused or fails, say so instead of guessing.'
+    `This session is signed in to one OctaP organization as ${role}. ${access} Call get_connection to ` +
+    'see which organization it is. To look a customer up by name, email, phone or POS id, start with ' +
+    'find_member. Answer from tool results only; if a tool is refused or fails, say so instead of guessing.'
   );
 }

@@ -59,8 +59,8 @@ export class ConsoleAssistantController {
     @Body() body: AssistantMessageBodyDto,
     @Res() res: StreamResponse,
   ): Promise<void> {
-    // Defence in depth: `ConsoleAccessGuard` already refuses an MCP token on a POST ("MCP access is
-    // read-only"), so this line is not what blocks it today.
+    // Defence in depth: `ConsoleAccessGuard` already refuses an MCP token on this POST (the route
+    // doesn't opt in to MCP writes), so this line is not what blocks it today.
     if (req.mcpToken) throw new ForbiddenException('Sign in to the console to use the assistant');
 
     // Listen before `prepare`, so a client that leaves while the turn is being prepared still aborts
