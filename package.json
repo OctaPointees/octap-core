@@ -28,6 +28,7 @@
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
     "check:bootstrap": "node scripts/check-bootstrap.mjs",
+    "check:workspace-links": "node scripts/check-workspace-links.mjs",
     "openapi:schemas": "node scripts/openapi-schemas.mjs",
     "openapi:generate": "node scripts/openapi.mjs",
     "openapi:check": "node scripts/openapi-schemas.mjs --check && node scripts/openapi.mjs --check",

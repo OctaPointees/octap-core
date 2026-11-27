@@ -31,6 +31,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Fails if an @octap/* dependency would come from npm instead of this repo.
+      - run: npm run check:workspace-links
       - run: npm run format:check
       - run: npm run lint
       - run: npm run build
