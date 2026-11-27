@@ -151,6 +151,69 @@ describe('voucher expiry', () => {
     expect(await sweep()).toEqual({ vouchers: 0, memberVouchers: 0 });
   });
 
+  it('expires on a read only what that read returns, and leaves the rest to the sweep', async () => {
+    const other = (await seedMember(ctx.db, orgId)).memberId;
+    const open = await voucher({ expiresAt: ahead(48) });
+    const mineLapsed = await held(open.id, { expiresAt: ago(1) });
+    const [theirsLapsed] = await ctx.db
+      .insert(schema.voucherOwnerships)
+      .values({ voucherId: open.id, organizationEndUserId: other, serialCode: `S-${randomUUID()}`, expiresAt: ago(1) })
+      .returning();
+
+    // The catalog list returns vouchers only: no customer's voucher is touched.
+    await ctx.http().get('/v1/rewards/vouchers').set(key).expect(200);
+    expect(await ownershipStatus(mineLapsed.id)).toBe('AVAILABLE');
+    // One member's list expires that member's vouchers only.
+    await ctx.http().get(`/v1/rewards/members/${memberId}/vouchers`).set(key).expect(200);
+    expect(await ownershipStatus(mineLapsed.id)).toBe('EXPIRED');
+    expect(await ownershipStatus(theirsLapsed.id)).toBe('AVAILABLE');
+    expect(await sweep()).toEqual({ vouchers: 0, memberVouchers: 1 });
+  });
+
+  it('skips a voucher another transaction holds instead of waiting for it', async () => {
+    const open = await voucher({ expiresAt: ahead(48) });
+    const busy = await held(open.id, { expiresAt: ago(1) });
+    await held(open.id, { expiresAt: ago(1) });
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let signalLocked!: () => void;
+    const locked = new Promise<void>((resolve) => (signalLocked = resolve));
+    const holder = ctx.db.transaction(async (tx) => {
+      await tx.select().from(schema.voucherOwnerships).where(eq(schema.voucherOwnerships.id, busy.id)).for('update');
+      signalLocked();
+      await gate;
+    });
+    try {
+      await locked;
+      const started = Date.now();
+      const waited = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('expireDue waited for a locked row')), 5000),
+      );
+      expect(await Promise.race([rewards().expireDue(), waited])).toEqual({ vouchers: 0, memberVouchers: 1 });
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(await ownershipStatus(busy.id)).toBe('AVAILABLE');
+    } finally {
+      release();
+      await holder;
+    }
+    // Once released, the next run picks it up.
+    expect(await sweep()).toEqual({ vouchers: 0, memberVouchers: 1 });
+  });
+
+  it('writes each row and its event once when two runs overlap', async () => {
+    const open = await voucher({ expiresAt: ahead(48) });
+    for (let i = 0; i < 20; i += 1) await held(open.id, { expiresAt: ago(1) });
+
+    const [first, second] = await Promise.all([rewards().expireDue(), rewards().expireDue()]);
+    expect(first.memberVouchers + second.memberVouchers).toBe(20);
+    const events = await eventsOfType(ctx.db, 'voucher.member_expired');
+    expect(events).toHaveLength(20);
+    expect(
+      new Set(events.map((event) => (event.payload as { voucherOwnershipId: string }).voucherOwnershipId)).size,
+    ).toBe(20);
+  });
+
   it('keeps an expired voucher EXPIRED: no status change, while supply stays editable', async () => {
     await seedProgram(ctx.db, orgId);
     const expired = await voucher({ status: 'EXPIRED', expiresAt: ago(1), totalSupply: 10, claimedCount: 10 });

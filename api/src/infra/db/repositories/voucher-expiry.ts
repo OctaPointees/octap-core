@@ -11,6 +11,19 @@ import { recordVoucherEvent } from './voucher-events.js';
  */
 const EXPIRABLE_VOUCHER_STATUSES: ('ACTIVE' | 'PAUSED' | 'DEPLETED')[] = ['ACTIVE', 'PAUSED', 'DEPLETED'];
 
+/**
+ * What one call may expire. Each kind defaults to every due row (the sweep). A read narrows it to
+ * what it returns, so it never pays for an organization's whole backlog: the sweep keeps that.
+ */
+export interface ExpiryScope {
+  /** Only this organization's rows. Without it, every organization's (the worker, outside RLS). */
+  organizationId?: string;
+  /** Which vouchers: every due one, only these ids, or none. */
+  vouchers?: 'all' | 'none' | { ids: string[] };
+  /** Which customers' vouchers: every due one, one member's, one voucher, or none. */
+  memberVouchers?: 'all' | 'none' | { memberId: string } | { ownershipId: string };
+}
+
 export interface ExpiredVouchers {
   /** Vouchers whose claim window closed. */
   vouchers: number;
@@ -30,24 +43,43 @@ export interface ExpiredVouchers {
  *   blocks a use or a claim and never deadlocks with one. It picks them up on the next run.
  * - The update repeats the status condition, so two runs at once write each row and its event once.
  *
- * Without `organizationId` it covers every organization (the worker, outside RLS); with one, only that
- * organization's rows.
+ * `options` says which rows it may touch (`ExpiryScope`).
  */
 export async function expireDueVouchers(
   tx: DrizzleDb,
-  options: { organizationId?: string; limit: number; now?: Date },
+  options: ExpiryScope & { limit: number; now?: Date },
 ): Promise<ExpiredVouchers> {
   const now = options.now ?? new Date();
   const ofOrganization = options.organizationId ? eq(vouchers.organizationId, options.organizationId) : undefined;
+  const voucherScope = options.vouchers ?? 'all';
+  const ownershipScope = options.memberVouchers ?? 'all';
+  const whichOwnerships =
+    typeof ownershipScope !== 'object'
+      ? undefined
+      : 'memberId' in ownershipScope
+        ? eq(voucherOwnerships.organizationEndUserId, ownershipScope.memberId)
+        : eq(voucherOwnerships.id, ownershipScope.ownershipId);
+  const whichVouchers = typeof voucherScope === 'object' ? inArray(vouchers.id, voucherScope.ids) : undefined;
+  const noVouchers = voucherScope === 'none' || (typeof voucherScope === 'object' && voucherScope.ids.length === 0);
 
-  const dueOwnerships = await tx
-    .select({ id: voucherOwnerships.id, organizationId: vouchers.organizationId })
-    .from(voucherOwnerships)
-    .innerJoin(vouchers, eq(vouchers.id, voucherOwnerships.voucherId))
-    .where(and(eq(voucherOwnerships.status, 'AVAILABLE'), lte(voucherOwnerships.expiresAt, now), ofOrganization))
-    .orderBy(asc(voucherOwnerships.expiresAt))
-    .limit(options.limit)
-    .for('update', { of: voucherOwnerships, skipLocked: true });
+  const dueOwnerships =
+    ownershipScope === 'none'
+      ? []
+      : await tx
+          .select({ id: voucherOwnerships.id, organizationId: vouchers.organizationId })
+          .from(voucherOwnerships)
+          .innerJoin(vouchers, eq(vouchers.id, voucherOwnerships.voucherId))
+          .where(
+            and(
+              eq(voucherOwnerships.status, 'AVAILABLE'),
+              lte(voucherOwnerships.expiresAt, now),
+              ofOrganization,
+              whichOwnerships,
+            ),
+          )
+          .orderBy(asc(voucherOwnerships.expiresAt))
+          .limit(options.limit)
+          .for('update', { of: voucherOwnerships, skipLocked: true });
   const organizationOf = new Map(dueOwnerships.map((row) => [row.id, row.organizationId]));
   const expiredOwnerships =
     dueOwnerships.length === 0
@@ -75,13 +107,22 @@ export async function expireDueVouchers(
     });
   }
 
-  const dueVouchers = await tx
-    .select({ id: vouchers.id })
-    .from(vouchers)
-    .where(and(inArray(vouchers.status, EXPIRABLE_VOUCHER_STATUSES), lte(vouchers.expiresAt, now), ofOrganization))
-    .orderBy(asc(vouchers.expiresAt))
-    .limit(options.limit)
-    .for('update', { skipLocked: true });
+  const dueVouchers = noVouchers
+    ? []
+    : await tx
+        .select({ id: vouchers.id })
+        .from(vouchers)
+        .where(
+          and(
+            inArray(vouchers.status, EXPIRABLE_VOUCHER_STATUSES),
+            lte(vouchers.expiresAt, now),
+            ofOrganization,
+            whichVouchers,
+          ),
+        )
+        .orderBy(asc(vouchers.expiresAt))
+        .limit(options.limit)
+        .for('update', { skipLocked: true });
   const expiredVouchers =
     dueVouchers.length === 0
       ? []

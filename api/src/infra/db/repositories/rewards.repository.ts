@@ -43,7 +43,7 @@ import {
 import { MemberEligibilityError } from './member-eligibility.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { tenantOf, withTenantOf } from './tenant-lookup.js';
-import { expireDueVouchers, type ExpiredVouchers } from './voucher-expiry.js';
+import { expireDueVouchers, type ExpiredVouchers, type ExpiryScope } from './voucher-expiry.js';
 import { outsideRequestContext } from '#observability/request-context.js';
 
 /** Rows of each kind one expiry pass writes in a transaction. */
@@ -238,16 +238,21 @@ export class RewardsRepository {
   }
 
   /**
-   * Expires what is past its deadline in one organization before a read returns its vouchers, so a
-   * read never shows `AVAILABLE` or `ACTIVE` for something already expired, whenever the sweep last
-   * ran. It is the system's change, not the caller's: it runs outside the request context, so the
-   * events it records carry no actor and are not audited as the reader's.
+   * Expires what a read is about to return, before it returns it, so a read never shows `AVAILABLE`
+   * or `ACTIVE` for something already expired, whenever the sweep last ran. `scope` is only what that
+   * read returns (the catalog's vouchers, one member's vouchers, one claim): the sweep keeps the bulk.
+   * It is the system's change, not the caller's: it runs outside the request context, so the events it
+   * records carry no actor and are not audited as the reader's.
    */
-  async expireDueFor(organizationId: string, db: DrizzleDb = this.db): Promise<void> {
+  async expireDueFor(
+    organizationId: string,
+    scope: Omit<ExpiryScope, 'organizationId'>,
+    db: DrizzleDb = this.db,
+  ): Promise<void> {
     await outsideRequestContext(() =>
       withTenant(db, organizationId, async (tx) => {
         for (;;) {
-          const done = await expireDueVouchers(tx, { organizationId, limit: VOUCHER_EXPIRY_BATCH_SIZE });
+          const done = await expireDueVouchers(tx, { ...scope, organizationId, limit: VOUCHER_EXPIRY_BATCH_SIZE });
           if (done.vouchers < VOUCHER_EXPIRY_BATCH_SIZE && done.memberVouchers < VOUCHER_EXPIRY_BATCH_SIZE) return;
         }
       }),
@@ -469,8 +474,8 @@ export class RewardsRepository {
       if (current.status === 'ARCHIVED')
         throw conflict("This voucher's batch was archived; import its code again to use it");
       // Past its claim window it stays EXPIRED: a status change would only be expired again.
-      if (current.status === 'EXPIRED' && patch.status !== undefined && patch.status !== 'EXPIRED')
-        throw conflict('This voucher has expired; create a new voucher instead');
+      if (current.status === 'EXPIRED' && patch.status !== undefined)
+        throw conflict('This voucher has expired; create a new voucher with a new code instead');
       const merged = { ...current, ...patch };
       validate(merged);
       const onChain = current.publishStatus === 'PUBLISHING' || current.publishStatus === 'PUBLISHED';

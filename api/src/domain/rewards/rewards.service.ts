@@ -119,7 +119,7 @@ export class RewardsService {
 
   /** Each with its latest approval request. */
   async listVouchers(organizationId: string): Promise<VoucherDto[]> {
-    await this.rewardsRepo.expireDueFor(organizationId);
+    await this.rewardsRepo.expireDueFor(organizationId, { memberVouchers: 'none' });
     const list = await this.rewardsRepo.listVouchersByOrganization(organizationId);
     const approvals = await this.rewardsRepo.latestApprovals(
       organizationId,
@@ -129,7 +129,7 @@ export class RewardsService {
   }
 
   async getVoucher(organizationId: string, voucherId: string): Promise<VoucherDto> {
-    await this.rewardsRepo.expireDueFor(organizationId);
+    await this.rewardsRepo.expireDueFor(organizationId, { vouchers: { ids: [voucherId] }, memberVouchers: 'none' });
     const voucher = await this.findVoucher(organizationId, voucherId);
     return this.withApproval(organizationId, voucher);
   }
@@ -239,7 +239,7 @@ export class RewardsService {
   }
 
   async getClaim(organizationId: string, ownershipId: string): Promise<ClaimVoucherResponse> {
-    await this.rewardsRepo.expireDueFor(organizationId);
+    await this.rewardsRepo.expireDueFor(organizationId, { vouchers: 'none', memberVouchers: { ownershipId } });
     return mapErrors(this.rewardsRepo.getClaim(organizationId, ownershipId));
   }
 
@@ -319,7 +319,8 @@ export class RewardsService {
     if (memberOrgId !== organizationId) {
       throw new NotFoundException(`Member ${organizationEndUserId} was not found for this organization`);
     }
-    await this.rewardsRepo.expireDueFor(organizationId);
+    // The member's vouchers, and the catalog entries they embed.
+    await this.rewardsRepo.expireDueFor(organizationId, { memberVouchers: { memberId: organizationEndUserId } });
     const ownerships = await this.rewardsRepo.listOwnershipsByMember(organizationId, organizationEndUserId);
     return ownerships
       .filter((o) => o.voucher.organizationId === organizationId)
