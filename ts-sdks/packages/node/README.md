@@ -54,6 +54,9 @@ anything, and keep every spend behind the customer's signature.
 | `POST /v1/credits/transactions/:id/reverse` | `reverseTransaction` |
 | `GET /v1/credits/members/:id/balance`, `/transactions` | `getBalance`, `listTransactions` |
 | `GET /v1/credits/budget` | `getIssuanceBudget` |
+| `GET /v1/credits/transactions` | `listOrganizationTransactions({ type, status, memberId, limit, cursor })` |
+| `GET /v1/credits/program` | `getProgram` |
+| `GET /v1/credits/members/:id/reconciliation` | `getBalanceReconciliation` |
 | `GET /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | `POST/GET /v1/rewards/vouchers`, `GET/PATCH .../:id` | `createVoucher`, `listVouchers`, `getVoucher`, `updateVoucher` |
 | `POST/GET /v1/rewards/voucher-batches`, `GET .../:id` | `createVouchers(items, { dryRun, name })`, `listVoucherBatches`, `getVoucherBatch` |
@@ -80,6 +83,19 @@ anything, and keep every spend behind the customer's signature.
 console imports, into items for `createVouchers`. It runs the console's checks: each bad row is
 reported with its line and column, and left out. `VOUCHER_CSV_TEMPLATE`, `VOUCHER_CSV_TYPES`,
 `VOUCHER_BENEFIT_SCHEMA` and `suggestVoucherCode` are exported too.
+
+## On-chain evidence
+
+Every confirmed point movement is a Sui transaction. These reads let you show customers that proof,
+or check it yourself:
+
+- `listOrganizationTransactions` is your whole organization's history, newest first. Each confirmed
+  row has its `blockchainDigest` and `confirmedAt`; link the digest to a Sui explorer.
+- `getProgram` returns your earn rules as published on Sui. `policyStatus: 'MATCH'` means they are
+  the rules OctaP applies.
+- `getBalanceReconciliation(memberId)` compares the balance OctaP records with what the member's
+  `CreditAccount` on Sui can spend. `PENDING` means something is still on its way to the chain, so ask
+  again shortly. `MISMATCH` means nothing is in flight and the two differ.
 
 ## Earn
 
