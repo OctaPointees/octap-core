@@ -16,7 +16,7 @@ Never import `@octap/sdk` into browser code, because it would expose your API ke
 
 ## Install
 
-All packages are public on npm under the `@octap` scope, at version 0.1.0. They are pre-1.0, so a minor version may still contain breaking changes.
+All packages are public on npm under the `@octap` scope. They are pre-1.0, so a minor version may still contain breaking changes.
 
 ```sh
 # On your server
