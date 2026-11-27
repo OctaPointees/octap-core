@@ -23,7 +23,7 @@ A key's scopes are what it can do, whoever holds it: a route never checks the ro
 
 ## What no key can do
 
-Managing webhooks and the refund policy is the organization's Owner's, in the console: registering, disabling, enabling and rotating webhook endpoints, replaying a delivery, and publishing a refund policy. A key reads them (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`) but never changes them. See [Receive webhooks](/guides/receive-webhooks/) and [Manage vouchers](/guides/manage-vouchers/).
+Managing webhook endpoints and the refund policy is the organization's Owner's, in the console: registering, disabling, enabling and rotating webhook endpoints, and publishing a refund policy. A Business Developer can see the endpoints and deliveries there, send a test event and replay a delivery. A key reads them (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`) but never changes them. See [Receive webhooks](/guides/receive-webhooks/) and [Manage vouchers](/guides/manage-vouchers/).
 
 Keys made before OctaP retired the `admin` scope may still list it. OctaP ignores it: such a key can do what its `read` and `write` scopes allow, and nothing more.
 

@@ -12,8 +12,8 @@ All tools in `@octap/mcp` are strictly read-only. Every tool declares an output 
 
 | Persona | Tools | Prompts |
 | --- | --- | --- |
-| **Business Developer** | 13 tools (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys` |
-| **Business Owner** | All 13 Developer tools + 6 Owner tools (`get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations`) | All 4 Developer prompts + 4 Owner prompts (`review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access`) |
+| **Business Developer** | 15 tools (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`, `list_webhook_endpoints`, `list_webhook_deliveries`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys`, `check_webhooks` |
+| **Business Owner** | All 15 Developer tools + 4 Owner tools (`get_refund_policy`, `get_refund_policy_history`, `list_staff`, `list_invitations`) | All 5 Developer prompts + 3 Owner prompts (`review_pending_vouchers`, `check_budget`, `review_console_access`) |
 
 Core re-checks the organization, read-only `GET` restriction, and persona on every HTTP request.
 
@@ -78,14 +78,14 @@ Returns the member's vouchers with `ownershipId`, `voucherId`, `title`, `status`
 | `list_voucher_batches` | Developer, Owner | Optional `limit`, `cursor` | Imported voucher batches with status counts |
 | `get_voucher_batch` | Developer, Owner | `batchId` (UUID) | Batch details and its vouchers |
 
-### Owner-only governance, webhooks & staff
+### Webhooks, governance & staff
 
 | Tool | Persona | Inputs | What it returns |
 | --- | --- | --- | --- |
 | `get_refund_policy` | Owner | None | Current policy (`version`, `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, `refundWindowDays`, `reason`) |
 | `get_refund_policy_history` | Owner | Optional `beforeVersion`, `limit` | Earlier policy versions, newest first, with `nextBeforeVersion` |
-| `list_webhook_endpoints` | Owner | None | Configured endpoints (`id`, `url` without query string, `description`, `status`, `createdAt`; signing secrets omitted) |
-| `list_webhook_deliveries` | Owner | Optional `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Recent deliveries with attempts, `lastResponseStatus`, `lastError`, and `nextAttemptAt` |
+| `list_webhook_endpoints` | Developer, Owner | None | Configured endpoints (`id`, `url` without query string, `description`, `status`, `createdAt`; signing secrets omitted) |
+| `list_webhook_deliveries` | Developer, Owner | Optional `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Recent deliveries with attempts, `lastResponseStatus`, `lastError`, and `nextAttemptAt` |
 | `list_staff` | Owner | None | Staff with Console access (`name`, `email`, `persona`, `status`: active or suspended) |
 | `list_invitations` | Owner | None | Console invitations (`email`, `role`, `status`, `expiresAt`; invitation tokens/links omitted) |
 
@@ -103,5 +103,5 @@ MCP hosts can surface these prompts directly to users:
 | `review_api_keys` | Developer, Owner | None | Spot unused, stale, or write-scoped API keys |
 | `review_pending_vouchers` | Owner | None | List vouchers awaiting Owner approval and key checks before approving |
 | `check_budget` | Owner | None | Check remaining points budget and whether a top-up is needed |
-| `check_webhooks` | Owner | None | Group failed/retrying webhook deliveries by endpoint and identify likely causes |
+| `check_webhooks` | Developer, Owner | None | Group failed/retrying webhook deliveries by endpoint and identify likely causes |
 | `review_console_access` | Owner | None | Review active/suspended staff and pending invitations |

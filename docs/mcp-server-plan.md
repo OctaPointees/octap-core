@@ -83,9 +83,9 @@ organization, the read-only rule and the persona on every call, so a wrong entry
 tool Core then refuses.
 
 The map is in the package README ("Tools and prompts per persona"). In short, a Business Developer
-gets the organization, member search and detail, the voucher catalog and batches, the budget and API
-keys; an Owner gets all of that plus webhooks, the refund policy and its history, staff and
-invitations, which are Owner-only in Core.
+gets the organization, member search and detail, the voucher catalog and batches, the budget, API
+keys, and webhook endpoints and deliveries; an Owner gets all of that plus the refund policy and its
+history, staff and invitations, which are Owner-only in Core.
 
 `get_connection` answers which organization and persona the session is connected as. The server
 instructions state the persona, which comes from Core's token check, never from the model. Hosts

@@ -47,6 +47,8 @@ const DEVELOPER_TOOLS = [
   'list_member_vouchers',
   'list_voucher_batches',
   'list_vouchers',
+  'list_webhook_deliveries',
+  'list_webhook_endpoints',
 ];
 const OWNER_TOOLS = [
   ...DEVELOPER_TOOLS,
@@ -54,8 +56,6 @@ const OWNER_TOOLS = [
   'get_refund_policy_history',
   'list_invitations',
   'list_staff',
-  'list_webhook_deliveries',
-  'list_webhook_endpoints',
 ].sort();
 const VOUCHER = '33333333-3333-4333-8333-333333333333';
 const BATCH = '44444444-4444-4444-8444-444444444444';
@@ -448,6 +448,7 @@ describe('persona tool sets and prompts (OCT-294)', () => {
     expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(DEVELOPER_TOOLS);
     expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
       'check_member_transactions',
+      'check_webhooks',
       'find_customer',
       'review_api_keys',
       'summarize_member',
