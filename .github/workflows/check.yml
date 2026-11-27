@@ -1,12 +1,10 @@
 name: Checks
 on:
-  push:
-    branches: [dev, main]
   pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 jobs:
   typescript:
     runs-on: ubuntu-latest
