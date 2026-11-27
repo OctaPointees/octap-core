@@ -11,6 +11,7 @@ description: The OctaP SDK packages, what each one is for, and how to install th
 | `@octap/browser-sdk` | Your website | Customer sign-in and signing. Holds no merchant credential. |
 | `@octap/contracts` | Anywhere | TypeScript types only. `@octap/sdk` re-exports the ones you need. |
 | `@octap/mcp` | A teammate's computer | Read-only MCP server that lets an AI assistant look up members. See [Connect an MCP host](/mcp/connect-an-mcp-host/). |
+| `@octap/verify` | An auditor's computer | Checks an audit evidence bundle against its seal on Sui, without trusting OctaP: `npx @octap/verify bundle.json`. |
 
 Never import `@octap/sdk` into browser code, because it would expose your API key.
 

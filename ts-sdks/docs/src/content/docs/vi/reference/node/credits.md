@@ -122,6 +122,64 @@ do {
 
 Với lệnh earn chưa xác nhận, `pointsAmount` là `null` và `estimatedPoints` chứa số ước tính. Lệnh earn thất bại có `null` ở cả hai.
 
+## listOrganizationTransactions
+
+Liệt kê giao dịch của cả tổ chức, mới nhất trước, kèm bằng chứng trên Sui của mỗi giao dịch đã xác nhận. Gắn `blockchainDigest` vào một Sui explorer để khách hàng thấy bản ghi công khai.
+
+`GET /v1/credits/transactions` · Scope: `read`
+
+```ts
+listOrganizationTransactions(query?: OrganizationTransactionQuery, options?): Promise<LoyaltyTransactionPage>
+```
+
+| Tham số | Kiểu | Mô tả |
+| --- | --- | --- |
+| `type` | `LoyaltyTxType` | Chỉ loại này, ví dụ `EARN` |
+| `status` | `LoyaltyTxStatus` | Chỉ trạng thái này, ví dụ `CONFIRMED` |
+| `memberId` | `string` | Chỉ thành viên này |
+| `limit` | `number` | 1–100 |
+| `cursor` | `string` | `nextCursor` của trang trước |
+
+Trả về `{ items, nextCursor }`, như `listTransactions`. Giao dịch đã xác nhận có `blockchainDigest` và `confirmedAt`. Cursor vẫn dùng được khi trạng thái của giao dịch đó đổi sau này.
+
+## getProgram
+
+Đọc chương trình của bạn và chính sách tích điểm đã công bố trên Sui, đặt cạnh luật mà OctaP đang áp dụng.
+
+`GET /v1/credits/program` · Scope: `read`
+
+```ts
+getProgram(options?): Promise<ProgramEvidence>
+```
+
+| Field trả về | Kiểu | Mô tả |
+| --- | --- | --- |
+| `programId` | `string` | |
+| `status` | `string` | |
+| `earnBps` | `number` | Tỉ lệ tích điểm OctaP áp dụng, tính theo basis point |
+| `expiryMs` | `number` | Thời hạn của điểm đã tích |
+| `policyStatus` | `'MATCH' \| 'MISMATCH' \| 'UNAVAILABLE'` | `MATCH` khi luật trên chain đúng là luật OctaP áp dụng. `UNAVAILABLE` khi không đọc được chain. |
+| `policy` | `ProgramPolicyEvidence \| null` | Chính sách trên chain: `version`, `earnBps`, `expiryMs`, `publishedDigest`, `publishedAt`. `null` khi `UNAVAILABLE`. |
+
+## getBalanceReconciliation
+
+So số dư của một thành viên mà OctaP ghi nhận với số `CreditAccount` của họ trên Sui có thể chi.
+
+`GET /v1/credits/members/:memberId/reconciliation` · Scope: `read`
+
+```ts
+getBalanceReconciliation(memberId: string, options?): Promise<BalanceReconciliation>
+```
+
+| Field trả về | Kiểu | Mô tả |
+| --- | --- | --- |
+| `status` | `'MATCH' \| 'PENDING' \| 'MISMATCH' \| 'UNAVAILABLE'` | `PENDING`: vẫn còn thao tác của thành viên này đang lên chain, hãy hỏi lại sau ít giây. `MISMATCH`: không còn gì đang xử lý mà hai số vẫn khác nhau. |
+| `creditAccountId` | `string \| null` | `null` trước lần tích điểm đầu tiên của thành viên |
+| `recordedBalance` | `number` | `confirmedBalance` của OctaP |
+| `ledgerBalance` | `number \| null` | Số chain cho biết có thể chi; `null` khi `UNAVAILABLE` |
+| `difference` | `number \| null` | `ledgerBalance - recordedBalance` |
+| `checkedAt` | `string` | ISO 8601. Kết quả được cache tối đa 30 giây. |
+
 ## reservePosRedemption
 
 Giữ điểm của thành viên và trả về bytes để họ ký. [Hướng dẫn](/vi/guides/redeem-points-at-checkout/)
