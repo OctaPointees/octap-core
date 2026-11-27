@@ -1,5 +1,8 @@
 import type {
+  BalanceReconciliation,
   BalanceSnapshot,
+  OrganizationTransactionQuery,
+  ProgramEvidence,
   EarnPointsRequest,
   EarnPointsResponse,
   IssuanceBudgetDto,
@@ -212,6 +215,52 @@ export class OctaPointClient {
   /** How many more points your program may issue, read live from the chain. */
   async getIssuanceBudget(options?: RequestOptions): Promise<IssuanceBudgetDto> {
     return this.request('/v1/credits/budget', 'GET', undefined, options);
+  }
+
+  // ==========================================
+  // ON-CHAIN EVIDENCE (OCT-334)
+  // ==========================================
+
+  /**
+   * Your organization's points history, newest first: every member's earns, redemptions and
+   * reversals, each confirmed one with its Sui `blockchainDigest` and `confirmedAt`, so you can link
+   * a customer to the public proof. Filter by `type`, `status` or `memberId`; pass `nextCursor` back
+   * as `cursor` for the next page. A cursor stays valid when its row's status changes.
+   */
+  async listOrganizationTransactions(
+    query: OrganizationTransactionQuery = {},
+    options?: RequestOptions,
+  ): Promise<LoyaltyTransactionPage> {
+    return this.request<LoyaltyTransactionPage>('/v1/credits/transactions', 'GET', undefined, options, {
+      limit: query.limit,
+      cursor: query.cursor,
+      type: query.type,
+      status: query.status,
+      memberId: query.memberId,
+    });
+  }
+
+  /**
+   * Your program and the policy published for it on Sui (earn rate, expiry), compared with the
+   * rules OctaP applies: `policyStatus` is `MATCH` when they agree. Show it to customers as proof
+   * that the earn rules are the ones on the public ledger.
+   */
+  async getProgram(options?: RequestOptions): Promise<ProgramEvidence> {
+    return this.request<ProgramEvidence>('/v1/credits/program', 'GET', undefined, options);
+  }
+
+  /**
+   * A member's balance as OctaP records it against what their `CreditAccount` on Sui can spend:
+   * `MATCH`, `PENDING` (something is still on its way to the chain; ask again shortly), `MISMATCH`, or
+   * `UNAVAILABLE` (the chain could not be read). Cached for up to 30 seconds.
+   */
+  async getBalanceReconciliation(memberId: string, options?: RequestOptions): Promise<BalanceReconciliation> {
+    return this.request<BalanceReconciliation>(
+      `/v1/credits/members/${encodeURIComponent(memberId)}/reconciliation`,
+      'GET',
+      undefined,
+      options,
+    );
   }
 
   /** Reserve POS points; return the bytes to the customer's signing session. */

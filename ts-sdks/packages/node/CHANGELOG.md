@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- On-chain evidence reads (OCT-334): `listOrganizationTransactions(query)` (the organization's
+  points history with each confirmed row's Sui digest, filtered by type, status or member),
+  `getProgram()` (the program's on-chain policy compared with the rules OctaP applies) and
+  `getBalanceReconciliation(memberId)` (`MATCH` / `PENDING` / `MISMATCH` / `UNAVAILABLE`). All need
+  only a `read` key.
+
 ## 0.2.0
 
 ### Added
