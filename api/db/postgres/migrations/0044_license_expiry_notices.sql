@@ -1,0 +1,2 @@
+CREATE TYPE "public"."license_expiry_stage" AS ENUM('DAYS_30', 'DAYS_7', 'DAYS_1', 'GRACE', 'EXPIRED');--> statement-breakpoint
+ALTER TABLE "licenses" ADD COLUMN "expiry_notice_stage" "license_expiry_stage";

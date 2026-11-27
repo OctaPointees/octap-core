@@ -874,6 +874,64 @@
           "platformAdminOnly": true
         },
         "description": "**Auth:** console user (Google ID token), System Admin only."
+      },
+      "post": {
+        "operationId": "PlatformOrganizationLicenseController_renew",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOrganizationLicenseController_renew_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Platform Organization License"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": true
+        },
+        "description": "**Auth:** console user (Google ID token), System Admin only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformOrganizationLicenseController_renew_Body"
+              }
+            }
+          }
+        }
       }
     },
     "/v1/platform/organizations": {
@@ -13177,6 +13235,56 @@
         "$ref": "#/components/schemas/LicensePlanDto"
       },
       "PlatformOrganizationLicenseController_read_Response": {
+        "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "license",
+          "organizationId",
+          "usage"
+        ]
+      },
+      "PlatformOrganizationLicenseController_renew_Body": {
+        "description": "`POST /v1/platform/organizations/:organizationId/license`, System Admin: grants `months` of\n`planId`. It follows the current license (from its `endsAt`) while that is active or in grace,\nand starts now once it has expired or when there is none.",
+        "type": "object",
+        "properties": {
+          "planId": {
+            "type": "string"
+          },
+          "months": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "months",
+          "planId"
+        ]
+      },
+      "PlatformOrganizationLicenseController_renew_Response": {
         "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
         "type": "object",
         "properties": {

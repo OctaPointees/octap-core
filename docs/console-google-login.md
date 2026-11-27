@@ -75,7 +75,8 @@ reloads the user's memberships; a suspended membership or changed persona invali
   missing is a 400, and a draft a Developer edited since is a 409.
 - GET `/:id/license`: Owner/Developer view of the organization's license (plan, dates, state, entitlements) and
   usage; `GET /v1/console/license-plans` lists the plans on sale. The System Admin manages plans under
-  `/v1/platform/license-plans` and reads any organization's license (OCT-329).
+  `/v1/platform/license-plans`, reads any organization's license and renews it with
+  `POST /v1/platform/organizations/:organizationId/license` (OCT-329).
 - POST/GET `/:id/voucher-batches`, GET `/:id/voucher-batches/:batchId`, POST `…/:batchId/activate` and
   `…/:batchId/archive`: Owner/Developer, with the same rules as single vouchers. Activating as a
   Developer while approval is required sends the batch's drafts to `PENDING_APPROVAL` (OCT-303).

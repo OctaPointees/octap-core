@@ -148,7 +148,11 @@ export interface UpdateLicensePlanRequest {
  * Why a request was refused with 402 (OCT-329): the license doesn't include the feature, or the
  * organization has used up a limit. 403 stays for "not allowed whatever the plan".
  */
-export type LicenseErrorCode = 'LICENSE_FEATURE_NOT_INCLUDED' | 'LICENSE_LIMIT_REACHED';
+/**
+ * Why a 402 refused the request. `LICENSE_EXPIRED`: the license is past its grace period, so new
+ * transactions (earn, POS reserve, paid voucher claims) are refused until it is renewed.
+ */
+export type LicenseErrorCode = 'LICENSE_FEATURE_NOT_INCLUDED' | 'LICENSE_LIMIT_REACHED' | 'LICENSE_EXPIRED';
 
 /** The body of a 402. `feature` or `limit` says which; `used` and `allowed` come with a limit. */
 export interface LicenseErrorBody {
@@ -180,4 +184,40 @@ export interface LicenseUsageThresholdEventData {
   allowed: number;
   periodStart: string;
   periodEnd: string;
+}
+
+/** Days before `endsAt` that send a reminder, latest first. */
+export const LICENSE_EXPIRY_REMINDER_DAYS = [30, 7, 1] as const;
+
+/**
+ * A step of a license's end, in order: reminders before `endsAt`, then `GRACE` once it has passed
+ * (still working), then `EXPIRED` once the grace period is over (new transactions refused).
+ */
+export type LicenseExpiryStage = 'DAYS_30' | 'DAYS_7' | 'DAYS_1' | 'GRACE' | 'EXPIRED';
+export const LICENSE_EXPIRY_STAGES: readonly LicenseExpiryStage[] = ['DAYS_30', 'DAYS_7', 'DAYS_1', 'GRACE', 'EXPIRED'];
+
+/**
+ * `license.expiry_notice`: the organization's license reached a step of its end. Sent once per step,
+ * and only for the latest license, so a license already renewed sends nothing more. When several
+ * steps passed unseen (no worker ran), only the current one is sent.
+ */
+export interface LicenseExpiryNoticeEventData {
+  licenseId: string;
+  stage: LicenseExpiryStage;
+  tier: LicenseTier;
+  planName: string;
+  endsAt: string;
+  graceEndsAt: string;
+  /** Whole days until `endsAt`, 0 once it has passed. */
+  daysLeft: number;
+}
+
+/**
+ * `POST /v1/platform/organizations/:organizationId/license`, System Admin: grants `months` of
+ * `planId`. It follows the current license (from its `endsAt`) while that is active or in grace,
+ * and starts now once it has expired or when there is none.
+ */
+export interface RenewLicenseRequest {
+  planId: string;
+  months: number;
 }

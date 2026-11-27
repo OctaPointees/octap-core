@@ -1,6 +1,7 @@
-import type { LicenseFeature } from '@octap/contracts';
+import { LICENSE_EXPIRY_REMINDER_DAYS, type LicenseExpiryNoticeEventData, type LicenseFeature } from '@octap/contracts';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray, lte } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, ne, notExists, or } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { licensePlans, licenses } from '../schema/licensing.schema.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
@@ -8,6 +9,11 @@ import { apiCredentials, organizations } from '../schema/organizations.schema.js
 import { organizationMemberships } from '../schema/auth.schema.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { licenseTransactionsUsed, requireLicenseFeature } from './license-enforcement.js';
+import { recordEvent } from './events.repository.js';
+import { addMonths, daysLeft, graceEndsAt, licenseExpiryStage, renewalStart } from './license-period.js';
+
+/** A second reference to `licenses`, for "a later license of the same organization". */
+const later = alias(licenses, 'later');
 
 export type LicensePlan = typeof licensePlans.$inferSelect;
 export type License = typeof licenses.$inferSelect;
@@ -92,6 +98,129 @@ export class LicensesRepository {
         .limit(1);
       return license;
     });
+  }
+
+  /**
+  /**
+   * Grants `months` of `plan` after the organization's latest license (OCT-329 part 3): from its
+   * `endsAt` while it is active or in grace, so renewing early or late loses no day, and from `now`
+   * once it has expired or when there is none. The organization row is locked first, so two renewals
+   * at once queue up and the second follows the first instead of overlapping it. `undefined` when
+   * the organization doesn't exist.
+   */
+  async renew(params: {
+    organizationId: string;
+    plan: LicensePlan;
+    months: number;
+    source: License['source'];
+    now?: Date;
+  }): Promise<License | undefined> {
+    const now = params.now ?? new Date();
+    return this.db.transaction(async (tx) => {
+      const [organization] = await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, params.organizationId))
+        .for('update');
+      if (!organization) return undefined;
+      const latest = await withTenant(tx, params.organizationId, async (inner) => {
+        const [row] = await inner
+          .select()
+          .from(licenses)
+          .where(eq(licenses.organizationId, params.organizationId))
+          .orderBy(desc(licenses.startsAt), desc(licenses.createdAt))
+          .limit(1);
+        return row;
+      });
+      const startsAt = renewalStart(latest, now);
+      return insertLicense(tx, {
+        organizationId: params.organizationId,
+        plan: params.plan,
+        source: params.source,
+        startsAt,
+        endsAt: addMonths(startsAt, params.months),
+      });
+    });
+  }
+
+  /**
+   * One pass of the expiry notices (`LicenseExpiryWorker`), across every organization: an RLS
+   * exception, like the outbox trim. For each organization's latest license that is within 30 days
+   * of its end, records `license.expiry_notice` for the step it has reached (see
+   * `licenseExpiryStage`), if that step is past the one already sent. The step moves forward with a
+   * conditional update in the same transaction as the event, so a step is sent once, even with
+   * several workers. A license that was renewed (a later one exists) sends nothing more, and when
+   * steps passed unseen only the current one is sent. Returns how many notices were recorded.
+   */
+  async recordExpiryNotices(now = new Date(), pageSize = 200): Promise<number> {
+    const horizon = new Date(now.getTime() + LICENSE_EXPIRY_REMINDER_DAYS[0] * 24 * 60 * 60 * 1000);
+    let sent = 0;
+    let after: { endsAt: Date; id: string } | undefined;
+    for (;;) {
+      const page = await this.db
+        .select({ license: licenses })
+        .from(licenses)
+        .innerJoin(organizations, eq(organizations.id, licenses.organizationId))
+        .where(
+          and(
+            ne(organizations.status, 'ARCHIVED'),
+            lte(licenses.endsAt, horizon),
+            or(isNull(licenses.expiryNoticeStage), ne(licenses.expiryNoticeStage, 'EXPIRED')),
+            notExists(
+              this.db
+                .select({ id: later.id })
+                .from(later)
+                .where(
+                  and(
+                    eq(later.organizationId, licenses.organizationId),
+                    or(
+                      gt(later.startsAt, licenses.startsAt),
+                      and(eq(later.startsAt, licenses.startsAt), gt(later.createdAt, licenses.createdAt)),
+                    ),
+                  ),
+                ),
+            ),
+            after
+              ? or(gt(licenses.endsAt, after.endsAt), and(eq(licenses.endsAt, after.endsAt), gt(licenses.id, after.id)))
+              : undefined,
+          ),
+        )
+        .orderBy(asc(licenses.endsAt), asc(licenses.id))
+        .limit(pageSize);
+      for (const { license } of page) {
+        const stage = licenseExpiryStage(license.startsAt, license.endsAt, now);
+        if (!stage) continue;
+        const recorded = await this.db.transaction(async (tx) => {
+          // Enum order is the step order, so `<` means "an earlier step".
+          const [moved] = await tx
+            .update(licenses)
+            .set({ expiryNoticeStage: stage })
+            .where(
+              and(
+                eq(licenses.id, license.id),
+                or(isNull(licenses.expiryNoticeStage), lt(licenses.expiryNoticeStage, stage)),
+              ),
+            )
+            .returning({ id: licenses.id });
+          if (!moved) return false;
+          const payload: LicenseExpiryNoticeEventData = {
+            licenseId: license.id,
+            stage,
+            tier: license.tier,
+            planName: license.planName,
+            endsAt: license.endsAt.toISOString(),
+            graceEndsAt: graceEndsAt(license.endsAt).toISOString(),
+            daysLeft: daysLeft(license.endsAt, now),
+          };
+          await recordEvent(tx, { organizationId: license.organizationId, type: 'license.expiry_notice', payload });
+          return true;
+        });
+        if (recorded) sent += 1;
+      }
+      if (page.length < pageSize) return sent;
+      const last = page[page.length - 1].license;
+      after = { endsAt: last.endsAt, id: last.id };
+    }
   }
 
   /**

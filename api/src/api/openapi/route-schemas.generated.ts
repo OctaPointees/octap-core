@@ -4948,6 +4948,56 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "usage"
     ]
   },
+  "PlatformOrganizationLicenseController_renew_Body": {
+    "description": "`POST /v1/platform/organizations/:organizationId/license`, System Admin: grants `months` of\n`planId`. It follows the current license (from its `endsAt`) while that is active or in grace,\nand starts now once it has expired or when there is none.",
+    "type": "object",
+    "properties": {
+      "planId": {
+        "type": "string"
+      },
+      "months": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "months",
+      "planId"
+    ]
+  },
+  "PlatformOrganizationLicenseController_renew_Response": {
+    "description": "`GET …/license`: the organization's current license and usage; `null` when it has none.",
+    "type": "object",
+    "properties": {
+      "organizationId": {
+        "type": "string"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseDto"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LicenseUsage"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "license",
+      "organizationId",
+      "usage"
+    ]
+  },
   "PlatformOrganizationOwnersController_bootstrap_Body": {
     "type": "object",
     "properties": {

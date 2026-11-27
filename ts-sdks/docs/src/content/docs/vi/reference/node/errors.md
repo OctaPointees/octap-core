@@ -32,7 +32,7 @@ import { OctaApiError, OctaNetworkError, OctaRequestAbortedError } from '@octap/
 | --- | --- | --- |
 | 400 | Request không hợp lệ, hoặc bị một quy tắc từ chối | Sửa request. Với finalize, hãy đọc trạng thái trước, vì giao dịch có thể đã được gửi. |
 | 401 | API key hoặc token khách hàng bị thiếu, sai hoặc hết hạn | Kiểm tra key, hoặc yêu cầu khách đăng nhập lại |
-| 402 | License của tổ chức bạn không bao gồm việc này. `code` cho biết lý do: `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`) hoặc `LICENSE_FEATURE_NOT_INCLUDED` (`feature`) | Nâng gói license. Hạn mức giao dịch tháng đã đầy sẽ trống lại khi tháng license mới bắt đầu; xem bằng `getLicense()` |
+| 402 | License của tổ chức bạn không bao gồm việc này. `code` cho biết lý do: `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`), `LICENSE_FEATURE_NOT_INCLUDED` (`feature`), hoặc `LICENSE_EXPIRED` (đã qua 7 ngày ân hạn sau khi license hết hạn: chỉ chặn giao dịch mới) | Nâng gói hoặc gia hạn license. Hạn mức giao dịch tháng đã đầy sẽ trống lại khi tháng license mới bắt đầu; xem bằng `getLicense()` |
 | 403 | Key thiếu scope, hoặc tổ chức hay thành viên không hoạt động | Kiểm tra [scope](/vi/concepts/api-keys-and-scopes/) và trạng thái thành viên |
 | 404 | Không tìm thấy trong tổ chức của bạn | Kiểm tra ID |
 | 409 | Key đã dùng cho request khác, hoặc trạng thái không cho phép | Đọc trạng thái. Đừng đổi key để né lỗi. |

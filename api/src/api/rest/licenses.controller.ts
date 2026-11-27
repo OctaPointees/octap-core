@@ -18,7 +18,7 @@ import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
-import type { CreateLicensePlanBodyDto, UpdateLicensePlanBodyDto } from '../dto/licensing.dto.js';
+import type { CreateLicensePlanBodyDto, RenewLicenseBodyDto, UpdateLicensePlanBodyDto } from '../dto/licensing.dto.js';
 
 /** The organization's license and usage, for its Owner and Business Developers (OCT-329). */
 @Public()
@@ -99,5 +99,14 @@ export class PlatformOrganizationLicenseController {
   @Header('Cache-Control', 'no-store')
   read(@Param('organizationId', ParseUUIDPipe) organizationId: string): Promise<OrganizationLicenseDto> {
     return this.licenses.readForPlatform(organizationId);
+  }
+  /** Renews or upgrades by hand: `months` of `planId`, after the latest license (part 3). */
+  @Post()
+  @Header('Cache-Control', 'no-store')
+  renew(
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Body() body: RenewLicenseBodyDto,
+  ): Promise<OrganizationLicenseDto> {
+    return this.licenses.renew(organizationId, body);
   }
 }

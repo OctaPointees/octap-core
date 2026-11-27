@@ -3,6 +3,8 @@ import {
   addMonths,
   daysLeft,
   graceEndsAt,
+  licenseExpiryStage,
+  renewalStart,
   licensePeriod,
   licenseState,
 } from '#infra/db/repositories/license-period.js';
@@ -74,5 +76,36 @@ describe('license months', () => {
       '2026-12-01T00:00:00.000Z',
       '2027-01-01T00:00:00.000Z',
     ]);
+  });
+});
+
+describe('licenseExpiryStage', () => {
+  const start = at('2026-01-01T00:00:00.000Z');
+  const end = at('2026-04-01T00:00:00.000Z');
+  it.each([
+    ['2026-02-28T23:59:59.000Z', null],
+    ['2026-03-02T00:00:00.000Z', 'DAYS_30'],
+    ['2026-03-25T00:00:00.000Z', 'DAYS_7'],
+    ['2026-03-31T00:00:00.000Z', 'DAYS_1'],
+    ['2026-04-01T00:00:00.000Z', 'GRACE'],
+    ['2026-04-07T23:59:59.000Z', 'GRACE'],
+    ['2026-04-08T00:00:00.000Z', 'EXPIRED'],
+  ])('at %s is %s', (now, stage) => {
+    expect(licenseExpiryStage(start, end, at(now))).toBe(stage);
+  });
+  it('skips the reminders a short license is too short for', () => {
+    const trialEnd = at('2026-01-15T00:00:00.000Z');
+    expect(licenseExpiryStage(start, trialEnd, start)).toBeNull();
+    expect(licenseExpiryStage(start, trialEnd, at('2026-01-08T00:00:00.000Z'))).toBe('DAYS_7');
+  });
+});
+
+describe('renewalStart', () => {
+  const now = at('2026-04-05T00:00:00.000Z');
+  it('follows a license still active or in grace, and starts now otherwise', () => {
+    expect(renewalStart({ endsAt: at('2026-04-20T00:00:00.000Z') }, now)).toEqual(at('2026-04-20T00:00:00.000Z'));
+    expect(renewalStart({ endsAt: at('2026-04-01T00:00:00.000Z') }, now)).toEqual(at('2026-04-01T00:00:00.000Z'));
+    expect(renewalStart({ endsAt: at('2026-03-20T00:00:00.000Z') }, now)).toEqual(now);
+    expect(renewalStart(undefined, now)).toEqual(now);
   });
 });

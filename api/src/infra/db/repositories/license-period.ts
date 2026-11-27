@@ -1,4 +1,9 @@
-import { LICENSE_GRACE_DAYS, type LicenseState } from '@octap/contracts';
+import {
+  LICENSE_EXPIRY_REMINDER_DAYS,
+  LICENSE_GRACE_DAYS,
+  type LicenseExpiryStage,
+  type LicenseState,
+} from '@octap/contracts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,4 +50,25 @@ export function licensePeriod(startsAt: Date, endsAt: Date, now: Date): { start:
   while (addMonths(startsAt, months + 1) <= at) months += 1;
   const end = addMonths(startsAt, months + 1);
   return { start: addMonths(startsAt, months), end: end < endsAt ? end : endsAt };
+}
+
+/**
+ * The step of its end a license is at, or `null` before the first reminder. A reminder longer than
+ * the license itself is skipped: a 14-day trial gets the 7-day and 1-day ones, not "30 days left" on
+ * its first day.
+ */
+export function licenseExpiryStage(startsAt: Date, endsAt: Date, now: Date): LicenseExpiryStage | null {
+  const state = licenseState(endsAt, now);
+  if (state !== 'ACTIVE') return state;
+  const left = endsAt.getTime() - now.getTime();
+  const length = endsAt.getTime() - startsAt.getTime();
+  for (const days of [...LICENSE_EXPIRY_REMINDER_DAYS].reverse()) {
+    if (left <= days * DAY_MS && days * DAY_MS < length) return `DAYS_${days}`;
+  }
+  return null;
+}
+
+/** Where a renewal starts: right after the current license while it still works, otherwise now. */
+export function renewalStart(current: { endsAt: Date } | undefined, now: Date): Date {
+  return current && licenseState(current.endsAt, now) !== 'EXPIRED' ? current.endsAt : now;
 }

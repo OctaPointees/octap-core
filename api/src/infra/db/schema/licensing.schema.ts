@@ -19,6 +19,13 @@ import { organizations } from './organizations.schema.js';
 
 export const licenseTierEnum = pgEnum('license_tier', ['TRIAL', 'STARTER', 'GROWTH', 'ENTERPRISE']);
 export const licenseSourceEnum = pgEnum('license_source', ['TRIAL', 'MIGRATION', 'PURCHASE', 'ADMIN']);
+export const licenseExpiryStageEnum = pgEnum('license_expiry_stage', [
+  'DAYS_30',
+  'DAYS_7',
+  'DAYS_1',
+  'GRACE',
+  'EXPIRED',
+]);
 
 /**
  * LICENSE PLAN: one tier of the catalogue, managed by the System Admin (OCT-329). Platform data, not a
@@ -77,6 +84,8 @@ export const licenses = pgTable(
     source: licenseSourceEnum('source').notNull(),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    /** The last `license.expiry_notice` stage sent; only moves forward, so a stage is sent once. */
+    expiryNoticeStage: licenseExpiryStageEnum('expiry_notice_stage'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

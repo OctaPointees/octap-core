@@ -11,7 +11,7 @@ import type { DrizzleDb } from '../postgres.provider.js';
 import { licenses, licenseUsage } from '../schema/licensing.schema.js';
 import { withTenant } from '../rls.js';
 import { recordEvent } from './events.repository.js';
-import { licensePeriod } from './license-period.js';
+import { licensePeriod, licenseState } from './license-period.js';
 
 type License = typeof licenses.$inferSelect;
 
@@ -107,12 +107,21 @@ export async function requireLicenseCapacity(
  * Counts one accepted transaction (an earn, a POS redeem or a paid voucher claim) against the
  * license month, in the caller's transaction, so a rollback gives it back. One conditional update
  * takes it only below 110% of the limit: concurrent accepts queue on the counter's row and can't
- * overshoot. Crossing 80% or 100% records `license.usage_threshold`, once each per month. Call it at
- * the end of the accept, to hold the counter's row as briefly as possible.
+ * overshoot. Crossing 80% or 100% records `license.usage_threshold`, once each per month. An
+ * EXPIRED license (past its grace period) refuses it with 402 `LICENSE_EXPIRED`. Call it at the end
+ * of the accept, to hold the counter's row as briefly as possible.
  */
 export async function takeLicenseTransaction(tx: DrizzleDb, organizationId: string, now = new Date()): Promise<void> {
   const license = await licenseInForce(tx, organizationId, now);
   if (!license) return;
+  // Past the grace period only new transactions stop (part 3); confirmations, reversals, balances
+  // and vouchers already held never pass through here, so they keep working.
+  if (licenseState(license.endsAt, now) === 'EXPIRED') {
+    throw new LicenseLimitError({
+      code: 'LICENSE_EXPIRED',
+      message: `This organization's ${license.planName} license ended on ${license.endsAt.toISOString().slice(0, 10)} and its grace period is over, so new transactions are refused. Renew the license to accept them again.`,
+    });
+  }
   const limit = license.entitlements.limits.transactionsMonthly;
   const period = licensePeriod(license.startsAt, license.endsAt, now);
   await withTenant(tx, organizationId, async (inner) => {

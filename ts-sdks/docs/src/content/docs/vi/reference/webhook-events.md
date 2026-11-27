@@ -22,6 +22,7 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`voucher.redeemed`](#voucherredeemed) | Khách hàng đã ký và chain đánh dấu voucher đã dùng | Xếp hàng đúng một lần cho mỗi voucher |
 | [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
 | [`license.usage_threshold`](#licenseusage_threshold) | Số giao dịch trong tháng license chạm 80% hoặc 100% hạn mức của license | Xếp hàng cùng giao dịch, mỗi mốc một lần mỗi tháng license |
+| [`license.expiry_notice`](#licenseexpiry_notice) | License còn 30, 7 hoặc 1 ngày là hết hạn, vào thời gian ân hạn, hoặc đã hết hạn | Kiểm tra 15 phút một lần, mỗi mốc gửi một lần |
 | [`voucher.created` và các event voucher khác](#event-vòng-đời-voucher) | Voucher được tạo, gửi duyệt, trả về, activate, publish thất bại, tạm dừng hoặc archive | Xếp hàng cùng thay đổi |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
@@ -148,6 +149,28 @@ Số giao dịch của tổ chức bạn trong tháng license này (earn, đổi
 | `allowed` | `number` | Hạn mức mỗi tháng của license |
 | `periodStart` | `string` | Lúc tháng license này bắt đầu |
 | `periodEnd` | `string` | Lúc tháng kết thúc và bộ đếm bắt đầu lại |
+
+## license.expiry_notice
+
+License của tổ chức bạn vừa tới một mốc sắp hết hạn. Hãy gia hạn trước `graceEndsAt`.
+
+| `stage` | Khi nào | Những gì vẫn chạy |
+| --- | --- | --- |
+| `DAYS_30`, `DAYS_7`, `DAYS_1` | 30, 7 hoặc 1 ngày trước `endsAt`. Mốc nhắc dài hơn chính license thì được bỏ qua (trial 14 ngày chỉ nhận `DAYS_7` và `DAYS_1`) | Mọi thứ |
+| `GRACE` | Đã qua `endsAt` | Mọi thứ, thêm 7 ngày |
+| `EXPIRED` | Đã qua `graceEndsAt` | Mọi thứ trừ giao dịch mới: earn, đổi điểm tại POS và nhận voucher trả phí trả 402 `LICENSE_EXPIRED`. Xác nhận giao dịch, hoàn điểm, số dư và voucher khách đang có vẫn chạy |
+
+Mỗi mốc gửi một lần. License đã được gia hạn thì không gửi gì thêm. Nếu nhiều mốc trôi qua mà không ai kiểm tra, chỉ mốc hiện tại được gửi. Gia hạn được tính tiếp từ `endsAt`, nên gia hạn sớm không mất ngày nào.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `licenseId` | `string` | |
+| `stage` | `'DAYS_30' \| 'DAYS_7' \| 'DAYS_1' \| 'GRACE' \| 'EXPIRED'` | |
+| `tier` | `string` | `TRIAL`, `STARTER`, `GROWTH` hoặc `ENTERPRISE` |
+| `planName` | `string` | |
+| `endsAt` | `string` | |
+| `graceEndsAt` | `string` | Lúc giao dịch mới bị dừng |
+| `daysLeft` | `number` | Số ngày tròn tới `endsAt`, bằng 0 khi đã qua |
 
 ## Event vòng đời voucher
 

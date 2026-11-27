@@ -10,6 +10,7 @@ import {
   type LicensePlanDto,
   type LicenseTier,
   type OrganizationLicenseDto,
+  type RenewLicenseRequest,
   type UpdateLicensePlanRequest,
 } from '@octap/contracts';
 import {
@@ -34,8 +35,9 @@ const isWhole = (value: unknown, min: number, max: number): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 
 /**
- * The organization's license and what it uses (OCT-329), and the plan catalogue the System Admin
- * manages. Reads only: limits are enforced in a later part of the ticket.
+ * The organization's license and what it uses (OCT-329), the plan catalogue the System Admin
+ * manages, and the System Admin's renewal. Limits and expiry are enforced in the repositories
+ * (`license-enforcement.ts`), and reminders are sent by `LicenseExpiryWorker`.
  */
 @Injectable()
 export class LicenseService {
@@ -127,7 +129,31 @@ export class LicenseService {
     checkSellable({ ...current, ...patch });
     return toPlanDto((await this.licenses.updatePlan(id, patch))!);
   }
+
+  /**
+   * System Admin: grants `months` of a plan to an organization (`source: ADMIN`), following its
+   * latest license from `endsAt` while that still works, or from now once it has expired. Until
+   * payments exist (OCT-330), this is how a license is renewed or upgraded.
+   */
+  async renew(organizationId: string, input: RenewLicenseRequest): Promise<OrganizationLicenseDto> {
+    const body = objectOf(input);
+    const unknown = Object.keys(body).filter((key) => key !== 'planId' && key !== 'months');
+    if (unknown.length) throw new BadRequestException(`Unknown field: ${unknown.join(', ')}`);
+    if (typeof body.planId !== 'string' || !UUID.test(body.planId))
+      throw new BadRequestException('planId must be a license plan id');
+    if (!isWhole(body.months, 1, MAX_TERM_MONTHS))
+      throw new BadRequestException(`months must be a whole number from 1 to ${MAX_TERM_MONTHS}`);
+    const plan = await this.licenses.findPlan(body.planId);
+    if (!plan) throw new NotFoundException('License plan not found');
+    if (!plan.active) throw new BadRequestException('This plan is no longer offered');
+    if (plan.tier === 'TRIAL') throw new BadRequestException('A trial is granted on approval, not renewed');
+    const granted = await this.licenses.renew({ organizationId, plan, months: body.months, source: 'ADMIN' });
+    if (!granted) throw new NotFoundException('Organization not found');
+    return this.read(organizationId);
+  }
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function objectOf(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input))

@@ -72,6 +72,7 @@ const SUBJECT_OF: SubjectOf = {
   }),
   'budget.low': () => ({ kind: 'issuanceBudget' }),
   'license.usage_threshold': () => ({ kind: 'license' }),
+  'license.expiry_notice': () => ({ kind: 'license' }),
   'webhook.test': (data) => ({ kind: 'webhookEndpoint', id: data.endpointId }),
 };
 

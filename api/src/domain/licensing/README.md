@@ -37,7 +37,7 @@ customers' balances, vouchers or reversals.
 | `GET /v1/console/license-plans` | Any signed-in console user: the active, purchasable plans |
 | `GET /v1/license` | API key with `read` |
 | `GET`, `POST /v1/platform/license-plans`; `PATCH …/:id` | System Admin |
-| `GET /v1/platform/organizations/:organizationId/license` | System Admin (404 for an unknown organization) |
+| `GET`, `POST /v1/platform/organizations/:organizationId/license` | System Admin (404 for an unknown organization; `POST`: renew, below) |
 
 The license response is `{ organizationId, license, usage }`; `license` and `usage` are `null` for an
 organization that has none. Usage counts the transactions accepted in the current license month (the
@@ -53,6 +53,7 @@ An organization without a license is never limited. Refusals answer **402** with
 
 - `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`): a limit is full.
 - `LICENSE_FEATURE_NOT_INCLUDED` (`feature`): the license lacks a feature.
+- `LICENSE_EXPIRED`: the license is past its grace period (part 3, below).
 
 **Transactions.** `license_usage` keeps one row per license and license month. Earn, POS reserve and
 a paid voucher claim each take one with a single conditional `UPDATE … WHERE transactions < hard
@@ -81,6 +82,45 @@ caller is known to belong to the organization (an outsider still gets its 403):
 
 What already exists keeps working (endpoints, batches, pending approvals); only new uses are refused.
 
+## Expiry and renewal (part 3)
+
+**Expired.** Once a license is past `endsAt` plus the 7-day grace, `takeLicenseTransaction` refuses
+new transactions (earn, POS reserve, paid voucher claims) with 402 `LICENSE_EXPIRED`. That is the
+only thing an expired license stops: confirmations and failures from the chain, reversals, POS
+finalize, balances, free claims and vouchers customers already hold never pass through it, and the
+features and other limits stay those of the last license. During the grace period nothing is
+refused.
+
+**Notices.** `LicenseExpiryWorker` (worker process, at start and every
+`LICENSE_EXPIRY_POLL_INTERVAL_MS`, 15 minutes) calls `LicensesRepository.recordExpiryNotices`,
+which records `license.expiry_notice` (webhook + console events, subject `{ kind: 'license' }`) for
+each organization's **latest** license at the step it has reached, worked out by
+`licenseExpiryStage`:
+
+| `stage` | When |
+| --- | --- |
+| `DAYS_30`, `DAYS_7`, `DAYS_1` | that many days before `endsAt`; skipped when the license is shorter (a 14-day trial gets 7 and 1) |
+| `GRACE` | `endsAt` has passed |
+| `EXPIRED` | the grace period is over |
+
+`licenses.expiry_notice_stage` keeps the last step sent and only moves forward, with a conditional
+update in the event's transaction (the enum's order is the step order). So a step is sent once even
+with several workers. When steps passed unseen, only the current one is sent. A license that has a
+later one (it was renewed) sends nothing more. Archived organizations are skipped. The pass reads
+across organizations: an RLS exception, like the outbox trim.
+
+**Renewal.** `LicensesRepository.renew` grants `months` of a plan as a new license. It follows the
+latest license from its `endsAt` while that is active or in grace, and starts now once it has
+expired (`renewalStart`). Renewing early or during grace loses no day. Example, 3 months on a
+license ending 1 December: renewed on 28 November or 5 December, the new one runs 1 December to
+1 March; renewed on 20 December, 20 December to 20 March. The organization row is locked first, so
+two renewals at once follow each other instead of overlapping. Each license keeps the entitlements
+of its plan when granted and its own monthly counter.
+
+`POST /v1/platform/organizations/:organizationId/license` `{ planId, months }` (System Admin,
+`source: ADMIN`, an active plan that isn't the trial, 1–36 months) is the way to renew or upgrade
+until payments exist. It answers the organization's license as it then stands.
+
 ## Not yet
 
-Expiry (blocking once EXPIRED) and reminders (OCT-329 part 3), and buying or renewing (OCT-330).
+Buying and renewing by the Owner with SePay (OCT-330); the console screens (OCT-331/332).

@@ -22,6 +22,7 @@ Every event has this shape, and `data` depends on `type`:
 | [`voucher.redeemed`](#voucherredeemed) | The customer signed and the chain marked a voucher used | Exactly one per voucher is queued |
 | [`budget.low`](#budgetlow) | The issuance budget crossed 80% or 95% used | Checked every few minutes, one per crossing |
 | [`license.usage_threshold`](#licenseusage_threshold) | This license month's transactions reached 80% or 100% of the license's limit | Queued with the transaction, once per threshold and license month |
+| [`license.expiry_notice`](#licenseexpiry_notice) | Your license is 30, 7 or 1 days from its end, entered its grace period, or expired | Checked every 15 minutes, one per step |
 | [`voucher.created` and the other voucher events](#voucher-lifecycle-events) | A voucher was created, submitted, returned, activated, failed to publish, paused or archived | Queued with the change |
 
 Queued events can still be retried, so your receiver may see the same `id` more than once.
@@ -147,6 +148,28 @@ Your organization's transactions this license month (earns, POS redemptions and 
 | `allowed` | `number` | The license's monthly limit |
 | `periodStart` | `string` | When this license month started |
 | `periodEnd` | `string` | When it ends and the count starts again |
+
+## license.expiry_notice
+
+Your organization's license reached a step of its end. Renew it before `graceEndsAt`.
+
+| `stage` | When | What still works |
+| --- | --- | --- |
+| `DAYS_30`, `DAYS_7`, `DAYS_1` | 30, 7 or 1 days before `endsAt`. A reminder longer than the license itself is skipped (a 14-day trial gets `DAYS_7` and `DAYS_1`) | Everything |
+| `GRACE` | `endsAt` has passed | Everything, for 7 more days |
+| `EXPIRED` | `graceEndsAt` has passed | Everything except new transactions: earns, POS redemptions and paid voucher claims answer 402 `LICENSE_EXPIRED`. Confirmations, reversals, balances and vouchers customers already hold keep working |
+
+Each step is sent once. A license that was already renewed sends nothing more. If several steps passed while nothing was checked, only the current one is sent. Renewing extends from `endsAt`, so renewing early loses no day.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `licenseId` | `string` | |
+| `stage` | `'DAYS_30' \| 'DAYS_7' \| 'DAYS_1' \| 'GRACE' \| 'EXPIRED'` | |
+| `tier` | `string` | `TRIAL`, `STARTER`, `GROWTH` or `ENTERPRISE` |
+| `planName` | `string` | |
+| `endsAt` | `string` | |
+| `graceEndsAt` | `string` | When new transactions stop |
+| `daysLeft` | `number` | Whole days until `endsAt`, 0 once it has passed |
 
 ## Voucher lifecycle events
 

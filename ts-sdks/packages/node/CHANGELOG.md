@@ -14,6 +14,11 @@
   `LicenseErrorCode`.
 - Webhook `license.usage_threshold` (`LicenseUsageThresholdEventData`): sent once per license month
   at 80% and at 100% of the monthly transactions.
+- License expiry (OCT-329): 7 days after a license ends (its grace period), earns, POS reserves and
+  paid voucher claims answer **402 `LICENSE_EXPIRED`**; everything else keeps working. Webhook
+  `license.expiry_notice` (`LicenseExpiryNoticeEventData`) is sent 30, 7 and 1 days before the end,
+  when the grace period starts and when it is over (`stage`), once each. Types:
+  `LicenseExpiryStage`, `LICENSE_EXPIRY_STAGES`, `LICENSE_EXPIRY_REMINDER_DAYS`.
 - On-chain evidence reads (OCT-334): `listOrganizationTransactions(query)` (the organization's
   points history with each confirmed row's Sui digest, filtered by type, status or member),
   `getProgram()` (the program's on-chain policy compared with the rules OctaP applies) and
