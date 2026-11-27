@@ -4,7 +4,10 @@ import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
 import type { RegisterWebhookEndpointBodyDto } from '../dto/webhooks.dto.js';
 
-/** Owner only, reads included. See `ConsoleWebhooksService`. */
+/**
+ * Owner or Business Developer reads, sends a test event and replays a delivery; only the Owner
+ * registers, disables, enables or rotates a secret. See `ConsoleWebhooksService`.
+ */
 @Public()
 @UseGuards(ConsoleAccessGuard)
 @Controller('v1/console/organizations/:organizationId/webhooks')

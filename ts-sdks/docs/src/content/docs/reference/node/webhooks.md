@@ -3,7 +3,7 @@ title: Webhooks
 description: Node SDK methods for webhook endpoints, deliveries and signature verification.
 ---
 
-The Owner registers, disables, enables and rotates endpoints, and replays dead-lettered deliveries, in the console. No API key can, so the SDK only reads them. See [Receive webhooks](/guides/receive-webhooks/).
+In the console, the Owner registers, disables, enables and rotates endpoints, and the Owner or a Business Developer replays dead-lettered deliveries. No API key can, so the SDK only reads them. See [Receive webhooks](/guides/receive-webhooks/).
 
 ## listWebhookEndpoints
 

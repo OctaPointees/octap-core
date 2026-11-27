@@ -7,11 +7,19 @@ import { WebhookEndpointsService } from './webhook-endpoints.service.js';
 import { WebhookDeliveryService } from './webhook-delivery.service.js';
 
 /**
- * The organization's webhook endpoints and deliveries from the console session. Owner only, reads
- * included: a delivery holds its event's payload, and a Business Developer is a 403 on every route.
- * Every call runs inside the Owner check's transaction, so a write commits only while the caller is
- * still the active Owner of an active organization. Endpoint and delivery rules are
- * `WebhookEndpointsService`'s and `WebhookDeliveryService`'s.
+ * The organization's webhook endpoints and deliveries from the console session.
+ *
+ * - Owner or Business Developer: list endpoints and deliveries, send a test event, replay a
+ *   dead-lettered delivery. That is what building and debugging an integration takes, and none of it
+ *   changes where events go or how they are signed: a replay resends an event already recorded.
+ * - Owner only: register, disable, enable and rotate a secret. Registering chooses where the
+ *   organization's events are sent and returns the signing secret; the others can break a live
+ *   integration at once. This is the same line as for API keys, where only the Owner manages a live
+ *   `write` key.
+ *
+ * Every call runs inside its access check's transaction, holding the organization and membership
+ * rows FOR SHARE, so a write commits only while the caller still has that access. Endpoint and
+ * delivery rules are `WebhookEndpointsService`'s and `WebhookDeliveryService`'s.
  */
 @Injectable()
 export class ConsoleWebhooksService {
@@ -25,13 +33,23 @@ export class ConsoleWebhooksService {
     try {
       return await this.organizations.withOwnerAccess(userId, orgId, action);
     } catch (error) {
+      if (error instanceof ConsoleAccessError) throw new ForbiddenException(OWNER_ONLY);
+      throw error;
+    }
+  }
+
+  /** Owner or Business Developer. */
+  private async developer<T>(userId: string, orgId: string, action: (tx: DrizzleDb) => Promise<T>): Promise<T> {
+    try {
+      return await this.organizations.withEditorAccess(userId, orgId, action);
+    } catch (error) {
       if (error instanceof ConsoleAccessError) throw new ForbiddenException(DENIED);
       throw error;
     }
   }
 
   listEndpoints(userId: string, orgId: string) {
-    return this.owner(userId, orgId, (tx) => this.endpoints.list(orgId, tx));
+    return this.developer(userId, orgId, (tx) => this.endpoints.list(orgId, tx));
   }
 
   /** The response is the only time the signing secret is shown. */
@@ -59,16 +77,19 @@ export class ConsoleWebhooksService {
 
   /** Queues a signed `webhook.test` delivery to this endpoint only (OCT-297). */
   sendTestEvent(userId: string, orgId: string, endpointId: string) {
-    return this.owner(userId, orgId, (tx) => this.endpoints.sendTest(orgId, endpointId, tx));
+    return this.developer(userId, orgId, (tx) => this.endpoints.sendTest(orgId, endpointId, tx));
   }
 
   listDeliveries(userId: string, orgId: string) {
-    return this.owner(userId, orgId, (tx) => this.deliveries.list(orgId, tx));
+    return this.developer(userId, orgId, (tx) => this.deliveries.list(orgId, tx));
   }
 
+  /** Re-queues a DEAD_LETTER delivery, same event id and payload. */
   replayDelivery(userId: string, orgId: string, deliveryId: string) {
-    return this.owner(userId, orgId, (tx) => this.deliveries.replay(orgId, deliveryId, tx));
+    return this.developer(userId, orgId, (tx) => this.deliveries.replay(orgId, deliveryId, tx));
   }
 }
 
-const DENIED = 'Only an active Owner of an active organization can view or manage its webhooks';
+const DENIED =
+  'Only an active Owner or Business Developer of an active organization can see, test or replay its webhooks';
+const OWNER_ONLY = 'Only an active Owner of an active organization can register or change its webhook endpoints';
