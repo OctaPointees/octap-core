@@ -4,6 +4,7 @@ import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { apiCredentials, organizations } from '../schema/organizations.schema.js';
 import { withTenant } from '../rls.js';
 import { requireLicenseCapacity } from './license-enforcement.js';
+import { recordAudit } from './audit.repository.js';
 
 export type ApiCredential = typeof apiCredentials.$inferSelect;
 
@@ -70,6 +71,18 @@ export class ApiCredentialsRepository {
         // The license's own cap, usually lower than the platform's (OCT-329). 402 when reached.
         await requireLicenseCapacity(scoped, data.organizationId, 'apiKeys', async () => active);
         const [created] = await scoped.insert(apiCredentials).values(data).returning();
+        await recordAudit(scoped, {
+          organizationId: data.organizationId,
+          action: 'api_key.issued',
+          targetType: 'api_key',
+          targetId: created.id,
+          changes: {
+            name: created.name,
+            scopes: created.scopes,
+            environment: created.environment,
+            keyPrefix: created.keyPrefix,
+          },
+        });
         return created;
       });
     };
@@ -89,12 +102,24 @@ export class ApiCredentialsRepository {
         .set({ status: 'REVOKED', updatedAt: new Date() })
         .where(eq(apiCredentials.id, id))
         .returning();
+      await recordAudit(db, { organizationId, action: 'api_key.revoked', targetType: 'api_key', targetId: id });
       return updated;
     });
   }
 
   async rename(tx: DrizzleDb, organizationId: string, id: string, name: string): Promise<ApiCredential> {
     return withTenant(tx, organizationId, async (db) => {
+      const [before] = await db
+        .select({ name: apiCredentials.name })
+        .from(apiCredentials)
+        .where(eq(apiCredentials.id, id));
+      await recordAudit(db, {
+        organizationId,
+        action: 'api_key.renamed',
+        targetType: 'api_key',
+        targetId: id,
+        changes: { name: { from: before?.name ?? null, to: name } },
+      });
       const [updated] = await db
         .update(apiCredentials)
         .set({ name, updatedAt: new Date() })

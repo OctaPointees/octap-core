@@ -206,8 +206,11 @@ describe('license enforcement (OCT-329, part 2)', () => {
       await access(third.id, 'ACTIVE').expect(402);
     });
 
-    it('caps new members, but never refuses one already enrolled', async () => {
+    it('caps new members, counting only active ones, and never refuses one already enrolled', async () => {
       await license({ limits: { members: 1 } });
+      // A blocked customer doesn't take the place.
+      const blocked = await seedMember(ctx.db, orgId);
+      await ctx.db.update(schema.endUsers).set({ status: 'BLOCKED' }).where(eq(schema.endUsers.id, blocked.endUser.id));
       const first = await seedMember(ctx.db, orgId);
       const [another] = await ctx.db.insert(schema.endUsers).values({}).returning();
       const identity = ctx.app.get(IdentityRepository);

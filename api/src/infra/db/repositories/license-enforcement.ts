@@ -114,7 +114,7 @@ export async function takeLicenseTransaction(tx: DrizzleDb, organizationId: stri
   const license = await licenseInForce(tx, organizationId, now);
   if (!license) return;
   const limit = license.entitlements.limits.transactionsMonthly;
-  const period = licensePeriod(license.startsAt, now);
+  const period = licensePeriod(license.startsAt, license.endsAt, now);
   await withTenant(tx, organizationId, async (inner) => {
     await inner
       .insert(licenseUsage)
@@ -173,7 +173,7 @@ export async function releaseLicenseTransaction(
 ): Promise<void> {
   const license = await licenseInForce(tx, organizationId, acceptedAt);
   if (!license) return;
-  const period = licensePeriod(license.startsAt, acceptedAt);
+  const period = licensePeriod(license.startsAt, license.endsAt, acceptedAt);
   await withTenant(tx, organizationId, (inner) =>
     inner
       .update(licenseUsage)

@@ -44,4 +44,4 @@ Khoản giữ không bao giờ được ký sẽ được giải phóng sau 30 p
 
 ## Đảo giao dịch
 
-Reversal đảo một lệnh earn hoặc redeem đã xác nhận trong sổ cái ngay lập tức, và giao dịch gốc đã xác nhận trên chain cũng được phản ánh on-chain sau đó. Đảo một lệnh earn đã bị tiêu có thể để lại số dư âm: đó là khoản nợ của thành viên, và nó chặn việc tiêu điểm cho đến khi được bù. `balanceWentNegative` cho bạn biết khi nào điều này xảy ra.
+Reversal đảo một lệnh earn hoặc redeem đã xác nhận trong sổ cái ngay lập tức, và giao dịch gốc đã xác nhận trên chain cũng được phản ánh on-chain sau đó. Một lệnh earn chỉ đảo được khi toàn bộ số điểm của nó chưa bị tiêu, không bị lệnh đổi điểm đang chờ giữ lại, và còn hơn 10 phút mới hết hạn, nên reversal không bao giờ để lại số dư âm.

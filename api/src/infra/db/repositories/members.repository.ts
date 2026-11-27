@@ -3,6 +3,8 @@ import { and, asc, eq, gt, ilike, or } from 'drizzle-orm';
 import type { MemberDirectoryQuery, MemberProfilePatch } from '@octap/contracts';
 import { ConsoleNotFoundError, ConsoleOrganizationsRepository } from './console-organizations.repository.js';
 import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
+import { recordAudit } from './audit.repository.js';
+import { canonicalJson } from './operations.repository.js';
 
 const fields = {
   id: organizationEndUsers.id,
@@ -64,12 +66,41 @@ export class MembersRepository {
   }
   patch(userId: string, organizationId: string, memberId: string, input: MemberProfilePatch) {
     return this.access.withAccess(userId, organizationId, true, async (tx) => {
-      const [row] = await tx
+      const ofMember = and(
+        eq(organizationEndUsers.organizationId, organizationId),
+        eq(organizationEndUsers.id, memberId),
+      );
+      const [before] = await tx.select().from(organizationEndUsers).where(ofMember).for('update');
+      if (!before) throw new ConsoleNotFoundError();
+      await tx
         .update(organizationEndUsers)
         .set({ ...input, updatedAt: new Date() })
-        .where(and(eq(organizationEndUsers.organizationId, organizationId), eq(organizationEndUsers.id, memberId)))
-        .returning({ id: organizationEndUsers.id });
-      if (!row) throw new ConsoleNotFoundError();
+        .where(ofMember);
+      // Only what actually changed, `metadata` by content (Postgres reorders jsonb keys). Personal
+      // values stay out: field names, and the status itself.
+      const previous = before as Record<string, unknown>;
+      const changed = Object.entries(input)
+        .filter(([key, value]) => canonicalJson(previous[key] ?? null) !== canonicalJson(value ?? null))
+        .map(([key]) => key)
+        .sort();
+      if (changed.length > 0) {
+        const statusChanged = changed.includes('status');
+        await recordAudit(tx, {
+          organizationId,
+          action:
+            statusChanged && input.status === 'BLOCKED'
+              ? 'member.blocked'
+              : statusChanged && before.status === 'BLOCKED'
+                ? 'member.unblocked'
+                : 'member.updated',
+          targetType: 'member',
+          targetId: memberId,
+          changes: {
+            fields: changed,
+            ...(statusChanged ? { status: { from: before.status, to: input.status } } : {}),
+          },
+        });
+      }
       return { updated: true };
     });
   }

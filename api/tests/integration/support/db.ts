@@ -23,15 +23,22 @@ export function connectTestDb(): { db: DrizzleDb; client: postgres.Sql } {
  * Empties every application table (drizzle's own migration journal lives in another schema). Waits
  * for request-log writes still in flight first: one landing during the truncate deadlocks with it,
  * since its foreign keys lock the organization and key rows the truncate is also locking (PR #84).
+ * `audit_log` refuses TRUNCATE by trigger (OCT-333): tests are the one place it is emptied, so the
+ * trigger is switched off for this transaction only.
  */
 export async function resetDb(target: postgres.Sql | DrizzleDb): Promise<void> {
   await drainRequestLogWrites();
   const client: postgres.Sql = '$client' in target ? (target.$client as postgres.Sql) : (target as postgres.Sql);
   const tables = await client<{ tablename: string }[]>`select tablename from pg_tables where schemaname = 'public'`;
   if (tables.length > 0) {
-    await client.unsafe(
-      `truncate table ${tables.map((t) => `"public"."${t.tablename}"`).join(', ')} restart identity cascade`,
-    );
+    const hasAuditLog = tables.some((t) => t.tablename === 'audit_log');
+    await client.begin(async (tx) => {
+      if (hasAuditLog) await tx.unsafe('alter table "public"."audit_log" disable trigger "audit_log_no_truncate"');
+      await tx.unsafe(
+        `truncate table ${tables.map((t) => `"public"."${t.tablename}"`).join(', ')} restart identity cascade`,
+      );
+      if (hasAuditLog) await tx.unsafe('alter table "public"."audit_log" enable trigger "audit_log_no_truncate"');
+    });
   }
 }
 

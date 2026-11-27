@@ -1,6 +1,10 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { evaluateVoucherRefund } from '#domain/rewards/refund-policy.js';
-import { CreditsRepository, VoucherClaimNotReversibleError } from '#infra/db/repositories/credits.repository.js';
+import {
+  CreditsRepository,
+  VoucherClaimNotReversibleError,
+  EarnNotReversibleError,
+} from '#infra/db/repositories/credits.repository.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import type { ReverseTransactionRequest, ReverseTransactionResponse } from '@octap/contracts';
 
@@ -32,7 +36,6 @@ export class ReversalService {
         organizationEndUserId: existingByIdempotency.organizationEndUserId,
         pointsAmount: Number(existingByIdempotency.pointsAmount),
         newBalance,
-        balanceWentNegative: newBalance < 0,
         idempotencyKey: existingByIdempotency.idempotencyKey,
       };
     }
@@ -74,11 +77,10 @@ export class ReversalService {
         organizationEndUserId: original.organizationEndUserId,
         pointsAmount: Number(reversal.pointsAmount),
         newBalance,
-        balanceWentNegative: newBalance < 0,
         idempotencyKey: reversal.idempotencyKey,
       };
     } catch (err: unknown) {
-      if (err instanceof VoucherClaimNotReversibleError) {
+      if (err instanceof VoucherClaimNotReversibleError || err instanceof EarnNotReversibleError) {
         throw new ConflictException(err.message);
       }
       // Otherwise the most likely cause: a concurrent reversal of the same original already won

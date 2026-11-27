@@ -81,10 +81,18 @@ export class IdentityRepository {
         );
       if (!enrolled.length)
         await requireLicenseCapacity(tx, params.organizationId, 'members', async () => {
+          // The same count as the license's usage: active members who aren't blocked or unverified.
           const [{ members }] = await tx
             .select({ members: count() })
             .from(organizationEndUsers)
-            .where(eq(organizationEndUsers.organizationId, params.organizationId));
+            .innerJoin(endUsers, eq(endUsers.id, organizationEndUsers.endUserId))
+            .where(
+              and(
+                eq(organizationEndUsers.organizationId, params.organizationId),
+                eq(organizationEndUsers.status, 'ACTIVE'),
+                eq(endUsers.status, 'ACTIVE'),
+              ),
+            );
           return members;
         });
 

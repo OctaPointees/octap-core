@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, count, eq, inArray, lte, desc } from 'drizzle-orm';
+import { recordAudit } from './audit.repository.js';
 import type {
   ConsoleIdentity,
   OrganizationApplicationInput,
@@ -339,6 +340,16 @@ export class ConsoleOrganizationsRepository {
           updatedAt: new Date(),
         })
         .where(eq(organizations.id, organizationId));
+      await recordAudit(tx, {
+        organizationId,
+        action: 'organization.profile_updated',
+        targetType: 'organization',
+        targetId: organizationId,
+        changes: {
+          ...(display.name !== undefined ? { name: { from: org.name, to: display.name } } : {}),
+          ...(display.logoUrl !== undefined ? { logoUrl: { from: org.logoUrl, to: display.logoUrl } } : {}),
+        },
+      });
     });
   }
   /**
@@ -347,7 +358,7 @@ export class ConsoleOrganizationsRepository {
    */
   async settings(userId: string, organizationId: string, input: OrganizationSettingsInput) {
     return this.db.transaction(async (tx) => {
-      await this.member(tx, userId, organizationId, true);
+      const { org } = await this.member(tx, userId, organizationId, true);
       // Turning approval on needs the feature (OCT-329). Turning it off never does, and vouchers
       // already waiting can still be decided either way.
       if (input.voucherApprovalRequired) await requireLicenseFeature(tx, organizationId, 'voucher.approval');
@@ -355,6 +366,15 @@ export class ConsoleOrganizationsRepository {
         .update(organizations)
         .set({ voucherApprovalRequired: input.voucherApprovalRequired, updatedAt: new Date() })
         .where(eq(organizations.id, organizationId));
+      await recordAudit(tx, {
+        organizationId,
+        action: 'organization.settings_updated',
+        targetType: 'organization',
+        targetId: organizationId,
+        changes: {
+          voucherApprovalRequired: { from: org.voucherApprovalRequired, to: input.voucherApprovalRequired },
+        },
+      });
     });
   }
   async staff(userId: string, organizationId: string) {
@@ -405,13 +425,21 @@ export class ConsoleOrganizationsRepository {
         .update(organizationMemberships)
         .set({ status, updatedAt: new Date() })
         .where(eq(organizationMemberships.id, target.id));
+      if (target.status !== status)
+        await recordAudit(tx, {
+          organizationId,
+          action: status === 'SUSPENDED' ? 'staff.suspended' : 'staff.restored',
+          targetType: 'system_user',
+          targetId: targetId,
+          changes: { status: { from: target.status, to: status } },
+        });
       // A pending invitation must not restore access after an Owner suspends it.
       if (status === 'SUSPENDED') {
         const [user] = await tx
           .select({ email: systemUsers.email })
           .from(systemUsers)
           .where(eq(systemUsers.id, targetId));
-        await tx
+        const revoked = await tx
           .update(invitations)
           .set({ status: 'REVOKED', updatedAt: new Date() })
           .where(
@@ -420,7 +448,16 @@ export class ConsoleOrganizationsRepository {
               eq(invitations.email, user.email.toLowerCase()),
               eq(invitations.status, 'PENDING'),
             ),
-          );
+          )
+          .returning({ id: invitations.id });
+        for (const invitation of revoked)
+          await recordAudit(tx, {
+            organizationId,
+            action: 'invitation.revoked',
+            targetType: 'invitation',
+            targetId: invitation.id,
+            changes: { reason: 'staff_suspended' },
+          });
       }
     });
   }
@@ -457,6 +494,13 @@ export class ConsoleOrganizationsRepository {
         payload: { bootstrap: true, previousOwnerId: null, targetUserId: targetId },
         reason: 'System Admin assigned the first Owner of an active ownerless organization',
         reviewedAt: new Date(),
+      });
+      await recordAudit(tx, {
+        organizationId,
+        action: 'organization.owner_assigned',
+        targetType: 'system_user',
+        targetId: targetId,
+        changes: { bootstrap: true },
       });
     });
   }
@@ -509,6 +553,14 @@ export class ConsoleOrganizationsRepository {
         .onConflictDoNothing()
         .returning();
       if (!row) throw new ConsoleConflictError('An invitation for this email is already pending');
+      // The invitee's email stays on the invitation, not in the audit log.
+      await recordAudit(tx, {
+        organizationId,
+        action: 'invitation.created',
+        targetType: 'invitation',
+        targetId: row.id,
+        changes: { role: row.role },
+      });
       return row;
     });
   }
@@ -543,6 +595,12 @@ export class ConsoleOrganizationsRepository {
         )
         .returning();
       if (!row) throw new ConsoleConflictError('Invitation is no longer pending');
+      await recordAudit(tx, {
+        organizationId,
+        action: 'invitation.revoked',
+        targetType: 'invitation',
+        targetId: invitationId,
+      });
     });
   }
   async accept(identity: ConsoleIdentity, token: string) {
@@ -580,6 +638,13 @@ export class ConsoleOrganizationsRepository {
         .update(invitations)
         .set({ status: 'ACCEPTED', acceptedAt: new Date(), updatedAt: new Date() })
         .where(eq(invitations.id, row.id));
+      await recordAudit(tx, {
+        organizationId: row.organizationId,
+        action: 'invitation.accepted',
+        targetType: 'invitation',
+        targetId: row.id,
+        actor: { type: 'USER', id: identity.user.id },
+      });
       return { organizationId: row.organizationId };
     });
   }

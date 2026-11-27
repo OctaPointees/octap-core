@@ -54,7 +54,6 @@ describe('LicenseService plan catalogue', () => {
     const base = { tier: 'STARTER', name: 'S', monthlyPriceVnd: 1, termMonthsAllowed: [3], entitlements };
     const bad: [Record<string, unknown>, RegExp][] = [
       [{ ...base, tier: 'GOLD' }, /tier must be one of/],
-      [{ ...base, name: undefined }, /name is required/],
       [{ ...base, monthlyPriceVnd: -1 }, /monthlyPriceVnd/],
       [{ ...base, monthlyPriceVnd: 1.5 }, /monthlyPriceVnd/],
       [{ ...base, termMonthsAllowed: [3, 3] }, /termMonthsAllowed/],

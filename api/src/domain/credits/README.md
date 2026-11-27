@@ -8,8 +8,10 @@ Loyalty points for an organization's end users.
 Unsigned POS/voucher holds are released after 30 minutes on the next balance read or POS reserve; voucher claims also have worker recovery. Cleanup cancels reserved coupons and returns stock in the same transaction. Holds with a submitted digest are left to chain reconciliation.
 
 - `reversal.service.ts`: reverses a CONFIRMED earn/redeem exactly once (`reverses_transaction_id`
-  is unique), idempotent on its own `idempotencyKey`. Letting `confirmedBalance` go negative is
-  the clawback debt when an earn was already spent — there's no separate debt ledger. If the
+  is unique), idempotent on its own `idempotencyKey`. An earn is reversible only while its bucket
+  is whole, not held by a pending redemption, and more than 10 minutes from expiry, the chain's own
+  rule for `reverse_earn` with room for the worker's delay: otherwise a 409
+  (OCT-334), so a reversal never drives the balance negative or diverges from the chain. If the
   original reached the chain (it has a `blockchainTransactionId`), the same transaction queues a
   `CREDIT_REVERSAL_CHAIN_SUBMIT` command, which `chain-submit.processor.ts` mirrors with
   `reverse_earn`/`reverse_redeem` (OCT-50); its digest is linked to the REVERSAL row once it lands.
@@ -66,3 +68,30 @@ An earn the owning budget shard cannot cover gets 422, using a best-effort read 
 
 `GET .../balance?programId=...` accepts the tenant's program row ID or its on-chain program-control ID;
 a different program returns 404 rather than silently reading another balance.
+
+## On-chain evidence (OCT-334)
+
+`ledger-evidence.service.ts` shows that what Core records is what the chain holds. It is
+read-only: a difference is reported, never corrected.
+
+- **Organization history.** `GET /v1/credits/transactions` (`read`) and
+  `GET /v1/console/organizations/:id/transactions` (Owner or Business Developer) list the
+  organization's whole ledger, newest first. Each row carries its `blockchainDigest` and
+  `confirmedAt`.
+- **Account.** A balance carries `creditAccountId`, the member's `CreditAccount` object.
+- **Program.** `GET …/program` reads the program's frozen `PolicyVersion` from the chain: its
+  rules, and the transaction that published it. `policyStatus` is `MATCH` when those rules are
+  the `earnBps`/`expiryMs` Core applies. The read is cached for an hour, since a frozen object
+  never changes.
+- **Balance reconciliation.** `GET …/members/:id/reconciliation` brings the recorded side up to
+  date (expired buckets, abandoned holds), then compares `confirmedBalance` with the chain's own
+  `credit_account::spendable`, called as a simulated transaction (nothing signed or executed).
+  - `PENDING`: a pending amount or an unsettled durable command for the member means the two
+    cannot be compared yet.
+  - `MATCH` / `MISMATCH`: nothing is in flight, and the two are equal or not.
+  - `UNAVAILABLE`: the chain could not be read.
+
+  A member without a `CreditAccount` holds 0 on-chain. Answers are cached for 30 seconds,
+  except `UNAVAILABLE`. A `MISMATCH` is logged at error level: since a spent earn can no longer be reversed, nothing in
+  Core is expected to produce one.
+

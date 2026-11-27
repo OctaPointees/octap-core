@@ -6,6 +6,10 @@ Firebase Auth. You never handle OAuth nonces, ephemeral keys, ZK proofs or Enoki
 This package holds no merchant credential. Balance, history, voucher lists and claims need your API
 key, so they stay on your backend through `@octap/sdk`.
 
+```bash
+npm install @octap/browser-sdk
+```
+
 ## Sign a customer in
 
 ```ts
@@ -59,6 +63,23 @@ Follow these rules, whatever your interface looks like:
   key. `status` and `body` carry what the server answered, if anything.
 - Use a new idempotency key only after the claim is CANCELLED.
 
+## Use a voucher
+
+Your backend calls `prepareVoucherUse` from `@octap/sdk` and returns the result. Show the customer
+which voucher they are using, then have their device sign it:
+
+```ts
+const use = await response.json();
+const used = await auth.signAndFinalizeVoucherUse(use);
+// used.status is REDEEMED; deliver the benefit on the voucher.redeemed webhook.
+```
+
+The signature is the only thing that can mark a customer's voucher used: your API key cannot.
+`signAndFinalizeVoucherUse` never retries by itself. On `outcome-unknown`, read the voucher from your
+backend before you try again.
+
+## Lower-level signing
+
 `auth.signTransaction(transactionBytes)` is the lower-level call: it returns the zkLogin signature
 and sends nothing. It refuses bytes whose sender is not the signed-in customer.
 
@@ -105,4 +126,5 @@ share this client for now, so moving to per-merchant clients later would change 
 
 ## Local example
 
-See [the browser auth example](../../examples/README.md#browser-auth-example) for a runnable page.
+See [the browser auth example](https://github.com/OctaPointees/octap-core/tree/dev/ts-sdks/examples/browser-auth)
+in the octap-core repository for a runnable page.

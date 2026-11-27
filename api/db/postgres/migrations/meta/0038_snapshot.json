@@ -1,5 +1,5 @@
 {
-  "id": "14551bed-9b77-4807-83b4-b36178cdc76a",
+  "id": "78069628-5ace-4673-a20d-009557cf9b30",
   "prevId": "fe19a6ae-4722-4426-91a4-adc515800f69",
   "version": "7",
   "dialect": "postgresql",
@@ -1566,6 +1566,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "loyalty_tx_org_created_idx": {
+          "name": "loyalty_tx_org_created_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2646,8 +2673,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.license_plans": {
-      "name": "license_plans",
+    "public.billing_plans": {
+      "name": "billing_plans",
       "schema": "",
       "columns": {
         "id": {
@@ -2657,53 +2684,60 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "tier": {
-          "name": "tier",
-          "type": "license_tier",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "monthly_price_vnd": {
-          "name": "monthly_price_vnd",
-          "type": "integer",
+        "slug": {
+          "name": "slug",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "term_months_allowed": {
-          "name": "term_months_allowed",
-          "type": "integer[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::integer[]"
-        },
-        "duration_days": {
-          "name": "duration_days",
-          "type": "integer",
+        "description": {
+          "name": "description",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "entitlements": {
-          "name": "entitlements",
-          "type": "jsonb",
+        "price": {
+          "name": "price",
+          "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": true
         },
-        "purchasable": {
-          "name": "purchasable",
-          "type": "boolean",
+        "currency": {
+          "name": "currency",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": "'usd'"
         },
-        "active": {
-          "name": "active",
+        "billing_interval": {
+          "name": "billing_interval",
+          "type": "billing_plan_interval",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'MONTHLY'"
+        },
+        "stripe_price_id": {
+          "name": "stripe_price_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "features": {
+          "name": "features",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'{}'::jsonb"
+        },
+        "is_active": {
+          "name": "is_active",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -2727,22 +2761,185 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "license_plans_price_not_negative": {
-          "name": "license_plans_price_not_negative",
-          "value": "\"license_plans\".\"monthly_price_vnd\" >= 0"
-        },
-        "license_plans_duration_positive": {
-          "name": "license_plans_duration_positive",
-          "value": "\"license_plans\".\"duration_days\" is null or \"license_plans\".\"duration_days\" > 0"
+      "uniqueConstraints": {
+        "billing_plans_slug_unique": {
+          "name": "billing_plans_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.licenses": {
-      "name": "licenses",
+    "public.invoices": {
+      "name": "invoices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_method_id": {
+          "name": "payment_method_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stripe_invoice_id": {
+          "name": "stripe_invoice_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invoice_number": {
+          "name": "invoice_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_due": {
+          "name": "amount_due",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_paid": {
+          "name": "amount_paid",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0.00'"
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'usd'"
+        },
+        "status": {
+          "name": "status",
+          "type": "invoice_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'OPEN'"
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paid_at": {
+          "name": "paid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hosted_invoice_url": {
+          "name": "hosted_invoice_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invoice_pdf": {
+          "name": "invoice_pdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invoices_subscription_id_subscriptions_id_fk": {
+          "name": "invoices_subscription_id_subscriptions_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "subscriptions",
+          "columnsFrom": [
+            "subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invoices_payment_method_id_payment_methods_id_fk": {
+          "name": "invoices_payment_method_id_payment_methods_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "payment_methods",
+          "columnsFrom": [
+            "payment_method_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "invoices_organization_id_organizations_id_fk": {
+          "name": "invoices_organization_id_organizations_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invoices_stripe_invoice_id_unique": {
+          "name": "invoices_stripe_invoice_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stripe_invoice_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.payment_methods": {
+      "name": "payment_methods",
       "schema": "",
       "columns": {
         "id": {
@@ -2758,49 +2955,55 @@
           "primaryKey": false,
           "notNull": true
         },
-        "plan_id": {
-          "name": "plan_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tier": {
-          "name": "tier",
-          "type": "license_tier",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "plan_name": {
-          "name": "plan_name",
+        "stripe_payment_method_id": {
+          "name": "stripe_payment_method_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "entitlements": {
-          "name": "entitlements",
-          "type": "jsonb",
+        "stripe_customer_id": {
+          "name": "stripe_customer_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "source": {
-          "name": "source",
-          "type": "license_source",
-          "typeSchema": "public",
+        "type": {
+          "name": "type",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'card'"
         },
-        "starts_at": {
-          "name": "starts_at",
-          "type": "timestamp with time zone",
+        "card_brand": {
+          "name": "card_brand",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "ends_at": {
-          "name": "ends_at",
-          "type": "timestamp with time zone",
+        "card_last4": {
+          "name": "card_last4",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "card_exp_month": {
+          "name": "card_exp_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "card_exp_year": {
+          "name": "card_exp_year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -2808,35 +3011,133 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {
-        "licenses_organization_starts_idx": {
-          "name": "licenses_organization_starts_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "starts_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "licenses_organization_id_organizations_id_fk": {
-          "name": "licenses_organization_id_organizations_id_fk",
-          "tableFrom": "licenses",
+        "payment_methods_organization_id_organizations_id_fk": {
+          "name": "payment_methods_organization_id_organizations_id_fk",
+          "tableFrom": "payment_methods",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "payment_methods_stripe_payment_method_id_unique": {
+          "name": "payment_methods_stripe_payment_method_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stripe_payment_method_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.subscriptions": {
+      "name": "subscriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "billing_plan_id": {
+          "name": "billing_plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_method_id": {
+          "name": "payment_method_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripe_subscription_id": {
+          "name": "stripe_subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "subscription_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "current_period_start": {
+          "name": "current_period_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_period_end": {
+          "name": "current_period_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cancel_at_period_end": {
+          "name": "cancel_at_period_end",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "canceled_at": {
+          "name": "canceled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "subscriptions_organization_id_organizations_id_fk": {
+          "name": "subscriptions_organization_id_organizations_id_fk",
+          "tableFrom": "subscriptions",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
@@ -2847,39 +3148,45 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "licenses_plan_id_license_plans_id_fk": {
-          "name": "licenses_plan_id_license_plans_id_fk",
-          "tableFrom": "licenses",
-          "tableTo": "license_plans",
+        "subscriptions_billing_plan_id_billing_plans_id_fk": {
+          "name": "subscriptions_billing_plan_id_billing_plans_id_fk",
+          "tableFrom": "subscriptions",
+          "tableTo": "billing_plans",
           "columnsFrom": [
-            "plan_id"
+            "billing_plan_id"
           ],
           "columnsTo": [
             "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "subscriptions_payment_method_id_payment_methods_id_fk": {
+          "name": "subscriptions_payment_method_id_payment_methods_id_fk",
+          "tableFrom": "subscriptions",
+          "tableTo": "payment_methods",
+          "columnsFrom": [
+            "payment_method_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {
-        "tenant_isolation_licenses": {
-          "name": "tenant_isolation_licenses",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": [
-            "authenticated"
-          ],
-          "using": "\"licenses\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
+      "uniqueConstraints": {
+        "subscriptions_stripe_subscription_id_unique": {
+          "name": "subscriptions_stripe_subscription_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stripe_subscription_id"
+          ]
         }
       },
-      "checkConstraints": {
-        "licenses_ends_after_start": {
-          "name": "licenses_ends_after_start",
-          "value": "\"licenses\".\"ends_at\" > \"licenses\".\"starts_at\""
-        }
-      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.operations": {
@@ -4454,24 +4761,34 @@
         "ARCHIVED"
       ]
     },
-    "public.license_source": {
-      "name": "license_source",
+    "public.billing_plan_interval": {
+      "name": "billing_plan_interval",
       "schema": "public",
       "values": [
-        "TRIAL",
-        "MIGRATION",
-        "PURCHASE",
-        "ADMIN"
+        "MONTHLY",
+        "ANNUAL"
       ]
     },
-    "public.license_tier": {
-      "name": "license_tier",
+    "public.invoice_status": {
+      "name": "invoice_status",
       "schema": "public",
       "values": [
-        "TRIAL",
-        "STARTER",
-        "GROWTH",
-        "ENTERPRISE"
+        "DRAFT",
+        "OPEN",
+        "PAID",
+        "UNCOLLECTIBLE",
+        "VOID"
+      ]
+    },
+    "public.subscription_status": {
+      "name": "subscription_status",
+      "schema": "public",
+      "values": [
+        "ACTIVE",
+        "TRIALING",
+        "PAST_DUE",
+        "CANCELED",
+        "INCOMPLETE"
       ]
     },
     "public.webhook_delivery_status": {

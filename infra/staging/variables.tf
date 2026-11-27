@@ -30,3 +30,14 @@ variable "log_retention_days" {
   type    = number
   default = 30
 }
+
+variable "image_tag" {
+  description = "The octap-core image the tasks run: a commit SHA pushed to the ECR repository."
+  type        = string
+}
+
+variable "db_password_version" {
+  description = "Bump to give the database a new random password (and DATABASE_URL with it)."
+  type        = number
+  default     = 1
+}

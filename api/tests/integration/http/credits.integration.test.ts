@@ -145,7 +145,7 @@ describe('earn -> chain confirmation -> balance -> reverse', () => {
       .set(auth)
       .send({ idempotencyKey: 'reverse-1', reason: 'chargeback' })
       .expect(201);
-    expect(reversed.body).toMatchObject({ pointsAmount: 1000, newBalance: 0, balanceWentNegative: false });
+    expect(reversed.body).toMatchObject({ pointsAmount: 1000, newBalance: 0 });
   });
 
   it('a definitive on-chain failure releases the hold', async () => {

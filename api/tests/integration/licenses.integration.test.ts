@@ -126,6 +126,14 @@ describe('licenses (OCT-329, part 1)', () => {
       await seedLicense(ctx.db, orgId, plans.STARTER, { startsAt, endsAt: new Date(Date.now() + 50 * 86_400_000) });
       await seedMember(ctx.db, orgId);
       await seedMember(ctx.db, orgId);
+      // Neither counts: one is suspended here, the other blocked everywhere.
+      const suspended = await seedMember(ctx.db, orgId);
+      await ctx.db
+        .update(schema.organizationEndUsers)
+        .set({ status: 'SUSPENDED' })
+        .where(eq(schema.organizationEndUsers.id, suspended.memberId));
+      const blocked = await seedMember(ctx.db, orgId);
+      await ctx.db.update(schema.endUsers).set({ status: 'BLOCKED' }).where(eq(schema.endUsers.id, blocked.endUser.id));
       // The counter earn, POS reserve and paid claims take from (part 2); last month's doesn't count.
       await takeLicenseTransaction(ctx.db, orgId, new Date(Date.now() - 35 * 86_400_000));
       await takeLicenseTransaction(ctx.db, orgId);
@@ -137,6 +145,22 @@ describe('licenses (OCT-329, part 1)', () => {
       expect(usage).toMatchObject({ transactionsMonthly: 2, members: 2, apiKeys: 1, teamMembers: 2 });
       expect(Date.parse(usage.periodStart)).toBeLessThanOrEqual(Date.now());
       expect(Date.parse(usage.periodEnd)).toBeGreaterThan(Date.now());
+    });
+
+    it("ends a short license's month at its end, and answers 404 to the System Admin for an unknown organization", async () => {
+      const startsAt = new Date();
+      const trial = await seedLicense(ctx.db, orgId, plans.TRIAL, {
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 14 * 86_400_000),
+      });
+      const { usage } = (await ctx.http().get(consoleRoute()).set('Authorization', bearer('owner')).expect(200)).body;
+      expect(usage.periodEnd).toBe(trial.endsAt.toISOString());
+
+      await ctx
+        .http()
+        .get('/v1/platform/organizations/00000000-0000-4000-8000-000000000000/license')
+        .set('Authorization', bearer('admin'))
+        .expect(404);
     });
 
     it("keeps one organization's license out of another's reach under RLS", async () => {
@@ -217,7 +241,10 @@ describe('licenses (OCT-329, part 1)', () => {
     });
 
     it('refuses a plan it cannot use (400) and an unknown one (404)', async () => {
-      await platform().create({ tier: 'STARTER', name: 'X' }).expect(400);
+      // Required fields are the controller's check; the rest is the service's.
+      const missing = await platform().create({ tier: 'STARTER', name: 'X' }).expect(400);
+      expect(missing.body.message).toBe('monthlyPriceVnd is required');
+      await platform().create(['not', 'an', 'object']).expect(400);
       await platform()
         .create({
           tier: 'STARTER',
@@ -257,6 +284,46 @@ describe('licenses (OCT-329, part 1)', () => {
         .expect(200);
       expect(res.body.license).toMatchObject({ tier: 'TRIAL', source: 'TRIAL', state: 'ACTIVE', daysLeft: 14 });
       expect(Date.parse(res.body.license.endsAt) - Date.parse(res.body.license.startsAt)).toBe(14 * 86_400_000);
+    });
+
+    it('keeps a license the organization already has instead of granting a trial over it', async () => {
+      const request = await apply().expect(201);
+      const [row] = await ctx.db
+        .select()
+        .from(schema.organizationChangeRequests)
+        .where(eq(schema.organizationChangeRequests.id, request.body.id));
+      // What the migration gives an organization, or a System Admin grants before approval.
+      await seedLicense(ctx.db, row.organizationId!, plans.GROWTH);
+      await ctx
+        .http()
+        .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+        .set('Authorization', bearer('admin'))
+        .send({ reason: 'Reviewed application' })
+        .expect(201);
+      const granted = await ctx.db.select().from(schema.licenses);
+      expect(granted.map((license) => license.tier)).toEqual(['GROWTH']);
+    });
+
+    it('grants the newest active trial plan', async () => {
+      const [newer] = await ctx.db
+        .insert(schema.licensePlans)
+        .values({
+          ...plans.TRIAL,
+          id: undefined,
+          name: 'Trial 30',
+          durationDays: 30,
+          createdAt: new Date(Date.now() + 1000),
+        })
+        .returning();
+      const request = await apply().expect(201);
+      await ctx
+        .http()
+        .post(`/v1/platform/organization-requests/${request.body.id}/approve`)
+        .set('Authorization', bearer('admin'))
+        .send({ reason: 'Reviewed application' })
+        .expect(201);
+      const [granted] = await ctx.db.select().from(schema.licenses);
+      expect(granted).toMatchObject({ planId: newer.id, planName: 'Trial 30' });
     });
 
     it('approves without a license while the catalogue has no active trial', async () => {

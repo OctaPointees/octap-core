@@ -25,6 +25,9 @@ import type {
   RequestLogListQuery,
   RequestLogTailQuery,
   RequestLogTimeseriesQuery,
+  AuditLogQuery,
+  EvidencePeriodQuery,
+  ProgramAnalyticsQuery,
 } from '@octap/contracts';
 
 // The same fields as `T`, as an anonymous object type. The console and platform services still take
@@ -60,3 +63,6 @@ export type RequestLogListQueryDto = Wire<RequestLogListQuery>;
 export type RequestLogFiltersQueryDto = Wire<RequestLogFilters>;
 export type RequestLogTailQueryDto = Wire<RequestLogTailQuery>;
 export type RequestLogTimeseriesQueryDto = Wire<RequestLogTimeseriesQuery>;
+export type AuditLogQueryDto = Wire<AuditLogQuery>;
+export type EvidenceQueryDto = Wire<EvidencePeriodQuery>;
+export type ProgramAnalyticsQueryDto = Wire<ProgramAnalyticsQuery>;

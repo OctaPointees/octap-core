@@ -63,6 +63,8 @@ export type WebhookEventType =
   | 'voucher.publish.failed'
   | 'voucher.paused'
   | 'voucher.archived'
+  | 'voucher.expired'
+  | 'voucher.member_expired'
   | 'budget.low'
   | 'license.usage_threshold'
   | 'webhook.test';
@@ -146,8 +148,6 @@ export interface ReversalEventData {
   organizationEndUserId: string;
   pointsAmount: number;
   newBalance: number;
-  /** True when reversing an already-spent earn left a clawback debt. */
-  balanceWentNegative: boolean;
 }
 
 /**
@@ -166,6 +166,20 @@ export interface VoucherGrantedEventData {
    */
   expiresAt: string | null;
   blockchainDigest: string;
+}
+
+/**
+ * `voucher.member_expired`: a customer's voucher reached its own deadline (`expiresAt`) unused, so it
+ * is `EXPIRED` and can no longer be used. Sent once, within about a minute of the deadline (the
+ * expiry sweep), or sooner when the voucher is read first.
+ */
+export interface VoucherMemberExpiredEventData {
+  voucherOwnershipId: string;
+  voucherId: string;
+  organizationEndUserId: string;
+  serialCode: string;
+  status: VoucherOwnershipStatus;
+  expiresAt: string | null;
 }
 
 /**
@@ -189,6 +203,9 @@ export interface VoucherRedeemedEventData extends RedeemVoucherResponse {
  *   activate it again.
  * - `voucher.paused`: an Owner or an API key paused it; claims stop.
  * - `voucher.archived`: its batch was archived before it went live; it can no longer be used.
+ * - `voucher.expired`: its claim window (`expiresAt`) closed while it was live, paused or sold out, so
+ *   it is `EXPIRED` and nobody can claim it any more. Vouchers customers already hold keep their own
+ *   deadline (`voucher.member_expired`).
  */
 export interface VoucherLifecycleEventData {
   voucherId: string;
@@ -251,6 +268,8 @@ export type WebhookEvent =
   | WebhookEventOf<'voucher.publish.failed', VoucherLifecycleEventData>
   | WebhookEventOf<'voucher.paused', VoucherLifecycleEventData>
   | WebhookEventOf<'voucher.archived', VoucherLifecycleEventData>
+  | WebhookEventOf<'voucher.expired', VoucherLifecycleEventData>
+  | WebhookEventOf<'voucher.member_expired', VoucherMemberExpiredEventData>
   | WebhookEventOf<'budget.low', BudgetLowEventData>
   | WebhookEventOf<'license.usage_threshold', LicenseUsageThresholdEventData>
   | WebhookEventOf<'webhook.test', WebhookTestEventData>;

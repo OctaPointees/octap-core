@@ -80,7 +80,6 @@ Settled in the ledger immediately. A chain-confirmed original is also mirrored o
 | `organizationEndUserId` | `string` | |
 | `pointsAmount` | `number` | |
 | `newBalance` | `number` | |
-| `balanceWentNegative` | `boolean` | True when reversing a spent earn left a debt |
 
 ## voucher.granted
 
@@ -113,6 +112,19 @@ Deliver the benefit on this event. No points move here. A paid claim already sen
 | `discountValue` | `string \| null` | |
 | `blockchainDigest` | `string` | The customer-signed transaction |
 
+## voucher.member_expired
+
+A customer's voucher reached its own deadline (`expiresAt`) unused. It is `EXPIRED` and can no longer be used. It arrives once, within about a minute of the deadline, or sooner if the voucher is read first.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `voucherOwnershipId` | `string` | |
+| `voucherId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `serialCode` | `string` | |
+| `status` | `string` | `EXPIRED` |
+| `expiresAt` | `string \| null` | The deadline that passed |
+
 ## budget.low
 
 Your [issuance budget](/concepts/issuance-budget/) is running low. [Request a top-up](/concepts/issuance-budget/#request-a-top-up) before earns start being refused.
@@ -138,7 +150,7 @@ Your organization's transactions this license month (earns, POS redemptions and 
 
 ## Voucher lifecycle events
 
-`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused` and `voucher.archived` keep your catalog in step with OctaP. Each one is queued in the same database transaction as the change it reports. Each carries the voucher as it is right after that change:
+`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused`, `voucher.archived` and `voucher.expired` keep your catalog in step with OctaP. Each one is queued in the same database transaction as the change it reports. Each carries the voucher as it is right after that change:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -163,5 +175,6 @@ Your organization's transactions this license month (earns, POS redemptions and 
 | `voucher.publish.failed` | Its terms never reached the chain. Fix the voucher and activate it again. |
 | `voucher.paused` | An Owner or an API key paused it. Claims stop. |
 | `voucher.archived` | Its batch was archived before it went live. It can't be used any more. |
+| `voucher.expired` | Its claim window (`expiresAt`) closed while it was live, paused or sold out. It is `EXPIRED`: nobody can claim it, and it can't be paused or resumed. Vouchers customers already hold keep their own deadline (`voucher.member_expired`). |
 
-An approval sends no event of its own: publishing starts, and `voucher.activated` or `voucher.publish.failed` follows. A voucher paused while publishing stays paused once published, so it sends `voucher.activated` only when it is resumed. Running out of supply and expiry send no event.
+An approval sends no event of its own: publishing starts, and `voucher.activated` or `voucher.publish.failed` follows. A voucher paused while publishing stays paused once published, so it sends `voucher.activated` only when it is resumed. Running out of supply sends no event. Expiry events arrive within about a minute of the deadline.

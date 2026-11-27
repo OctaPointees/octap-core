@@ -271,15 +271,43 @@
     {
       "idx": 38,
       "version": "7",
-      "when": 1795682781087,
-      "tag": "0038_licensing",
+      "when": 1795679008387,
+      "tag": "0038_loyalty_tx_org_history_index",
       "breakpoints": true
     },
     {
       "idx": 39,
       "version": "7",
-      "when": 1795706154748,
-      "tag": "0039_license_usage",
+      "when": 1795701629245,
+      "tag": "0039_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795709338981,
+      "tag": "0040_evidence_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795719494696,
+      "tag": "0041_voucher_expiry_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795762903311,
+      "tag": "0042_licensing",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795763601407,
+      "tag": "0043_license_usage",
       "breakpoints": true
     }
   ]

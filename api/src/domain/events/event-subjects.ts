@@ -63,6 +63,13 @@ const SUBJECT_OF: SubjectOf = {
   'voucher.publish.failed': voucher,
   'voucher.paused': voucher,
   'voucher.archived': voucher,
+  'voucher.expired': voucher,
+  'voucher.member_expired': (data) => ({
+    kind: 'voucherOwnership',
+    id: data.voucherOwnershipId,
+    voucherId: data.voucherId,
+    memberId: data.organizationEndUserId,
+  }),
   'budget.low': () => ({ kind: 'issuanceBudget' }),
   'license.usage_threshold': () => ({ kind: 'license' }),
   'webhook.test': (data) => ({ kind: 'webhookEndpoint', id: data.endpointId }),

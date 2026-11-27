@@ -8,6 +8,72 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "AuditActorType": {
+    "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+    "enum": [
+      "CREDENTIAL",
+      "SYSTEM",
+      "USER"
+    ],
+    "type": "string"
+  },
+  "BalanceReconciliationStatus": {
+    "description": "How a member's recorded balance compares with their `CreditAccount` on Sui, read live from the\nchain's own `credit_account::spendable`:\n- `MATCH`: the two are equal.\n- `PENDING`: something for this member is still on its way to the chain (a pending earn or\n  redemption, or a reversal not yet mirrored), so they cannot be compared yet. Ask again shortly.\n- `MISMATCH`: nothing is in flight and they differ.\n- `UNAVAILABLE`: the chain could not be read just now.",
+    "enum": [
+      "MATCH",
+      "MISMATCH",
+      "PENDING",
+      "UNAVAILABLE"
+    ],
+    "type": "string"
+  },
+  "ConsoleAnalyticsController_summary_Query": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "description": "ISO 8601 date-time with an offset or Z. Defaults to 30 days before `to`; at most 366 days before it.",
+        "type": "string"
+      },
+      "to": {
+        "description": "ISO 8601 date-time with an offset or Z. Defaults to now.",
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleAnalyticsController_summary_Response": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "circulation": {
+        "$ref": "#/components/schemas/ProgramCirculation"
+      },
+      "engagement": {
+        "$ref": "#/components/schemas/ProgramEngagement"
+      },
+      "vouchers": {
+        "$ref": "#/components/schemas/VoucherPerformance"
+      },
+      "dailyTrend": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ProgramAnalyticsDay"
+        }
+      }
+    },
+    "required": [
+      "circulation",
+      "dailyTrend",
+      "engagement",
+      "from",
+      "to",
+      "vouchers"
+    ]
+  },
   "ConsoleApiCredentialsController_issue_Body": {
     "type": "object",
     "properties": {
@@ -141,6 +207,65 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "message"
     ]
   },
+  "ConsoleAuditLogController_list_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "actorType": {
+        "description": "A console user, an API key, or OctaP itself (a worker, the chain indexer).",
+        "enum": [
+          "CREDENTIAL",
+          "SYSTEM",
+          "USER"
+        ],
+        "type": "string"
+      },
+      "actorId": {
+        "type": "string"
+      },
+      "action": {
+        "type": "string"
+      },
+      "targetType": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleAuditLogController_list_Response": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AuditLogEntry"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ]
+  },
   "ConsoleChangeRequestsController_propose_Body": {
     "type": "object",
     "properties": {
@@ -260,6 +385,211 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "reviewedById",
       "status",
       "updatedAt"
+    ]
+  },
+  "ConsoleEvidenceController_bundle_Response": {
+    "description": "The file an Owner downloads and hands to an auditor. The same period always gives the same file.",
+    "type": "object",
+    "properties": {
+      "format": {
+        "type": "string",
+        "const": "octap.evidence/v1"
+      },
+      "manifest": {
+        "$ref": "#/components/schemas/EvidenceManifest"
+      },
+      "manifestHash": {
+        "type": "string"
+      },
+      "seal": {
+        "$ref": "#/components/schemas/EvidenceSealReference"
+      },
+      "ledger": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/EvidenceLedgerFact"
+        }
+      },
+      "audit": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/EvidenceAuditFact"
+        }
+      }
+    },
+    "required": [
+      "audit",
+      "format",
+      "ledger",
+      "manifest",
+      "manifestHash",
+      "seal"
+    ]
+  },
+  "ConsoleEvidenceController_detail_Response": {
+    "type": "object",
+    "properties": {
+      "manifestHash": {
+        "type": "string"
+      },
+      "previousManifestHash": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "seal": {
+        "description": "Null while SEALING.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/EvidenceSealReference"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "archive": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/EvidenceArchiveStatus"
+          },
+          "walrusBlobId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "archivedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "archivedAt",
+          "status",
+          "walrusBlobId"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "periodStart": {
+        "type": "string"
+      },
+      "periodEnd": {
+        "type": "string"
+      },
+      "ledgerCount": {
+        "type": "number"
+      },
+      "auditCount": {
+        "type": "number"
+      },
+      "status": {
+        "$ref": "#/components/schemas/EvidencePeriodStatus"
+      },
+      "archiveStatus": {
+        "$ref": "#/components/schemas/EvidenceArchiveStatus"
+      }
+    },
+    "required": [
+      "archive",
+      "archiveStatus",
+      "auditCount",
+      "id",
+      "ledgerCount",
+      "manifestHash",
+      "periodEnd",
+      "periodStart",
+      "previousManifestHash",
+      "seal",
+      "status"
+    ]
+  },
+  "ConsoleEvidenceController_list_Query": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "cursor": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleEvidenceController_list_Response": {
+    "type": "object",
+    "properties": {
+      "sealedThrough": {
+        "description": "The end of the organization's latest sealed period, null before its first.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "periodCount": {
+        "description": "How many periods are sealed.",
+        "type": "number"
+      },
+      "items": {
+        "description": "Newest first.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/EvidencePeriodSummary"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor",
+      "periodCount",
+      "sealedThrough"
+    ]
+  },
+  "ConsoleEvidenceController_verification_Response": {
+    "description": "For the Console's Verify button: the manifest as sealed, and the same period recomputed from the\ndatabase now. The browser checks both against the seal read straight from Sui\n(`verifyRecomputation` in `@octap/verify`), so the verdict never rests on OctaP's word.",
+    "type": "object",
+    "properties": {
+      "periodId": {
+        "type": "string"
+      },
+      "sealedManifest": {
+        "$ref": "#/components/schemas/EvidenceManifest"
+      },
+      "recomputedManifest": {
+        "$ref": "#/components/schemas/EvidenceManifest"
+      },
+      "seal": {
+        "description": "Null while SEALING: there is nothing on-chain to check against yet.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/EvidenceSealReference"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "computedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "computedAt",
+      "periodId",
+      "recomputedManifest",
+      "seal",
+      "sealedManifest"
     ]
   },
   "ConsoleIdentityController_login_Body": {
@@ -523,6 +853,164 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "remaining",
       "shards",
       "warningThreshold"
+    ]
+  },
+  "ConsoleLedgerController_program_Response": {
+    "description": "`GET /v1/credits/program` and `GET /v1/console/organizations/{organizationId}/program`: the\nloyalty program and the on-chain policy behind it. `policyStatus` is `MATCH` when the chain's\nrules are the ones OctaP applies, `MISMATCH` otherwise, `UNAVAILABLE` when the chain could not be\nread (then `policy` is null).",
+    "type": "object",
+    "properties": {
+      "programId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "programControlId": {
+        "type": "string"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "provisionedAt": {
+        "type": "string"
+      },
+      "policyStatus": {
+        "enum": [
+          "MATCH",
+          "MISMATCH",
+          "UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "policy": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ProgramPolicyEvidence"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policy",
+      "policyStatus",
+      "programControlId",
+      "programId",
+      "provisionedAt",
+      "status"
+    ]
+  },
+  "ConsoleLedgerController_reconciliation_Response": {
+    "description": "`GET …/members/{memberId}/reconciliation`. Cached for up to 30 seconds.",
+    "type": "object",
+    "properties": {
+      "organizationEndUserId": {
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/BalanceReconciliationStatus"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object; null before their first earn (the ledger then holds 0).",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recordedBalance": {
+        "description": "OctaP's `confirmedBalance`.",
+        "type": "number"
+      },
+      "ledgerBalance": {
+        "description": "What the chain says is spendable now; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "difference": {
+        "description": "`ledgerBalance - recordedBalance`; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "checkedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "creditAccountId",
+      "difference",
+      "ledgerBalance",
+      "organizationEndUserId",
+      "recordedBalance",
+      "status"
+    ]
+  },
+  "ConsoleLedgerController_transactions_Query": {
+    "description": "`GET /v1/credits/transactions` and the console's organization history. See `OrganizationTransactionQuery`.",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "ADJUSTMENT",
+          "EARN",
+          "EXPIRY",
+          "REDEEM",
+          "REVERSAL",
+          "TRANSFER"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "CONFIRMED",
+          "FAILED",
+          "PENDING",
+          "REVERSED"
+        ],
+        "type": "string"
+      },
+      "memberId": {
+        "type": "string"
+      }
+    }
+  },
+  "ConsoleLedgerController_transactions_Response": {
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
     ]
   },
   "ConsoleLicenseController_read_Response": {
@@ -2642,11 +3130,19 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "stale": {
         "description": "True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change.",
         "type": "boolean"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object on Sui; null until their first earn opens it.",
+        "type": [
+          "null",
+          "string"
+        ]
       }
     },
     "required": [
       "asOfCheckpoint",
       "confirmedBalance",
+      "creditAccountId",
       "lifetimeEarned",
       "lifetimeRedeemed",
       "observedAt",
@@ -2717,6 +3213,164 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "remaining",
       "shards",
       "warningThreshold"
+    ]
+  },
+  "CreditsController_getOrganizationTransactions_Query": {
+    "description": "`GET /v1/credits/transactions` and the console's organization history. See `OrganizationTransactionQuery`.",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "ADJUSTMENT",
+          "EARN",
+          "EXPIRY",
+          "REDEEM",
+          "REVERSAL",
+          "TRANSFER"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "CONFIRMED",
+          "FAILED",
+          "PENDING",
+          "REVERSED"
+        ],
+        "type": "string"
+      },
+      "memberId": {
+        "type": "string"
+      }
+    }
+  },
+  "CreditsController_getOrganizationTransactions_Response": {
+    "description": "A page of a member's history, newest first. Pass `nextCursor` back as `cursor` for the next page.",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LoyaltyTransactionDto"
+        }
+      },
+      "nextCursor": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ]
+  },
+  "CreditsController_getProgram_Response": {
+    "description": "`GET /v1/credits/program` and `GET /v1/console/organizations/{organizationId}/program`: the\nloyalty program and the on-chain policy behind it. `policyStatus` is `MATCH` when the chain's\nrules are the ones OctaP applies, `MISMATCH` otherwise, `UNAVAILABLE` when the chain could not be\nread (then `policy` is null).",
+    "type": "object",
+    "properties": {
+      "programId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "programControlId": {
+        "type": "string"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "provisionedAt": {
+        "type": "string"
+      },
+      "policyStatus": {
+        "enum": [
+          "MATCH",
+          "MISMATCH",
+          "UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "policy": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ProgramPolicyEvidence"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policy",
+      "policyStatus",
+      "programControlId",
+      "programId",
+      "provisionedAt",
+      "status"
+    ]
+  },
+  "CreditsController_getReconciliation_Response": {
+    "description": "`GET …/members/{memberId}/reconciliation`. Cached for up to 30 seconds.",
+    "type": "object",
+    "properties": {
+      "organizationEndUserId": {
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/BalanceReconciliationStatus"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object; null before their first earn (the ledger then holds 0).",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recordedBalance": {
+        "description": "OctaP's `confirmedBalance`.",
+        "type": "number"
+      },
+      "ledgerBalance": {
+        "description": "What the chain says is spendable now; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "difference": {
+        "description": "`ledgerBalance - recordedBalance`; null when `UNAVAILABLE`.",
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "checkedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "checkedAt",
+      "creditAccountId",
+      "difference",
+      "ledgerBalance",
+      "organizationEndUserId",
+      "recordedBalance",
+      "status"
     ]
   },
   "CreditsController_getTransactions_Query": {
@@ -2856,16 +3510,11 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "newBalance": {
         "type": "number"
       },
-      "balanceWentNegative": {
-        "description": "True when `newBalance` went negative — the member owes points back (clawback debt).",
-        "type": "boolean"
-      },
       "idempotencyKey": {
         "type": "string"
       }
     },
     "required": [
-      "balanceWentNegative",
       "idempotencyKey",
       "newBalance",
       "organizationEndUserId",
@@ -2916,6 +3565,24 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "memberId",
       "suiAddress"
     ]
+  },
+  "EvidenceArchiveStatus": {
+    "description": "The encrypted copy on Walrus. `DISABLED` when this deployment keeps no copy, `SKIPPED` for an empty period.",
+    "enum": [
+      "ARCHIVED",
+      "DISABLED",
+      "PENDING",
+      "SKIPPED"
+    ],
+    "type": "string"
+  },
+  "EvidencePeriodStatus": {
+    "description": "`SEALING` while the seal is on its way to the chain, then `SEALED` for good.",
+    "enum": [
+      "SEALED",
+      "SEALING"
+    ],
+    "type": "string"
   },
   "GovernanceRequestType": {
     "enum": [
@@ -6097,6 +6764,96 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "webhookDeliveries"
     ]
   },
+  "ProgramAnalyticsDay": {
+    "description": "One day's earn/redeem totals — the trend behind `circulation`, for a chart.",
+    "type": "object",
+    "properties": {
+      "start": {
+        "description": "Start of the day (UTC midnight), ISO 8601. The first and last day count only what falls inside the window.",
+        "type": "string"
+      },
+      "earned": {
+        "type": "number"
+      },
+      "redeemed": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "earned",
+      "redeemed",
+      "start"
+    ]
+  },
+  "ProgramCirculation": {
+    "description": "The program's point economy in the window. `earned`/`redeemed`/`reversed` are unsigned magnitudes.",
+    "type": "object",
+    "properties": {
+      "earned": {
+        "description": "Points actually granted (CONFIRMED EARN). The liability side: what the organization now owes its customers.",
+        "type": "number"
+      },
+      "redeemed": {
+        "description": "Points actually spent (CONFIRMED REDEEM). The proof side: evidence the points are used, not just handed out.",
+        "type": "number"
+      },
+      "reversed": {
+        "description": "Points undone because a merchant corrected a mistake (CONFIRMED REVERSAL of an earn or of a redemption). High relative to `earned` flags an issuance quality problem, not a healthy program.",
+        "type": "number"
+      },
+      "net": {
+        "description": "How much the outstanding balance grew this window: `earned - redeemed`, minus reversed earns, plus reversed redemptions (their points go back to the customer). A number that only ever grows means the program is a one-way liability with no redemption behind it.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "earned",
+      "net",
+      "redeemed",
+      "reversed"
+    ]
+  },
+  "ProgramEngagement": {
+    "description": "Whether enrollment is converting into actual use, not just sign-ups.",
+    "type": "object",
+    "properties": {
+      "activeMembers": {
+        "description": "Distinct customers with at least one CONFIRMED earn or redeem in the window — people actually using the program now.",
+        "type": "number"
+      },
+      "enrolledMembers": {
+        "description": "Everyone ever enrolled in this organization, regardless of the window. Compare to `activeMembers`: a wide gap means enrollment isn't converting to use.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "activeMembers",
+      "enrolledMembers"
+    ]
+  },
+  "VoucherPerformance": {
+    "description": "Whether issued vouchers get used, not just claimed and forgotten.",
+    "type": "object",
+    "properties": {
+      "claimed": {
+        "description": "Vouchers a customer claimed in the window (points spent or a free one taken).",
+        "type": "number"
+      },
+      "redeemed": {
+        "description": "Of all vouchers redeemed at the merchant in the window — the only number here that proves the voucher did its job.",
+        "type": "number"
+      },
+      "expiredUnused": {
+        "description": "Claimed vouchers whose `expiresAt` passed unused in the window (up to now): lost value for the customer and wasted issuance budget for the merchant.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "claimed",
+      "expiredUnused",
+      "redeemed"
+    ]
+  },
   "AssistantTurn": {
     "description": "One earlier turn of the conversation. The browser keeps the history; Core stores none.",
     "type": "object",
@@ -6116,6 +6873,96 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "required": [
       "role",
       "text"
+    ]
+  },
+  "AuditActorRef": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "$ref": "#/components/schemas/AuditActorType"
+      },
+      "id": {
+        "description": "A user id or an API key id; null for SYSTEM.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "label": {
+        "description": "The user's name, or the key's name and prefix, as they are now. Null for SYSTEM or a removed record.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "type"
+    ]
+  },
+  "AuditLogEntry": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "occurredAt": {
+        "type": "string"
+      },
+      "actor": {
+        "$ref": "#/components/schemas/AuditActorRef"
+      },
+      "action": {
+        "description": "`<target>.<verb>` (e.g. `api_key.revoked`, `member.blocked`) or an event type (`credits.earned`).",
+        "type": "string"
+      },
+      "target": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ]
+      },
+      "requestId": {
+        "description": "The request's `X-Request-Id`, to match the request log and OctaP's own logs.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "changes": {
+        "description": "Field names and non-personal values only, e.g. `{ status: { from: 'ACTIVE', to: 'BLOCKED' } }`.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "action",
+      "actor",
+      "changes",
+      "id",
+      "occurredAt",
+      "requestId",
+      "target"
     ]
   },
   "ConsoleCredential": {
@@ -6164,6 +7011,242 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "name",
       "scopes",
       "status"
+    ]
+  },
+  "EvidenceAuditFact": {
+    "description": "One audit log row of the period (OCT-333). Append-only, so it never changes.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "occurredAt": {
+        "type": "string"
+      },
+      "actorType": {
+        "type": "string"
+      },
+      "actorId": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "action": {
+        "type": "string"
+      },
+      "targetType": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "requestId": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "changes": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "action",
+      "actorId",
+      "actorType",
+      "changes",
+      "id",
+      "occurredAt",
+      "requestId",
+      "targetId",
+      "targetType"
+    ]
+  },
+  "EvidenceLedgerFact": {
+    "description": "One loyalty transaction confirmed on-chain during the period. Only facts that never change once\nconfirmed: no status (a reversal is its own fact, in the period it happened) and no checkpoint\n(filled in later by the indexer).",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "pointsAmount": {
+        "type": "number"
+      },
+      "purchaseAmount": {
+        "type": [
+          "null",
+          "number"
+        ]
+      },
+      "memberId": {
+        "description": "The member's id in the organization.",
+        "type": "string"
+      },
+      "receiptReference": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "reversesTransactionId": {
+        "description": "On a REVERSAL, the transaction it reverses.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "digest": {
+        "description": "The Sui transaction that carried it.",
+        "type": "string"
+      },
+      "confirmedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "confirmedAt",
+      "digest",
+      "id",
+      "memberId",
+      "pointsAmount",
+      "purchaseAmount",
+      "receiptReference",
+      "reversesTransactionId",
+      "type"
+    ]
+  },
+  "EvidenceManifest": {
+    "description": "What is sealed: its sha256 is the seal's `manifest_hash`.",
+    "type": "object",
+    "properties": {
+      "format": {
+        "type": "string",
+        "const": "octap.evidence.manifest/v1"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "periodStart": {
+        "type": "string"
+      },
+      "periodEnd": {
+        "type": "string"
+      },
+      "ledger": {
+        "$ref": "#/components/schemas/EvidenceSection"
+      },
+      "audit": {
+        "$ref": "#/components/schemas/EvidenceSection"
+      },
+      "previousManifestHash": {
+        "description": "The organization's previous sealed manifest, null on its first.",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "audit",
+      "format",
+      "ledger",
+      "organizationId",
+      "periodEnd",
+      "periodStart",
+      "previousManifestHash"
+    ]
+  },
+  "EvidencePeriodSummary": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "periodStart": {
+        "type": "string"
+      },
+      "periodEnd": {
+        "type": "string"
+      },
+      "ledgerCount": {
+        "type": "number"
+      },
+      "auditCount": {
+        "type": "number"
+      },
+      "status": {
+        "$ref": "#/components/schemas/EvidencePeriodStatus"
+      },
+      "archiveStatus": {
+        "$ref": "#/components/schemas/EvidenceArchiveStatus"
+      }
+    },
+    "required": [
+      "archiveStatus",
+      "auditCount",
+      "id",
+      "ledgerCount",
+      "periodEnd",
+      "periodStart",
+      "status"
+    ]
+  },
+  "EvidenceSealReference": {
+    "description": "Where a period's seal is on Sui.",
+    "type": "object",
+    "properties": {
+      "network": {
+        "type": "string"
+      },
+      "packageId": {
+        "type": "string"
+      },
+      "sealObjectId": {
+        "type": "string"
+      },
+      "transactionDigest": {
+        "type": "string"
+      },
+      "sealedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "network",
+      "packageId",
+      "sealObjectId",
+      "sealedAt",
+      "transactionDigest"
+    ]
+  },
+  "EvidenceSection": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "number"
+      },
+      "sha256": {
+        "description": "sha256 (hex) of the section's facts, one canonical JSON line each.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "count",
+      "sha256"
     ]
   },
   "IdentityChangePayload": {
@@ -6383,7 +7466,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "LicenseUsage": {
-    "description": "How much of each limit is in use. `transactionsMonthly` counts the current license month.",
+    "description": "How much of each limit is in use. `transactionsMonthly` counts the current license month, which\nruns from `periodStart` to `periodEnd`; the last month ends at the license's `endsAt`, and once that\nhas passed it stays the last month.",
     "type": "object",
     "properties": {
       "periodStart": {
@@ -6396,12 +7479,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "number"
       },
       "members": {
+        "description": "ACTIVE members who aren't blocked or unverified.",
         "type": "number"
       },
       "apiKeys": {
+        "description": "ACTIVE API keys, sandbox ones included.",
         "type": "number"
       },
       "teamMembers": {
+        "description": "ACTIVE Owners and Business Developers.",
         "type": "number"
       }
     },
@@ -6454,11 +7540,19 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "stale": {
         "description": "True while `pendingEarn`/`pendingRedemption` is nonzero: part of this balance can still change.",
         "type": "boolean"
+      },
+      "creditAccountId": {
+        "description": "The member's `CreditAccount` object on Sui; null until their first earn opens it.",
+        "type": [
+          "null",
+          "string"
+        ]
       }
     },
     "required": [
       "asOfCheckpoint",
       "confirmedBalance",
+      "creditAccountId",
       "lifetimeEarned",
       "lifetimeRedeemed",
       "observedAt",
@@ -6543,6 +7637,13 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "string"
         ]
       },
+      "confirmedAt": {
+        "description": "When the chain confirmed it; null until then.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "transactionType": {
         "$ref": "#/components/schemas/LoyaltyTxType"
       },
@@ -6604,6 +7705,45 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "status",
       "transactionType",
       "updatedAt"
+    ]
+  },
+  "ProgramPolicyEvidence": {
+    "description": "The program's published rules as the chain holds them, beside what OctaP applies.",
+    "type": "object",
+    "properties": {
+      "policyVersionId": {
+        "type": "string"
+      },
+      "version": {
+        "type": "number"
+      },
+      "earnBps": {
+        "type": "number"
+      },
+      "expiryMs": {
+        "type": "number"
+      },
+      "publishedDigest": {
+        "description": "The transaction that published the policy; null if the chain did not report one.",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "publishedAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    },
+    "required": [
+      "earnBps",
+      "expiryMs",
+      "policyVersionId",
+      "publishedAt",
+      "publishedDigest",
+      "version"
     ]
   },
   "LatencyPercentiles": {

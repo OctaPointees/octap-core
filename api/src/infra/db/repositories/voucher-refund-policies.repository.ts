@@ -8,6 +8,7 @@ import type {
 import { DEFAULT_VOUCHER_REFUND_POLICY } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { withRls } from '../rls.js';
+import { recordAudit } from './audit.repository.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { voucherRefundPolicies } from '../schema/voucher-refund-policies.schema.js';
 
@@ -115,6 +116,15 @@ export class VoucherRefundPoliciesRepository {
             createdByUserId: userId,
           })
           .returning();
+        // The policy and its reason stay on the version row; the audit log points at it.
+        await recordAudit(tx, {
+          organizationId,
+          action: 'refund_policy.published',
+          targetType: 'refund_policy',
+          // A version is identified by its number within the organization.
+          targetId: String(row.version),
+          changes: { version: { from: latest?.version ?? null, to: row.version } },
+        });
         return toPolicyDto(row);
       });
     });

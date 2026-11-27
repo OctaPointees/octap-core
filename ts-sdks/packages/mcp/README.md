@@ -39,7 +39,7 @@ npx -y @octap/mcp setup
 
 It asks for the API URL (press Enter to accept the default shown, `http://127.0.0.1:3000` the first time) and the API key (input hidden; when a key is already saved, Enter keeps it). Run it again whenever you want to point at a different server.
 
-**Where the key is stored:** `~/.octap/mcp.json` (on Windows `%USERPROFILE%.octapmcp.json`). The file is plain JSON, written with owner-only permissions (`0600`) on macOS/Linux; on Windows it is protected by your user profile's permissions. Set `OCTAP_MCP_CONFIG_PATH` to use another location. `octap-mcp setup --path` prints the location in use.
+**Where the key is stored:** `~/.octap/mcp.json` (on Windows `%USERPROFILE%\.octap\mcp.json`). The file is plain JSON, written with owner-only permissions (`0600`) on macOS/Linux; on Windows it is protected by your user profile's permissions. Set `OCTAP_MCP_CONFIG_PATH` to use another location. `octap-mcp setup --path` prints the location in use.
 
 **Revoking local access:** `octap-mcp setup --clear` (or deleting the file). The next time the host starts the server, it exits with `OCTAP_API_KEY is required` and no tools are available. This only removes the local copy; revoke the key itself in the Octap Console if it may have leaked.
 
@@ -126,7 +126,7 @@ export async function connectCustomerMcp(authenticatedSessions: AuthenticatedSes
 }
 ```
 
-The repository's `examples/customer-embed.ts` mirrors this snippet; a protocol test checks that they stay identical and executes the example through an MCP client. The host's configured token verifier must populate `http.authInfo`; `authenticatedSessions` maps that validated request identity to the member. Never use the MCP session ID or model-supplied arguments as authentication. If validated auth info is absent or cannot resolve a valid member UUID, the tool returns an error without making a Core API request.
+[`examples/customer-embed.ts`](https://github.com/OctaPointees/octap-core/blob/dev/ts-sdks/packages/mcp/examples/customer-embed.ts) in the octap-core repository mirrors this snippet; a protocol test checks that they stay identical and executes the example through an MCP client. The host's configured token verifier must populate `http.authInfo`; `authenticatedSessions` maps that validated request identity to the member. Never use the MCP session ID or model-supplied arguments as authentication. If validated auth info is absent or cannot resolve a valid member UUID, the tool returns an error without making a Core API request.
 
 ## Available Tools
 
@@ -165,10 +165,10 @@ Over `serve-http` only (they read the signed-in user's console routes):
 | Business Developer | `get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys` | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys` |
 | Business Owner | every Developer tool, plus `get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations` | every Developer prompt, plus `review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access` |
 
-The map lives in `src/personas.ts`. It decides what each persona sees, not what it may read: Core
+The map lives in [`src/personas.ts`](https://github.com/OctaPointees/octap-core/blob/dev/ts-sdks/packages/mcp/src/personas.ts). It decides what each persona sees, not what it may read: Core
 checks the organization, the read-only rule and the persona on every call. Every Developer tool reads
-a route Core opens to both personas; the Owner extras are the reads Core keeps for Owners (webhooks
-until OCT-306, the refund policy, staff and invitations). stdio with an API key offers the three member tools.
+a route Core opens to both personas; the Owner extras are the reads Core keeps for Owners (webhooks, the refund policy, staff and
+invitations). stdio with an API key offers the three member tools.
 
 ## Error Handling & Tenant Isolation
 
@@ -176,6 +176,6 @@ until OCT-306, the refund policy, staff and invitations). stdio with an API key 
 - **LLM-friendly messaging**: Rate limits and temporary failures advise the model not to loop or retry within the same turn.
 - **Diagnostics**: Operational events and errors are logged strictly to `stderr`, preserving `stdout` for clean JSON-RPC communication.
 
-## Verification
+## Verification (octap-core repository)
 
-After `npm run build` from the repository root, run `npm run test:mcp:e2e`. This starts disposable PostgreSQL and Redis containers plus a local Core API, seeds two organizations and members plus a read-only API key for one organization, then connects an MCP client to the compiled stdio CLI. It checks all three tools with a valid key, generic 404 responses for cross-tenant reads, safe permission errors with an invalid key, and eager startup failure when `OCTAP_API_KEY` is missing. Docker is required; the disposable services are stopped when the script exits.
+In a checkout of [octap-core](https://github.com/OctaPointees/octap-core), after `npm run build` from the repository root, run `npm run test:mcp:e2e`. This starts disposable PostgreSQL and Redis containers plus a local Core API, seeds two organizations and members plus a read-only API key for one organization, then connects an MCP client to the compiled stdio CLI. It checks all three tools with a valid key, generic 404 responses for cross-tenant reads, safe permission errors with an invalid key, and eager startup failure when `OCTAP_API_KEY` is missing. Docker is required; the disposable services are stopped when the script exits.

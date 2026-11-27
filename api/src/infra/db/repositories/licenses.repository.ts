@@ -3,8 +3,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, lte } from 'drizzle-orm';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import { licensePlans, licenses } from '../schema/licensing.schema.js';
-import { organizationEndUsers } from '../schema/members.schema.js';
-import { apiCredentials } from '../schema/organizations.schema.js';
+import { endUsers, organizationEndUsers } from '../schema/members.schema.js';
+import { apiCredentials, organizations } from '../schema/organizations.schema.js';
 import { organizationMemberships } from '../schema/auth.schema.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { licenseTransactionsUsed, requireLicenseFeature } from './license-enforcement.js';
@@ -73,6 +73,15 @@ export class LicensesRepository {
    * The license in force at `at`: the latest one that has started, expired or not (an expired one
    * still says what the organization had). `undefined` when it never had one.
    */
+  /** Whether the organization exists, whatever its status. Read as the connection owner. */
+  async organizationExists(organizationId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    return row !== undefined;
+  }
+
   async current(organizationId: string, at: Date, db: DrizzleDb = this.db): Promise<License | undefined> {
     return withTenant(db, organizationId, async (tx) => {
       const [license] = await tx
@@ -86,32 +95,6 @@ export class LicensesRepository {
   }
 
   /**
-   * Grants a license from `plan`, copying its entitlements as they are now. `db` joins the caller's
-   * transaction, such as the one that approves the organization.
-   */
-  async grant(
-    params: { organizationId: string; plan: LicensePlan; source: License['source']; startsAt: Date; endsAt: Date },
-    db: DrizzleDb = this.db,
-  ): Promise<License> {
-    return withTenant(db, params.organizationId, async (tx) => {
-      const [license] = await tx
-        .insert(licenses)
-        .values({
-          organizationId: params.organizationId,
-          planId: params.plan.id,
-          tier: params.plan.tier,
-          planName: params.plan.name,
-          entitlements: params.plan.entitlements,
-          source: params.source,
-          startsAt: params.startsAt,
-          endsAt: params.endsAt,
-        })
-        .returning();
-      return license;
-    });
-  }
-
-  /**
    * What counts against the limits now. Transactions are this license month's counter (accepted
    * earns, redeems and paid voucher claims, less the ones that failed); the rest are counted as they
    * stand.
@@ -119,10 +102,22 @@ export class LicensesRepository {
   async usage(organizationId: string, license: Pick<License, 'id'>, periodStart: Date): Promise<LicenseUsageCounts> {
     return withTenant(this.db, organizationId, async (tx) => {
       // One connection per transaction: the queries run one after another.
-      const [members] = await tx
-        .select({ n: count() })
-        .from(organizationEndUsers)
-        .where(eq(organizationEndUsers.organizationId, organizationId));
+      // Only members who can take part: active here and not blocked or unverified globally, the same
+      // test as `member-eligibility`. The global status isn't visible under a tenant, so this is read
+      // as the connection's own role, still for this organization only.
+      const [members] = await asOwnRole(tx, (own) =>
+        own
+          .select({ n: count() })
+          .from(organizationEndUsers)
+          .innerJoin(endUsers, eq(endUsers.id, organizationEndUsers.endUserId))
+          .where(
+            and(
+              eq(organizationEndUsers.organizationId, organizationId),
+              eq(organizationEndUsers.status, 'ACTIVE'),
+              eq(endUsers.status, 'ACTIVE'),
+            ),
+          ),
+      );
       const [apiKeys] = await tx
         .select({ n: count() })
         .from(apiCredentials)
@@ -160,24 +155,46 @@ const DEFAULT_TRIAL_DAYS = 14;
  * no active trial plan: the System Admin grants a license by hand then.
  */
 export async function grantTrialLicense(tx: DrizzleDb, organizationId: string, now = new Date()): Promise<void> {
+  // An organization that already has a license (one migrated in, or granted by hand) keeps it: a
+  // trial started now would be the latest license and replace it.
+  const [existing] = await withTenant(tx, organizationId, (inner) =>
+    inner.select({ id: licenses.id }).from(licenses).where(eq(licenses.organizationId, organizationId)).limit(1),
+  );
+  if (existing) return;
+  // The newest active trial plan, so one the System Admin adds takes over from the old one.
   const [plan] = await tx
     .select()
     .from(licensePlans)
     .where(and(eq(licensePlans.tier, 'TRIAL'), eq(licensePlans.active, true)))
-    .orderBy(asc(licensePlans.createdAt))
+    .orderBy(desc(licensePlans.createdAt))
     .limit(1);
   if (!plan) return;
   const endsAt = new Date(now.getTime() + (plan.durationDays ?? DEFAULT_TRIAL_DAYS) * 24 * 60 * 60 * 1000);
-  await withTenant(tx, organizationId, (inner) =>
-    inner.insert(licenses).values({
-      organizationId,
-      planId: plan.id,
-      tier: plan.tier,
-      planName: plan.name,
-      entitlements: plan.entitlements,
-      source: 'TRIAL',
-      startsAt: now,
-      endsAt,
-    }),
-  );
+  await insertLicense(tx, { organizationId, plan, source: 'TRIAL', startsAt: now, endsAt });
+}
+
+/**
+ * The one way a license is written: from `plan`, copying its entitlements as they are now, so later
+ * edits to the plan never change it. Joins the caller's transaction, under the organization's tenant.
+ */
+export async function insertLicense(
+  tx: DrizzleDb,
+  params: { organizationId: string; plan: LicensePlan; source: License['source']; startsAt: Date; endsAt: Date },
+): Promise<License> {
+  return withTenant(tx, params.organizationId, async (inner) => {
+    const [license] = await inner
+      .insert(licenses)
+      .values({
+        organizationId: params.organizationId,
+        planId: params.plan.id,
+        tier: params.plan.tier,
+        planName: params.plan.name,
+        entitlements: params.plan.entitlements,
+        source: params.source,
+        startsAt: params.startsAt,
+        endsAt: params.endsAt,
+      })
+      .returning();
+    return license;
+  });
 }

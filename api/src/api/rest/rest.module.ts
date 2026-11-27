@@ -26,6 +26,9 @@ import { ConsoleChangeRequestsController, PlatformChangeRequestsController } fro
 import { PlatformOrganizationsController, OrganizationResolutionController } from './organizations.controller.js';
 import { ConsoleIssuanceBudgetController, PlatformIssuanceBudgetController } from './issuance-budget.controller.js';
 import { HealthController, PlatformHealthController } from './health.controller.js';
+import { ConsoleLedgerController } from './console-ledger.controller.js';
+import { ConsoleAuditLogController } from './console-audit-log.controller.js';
+import { ConsoleEvidenceController } from './console-evidence.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
 import {
@@ -36,6 +39,7 @@ import {
   PlatformOrganizationLicenseController,
 } from './licenses.controller.js';
 import { PostgresModule } from '#infra/db/postgres.module.js';
+import { ConsoleAnalyticsController } from './console-analytics.controller.js';
 @Module({
   imports: [DomainModule, AuthModule, ObservabilityModule, PostgresModule],
   providers: [ConsoleAccessGuard],
@@ -57,6 +61,9 @@ import { PostgresModule } from '#infra/db/postgres.module.js';
     ConsoleChangeRequestsController,
     PlatformChangeRequestsController,
     MembersController,
+    ConsoleLedgerController,
+    ConsoleAuditLogController,
+    ConsoleEvidenceController,
     ConsoleRewardsController,
     ConsoleVoucherBatchesController,
     ConsoleRefundPolicyController,
@@ -64,6 +71,7 @@ import { PostgresModule } from '#infra/db/postgres.module.js';
     ConsoleEventsController,
     ConsoleApiCredentialsController,
     ConsoleRequestLogsController,
+    ConsoleAnalyticsController,
     CreditsController,
     RewardsController,
     VoucherBatchesController,
