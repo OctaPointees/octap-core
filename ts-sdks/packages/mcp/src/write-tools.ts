@@ -274,7 +274,9 @@ export function registerWriteTools(server: McpServer, core: ConsoleWrites, allow
     async (args, signal) =>
       voucherChange(args.voucherId, signal, (voucher) => ({
         method: 'PATCH',
-        body: { status: 'ACTIVE' },
+        // The voucher as the user saw it: Core refuses it (409) if it changed since, so no edit goes live
+        // unseen. Required when an Owner activates while approval is on; ignored otherwise (OCT-324).
+        body: { status: 'ACTIVE', expectedUpdatedAt: voucher.updatedAt },
         summary:
           voucher.status === 'PAUSED'
             ? `Resume voucher ${voucherLabel(voucher)}: members can claim it again.`

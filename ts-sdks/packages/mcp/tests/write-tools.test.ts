@@ -192,7 +192,7 @@ describe('MCP write tools (OCT-314)', () => {
       body: {},
     });
     expect(await call('activate_voucher', {})).toMatchObject({
-      body: { status: 'ACTIVE' },
+      body: { status: 'ACTIVE', expectedUpdatedAt: '2026-11-27T00:00:00.000Z' },
       summary: expect.stringContaining('Resume voucher'),
     });
     expect(await call('pause_voucher', {})).toMatchObject({ method: 'PATCH', body: { status: 'PAUSED' } });

@@ -216,6 +216,31 @@ describe('MCP writes: mcp:write, confirmation and idempotency (OCT-314)', () => 
     expect(audit[0]).toMatchObject({ actorType: 'USER', actorId: userId, targetId: created.body.id });
   });
 
+  it('lets an Owner activate a voucher as they saw it while approval is required', async () => {
+    const { token } = await signIn({ scope: 'mcp mcp:write', allowWrite: true, organizationId: ownerOf });
+    await ctx
+      .http()
+      .patch(`/v1/console/organizations/${ownerOf}/settings`)
+      .set('Authorization', 'Bearer owner')
+      .send({ voucherApprovalRequired: true })
+      .expect(200);
+    const confirmed = async (method: 'post' | 'patch', path: string, body: Record<string, unknown>) => {
+      const prepared = await prepare(token, ownerOf, { method: method.toUpperCase(), path, body, summary: 'Change' });
+      expect(prepared.status).toBe(201);
+      return apply(token, method, path, body, prepared.body.confirmationId);
+    };
+    const created = await confirmed('post', vouchers(ownerOf), reward);
+    expect(created.status).toBe(201);
+    const path = `${vouchers(ownerOf)}/${created.body.id}`;
+
+    // What activate_voucher sends: the voucher's updatedAt as the user saw it.
+    const stale = await confirmed('patch', path, { status: 'ACTIVE', expectedUpdatedAt: '2026-01-01T00:00:00.000Z' });
+    expect(stale.status).toBe(409);
+    const activated = await confirmed('patch', path, { status: 'ACTIVE', expectedUpdatedAt: created.body.updatedAt });
+    expect(activated.status).toBe(200);
+    expect(activated.body.publishStatus).toBe('PUBLISHING');
+  });
+
   it("keeps Core's persona rules: a Developer can't approve through MCP", async () => {
     const { token } = await signIn({ scope: 'mcp mcp:write', allowWrite: true, organizationId: developerOf });
     const draft = (
