@@ -8,7 +8,8 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 
-# Manifests first, so `npm ci` stays cached until a dependency changes.
+# Manifests first, so `npm ci` stays cached until a dependency changes. No scripts: the root
+# `prepare` builds every package, and the sources aren't copied yet; the build step below does it.
 COPY package.json package-lock.json ./
 COPY api/package.json api/
 COPY ts-sdks/packages/contracts/package.json ts-sdks/packages/contracts/
@@ -17,7 +18,7 @@ COPY ts-sdks/packages/chain/package.json ts-sdks/packages/chain/
 COPY ts-sdks/packages/node/package.json ts-sdks/packages/node/
 COPY ts-sdks/packages/mcp/package.json ts-sdks/packages/mcp/
 COPY ts-sdks/packages/browser/package.json ts-sdks/packages/browser/
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --ignore-scripts
 
 COPY tsconfig.base.json ./
 COPY scripts scripts

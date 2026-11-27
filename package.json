@@ -21,6 +21,7 @@
     "test:mcp:e2e": "node scripts/mcp-cli-e2e.mjs",
     "test:demo:sdk": "node --test scripts/tests/sdk-voucher-demo.test.mjs scripts/tests/browser-auth-example.test.mjs",
     "build": "node scripts/build.mjs",
+    "prepare": "npm run build",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json",
     "lint": "eslint api/src api/tests ts-sdks/packages scripts vitest.config.ts",
     "format": "prettier --write .",
@@ -28,7 +29,9 @@
     "start:api": "npm run start --workspace @octap/api",
     "start:worker": "npm run start:worker --workspace @octap/api",
     "check:bootstrap": "node scripts/check-bootstrap.mjs",
-    "check:workspace-links": "node scripts/check-workspace-links.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version && npm install --package-lock-only",
+    "release": "npm run build && changeset publish",
     "openapi:schemas": "node scripts/openapi-schemas.mjs",
     "openapi:generate": "node scripts/openapi.mjs",
     "openapi:check": "node scripts/openapi-schemas.mjs --check && node scripts/openapi.mjs --check",
@@ -44,6 +47,7 @@
     "db:studio": "npm run db:studio --workspace @octap/api"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@eslint/js": "^9.0.0",
     "@nestjs/testing": "^11.2.7",
     "@types/node": "^24.0.0",

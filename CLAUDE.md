@@ -21,15 +21,17 @@ implementations, copy their shape).
 - **Branch names** follow Linear's own suggested slug: `<author>/<ticket-slug>`.
 - **No AI-tool attribution anywhere** — no `Co-Authored-By: Claude`, no "Generated with" lines, in
   commits, PR descriptions, or code. This repo's history should read as the author's own work.
-- **Use the packages in this repo, never the published ones.** npm has no `workspace:*`: when an
-  `@octap/*` dependency's range doesn't cover that package's version here, npm silently installs
-  the published one from the registry instead. So when you bump a package's version, update every
-  `@octap/*` range that points at it in the same commit (pre-1.0, `^0.2.0` does not cover `0.3.0`),
-  then run `npm install` and `npm run check:workspace-links`. CI runs that check first.
+- **Releasing `@octap/*` packages goes through Changesets** (`.changeset/README.md`). A PR that changes a
+  published package adds a changeset (`npx changeset`). A release is a PR that runs `npm run
+  version-packages`, then `npm run release` from `dev` once it is merged. Never edit a package's
+  `version` or an `@octap/*` range by hand: npm has no `workspace:*`, so when a range stops covering
+  the version in this repo, npm silently installs the published copy instead of linking this one.
+- **`npm install` builds every package** (the root `prepare` runs `npm run build`, in dependency
+  order), so `api` always runs on the packages in this repo, built. `npm run release` builds first too.
 - **Stacked PRs**: when a change genuinely depends on another PR that hasn't been reviewed yet,
   base the new PR on that PR's branch (not `main`), and say so in the PR description. Retarget to
   `main` once the upstream PR merges — don't leave it stacked.
-- Before opening a PR: `npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap && npm run openapi:check && npm run check:workspace-links` must all pass (`test:coverage` runs unit + integration tests; integration needs Docker or Podman — see `api/tests/README.md`). CI runs the same checks but can't block a merge (no branch protection on this plan), so check it before merging. A new repository method or route
+- Before opening a PR: `npm run format:check && npm run lint && npm run build && npm run typecheck && npm run test:coverage && npm run check:bootstrap && npm run openapi:check` must all pass (`test:coverage` runs unit + integration tests; integration needs Docker or Podman — see `api/tests/README.md`). CI runs the same checks but can't block a merge (no branch protection on this plan), so check it before merging. A new repository method or route
   gets an integration spec under `api/tests/integration` (real Postgres/Redis) rather than a
   throwaway script — this codebase's convention is "verified live, not just unit tests" for
   anything DB-facing. Chain calls stay faked in tests; verify those against testnet by hand.
