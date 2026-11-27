@@ -19,6 +19,8 @@ describe('validateEnv', () => {
         'dashboard assistant (OCTAP_MCP_PUBLIC_URL)',
         'dashboard assistant (OPENAI_API_KEY)',
         'dashboard assistant (OPENAI_MODEL)',
+        'license payments (SEPAY_BANK_ACCOUNT)',
+        'license payments (SEPAY_BANK_CODE)',
       ],
     });
   });
@@ -110,6 +112,8 @@ describe('validateEnv', () => {
         ASSISTANT_RATE_LIMIT_PER_MINUTE: '5',
         OPENAI_API_KEY: 'sk-openai-test',
         OPENAI_MODEL: 'gpt-test',
+        SEPAY_BANK_ACCOUNT: '0123456789',
+        SEPAY_BANK_CODE: 'MBBank',
       }),
     ).toEqual({ errors: [], disabledFeatures: [] });
   });
@@ -185,6 +189,8 @@ describe('assertValidEnv', () => {
       'dashboard assistant (OCTAP_MCP_PUBLIC_URL)',
       'dashboard assistant (OPENAI_API_KEY)',
       'dashboard assistant (OPENAI_MODEL)',
+      'license payments (SEPAY_BANK_ACCOUNT)',
+      'license payments (SEPAY_BANK_CODE)',
     ]);
   });
 });

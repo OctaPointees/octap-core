@@ -11,14 +11,20 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { LicensePlanDto, OrganizationLicenseDto } from '@octap/contracts';
+import type { LicenseOrderDto, LicensePlanDto, OrganizationLicenseDto } from '@octap/contracts';
 import { LicenseService } from '#domain/licensing/license.service.js';
+import { LicenseOrderService } from '#domain/licensing/license-order.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
 import { Scopes } from '#infra/auth/scopes.decorator.js';
 import { Tenant } from '#infra/auth/tenant.decorator.js';
 import type { TenantContext } from '#infra/auth/tenant-context.js';
 import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
-import type { CreateLicensePlanBodyDto, RenewLicenseBodyDto, UpdateLicensePlanBodyDto } from '../dto/licensing.dto.js';
+import type {
+  CreateLicenseOrderBodyDto,
+  CreateLicensePlanBodyDto,
+  RenewLicenseBodyDto,
+  UpdateLicensePlanBodyDto,
+} from '../dto/licensing.dto.js';
 
 /** The organization's license and usage, for its Owner and Business Developers (OCT-329). */
 @Public()
@@ -108,5 +114,61 @@ export class PlatformOrganizationLicenseController {
     @Body() body: RenewLicenseBodyDto,
   ): Promise<OrganizationLicenseDto> {
     return this.licenses.renew(organizationId, body);
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The Owner's orders to buy or renew the license (OCT-330). The body names a plan and a term only:
+ * the amount is always the plan's, so any other field (an `amount` included) is refused.
+ */
+@Public()
+@UseGuards(ConsoleAccessGuard)
+@Controller('v1/console/organizations/:organizationId/license/orders')
+export class ConsoleLicenseOrdersController {
+  constructor(private readonly orders: LicenseOrderService) {}
+  @Post()
+  @Header('Cache-Control', 'no-store')
+  place(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Body() body: CreateLicenseOrderBodyDto,
+  ): Promise<LicenseOrderDto> {
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Body must be an object');
+    const unknown = Object.keys(body).filter((key) => key !== 'planId' && key !== 'termMonths');
+    if (unknown.length) throw new BadRequestException(`Unknown field: ${unknown.join(', ')}`);
+    if (typeof body.planId !== 'string' || !UUID.test(body.planId))
+      throw new BadRequestException('planId must be a license plan id');
+    if (typeof body.termMonths !== 'number' || !Number.isInteger(body.termMonths) || body.termMonths < 1)
+      throw new BadRequestException('termMonths must be a whole number of months');
+    return this.orders.place(req.consoleIdentity.user.id, organizationId, body.planId, body.termMonths);
+  }
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  list(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+  ): Promise<LicenseOrderDto[]> {
+    return this.orders.list(req.consoleIdentity.user.id, organizationId);
+  }
+  @Get(':orderId')
+  @Header('Cache-Control', 'no-store')
+  get(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ): Promise<LicenseOrderDto> {
+    return this.orders.get(req.consoleIdentity.user.id, organizationId, orderId);
+  }
+  @Post(':orderId/cancel')
+  @Header('Cache-Control', 'no-store')
+  cancel(
+    @Req() req: ConsoleRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ): Promise<LicenseOrderDto> {
+    return this.orders.cancel(req.consoleIdentity.user.id, organizationId, orderId);
   }
 }

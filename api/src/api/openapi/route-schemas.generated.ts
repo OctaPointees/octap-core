@@ -1047,6 +1047,110 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "usage"
     ]
   },
+  "ConsoleLicenseOrdersController_cancel_Response": {
+    "$ref": "#/components/schemas/LicenseOrderDto",
+    "description": "An order and how to pay it. The amount is always the plan's monthly price times the term."
+  },
+  "ConsoleLicenseOrdersController_get_Response": {
+    "$ref": "#/components/schemas/LicenseOrderDto",
+    "description": "An order and how to pay it. The amount is always the plan's monthly price times the term."
+  },
+  "ConsoleLicenseOrdersController_list_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/LicenseOrderDto"
+    }
+  },
+  "ConsoleLicenseOrdersController_place_Body": {
+    "description": "`POST /v1/console/organizations/:organizationId/license/orders`, Owner only.",
+    "type": "object",
+    "properties": {
+      "planId": {
+        "type": "string"
+      },
+      "termMonths": {
+        "description": "One of the plan's `termMonthsAllowed`.",
+        "type": "number"
+      }
+    },
+    "required": [
+      "planId",
+      "termMonths"
+    ]
+  },
+  "ConsoleLicenseOrdersController_place_Response": {
+    "description": "An order and how to pay it. The amount is always the plan's monthly price times the term.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "planId": {
+        "type": "string"
+      },
+      "tier": {
+        "$ref": "#/components/schemas/LicenseTier"
+      },
+      "planName": {
+        "type": "string"
+      },
+      "termMonths": {
+        "type": "number"
+      },
+      "amountVnd": {
+        "type": "number"
+      },
+      "paymentCode": {
+        "description": "Put it in the transfer content as is: that is how the payment is matched to this order.",
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/components/schemas/LicenseOrderState"
+      },
+      "qrUrl": {
+        "description": "VietQR image for exactly `amountVnd`, with `paymentCode` as the transfer content.",
+        "type": "string"
+      },
+      "bankAccount": {
+        "type": "string"
+      },
+      "bankCode": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "paidAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "amountVnd",
+      "bankAccount",
+      "bankCode",
+      "createdAt",
+      "expiresAt",
+      "id",
+      "organizationId",
+      "paidAt",
+      "paymentCode",
+      "planId",
+      "planName",
+      "qrUrl",
+      "state",
+      "termMonths",
+      "tier"
+    ]
+  },
   "ConsoleLicensePlansController_list_Response": {
     "type": "array",
     "items": {
@@ -3811,6 +3915,15 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "organizationId",
       "usage"
     ]
+  },
+  "LicenseOrderState": {
+    "enum": [
+      "CANCELED",
+      "EXPIRED",
+      "PAID",
+      "PENDING"
+    ],
+    "type": "string"
   },
   "LicenseSource": {
     "description": "How a license came about.",
@@ -7451,6 +7564,79 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "members",
       "teamMembers",
       "transactionsMonthly"
+    ]
+  },
+  "LicenseOrderDto": {
+    "description": "An order and how to pay it. The amount is always the plan's monthly price times the term.",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organizationId": {
+        "type": "string"
+      },
+      "planId": {
+        "type": "string"
+      },
+      "tier": {
+        "$ref": "#/components/schemas/LicenseTier"
+      },
+      "planName": {
+        "type": "string"
+      },
+      "termMonths": {
+        "type": "number"
+      },
+      "amountVnd": {
+        "type": "number"
+      },
+      "paymentCode": {
+        "description": "Put it in the transfer content as is: that is how the payment is matched to this order.",
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/components/schemas/LicenseOrderState"
+      },
+      "qrUrl": {
+        "description": "VietQR image for exactly `amountVnd`, with `paymentCode` as the transfer content.",
+        "type": "string"
+      },
+      "bankAccount": {
+        "type": "string"
+      },
+      "bankCode": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "paidAt": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "createdAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "amountVnd",
+      "bankAccount",
+      "bankCode",
+      "createdAt",
+      "expiresAt",
+      "id",
+      "organizationId",
+      "paidAt",
+      "paymentCode",
+      "planId",
+      "planName",
+      "qrUrl",
+      "state",
+      "termMonths",
+      "tier"
     ]
   },
   "LicensePlanDto": {

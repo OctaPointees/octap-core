@@ -221,3 +221,45 @@ export interface RenewLicenseRequest {
   planId: string;
   months: number;
 }
+
+/**
+ * An order to buy or renew a license (OCT-330), paid by bank transfer. `PAID` once the money
+ * arrived, `CANCELED` when the Owner dropped it or chose another plan. `EXPIRED` is never stored:
+ * it is a `PENDING` order past `expiresAt`, and a transfer for it is no longer accepted.
+ */
+export type LicenseOrderStatus = 'PENDING' | 'PAID' | 'CANCELED';
+export type LicenseOrderState = LicenseOrderStatus | 'EXPIRED';
+
+/** How long an order can be paid. */
+export const LICENSE_ORDER_TTL_HOURS = 24;
+
+/** Every payment code starts with this, then 8 digits; SePay finds it in the transfer content. */
+export const LICENSE_PAYMENT_CODE_PREFIX = 'OCTAP';
+
+/** `POST /v1/console/organizations/:organizationId/license/orders`, Owner only. */
+export interface CreateLicenseOrderRequest {
+  planId: string;
+  /** One of the plan's `termMonthsAllowed`. */
+  termMonths: number;
+}
+
+/** An order and how to pay it. The amount is always the plan's monthly price times the term. */
+export interface LicenseOrderDto {
+  id: string;
+  organizationId: string;
+  planId: string;
+  tier: LicenseTier;
+  planName: string;
+  termMonths: number;
+  amountVnd: number;
+  /** Put it in the transfer content as is: that is how the payment is matched to this order. */
+  paymentCode: string;
+  state: LicenseOrderState;
+  /** VietQR image for exactly `amountVnd`, with `paymentCode` as the transfer content. */
+  qrUrl: string;
+  bankAccount: string;
+  bankCode: string;
+  expiresAt: string;
+  paidAt: string | null;
+  createdAt: string;
+}

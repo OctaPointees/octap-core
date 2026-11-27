@@ -85,6 +85,9 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   { name: 'ASSISTANT_RATE_LIMIT_PER_MINUTE', kind: positive, readBy: API },
   { name: 'OPENAI_API_KEY', kind: text, readBy: API, optionalFeature: 'dashboard assistant' },
   { name: 'OPENAI_MODEL', kind: text, readBy: API, optionalFeature: 'dashboard assistant' },
+  // License payments by bank transfer (OCT-330): the account SePay watches, shown in the VietQR code
+  { name: 'SEPAY_BANK_ACCOUNT', kind: text, readBy: API, optionalFeature: 'license payments' },
+  { name: 'SEPAY_BANK_CODE', kind: text, readBy: API, optionalFeature: 'license payments' },
   // Worker tuning
   { name: 'CHAIN_SUBMIT_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'CHAIN_SUBMIT_BATCH_SIZE', kind: positive, readBy: WORKER },

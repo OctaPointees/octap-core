@@ -316,6 +316,13 @@
       "when": 1795763830520,
       "tag": "0044_license_expiry_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795774285910,
+      "tag": "0045_license_orders",
+      "breakpoints": true
     }
   ]
 }
