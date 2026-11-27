@@ -21,13 +21,14 @@ implementations, copy their shape).
 - **Branch names** follow Linear's own suggested slug: `<author>/<ticket-slug>`.
 - **No AI-tool attribution anywhere** — no `Co-Authored-By: Claude`, no "Generated with" lines, in
   commits, PR descriptions, or code. This repo's history should read as the author's own work.
-- **Releasing `@octap/*` packages goes through Changesets** (`.changeset/README.md`). A PR that changes a
-  published package adds a changeset (`npx changeset`; CI checks). The Release workflow opens the
-  "version packages" PR and, once it is merged, publishes to npm. Never edit a package's
-  `version` or an `@octap/*` range by hand: npm has no `workspace:*`, so when a range stops covering
-  the version in this repo, npm silently installs the published copy instead of linking this one.
+- **Releasing `@octap/*` packages.** Hiếu publishes by hand with the npm CLI. Before that, one PR
+  refines the SDKs and bumps the versions. When you bump a package, update every `@octap/*` range that
+  points at it in the same commit (pre-1.0, `^0.2.0` does not cover `0.3.0`), then run `npm install`
+  and check that `package-lock.json` links every `@octap/*` (`"link": true`) with no copy from the
+  registry. npm has no `workspace:*`: a range that stops covering the version here makes npm install
+  the published copy instead, silently.
 - **`npm install` builds every package** (the root `prepare` runs `npm run build`, in dependency
-  order), so `api` always runs on the packages in this repo, built. `npm run release` builds first too.
+  order), so `api` always runs on the packages in this repo, built.
 - **Stacked PRs**: when a change genuinely depends on another PR that hasn't been reviewed yet,
   base the new PR on that PR's branch (not `main`), and say so in the PR description. Retarget to
   `main` once the upstream PR merges — don't leave it stacked.

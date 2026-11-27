@@ -26,18 +26,11 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # changeset status compares with the base branch
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      # A PR that changes a published @octap/* package needs a changeset (`npx changeset`, or
-      # `npx changeset add --empty` when it ships nothing). See .changeset/README.md.
-      - name: Changeset for every changed package
-        if: github.event_name == 'pull_request'
-        run: npx changeset status --since=origin/${{ github.base_ref }}
       - run: npm run format:check
       - run: npm run lint
       - run: npm run build
