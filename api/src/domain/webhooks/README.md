@@ -61,6 +61,8 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `voucher.publish.failed` | its terms never reached the chain | `RewardsRepository.failVoucherPublish` |
 | `voucher.paused` | an Owner or an API key paused it | `RewardsRepository.updateVoucher` |
 | `voucher.archived` | its batch was archived before it went live | `RewardsRepository.archiveVoucherBatch` |
+| `voucher.expired` | its claim window closed while ACTIVE, PAUSED or DEPLETED; now EXPIRED | `expireDueVouchers` (sweep or read) |
+| `voucher.member_expired` | a customer's voucher reached its own deadline unused; now EXPIRED | `expireDueVouchers` (sweep or read) |
 | `webhook.test` | an Owner sent a test ping from the console; delivered to that one endpoint only | `EventsRepository.recordTestEvent` |
 
 Voucher lifecycle events carry the voucher as it is right after the change (`VoucherLifecycleEventData`:
@@ -68,7 +70,10 @@ Voucher lifecycle events carry the voucher as it is right after the change (`Vou
 sends nothing of its own: it starts publishing, and `voucher.activated` or `voucher.publish.failed`
 follows. A voucher paused while publishing stays paused when the chain confirms it, so it sends
 `voucher.activated` only when resumed. Archiving a voucher that waits for approval sends
-`voucher.archived`, not `voucher.returned`. Running out of supply (`DEPLETED`) and expiry send nothing.
+`voucher.archived`, not `voucher.returned`. Running out of supply (`DEPLETED`) sends nothing. Expiry is
+written by `VoucherExpiryWorker` (every `VOUCHER_EXPIRY_SWEEP_INTERVAL_MS`, 60 s by default) or by the
+read that meets it first, so its two events arrive within about a minute of the deadline. Neither
+is audited: nobody made the change.
 
 The two `*.confirmed` events are recorded inside the confirm's own transaction (OCT-209), and only
 the caller that wins the PENDING guard reaches them, so a transaction gets exactly one whether the

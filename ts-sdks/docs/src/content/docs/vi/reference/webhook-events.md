@@ -79,7 +79,6 @@ Có cùng các field với `credits.earn.confirmed`, trong đó `pointsAmount` l
 | `organizationEndUserId` | `string` | |
 | `pointsAmount` | `number` | |
 | `newBalance` | `number` | |
-| `balanceWentNegative` | `boolean` | True khi đảo một lệnh earn đã bị tiêu và để lại khoản nợ |
 
 ## voucher.granted
 
@@ -112,6 +111,19 @@ Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào tha
 | `discountValue` | `string \| null` | |
 | `blockchainDigest` | `string` | Giao dịch do khách hàng ký |
 
+## voucher.member_expired
+
+Voucher của một khách đã tới hạn dùng của riêng nó (`expiresAt`) mà chưa dùng. Voucher chuyển sang `EXPIRED` và không dùng được nữa. Event này đến một lần, trong khoảng một phút sau hạn, hoặc sớm hơn nếu voucher được đọc trước.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `voucherOwnershipId` | `string` | |
+| `voucherId` | `string` | |
+| `organizationEndUserId` | `string` | |
+| `serialCode` | `string` | |
+| `status` | `string` | `EXPIRED` |
+| `expiresAt` | `string \| null` | Hạn đã qua |
+
 ## budget.low
 
 [Ngân sách phát hành](/vi/concepts/issuance-budget/) của bạn sắp cạn. Hãy [yêu cầu top-up](/vi/concepts/issuance-budget/) trước khi lệnh earn bắt đầu bị từ chối.
@@ -124,7 +136,7 @@ Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào tha
 
 ## Event vòng đời voucher
 
-`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused` và `voucher.archived` giúp catalog của bạn khớp với OctaP. Mỗi event được xếp hàng trong cùng database transaction với thay đổi mà nó báo. Mỗi event mang voucher đúng như ngay sau thay đổi đó:
+`voucher.created`, `voucher.submitted`, `voucher.returned`, `voucher.activated`, `voucher.publish.failed`, `voucher.paused`, `voucher.archived` và `voucher.expired` giúp catalog của bạn khớp với OctaP. Mỗi event được xếp hàng trong cùng database transaction với thay đổi mà nó báo. Mỗi event mang voucher đúng như ngay sau thay đổi đó:
 
 | Field | Kiểu | Mô tả |
 | --- | --- | --- |
@@ -149,5 +161,6 @@ Hãy giao quyền lợi khi nhận sự kiện này. Không có điểm nào tha
 | `voucher.publish.failed` | Điều khoản không lên được chain. Sửa voucher rồi activate lại. |
 | `voucher.paused` | Owner hoặc API key đã tạm dừng nó. Claim dừng lại. |
 | `voucher.archived` | Batch của nó bị archive trước khi lên chain. Voucher không dùng được nữa. |
+| `voucher.expired` | Thời hạn claim (`expiresAt`) đã đóng khi voucher đang chạy, tạm dừng hoặc hết số lượng. Voucher chuyển sang `EXPIRED`: không ai claim được nữa, và không tạm dừng hay chạy lại được. Voucher khách đã nhận vẫn giữ hạn dùng riêng (`voucher.member_expired`). |
 
-Lần duyệt không có event riêng: việc publish bắt đầu, sau đó là `voucher.activated` hoặc `voucher.publish.failed`. Voucher bị tạm dừng trong lúc publish vẫn tạm dừng sau khi publish xong, nên chỉ gửi `voucher.activated` khi được chạy lại. Hết số lượng và hết hạn không gửi event.
+Lần duyệt không có event riêng: việc publish bắt đầu, sau đó là `voucher.activated` hoặc `voucher.publish.failed`. Voucher bị tạm dừng trong lúc publish vẫn tạm dừng sau khi publish xong, nên chỉ gửi `voucher.activated` khi được chạy lại. Hết số lượng không gửi event. Event hết hạn đến trong khoảng một phút sau hạn.

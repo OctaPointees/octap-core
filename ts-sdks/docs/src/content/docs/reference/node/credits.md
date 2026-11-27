@@ -143,6 +143,64 @@ do {
 
 For an unconfirmed earn, `pointsAmount` is `null` and `estimatedPoints` holds the estimate. A failed earn has `null` for both.
 
+## listOrganizationTransactions
+
+Lists your whole organization's transactions, newest first, with each confirmed one's proof on Sui. Link `blockchainDigest` to a Sui explorer to show a customer the public record.
+
+`GET /v1/credits/transactions` · Scope: `read`
+
+```ts
+listOrganizationTransactions(query?: OrganizationTransactionQuery, options?): Promise<LoyaltyTransactionPage>
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `type` | `LoyaltyTxType` | Only this type, such as `EARN` |
+| `status` | `LoyaltyTxStatus` | Only this status, such as `CONFIRMED` |
+| `memberId` | `string` | Only this member |
+| `limit` | `number` | 1–100 |
+| `cursor` | `string` | `nextCursor` from the previous page |
+
+Returns `{ items, nextCursor }`, like `listTransactions`. A confirmed row carries `blockchainDigest` and `confirmedAt`. A cursor stays valid when its row's status changes later.
+
+## getProgram
+
+Reads your program and the earn policy published for it on Sui, beside the rules OctaP applies.
+
+`GET /v1/credits/program` · Scope: `read`
+
+```ts
+getProgram(options?): Promise<ProgramEvidence>
+```
+
+| Returned field | Type | Description |
+| --- | --- | --- |
+| `programId` | `string` | |
+| `status` | `string` | |
+| `earnBps` | `number` | The earn rate OctaP applies, in basis points |
+| `expiryMs` | `number` | How long earned points last |
+| `policyStatus` | `'MATCH' \| 'MISMATCH' \| 'UNAVAILABLE'` | `MATCH` when the chain's rules are the ones OctaP applies. `UNAVAILABLE` when the chain could not be read. |
+| `policy` | `ProgramPolicyEvidence \| null` | The on-chain policy: `version`, `earnBps`, `expiryMs`, `publishedDigest`, `publishedAt`. `null` when `UNAVAILABLE`. |
+
+## getBalanceReconciliation
+
+Compares a member's balance as OctaP records it with what their `CreditAccount` on Sui can spend.
+
+`GET /v1/credits/members/:memberId/reconciliation` · Scope: `read`
+
+```ts
+getBalanceReconciliation(memberId: string, options?): Promise<BalanceReconciliation>
+```
+
+| Returned field | Type | Description |
+| --- | --- | --- |
+| `status` | `'MATCH' \| 'PENDING' \| 'MISMATCH' \| 'UNAVAILABLE'` | `PENDING`: something for this member is still on its way to the chain, so ask again shortly. `MISMATCH`: nothing is in flight and the two differ. |
+| `creditAccountId` | `string \| null` | `null` before the member's first earn |
+| `recordedBalance` | `number` | OctaP's `confirmedBalance` |
+| `ledgerBalance` | `number \| null` | What the chain says is spendable; `null` when `UNAVAILABLE` |
+| `difference` | `number \| null` | `ledgerBalance - recordedBalance` |
+| `checkedAt` | `string` | ISO 8601. The result is cached for up to 30 seconds. |
+
 ## reservePosRedemption
 
 Holds a member's points and returns bytes for them to sign. [Guide](/guides/redeem-points-at-checkout/)
@@ -200,4 +258,4 @@ reverseTransaction(request: ReverseTransactionRequest, options?): Promise<Revers
 | `idempotencyKey` | `string` | **Required.** |
 | `reason` | `string` | **Required.** |
 
-Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance`, `balanceWentNegative` and `idempotencyKey`.
+Returns `reversalTransactionId`, `reversedTransactionId`, `organizationEndUserId`, `pointsAmount`, `newBalance` and `idempotencyKey`. An earn whose points are spent, held by a pending redemption, or expire within 10 minutes can't be reversed: `409`.

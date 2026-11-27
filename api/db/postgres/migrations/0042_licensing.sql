@@ -23,6 +23,7 @@ CREATE TABLE "license_plans" (
 	CONSTRAINT "license_plans_duration_positive" CHECK ("license_plans"."duration_days" is null or "license_plans"."duration_days" > 0)
 );
 --> statement-breakpoint
+ALTER TABLE "license_plans" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "licenses" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"organization_id" uuid NOT NULL,
@@ -53,9 +54,10 @@ INSERT INTO "license_plans" ("tier", "name", "monthly_price_vnd", "term_months_a
    '{"features":["voucher.batches","voucher.approval","webhooks","mcp","assistant","sandbox"],"limits":{"transactionsMonthly":50000,"members":50000,"apiKeys":10,"teamMembers":10}}', true),
   ('ENTERPRISE', 'Enterprise', 0, '{}', NULL,
    '{"features":["voucher.batches","voucher.approval","webhooks","mcp","assistant","sandbox"],"limits":{"transactionsMonthly":null,"members":null,"apiKeys":25,"teamMembers":null}}', false);--> statement-breakpoint
--- Every organization already here keeps working: Growth for 12 months, free.
+-- Every organization already working keeps working: Growth for 12 months, free. One waiting for
+-- approval gets the trial when it is approved, like any new organization.
 INSERT INTO "licenses" ("organization_id", "plan_id", "tier", "plan_name", "entitlements", "source", "starts_at", "ends_at")
 SELECT o."id", p."id", p."tier", p."name", p."entitlements", 'MIGRATION', now(), now() + interval '12 months'
 FROM "organizations" o
 CROSS JOIN (SELECT * FROM "license_plans" WHERE "tier" = 'GROWTH' LIMIT 1) p
-WHERE o."status" <> 'ARCHIVED';
+WHERE o."status" IN ('ACTIVE', 'SUSPENDED');

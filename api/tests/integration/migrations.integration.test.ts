@@ -277,9 +277,9 @@ describe('0033_voucher_approval_snapshot_and_actors', () => {
   });
 });
 
-describe('0038_licensing', () => {
-  it('replaces the billing tables, seeds the plans, and gives every organization but archived ones Growth for 12 months', async () => {
-    await withDatabaseAt(37, async (client) => {
+describe('0042_licensing', () => {
+  it('replaces the billing tables, seeds the plans, and gives working organizations Growth for 12 months', async () => {
+    await withDatabaseAt(41, async (client) => {
       const org = async (status: string) =>
         (
           await client`insert into organizations (slug, name, status) values (${randomUUID()}, ${status}, ${status})
@@ -288,6 +288,8 @@ describe('0038_licensing', () => {
       const active = await org('ACTIVE');
       const suspended = await org('SUSPENDED');
       await org('ARCHIVED');
+      // Gets the trial when it is approved, like any new organization; a Growth license now would hide it.
+      await org('PENDING_APPROVAL');
 
       await migrate(drizzle(client), { migrationsFolder: migrations });
 
@@ -321,6 +323,11 @@ describe('0038_licensing', () => {
       const [old] = await client`select to_regclass('public.subscriptions') as subscriptions,
         to_regclass('public.billing_plans') as plans`;
       expect(old).toEqual({ subscriptions: null, plans: null });
+      // The catalogue is platform-wide: RLS on, no policy, so a tenant can't read or change it.
+      const [rls] = await client`select relrowsecurity from pg_class where relname = 'license_plans'`;
+      expect(rls.relrowsecurity).toBe(true);
+      const [policies] = await client`select count(*)::int as n from pg_policies where tablename = 'license_plans'`;
+      expect(policies.n).toBe(0);
     });
   });
 });

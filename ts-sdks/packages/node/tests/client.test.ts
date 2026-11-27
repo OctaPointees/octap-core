@@ -365,6 +365,26 @@ describe('merchant route coverage and cancellation', () => {
     ])
       expect(removed in client).toBe(false);
   });
+  it('reads the on-chain evidence: organization history, program and a member reconciliation', async () => {
+    const { fetchFn, calls } = recordingFetch(() => ({}));
+    const client = new OctaPointClient({ fetchFn });
+
+    await client.listOrganizationTransactions({ type: 'EARN', status: 'CONFIRMED', memberId: 'm-1', limit: 10 });
+    await client.listOrganizationTransactions();
+    await client.getProgram({ organizationId: 'org' });
+    await client.getBalanceReconciliation('member/1');
+
+    expect(calls.map(({ url, method }) => ({ url, method }))).toEqual([
+      {
+        url: 'http://localhost:3000/v1/credits/transactions?limit=10&type=EARN&status=CONFIRMED&memberId=m-1',
+        method: 'GET',
+      },
+      { url: 'http://localhost:3000/v1/credits/transactions', method: 'GET' },
+      { url: 'http://localhost:3000/v1/credits/program', method: 'GET' },
+      { url: 'http://localhost:3000/v1/credits/members/member%2F1/reconciliation', method: 'GET' },
+    ]);
+    expect(calls[2].headers).toMatchObject({ 'x-organization-id': 'org' });
+  });
   it('reads the issuance budget', async () => {
     const { fetchFn, last } = recordingFetch(() => ({ remaining: 10 }));
     await expect(new OctaPointClient({ fetchFn }).getIssuanceBudget({ organizationId: 'org' })).resolves.toEqual({

@@ -183,6 +183,8 @@ function toBalance(organizationEndUserId: string, balance: SandboxBalance): Cred
     asOfCheckpoint: null,
     observedAt: new Date().toISOString(),
     stale: balance.pendingRedemption > 0,
+    // The sandbox ledger never opens a CreditAccount on Sui.
+    creditAccountId: null,
     isSandbox: true,
   };
 }

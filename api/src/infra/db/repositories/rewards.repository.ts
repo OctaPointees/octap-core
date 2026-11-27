@@ -24,6 +24,7 @@ import { operations } from '../schema/operations.schema.js';
 import { organizations } from '../schema/organizations.schema.js';
 import { organizationEndUsers, endUsers } from '../schema/members.schema.js';
 import { recordEvent } from './events.repository.js';
+import { recordAudit } from './audit.repository.js';
 import { recordVoucherEvent, recordVoucherReturned, recordVoucherSubmitted } from './voucher-events.js';
 import {
   ABANDONED_POS_HOLD_GRACE_MS,
@@ -42,6 +43,11 @@ import {
 import { MemberEligibilityError } from './member-eligibility.js';
 import { asOwnRole, withTenant } from '../rls.js';
 import { tenantOf, withTenantOf } from './tenant-lookup.js';
+import { expireDueVouchers, type ExpiredVouchers, type ExpiryScope } from './voucher-expiry.js';
+import { outsideRequestContext } from '#observability/request-context.js';
+
+/** Rows of each kind one expiry pass writes in a transaction. */
+export const VOUCHER_EXPIRY_BATCH_SIZE = 500;
 
 type Voucher = typeof vouchers.$inferSelect;
 
@@ -97,15 +103,18 @@ export class RewardsRuleError extends Error {
   }
 }
 
-function sameVoucherField(key: (typeof PUBLISHED_FIELDS)[number], before: unknown, after: unknown): boolean {
+/**
+ * Whether a voucher field keeps its value: `numeric` is compared as a number ("50.00" is 50), a date by
+ * its time, and `jsonb` (`terms`, `metadata`) by content, since Postgres reorders an object's keys.
+ */
+function sameVoucherField(key: string, before: unknown, after: unknown): boolean {
   if (before instanceof Date || after instanceof Date) {
     return (before as Date | null)?.getTime() === (after as Date | null)?.getTime();
   }
   if (key === 'discountValue' && before !== null && after !== null && before !== undefined && after !== undefined) {
     return Number(before) === Number(after);
   }
-  if (key === 'terms') return canonicalJson(before ?? null) === canonicalJson(after ?? null);
-  return (before ?? null) === (after ?? null);
+  return canonicalJson(before ?? null) === canonicalJson(after ?? null);
 }
 
 const notFound = (message: string) => new RewardsRuleError('NOT_FOUND', message);
@@ -219,6 +228,36 @@ const neverPublished = (voucher: Voucher): boolean =>
 @Injectable()
 export class RewardsRepository {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+
+  /**
+   * One batch of the expiry sweep (`VoucherExpiryWorker`), across every organization: an RLS exception,
+   * by design, like the outbox trim. See `expireDueVouchers`.
+   */
+  async expireDue(limit = VOUCHER_EXPIRY_BATCH_SIZE, now = new Date()): Promise<ExpiredVouchers> {
+    return this.db.transaction((tx) => expireDueVouchers(tx, { limit, now }));
+  }
+
+  /**
+   * Expires what a read is about to return, before it returns it, so a read never shows `AVAILABLE`
+   * or `ACTIVE` for something already expired, whenever the sweep last ran. `scope` is only what that
+   * read returns (the catalog's vouchers, one member's vouchers, one claim): the sweep keeps the bulk.
+   * It is the system's change, not the caller's: it runs outside the request context, so the events it
+   * records carry no actor and are not audited as the reader's.
+   */
+  async expireDueFor(
+    organizationId: string,
+    scope: Omit<ExpiryScope, 'organizationId'>,
+    db: DrizzleDb = this.db,
+  ): Promise<void> {
+    await outsideRequestContext(() =>
+      withTenant(db, organizationId, async (tx) => {
+        for (;;) {
+          const done = await expireDueVouchers(tx, { ...scope, organizationId, limit: VOUCHER_EXPIRY_BATCH_SIZE });
+          if (done.vouchers < VOUCHER_EXPIRY_BATCH_SIZE && done.memberVouchers < VOUCHER_EXPIRY_BATCH_SIZE) return;
+        }
+      }),
+    );
+  }
 
   /**
    * Pass `tx` to join the caller's transaction (it runs in a savepoint there), e.g. so the console's
@@ -434,6 +473,9 @@ export class RewardsRepository {
         throw conflict('The voucher is waiting for approval; withdraw it to make changes');
       if (current.status === 'ARCHIVED')
         throw conflict("This voucher's batch was archived; import its code again to use it");
+      // Past its claim window it stays EXPIRED: a status change would only be expired again.
+      if (current.status === 'EXPIRED' && patch.status !== undefined)
+        throw conflict('This voucher has expired; create a new voucher with a new code instead');
       const merged = { ...current, ...patch };
       validate(merged);
       const onChain = current.publishStatus === 'PUBLISHING' || current.publishStatus === 'PUBLISHED';
@@ -454,6 +496,20 @@ export class RewardsRepository {
       const depleted = merged.totalSupply !== null && merged.claimedCount >= merged.totalSupply;
       if (patch.status === 'ACTIVE' && depleted) throw conflict('An exhausted voucher cannot be activated');
       const { status: requestedStatus, ...fields } = patch;
+      // An edit is audited by field name only (OCT-333); a status change has its own event.
+      const current_ = current as Record<string, unknown>;
+      const edited = Object.entries(fields)
+        .filter(([key, value]) => !sameVoucherField(key, current_[key], value))
+        .map(([key]) => key)
+        .sort();
+      if (edited.length > 0)
+        await recordAudit(tx, {
+          organizationId,
+          action: 'voucher.updated',
+          targetType: 'voucher',
+          targetId: id,
+          changes: { fields: edited },
+        });
       if (requestedStatus === 'ACTIVE' && !onChain) {
         const activation = await this.activation(tx, organizationId, actor);
         // While approval is required, an Owner's activation is the approval of whatever the draft holds,
@@ -476,7 +532,7 @@ export class RewardsRepository {
         .set({
           ...fields,
           ...(status ? { status } : {}),
-          ...(depleted ? { status: 'DEPLETED' as const } : {}),
+          ...(depleted && current.status !== 'EXPIRED' ? { status: 'DEPLETED' as const } : {}),
           updatedAt: new Date(),
         })
         .where(eq(vouchers.id, id))

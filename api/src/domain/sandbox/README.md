@@ -26,7 +26,7 @@ changes. No real member's balance moves, nothing is sent to the chain, no webhoo
 | `POST /v1/credits/redeem/finalize` | Public, like live. A `sandbox_…` digest settles on the sandbox ledger with any non-empty signature. An unsigned hold is released after 30 minutes, like a live one. |
 | `POST /v1/identity/verify` | Live and read-only: it only reads the customer (a POST so the ID token stays out of the URL). |
 | `GET /v1/credits/members/:id/balance`, `…/transactions` | The member's sandbox balance and sandbox history. |
-| Other GET routes | Live data, read-only. |
+| Other GET routes | Live data, read-only. That includes the on-chain evidence routes (`GET /v1/credits/transactions`, `…/program`, `…/members/:id/reconciliation`, OCT-334): the sandbox has no chain to give evidence of, so they show the live ledger. |
 | Every other write | 403 `SANDBOX_NOT_SUPPORTED`. |
 
 Every sandbox response carries `isSandbox: true`. Live responses do not have the field.

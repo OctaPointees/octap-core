@@ -20,9 +20,12 @@ import { GovernanceRepository } from './repositories/governance.repository.js';
 import { OrganizationsRepository } from './repositories/organizations.repository.js';
 import { OperationalHealthRepository } from './repositories/operational-health.repository.js';
 import { SandboxRepository } from './repositories/sandbox.repository.js';
+import { AuditRepository } from './repositories/audit.repository.js';
 import { OrganizationEventsRepository } from './repositories/events.repository.js';
 import { RequestLogsRepository } from './repositories/request-logs.repository.js';
 import { LicensesRepository } from './repositories/licenses.repository.js';
+import { EvidenceRepository } from './repositories/evidence.repository.js';
+import { ProgramAnalyticsRepository } from './repositories/program-analytics.repository.js';
 const repositories = [
   OrganizationsRepository,
   GovernanceRepository,
@@ -44,6 +47,9 @@ const repositories = [
   RequestLogsRepository,
   SandboxRepository,
   LicensesRepository,
+  AuditRepository,
+  EvidenceRepository,
+  ProgramAnalyticsRepository,
 ];
 
 @Module({

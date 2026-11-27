@@ -2,9 +2,9 @@
 
 Implements the credit-earn/redeem slice of the object map in
 [the roadmap](../../docs/roadmap.md): `capabilities`, `program_control`, `policy_version`,
-`credit_account`, `operation_shard`, `budget_shard`. `campaign_authorization` and
-`audit_manifest` are not built yet — they stay roadmap rows until a feature actually needs the
-campaign machinery they require.
+`credit_account`, `operation_shard`, `budget_shard`. `campaign_authorization` is not built yet: it
+stays a roadmap row until a feature needs the campaign machinery. Audit evidence seals (OCT-77) are
+its own package, [`../audit`](../audit/README.md), so adding them never forces a fresh publish here.
 
 ## Modules
 
@@ -64,9 +64,10 @@ ProgramAdminCap must stay outside API workers. Points are non-transferable and t
   supported (its recorded keys live in the old shards).
 - **Campaigns, audit manifests**: not built. See the roadmap's object map.
 - **No on-chain clawback debt**: reversing an earn whose credits were already spent aborts
-  (`EBucketUnavailable`) rather than recording a debt. Postgres still records the reversal (the
-  balance goes negative there), so that account's chain and Postgres balances differ by what was
-  spent until a human settles it — the worker marks the mirror command FAILED with the abort.
+  (`EBucketUnavailable`) rather than recording a debt. Postgres refuses the same reversals first
+  (OCT-334): an earn is reversed only while its bucket is whole, not held by a redemption in
+  progress, and more than 10 minutes from expiry, so the mirror never meets this abort. Clawback
+  debt is a roadmap follow-up.
 - **`reverse_earn` of an expired bucket aborts** for the same reason: the credits are gone.
 
 ## Tests

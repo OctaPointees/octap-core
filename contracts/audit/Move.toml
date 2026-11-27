@@ -1,0 +1,6 @@
+[package]
+name = "octap_audit"
+edition = "2024"
+
+[addresses]
+octap_audit = "0x0"

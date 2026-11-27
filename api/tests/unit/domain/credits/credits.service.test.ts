@@ -128,8 +128,9 @@ describe('CreditsService.listTransactions', () => {
         {
           row: buildLoyaltyTransaction({ id: 'tx-1', blockchainTransactionId: 'btx-1', metadata: { a: 1 } }),
           digest: 'DIGEST-1',
+          confirmedAt: new Date('2026-10-01T00:00:05Z'),
         },
-        { row: buildLoyaltyTransaction({ id: 'tx-2', transactionType: 'REDEEM' }), digest: null },
+        { row: buildLoyaltyTransaction({ id: 'tx-2', transactionType: 'REDEEM' }), digest: null, confirmedAt: null },
       ],
       nextCursor: 'tx-2',
     }));
@@ -149,6 +150,7 @@ describe('CreditsService.listTransactions', () => {
       createdByMembershipId: null,
       blockchainTransactionId: 'btx-1',
       blockchainDigest: 'DIGEST-1',
+      confirmedAt: '2026-10-01T00:00:05.000Z',
       transactionType: 'EARN',
       pointsAmount: 50,
       purchaseAmount: null,
@@ -161,6 +163,25 @@ describe('CreditsService.listTransactions', () => {
       updatedAt: '2026-10-01T00:00:00.000Z',
     });
     expect(result.items[1].blockchainDigest).toBeNull();
+    expect(result.items[1].confirmedAt).toBeNull();
+  });
+
+  it('lists the organization’s history with validated filters', async () => {
+    const listTransactionPageByOrganization = vi.fn(async () => ({ rows: [], nextCursor: null }));
+    const repo = stub<CreditsRepository>({ listTransactionPageByOrganization });
+    const svc = service(repo);
+    await svc.listOrganizationTransactions('org-1', { type: 'EARN', status: 'CONFIRMED', limit: '5' });
+    expect(listTransactionPageByOrganization).toHaveBeenCalledWith(
+      'org-1',
+      { type: 'EARN', status: 'CONFIRMED', memberId: undefined },
+      5,
+      undefined,
+    );
+    for (const query of [{ type: 'GIFT' }, { status: 'DONE' }, { memberId: 'nope' }, { limit: '0' }, { sort: 'asc' }]) {
+      await expect(svc.listOrganizationTransactions('org-1', query)).rejects.toMatchObject({
+        name: 'BadRequestException',
+      });
+    }
   });
 
   it('defaults to 25 rows from the newest', async () => {

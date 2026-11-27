@@ -1,0 +1,1 @@
+CREATE INDEX "voucher_ownership_available_expiry_idx" ON "voucher_ownerships" USING btree ("expires_at") WHERE "voucher_ownerships"."status" = 'AVAILABLE';

@@ -35,6 +35,7 @@ function service(rewardsRepo: { [K in keyof RewardsRepository]?: unknown }, cred
     stub<RewardsRepository>({
       findVoucherById: async () => buildVoucher({ pointsCost: 0 }),
       latestApprovals: async () => new Map(),
+      expireDueFor: async () => undefined,
       ...rewardsRepo,
     }),
     creditsRepo,
@@ -251,6 +252,7 @@ describe('RewardsService claims and redemption', () => {
       const rewards = new RewardsService(
         stub<RewardsRepository>({
           findVoucherById: async () => buildVoucher({ pointsCost: 25 }),
+          expireDueFor: async () => undefined,
           claimVoucher,
           getClaim,
         }),

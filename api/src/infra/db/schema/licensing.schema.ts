@@ -22,7 +22,9 @@ export const licenseSourceEnum = pgEnum('license_source', ['TRIAL', 'MIGRATION',
 /**
  * LICENSE PLAN: one tier of the catalogue, managed by the System Admin (OCT-329). Platform data, not a
  * tenant's: every organization reads the same catalogue. A plan is never deleted, only made
- * inactive, because licenses keep pointing at the plan they were granted from.
+ * inactive, because licenses keep pointing at the plan they were granted from. Platform-wide: read
+ * and written as the connection owner only. RLS is on with no policy, so code running under a tenant
+ * (`withTenant`) can't read or change prices and entitlements.
  */
 export const licensePlans = pgTable(
   'license_plans',
@@ -50,7 +52,7 @@ export const licensePlans = pgTable(
     check('license_plans_price_not_negative', sql`${t.monthlyPriceVnd} >= 0`),
     check('license_plans_duration_positive', sql`${t.durationDays} is null or ${t.durationDays} > 0`),
   ],
-);
+).enableRLS();
 
 /**
  * LICENSE: what one organization may use, from `starts_at` to `ends_at` (OCT-329). The plan's

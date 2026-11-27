@@ -1,5 +1,14 @@
 name: Checks
-on: [push, pull_request]
+on:
+  pull_request:
+  # What lands on a protected branch is checked too: a direct push (an admin bypass) has no PR run.
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer commit supersedes a PR's run; every commit on dev or main keeps its own.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   typescript:
     runs-on: ubuntu-latest

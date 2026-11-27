@@ -8,10 +8,25 @@ import { EarnService } from './earn.service.js';
 import { IssuanceBudgetService } from './issuance-budget.service.js';
 import { ReversalService } from './reversal.service.js';
 import { PosRedemptionService } from './pos-redemption.service.js';
+import { LedgerEvidenceService } from './ledger-evidence.service.js';
 
 @Module({
   imports: [PostgresModule, CacheModule, SuiTransactionBuilderModule, IdentityModule],
-  providers: [CreditsService, EarnService, IssuanceBudgetService, ReversalService, PosRedemptionService],
-  exports: [CreditsService, EarnService, IssuanceBudgetService, ReversalService, PosRedemptionService],
+  providers: [
+    CreditsService,
+    EarnService,
+    IssuanceBudgetService,
+    ReversalService,
+    PosRedemptionService,
+    LedgerEvidenceService,
+  ],
+  exports: [
+    CreditsService,
+    EarnService,
+    IssuanceBudgetService,
+    ReversalService,
+    PosRedemptionService,
+    LedgerEvidenceService,
+  ],
 })
 export class CreditsModule {}

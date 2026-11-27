@@ -15,6 +15,7 @@ export default defineConfig({
     alias: [
       { find: '@octap/contracts', replacement: fromRoot('./ts-sdks/packages/contracts/src/index.ts') },
       { find: '@octap/chain', replacement: fromRoot('./ts-sdks/packages/chain/src/index.ts') },
+      { find: '@octap/verify', replacement: fromRoot('./ts-sdks/packages/verify/src/index.ts') },
       { find: '@octap/sdk', replacement: fromRoot('./ts-sdks/packages/node/src/index.ts') },
       { find: '@octap/mcp', replacement: fromRoot('./ts-sdks/packages/mcp/src/index.ts') },
       { find: '@octap/browser-sdk', replacement: fromRoot('./ts-sdks/packages/browser/src/index.ts') },
