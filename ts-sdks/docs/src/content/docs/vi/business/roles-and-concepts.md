@@ -10,7 +10,7 @@ Tài liệu này giải thích cách OctaP mô hình hóa doanh nghiệp, nhân 
 | Khái niệm | Là ai | Cách đăng nhập | Quyền hạn chính |
 | --- | --- | --- | --- |
 | **Organization** | Một thương hiệu / merchant | — | Sở hữu riêng chương trình điểm, ngân sách phát hành, danh mục voucher, danh sách thành viên và API key. |
-| **Business Owner** | Chủ doanh nghiệp hoặc trưởng vận hành | Tài khoản Google trên Business Console | Toàn quyền trên organization: mời/quản lý nhân sự, chính sách hoàn điểm, duyệt voucher, webhook, yêu cầu đổi thông tin pháp lý, cùng toàn bộ quyền của Developer. |
+| **Business Owner** | Chủ doanh nghiệp hoặc trưởng vận hành | Tài khoản Google trên Business Console | Toàn quyền trên organization: mời/quản lý nhân sự, chính sách hoàn điểm, duyệt voucher, đăng ký và thay đổi webhook endpoint, yêu cầu đổi thông tin pháp lý, cùng toàn bộ quyền của Developer. |
 | **Business Developer** | Kỹ sư hoặc nhân sự vận hành tích hợp | Tài khoản Google trên Business Console | Quản lý API key, tra cứu thành viên, tạo bản nháp voucher/batch, xem ngân sách và trạng thái organization. Không duyệt voucher (khi bật chế độ duyệt), không sửa refund policy hoặc quản lý nhân sự. |
 | **Member (Khách hàng)** | Khách hàng cuối tham gia chương trình | Tài khoản Google trên website của bạn (`@octap/browser-sdk` / zkLogin) | Có ví Sui loyalty riêng, tích điểm, claim phần thưởng và tự ký xác nhận dùng voucher trên thiết bị của mình. |
 

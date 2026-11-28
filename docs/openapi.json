@@ -3529,6 +3529,716 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/campaigns": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_create",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_create_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleCampaignsController_create_Body"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "ConsoleCampaignsController_list",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "false",
+                "true"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_list_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}": {
+      "get": {
+        "operationId": "ConsoleCampaignsController_detail",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_detail_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/activate": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_activate",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_activate_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/pause": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_pause",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_pause_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/resume": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_resume",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_resume_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/end": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_end",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_end_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/archive": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_archive",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_archive_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/vouchers/activate": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_activateVouchers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_activateVouchers_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleCampaignsController_activateVouchers_Body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/vouchers/pause": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_pauseVouchers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_pauseVouchers_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/vouchers/resume": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_resumeVouchers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_resumeVouchers_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/campaigns/{campaignId}/vouchers/archive": {
+      "post": {
+        "operationId": "ConsoleCampaignsController_archiveVouchers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCampaignsController_archiveVouchers_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console Campaigns"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/organizations/{organizationId}/refund-policy": {
       "get": {
         "operationId": "ConsoleRefundPolicyController_current",
@@ -6929,6 +7639,120 @@
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
       }
     },
+    "/v1/campaigns": {
+      "get": {
+        "operationId": "CampaignsController_list",
+        "parameters": [
+          {
+            "name": "live",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "false",
+                "true"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignsController_list_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/campaigns/{campaignId}": {
+      "get": {
+        "operationId": "CampaignsController_get",
+        "parameters": [
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignsController_get_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
     "/v1/webhooks/endpoints": {
       "get": {
         "operationId": "WebhooksController_listEndpoints",
@@ -8189,6 +9013,9 @@
   },
   "tags": [
     {
+      "name": "Campaigns"
+    },
+    {
       "name": "Console Analytics"
     },
     {
@@ -8199,6 +9026,9 @@
     },
     {
       "name": "Console Audit Log"
+    },
+    {
+      "name": "Console Campaigns"
     },
     {
       "name": "Console Change Requests"
@@ -8346,6 +9176,39 @@
           "UNAVAILABLE"
         ],
         "type": "string"
+      },
+      "CampaignStatus": {
+        "description": "DRAFT until an Owner activates it, which approves it. ACTIVE and PAUSED move back and forth;\nENDED and ARCHIVED are final.",
+        "enum": [
+          "ACTIVE",
+          "ARCHIVED",
+          "DRAFT",
+          "ENDED",
+          "PAUSED"
+        ],
+        "type": "string"
+      },
+      "CampaignsController_get_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "CampaignsController_list_Query": {
+        "type": "object",
+        "properties": {
+          "live": {
+            "enum": [
+              "false",
+              "true"
+            ],
+            "type": "string"
+          }
+        }
+      },
+      "CampaignsController_list_Response": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/CampaignDto"
+        }
       },
       "ConsoleAnalyticsController_summary_Query": {
         "type": "object",
@@ -8586,6 +9449,258 @@
           "nextCursor"
         ]
       },
+      "ConsoleCampaignsController_activateVouchers_Body": {
+        "type": "object",
+        "properties": {
+          "seen": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherSeen"
+            }
+          }
+        }
+      },
+      "ConsoleCampaignsController_activateVouchers_Response": {
+        "description": "`activate`, `pause`, `resume` or `archive` on every voucher of a campaign, with each voucher's outcome.",
+        "type": "object",
+        "properties": {
+          "campaign": {
+            "$ref": "#/components/schemas/CampaignDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "campaign",
+          "vouchers"
+        ]
+      },
+      "ConsoleCampaignsController_activate_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "ConsoleCampaignsController_archiveVouchers_Response": {
+        "description": "`activate`, `pause`, `resume` or `archive` on every voucher of a campaign, with each voucher's outcome.",
+        "type": "object",
+        "properties": {
+          "campaign": {
+            "$ref": "#/components/schemas/CampaignDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "campaign",
+          "vouchers"
+        ]
+      },
+      "ConsoleCampaignsController_archive_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "ConsoleCampaignsController_create_Body": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "startsAt": {
+            "description": "ISO 8601.",
+            "type": "string"
+          },
+          "endsAt": {
+            "description": "ISO 8601, after `startsAt`.",
+            "type": "string"
+          },
+          "multiplierBps": {
+            "description": "The earn boost, above 10000 (1x) and at most `CAMPAIGN_MAX_MULTIPLIER_BPS` (10x). Omit or `null` for\na campaign that only groups vouchers.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "endsAt",
+          "name",
+          "startsAt"
+        ]
+      },
+      "ConsoleCampaignsController_create_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "ConsoleCampaignsController_detail_Response": {
+        "description": "A campaign with its vouchers, in `code` order.",
+        "type": "object",
+        "properties": {
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CampaignStatus"
+          },
+          "startsAt": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": "string"
+          },
+          "multiplierBps": {
+            "description": "20000 is 2x. `null`: the campaign boosts no earn, it only groups vouchers.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "earnBoostLive": {
+            "description": "Whether an earn naming it is boosted right now: ACTIVE, within its window, with a multiplier.",
+            "type": "boolean"
+          },
+          "createdByUserId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedByUserId": {
+            "description": "The Owner whose first activation approved it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "approvedAt",
+          "approvedByUserId",
+          "createdAt",
+          "createdByUserId",
+          "description",
+          "earnBoostLive",
+          "endsAt",
+          "id",
+          "multiplierBps",
+          "name",
+          "organizationId",
+          "startsAt",
+          "status",
+          "updatedAt",
+          "vouchers"
+        ]
+      },
+      "ConsoleCampaignsController_end_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "ConsoleCampaignsController_list_Query": {
+        "type": "object",
+        "properties": {
+          "includeArchived": {
+            "enum": [
+              "false",
+              "true"
+            ],
+            "type": "string"
+          }
+        }
+      },
+      "ConsoleCampaignsController_list_Response": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/CampaignDto"
+        }
+      },
+      "ConsoleCampaignsController_pauseVouchers_Response": {
+        "description": "`activate`, `pause`, `resume` or `archive` on every voucher of a campaign, with each voucher's outcome.",
+        "type": "object",
+        "properties": {
+          "campaign": {
+            "$ref": "#/components/schemas/CampaignDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "campaign",
+          "vouchers"
+        ]
+      },
+      "ConsoleCampaignsController_pause_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
+      "ConsoleCampaignsController_resumeVouchers_Response": {
+        "description": "`activate`, `pause`, `resume` or `archive` on every voucher of a campaign, with each voucher's outcome.",
+        "type": "object",
+        "properties": {
+          "campaign": {
+            "$ref": "#/components/schemas/CampaignDto"
+          },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherBatchActionResult"
+            }
+          }
+        },
+        "required": [
+          "campaign",
+          "vouchers"
+        ]
+      },
+      "ConsoleCampaignsController_resume_Response": {
+        "$ref": "#/components/schemas/CampaignDto",
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+      },
       "ConsoleChangeRequestsController_propose_Body": {
         "type": "object",
         "properties": {
@@ -8596,6 +9711,7 @@
             "type": "string"
           },
           "payload": {
+            "description": "`amount` for `BUDGET_TOP_UP`; `earnBps` (0–10000, points per 10,000 units of purchase) for\n`UPDATE_EARN_RATE`, which replaces the organization's base earn rate once approved.",
             "allOf": [
               {
                 "type": "object",
@@ -8607,6 +9723,9 @@
                     "type": "string"
                   },
                   "amount": {
+                    "type": "number"
+                  },
+                  "earnBps": {
                     "type": "number"
                   }
                 }
@@ -8669,6 +9788,7 @@
               "REINSTATE",
               "SUSPEND",
               "TRANSFER_OWNERSHIP",
+              "UPDATE_EARN_RATE",
               "UPDATE_IDENTITY",
               "UPDATE_PROFILE"
             ],
@@ -10560,6 +11680,10 @@
           "title": {
             "type": "string"
           },
+          "campaignId": {
+            "description": "The campaign it belongs to (OCT-340): one of this organization's that is not ENDED or ARCHIVED.\nSet only on create; it never changes afterwards.",
+            "type": "string"
+          },
           "description": {
             "type": "string"
           },
@@ -10665,6 +11789,9 @@
           "code": {
             "type": "string"
           },
+          "metadata": {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
           "title": {
             "type": "string"
           },
@@ -10727,9 +11854,6 @@
               "null",
               "number"
             ]
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/Record_string_unknown"
           },
           "status": {
             "enum": [
@@ -10816,6 +11940,10 @@
           "dryRun": {
             "description": "Run every check and report each item's result, but write nothing.",
             "type": "boolean"
+          },
+          "campaignId": {
+            "description": "A campaign (OCT-340), not ENDED or ARCHIVED, that every voucher this batch creates (or brings back\nfrom ARCHIVED) joins. A voucher the batch leaves as it is keeps its own campaign.",
+            "type": "string"
           }
         },
         "required": [
@@ -11288,6 +12416,10 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/Record_string_unknown"
+          },
+          "campaignId": {
+            "description": "A campaign whose earn boost applies (OCT-340): ACTIVE, within its window, with a multiplier, or\nthe earn is refused (422). Omit for an ordinary earn.",
+            "type": "string"
           }
         },
         "required": [
@@ -11911,6 +13043,7 @@
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_EARN_RATE",
           "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
@@ -12814,6 +13947,7 @@
                         "REINSTATE",
                         "SUSPEND",
                         "TRANSFER_OWNERSHIP",
+                        "UPDATE_EARN_RATE",
                         "UPDATE_IDENTITY",
                         "UPDATE_PROFILE"
                       ],
@@ -12918,6 +14052,7 @@
             "type": "string"
           },
           "payload": {
+            "description": "`amount` for `BUDGET_TOP_UP`; `earnBps` (0–10000, points per 10,000 units of purchase) for\n`UPDATE_EARN_RATE`, which replaces the organization's base earn rate once approved.",
             "allOf": [
               {
                 "type": "object",
@@ -12929,6 +14064,9 @@
                     "type": "string"
                   },
                   "amount": {
+                    "type": "number"
+                  },
+                  "earnBps": {
                     "type": "number"
                   }
                 }
@@ -12991,6 +14129,7 @@
               "REINSTATE",
               "SUSPEND",
               "TRANSFER_OWNERSHIP",
+              "UPDATE_EARN_RATE",
               "UPDATE_IDENTITY",
               "UPDATE_PROFILE"
             ],
@@ -14103,6 +15242,10 @@
               "PAUSED"
             ],
             "type": "string"
+          },
+          "campaignId": {
+            "description": "The campaign it belongs to (OCT-340): one of this organization's that is not ENDED or ARCHIVED.\nSet only on create; it never changes afterwards.",
+            "type": "string"
           }
         },
         "required": [
@@ -14442,6 +15585,9 @@
           "code": {
             "type": "string"
           },
+          "metadata": {
+            "$ref": "#/components/schemas/Record_string_unknown"
+          },
           "title": {
             "type": "string"
           },
@@ -14504,9 +15650,6 @@
               "null",
               "number"
             ]
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/Record_string_unknown"
           },
           "status": {
             "enum": [
@@ -14621,6 +15764,10 @@
           "dryRun": {
             "description": "Run every check and report each item's result, but write nothing.",
             "type": "boolean"
+          },
+          "campaignId": {
+            "description": "A campaign (OCT-340), not ENDED or ARCHIVED, that every voucher this batch creates (or brings back\nfrom ARCHIVED) joins. A voucher the batch leaves as it is keeps its own campaign.",
+            "type": "string"
           }
         },
         "required": [
@@ -15333,6 +16480,88 @@
           "occurredAt",
           "requestId",
           "target"
+        ]
+      },
+      "CampaignDto": {
+        "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CampaignStatus"
+          },
+          "startsAt": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": "string"
+          },
+          "multiplierBps": {
+            "description": "20000 is 2x. `null`: the campaign boosts no earn, it only groups vouchers.",
+            "type": [
+              "null",
+              "number"
+            ]
+          },
+          "earnBoostLive": {
+            "description": "Whether an earn naming it is boosted right now: ACTIVE, within its window, with a multiplier.",
+            "type": "boolean"
+          },
+          "createdByUserId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedByUserId": {
+            "description": "The Owner whose first activation approved it.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "approvedAt",
+          "approvedByUserId",
+          "createdAt",
+          "createdByUserId",
+          "description",
+          "earnBoostLive",
+          "endsAt",
+          "id",
+          "multiplierBps",
+          "name",
+          "organizationId",
+          "startsAt",
+          "status",
+          "updatedAt"
         ]
       },
       "ConsoleCredential": {
@@ -16668,6 +17897,10 @@
           "title": {
             "type": "string"
           },
+          "campaignId": {
+            "description": "The campaign it belongs to (OCT-340): one of this organization's that is not ENDED or ARCHIVED.\nSet only on create; it never changes afterwards.",
+            "type": "string"
+          },
           "description": {
             "type": "string"
           },
@@ -17061,6 +18294,13 @@
           },
           "batchId": {
             "description": "The batch it was created or last imported in (`createVoucherBatch`), `null` if created on its own.",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "campaignId": {
+            "description": "The campaign it belongs to (OCT-340), `null` if none.",
             "type": [
               "null",
               "string"

@@ -110,6 +110,7 @@ Annotated portal screenshots will be added in a follow-up update once the new or
 - **Steps:**
   1. Edit display details (such as display name or logo) directly in **Settings**.
   2. To change registered legal details (legal name, tax/identity details), submit an **`UPDATE_IDENTITY`** request—platform administrators must approve it before it takes effect.
-  3. Under **Refund Policy**, configure `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, and `refundWindowDays`, provide a reason, and publish a new version.
-- **Expected outcome:** Display settings update immediately; legal changes await admin approval; refund policy creates a new versioned record without overwriting history.
+  3. To change the base earn rate, submit an **`UPDATE_EARN_RATE`** request with the new `earnBps` (0–10000) and a reason. Platform administrators must approve it; the new rate applies to every earn from the moment it reaches the chain.
+  4. Under **Refund Policy**, configure `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, and `refundWindowDays`, provide a reason, and publish a new version.
+- **Expected outcome:** Display settings update immediately; legal and earn-rate changes await admin approval; refund policy creates a new versioned record without overwriting history.
 - **Recovery:** Use **Refund Policy History** to audit previous rules if a customer disputes a refund eligibility decision.

@@ -68,6 +68,16 @@ export interface EarnParams {
   budgetShardId: string;
   /** Smallest currency unit of the underlying purchase, not a credit amount. */
   purchaseAmount: number | bigint;
+  /**
+   * The boost on the policy's earn rate, in basis points: `10_000` for an ordinary earn, at most
+   * `100_000` (10x, enforced on-chain). Points are `floor(purchase * earnBps * multiplierBps / 10^8)`.
+   */
+  multiplierBps: number | bigint;
+  /**
+   * The campaign behind a boost, as its UUID's 16 bytes, emitted on `CreditEarned`. Required above
+   * 1x and omitted (empty) at 1x: anything else aborts `EInvalidCampaign` on-chain.
+   */
+  campaignId?: Uint8Array;
   /** Off-chain command/idempotency key; recorded on-chain so a replay of it aborts. */
   operationKey: Uint8Array;
 }
@@ -178,6 +188,12 @@ export interface ActivatePolicyAndIssueCapParams {
    * program never ends up activated but shardless (and so unable to `earn`).
    */
   shards?: Pick<CreateShardsParams, 'shardCount' | 'totalBudget'>;
+}
+
+export interface ActivatePolicyParams {
+  adminCapId: string;
+  programId: string;
+  policyVersionId: string;
 }
 
 export interface CreateShardsParams {
@@ -348,6 +364,8 @@ export class OctapChainClient {
         operationShard: params.operationShardId,
         budgetShard: params.budgetShardId,
         purchaseAmount: params.purchaseAmount,
+        multiplierBps: params.multiplierBps,
+        campaignId: Array.from(params.campaignId ?? []),
         operationKey: Array.from(params.operationKey),
       },
     })(tx);
@@ -555,6 +573,20 @@ export class OctapChainClient {
     if (params.shards) {
       this.addCreateShards(tx, { adminCapId: params.adminCapId, programId: params.programId, ...params.shards });
     }
+    return tx;
+  }
+
+  /**
+   * Activates `params.policyVersionId` for `params.programId`, and nothing else: rotating an
+   * already-provisioned program's policy (OCT-341). Deliberately no `issue_cap`, so the program's
+   * existing `IssuerCap` keeps signing earns, now against the new policy.
+   */
+  buildActivatePolicyTransaction(params: ActivatePolicyParams): Transaction {
+    const tx = new Transaction();
+    programControl.activatePolicy({
+      package: this.packageId,
+      arguments: { admin: params.adminCapId, program: params.programId, policy: params.policyVersionId },
+    })(tx);
     return tx;
   }
 

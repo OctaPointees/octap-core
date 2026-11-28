@@ -277,9 +277,9 @@ describe('0033_voucher_approval_snapshot_and_actors', () => {
   });
 });
 
-describe('0042_licensing', () => {
+describe('0044_licensing', () => {
   it('replaces the billing tables, seeds the plans, and gives working organizations Growth for 12 months', async () => {
-    await withDatabaseAt(41, async (client) => {
+    await withDatabaseAt(43, async (client) => {
       const org = async (status: string) =>
         (
           await client`insert into organizations (slug, name, status) values (${randomUUID()}, ${status}, ${status})

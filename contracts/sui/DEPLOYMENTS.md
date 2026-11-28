@@ -14,12 +14,22 @@ Move source.
 
 | Object | Id |
 | --- | --- |
-| Package (`published-at` = `original-id`, v1) | `0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e` |
-| `0x2::package::UpgradeCap` | `0x7eca84e4a590fe6fdb0d93f34b96051d149d3746fcee89505437aecb89ad6d07` |
-| Publish tx | `4okeG9cudnSnZcAtBv6GjJgL6AhfR4Ytko5GPtTwyQE3` |
+| Package (`published-at` = `original-id`, v1) | `0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b` |
+| `0x2::package::UpgradeCap` | `0x4357c1b84c9b14c38d3bd96387f965d1a941973f35c28e43830cd149b938df2d` |
+| Publish tx | `4B9aAUUVu1xkacSoCWX7vXPAL4oEasKDXUf4ePzTwVwe` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
 | Issuer address (issuer signer, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+
+Fresh publish for OCT-340 (campaign earn multiplier): `credit_account::earn` takes a `multiplier_bps`
+after `purchase_amount`, bounded to 1x–10x (`EInvalidMultiplier`), and credits
+`purchase_amount * earn_bps * multiplier_bps / 10^8`, still debited from the budget shard.
+`CreditEarned` gained a `multiplier_bps` field. `earn` also takes a `campaign_id` after it, emitted on
+`CreditEarned`: a campaign's 16 UUID bytes on a boosted earn, empty on a 1x one (`EInvalidCampaign`
+otherwise), so a boosted earn on the ledger names its campaign. Changing an entry function's signature and an event's
+shape is not upgrade-compatible. The previous package `0xcad75786...` (OCT-291) is abandoned on
+testnet, not migrated: wipe and reseed each database that points at it (see "Testnet data is
+disposable" below and `api/src/domain/indexer/README.md`).
 
 Fresh publish for OCT-291 (`VoucherTerms.use_duration_ms`): each customer's voucher can be usable for
 a duration from its own `issued_at_ms`, capped by `expires_at_ms` (`voucher_terms::use_deadline_ms`,

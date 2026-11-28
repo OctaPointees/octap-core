@@ -24,6 +24,8 @@ import {
 import { UUID_PATTERN } from '#infra/db/repositories/console-access.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { pointsForPurchase } from '../credits/earn.service.js';
+import { campaignBoost } from '../credits/campaign-boost.js';
+import { CampaignsRepository } from '#infra/db/repositories/campaigns.repository.js';
 import { assertValidReserveRequest } from '../credits/pos-redemption.service.js';
 import { mapMemberEligibilityError } from '../credits/member-eligibility-error.js';
 
@@ -50,12 +52,19 @@ export class SandboxCreditsService {
     private readonly sandbox: SandboxRepository,
     private readonly creditsRepo: CreditsRepository,
     private readonly programsRepo: ProgramsRepository,
+    private readonly campaigns: CampaignsRepository,
   ) {}
 
   async earn(tenant: TenantContext, request: EarnPointsRequest): Promise<EarnPointsResponse> {
     await this.assertMember(tenant.organizationId, request.organizationEndUserId);
     const program = await requireProgramConfig(this.programsRepo, tenant.organizationId);
-    const points = pointsForPurchase(request.purchaseAmount, program.earnBps);
+    // As live: a retry under an accepted key skips the campaign check and reports the original earn,
+    // even once its campaign has closed. Its `campaignId` still has to match, from the payload hash.
+    const replayed = await this.sandbox.findByKey(tenant.organizationId, request.idempotencyKey);
+    const boost = replayed ? null : await campaignBoost(this.campaigns, tenant.organizationId, request.campaignId);
+    const points = boost
+      ? pointsForPurchase(request.purchaseAmount, program.earnBps, boost.multiplierBps)
+      : replayed!.pointsAmount;
     const { transaction, balance } = await this.sandbox
       .earn({
         organizationId: tenant.organizationId,
@@ -66,6 +75,7 @@ export class SandboxCreditsService {
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
+        campaignId: typeof request.campaignId === 'string' ? request.campaignId : undefined,
       })
       .catch(mapWriteError);
     return {

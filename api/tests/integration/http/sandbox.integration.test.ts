@@ -269,7 +269,7 @@ describe('sandbox mode: a sandbox key never touches real points, the chain or we
       .expect(403);
   });
 
-  it('sends a webhook test event to one endpoint only, Owner only', async () => {
+  it('sends a webhook test event to one endpoint only, from an Owner or a Business Developer', async () => {
     const [target] = await ctx.db.select().from(schema.webhookEndpoints);
     const test = (actor: Actor, endpointId = target.id) =>
       ctx.http().post(`/v1/console/organizations/${orgId}/webhooks/endpoints/${endpointId}/test`).set(as(actor));
@@ -290,7 +290,8 @@ describe('sandbox mode: a sandbox key never touches real points, the chain or we
     expect(event).toMatchObject({ type: 'webhook.test', payload: expect.objectContaining({ endpointId: target.id }) });
     expect(deliveries.some((delivery) => delivery.endpointId === other.id)).toBe(false);
 
-    await test('developer').expect(403);
+    await test('developer').expect(201);
+    expect(await rows.deliveries()).toHaveLength(2);
     await test('owner', randomUUID()).expect(404);
     await ctx.db
       .update(schema.webhookEndpoints)

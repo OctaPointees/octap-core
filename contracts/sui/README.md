@@ -20,7 +20,12 @@ its own package, [`../audit`](../audit/README.md), so adding them never forces a
 - **`credit_account`** — one shared `CreditAccount` per beneficiary per program. Balances are a
   vector of expiry buckets, not a single integer: `redeem` always consumes the nearest-to-expiry
   bucket(s) first. `earn` computes the credited amount on-chain from `purchase_amount` and the
-  active policy's `earn_bps` — the caller's claimed amount is never trusted. `redeem` requires
+  active policy's `earn_bps` — the caller's claimed amount is never trusted. `earn` also takes a
+  `multiplier_bps` (OCT-340, a campaign's boost; `10_000` for an ordinary earn), bounded on-chain to
+  1x–10x (`EInvalidMultiplier`): the credited amount is `purchase_amount * earn_bps * multiplier_bps /
+  10^8`, floored once, and is still debited from the budget shard, so no boost mints past the
+  program's issuance budget. `CreditEarned` carries the `multiplier_bps` it applied and the `campaign_id` behind it (16 UUID
+  bytes above 1x, empty at 1x; anything else aborts `EInvalidCampaign`). `redeem` requires
   `sender == beneficiary`; there is no entry point that moves credits between accounts or programs.
   `earn` also takes the program's `OperationShard` and `BudgetShard` that own its `operation_key`.
   Each `redeem`'s `reference` must be new to the account (`EDuplicateRedemption`).

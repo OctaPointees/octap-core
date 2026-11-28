@@ -55,6 +55,8 @@ export class SandboxRepository {
     idempotencyKey: string;
     receiptReference?: string;
     metadata?: Record<string, unknown>;
+    /** The campaign that boosted it (OCT-340); part of the replay check. */
+    campaignId?: string;
   }): Promise<{ transaction: SandboxTransaction; balance: SandboxBalance }> {
     const payloadHash = hashPayload({
       type: 'EARN',
@@ -62,6 +64,7 @@ export class SandboxRepository {
       purchaseAmount: params.purchaseAmount,
       receiptReference: params.receiptReference ?? null,
       metadata: params.metadata ?? null,
+      ...(params.campaignId !== undefined ? { campaignId: params.campaignId } : {}),
     });
     return withActiveMember(this.db, params.organizationId, params.organizationEndUserId, async (tx) => {
       const [inserted] = await tx
@@ -254,6 +257,11 @@ export class SandboxRepository {
       if (more) rows.pop();
       return { rows, nextCursor: more ? rows.at(-1)!.id : null };
     });
+  }
+
+  /** The sandbox transaction already accepted under `idempotencyKey`, if any. */
+  async findByKey(organizationId: string, idempotencyKey: string): Promise<SandboxTransaction | undefined> {
+    return withTenant(this.db, organizationId, (tx) => this.byKey(tx, organizationId, idempotencyKey, false));
   }
 
   private async byKey(tx: Tx, organizationId: string, idempotencyKey: string): Promise<SandboxTransaction>;

@@ -54,10 +54,25 @@ describe('OctapChainClient transaction builders', () => {
           operationShardId: ID(5),
           budgetShardId: ID(6),
           purchaseAmount: 10_000,
+          multiplierBps: 10_000,
           operationKey: new TextEncoder().encode('k'),
         }),
       ),
     ).toEqual([`${PKG}::credit_account::earn`]);
+    // A boosted earn names its campaign: 16 bytes, passed through as the pure argument.
+    const boosted = c.buildEarnTransaction({
+      issuerCapId: ID(1),
+      programId: ID(2),
+      policyId: ID(3),
+      accountId: ID(4),
+      operationShardId: ID(5),
+      budgetShardId: ID(6),
+      purchaseAmount: 10_000,
+      multiplierBps: 20_000,
+      campaignId: new Uint8Array(16).fill(7),
+      operationKey: new TextEncoder().encode('k'),
+    });
+    expect(moveCalls(boosted)).toEqual([`${PKG}::credit_account::earn`]);
     expect(moveCalls(c.buildRedeemTransaction({ accountId: ID(1), cost: 5n, reference: new Uint8Array([1]) }))).toEqual(
       [`${PKG}::credit_account::redeem`],
     );
@@ -142,6 +157,14 @@ describe('OctapChainClient transaction builders', () => {
         }),
       ),
     ).toEqual([`${PKG}::budget_shard::top_up`, `${PKG}::budget_shard::top_up`]);
+  });
+
+  it('activate-only rotates the policy without minting another IssuerCap', () => {
+    expect(
+      moveCalls(
+        client().buildActivatePolicyTransaction({ adminCapId: ID(1), programId: ID(2), policyVersionId: ID(3) }),
+      ),
+    ).toEqual([`${PKG}::program_control::activate_policy`]);
   });
 
   it('activate+issue_cap optionally creates shards in the same transaction', () => {

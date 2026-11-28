@@ -13,9 +13,12 @@ Signed event delivery to merchant-registered endpoints.
 - `webhook-signing.util.ts`: HMAC-SHA256 signing/verification shared by the processor and tests.
   `ts-sdks/packages/node/src/webhooks.ts` has the receiver-side equivalent for merchants.
 
-- `console-webhooks.service.ts`: the Owner's console routes (register, list, disable, enable,
-  rotate-secret, list deliveries, replay), each inside the Owner check's transaction. Owner only,
-  reads included; a Business Developer is a 403 (OCT-301).
+- `console-webhooks.service.ts`: the console routes, each inside its access check's transaction. An
+  Owner or Business Developer lists endpoints and deliveries, sends a test event and replays a
+  dead-lettered delivery: what building and debugging an integration takes. Only the Owner
+  registers, disables, enables or rotates a secret, since registering chooses where the
+  organization's events go and returns the signing secret, and the others can break a live
+  integration at once (the same line as a live `write` API key).
 
 Persistence is `infra/db/repositories/webhooks.repository.ts`; HTTP is
 `api/rest/console-webhooks.controller.ts` (the Owner manages endpoints) and
@@ -36,7 +39,7 @@ Nothing is ever emitted after a commit, so no event is lost to a crash between t
   always committed first.
 - `recordEvent` is typed by event: the payload must be that type's `data` from `@octap/contracts`.
 - Events are kept 30 days (`EventRetentionWorker`, OCT-326), except one still owed to an endpoint
-  (PENDING) or that the Owner may replay (DEAD_LETTER). Deleting an event deletes its deliveries, so
+  (PENDING) or that may still be replayed (DEAD_LETTER). Deleting an event deletes its deliveries, so
   the delivery list shows the last 30 days.
 - The console event stream reads the same table (see `domain/events/README.md`).
 - Each caller records only on the path that made the change (a guarded conditional update, a new
@@ -65,7 +68,7 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `voucher.archived` | its batch was archived before it went live | `RewardsRepository.archiveVoucherBatch` |
 | `voucher.expired` | its claim window closed while ACTIVE, PAUSED or DEPLETED; now EXPIRED | `expireDueVouchers` (sweep or read) |
 | `voucher.member_expired` | a customer's voucher reached its own deadline unused; now EXPIRED | `expireDueVouchers` (sweep or read) |
-| `webhook.test` | an Owner sent a test ping from the console; delivered to that one endpoint only | `EventsRepository.recordTestEvent` |
+| `webhook.test` | an Owner or Business Developer sent a test ping from the console; delivered to that one endpoint only | `EventsRepository.recordTestEvent` |
 
 Voucher lifecycle events carry the voucher as it is right after the change (`VoucherLifecycleEventData`:
 `status` including `ARCHIVED`, `publishStatus`, `createdBy`, `activatedBy`, `updatedAt`). An approval
@@ -83,5 +86,6 @@ chain-submit worker, POS finalize, `ChainOutcomeReconciler` or the indexer confi
 `credits.reversed` and `voucher.redeemed` follow the same rule (OCT-244), the latter behind the
 conditional `AVAILABLE -> REDEEMED` update, so a losing concurrent redeem records nothing.
 
-`credits.earned.data` carries `purchaseAmount` and `estimatedPoints`, not `pointsAmount`.
+`credits.earned.data` carries `purchaseAmount` and `estimatedPoints`, not `pointsAmount`, and
+`campaignId` when a campaign boosted the earn (OCT-340).
 The confirmed event carries the actual `pointsAmount`.

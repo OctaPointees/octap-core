@@ -31,6 +31,13 @@ Other proposal bodies are `{requestType,reason,payload}`:
   Approval needs an active program and queues one durable command in the same transaction, which the
   worker with `ORG_PROVISION_WORKER_ENABLED=true` executes. An unknown chain outcome becomes UNKNOWN and is
   never retried. A top-up raises how many points may be issued; no money moves.
+- UPDATE_EARN_RATE: `{earnBps}` is a whole number of basis points from 0 to 10000, different from the
+  current rate. Owners and System Admins can propose it (OCT-341). It needs an active program, and only
+  one can wait for review at a time (409). The payload records the program's `expectedPolicyVersion`
+  and `previousEarnBps`. Approval rejects with 409 when the policy moved since then, or while another
+  earn-rate change is still running or ended UNKNOWN. Approval queues one durable command; the worker
+  publishes and activates a new policy version (never a new `IssuerCap`) and updates the program row.
+  An unknown chain outcome becomes UNKNOWN and is never retried. See `domain/programs/README.md`.
 - SUSPEND: `{}` changes ACTIVE to SUSPENDED.
 - REINSTATE: `{}` is proposed by System Admin and changes SUSPENDED to ACTIVE.
 - DEACTIVATE: `{}` permanently changes ACTIVE to ARCHIVED; reinstatement is not recovery

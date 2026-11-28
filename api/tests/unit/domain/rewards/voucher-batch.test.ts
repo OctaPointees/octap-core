@@ -38,6 +38,7 @@ function stored(overrides: Partial<Voucher> = {}): Voucher {
     expiresAt: null,
     metadata: {},
     importBatchId: null,
+    campaignId: null,
     createdByUserId: null,
     createdByCredentialId: null,
     activatedByUserId: null,
@@ -51,7 +52,12 @@ function stored(overrides: Partial<Voucher> = {}): Voucher {
 
 describe('parseBatchRequest', () => {
   it('takes 1 to 100 items and an optional boolean dryRun', () => {
-    expect(parseBatchRequest({ items: [item] })).toEqual({ items: [item], dryRun: false, name: null });
+    expect(parseBatchRequest({ items: [item] })).toEqual({
+      items: [item],
+      dryRun: false,
+      name: null,
+      campaignId: null,
+    });
     expect(parseBatchRequest({ items: [item], dryRun: true }).dryRun).toBe(true);
     expect(parseBatchRequest({ items: Array(100).fill(item) }).items).toHaveLength(100);
   });

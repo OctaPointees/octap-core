@@ -23,7 +23,7 @@ Key có scope nào thì làm được việc đó, bất kể ai đang cầm key
 
 ## Việc không key nào làm được
 
-Quản lý webhook và chính sách hoàn tiền là việc của Owner, trên Console: đăng ký, tắt, bật và xoay secret của webhook endpoint, gửi lại một delivery, và publish chính sách hoàn tiền. Key chỉ đọc được (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`), không bao giờ thay đổi được. Xem [Nhận webhook](/vi/guides/receive-webhooks/) và [Quản lý voucher](/vi/guides/manage-vouchers/).
+Quản lý webhook endpoint và chính sách hoàn tiền là việc của Owner, trên Console: đăng ký, tắt, bật và xoay secret của webhook endpoint, và publish chính sách hoàn tiền. Business Developer xem được endpoint và delivery ở đó, gửi sự kiện thử và gửi lại một delivery. Key chỉ đọc được (`listWebhookEndpoints`, `listWebhookDeliveries`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory`), không bao giờ thay đổi được. Xem [Nhận webhook](/vi/guides/receive-webhooks/) và [Quản lý voucher](/vi/guides/manage-vouchers/).
 
 Key tạo trước khi OctaP bỏ scope `admin` có thể vẫn còn ghi scope này. OctaP bỏ qua nó: key đó chỉ làm được những gì scope `read` và `write` của nó cho phép.
 

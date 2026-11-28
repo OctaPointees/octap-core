@@ -299,22 +299,22 @@
     {
       "idx": 42,
       "version": "7",
-      "when": 1795762903311,
-      "tag": "0042_licensing",
+      "when": 1795832265862,
+      "tag": "0042_earn_rate_change_request",
       "breakpoints": true
     },
     {
       "idx": 43,
       "version": "7",
-      "when": 1795763601407,
-      "tag": "0043_license_usage",
+      "when": 1795836581370,
+      "tag": "0043_campaigns",
       "breakpoints": true
     },
     {
       "idx": 44,
       "version": "7",
-      "when": 1795763830520,
-      "tag": "0044_license_expiry_notices",
+      "when": 1795865762039,
+      "tag": "0044_licensing",
       "breakpoints": true
     }
   ]

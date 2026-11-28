@@ -21,6 +21,7 @@ import { apiCredentials, organizations } from './organizations.schema.js';
 import { systemUsers } from './auth.schema.js';
 import { organizationEndUsers } from './members.schema.js';
 import { loyaltyTransactions } from './credits.schema.js';
+import { campaigns } from './campaigns.schema.js';
 
 export const voucherStatusEnum = pgEnum('voucher_status', [
   'DRAFT',
@@ -137,6 +138,11 @@ export const vouchers = pgTable(
     /** The batch it was created or last imported in (OCT-303); null when created on its own. */
     importBatchId: uuid('import_batch_id'),
     /**
+     * The campaign it belongs to (OCT-340), set when it is created (alone or in a batch) and never
+     * changed after; independent of `importBatchId`. Null for a voucher outside any campaign.
+     */
+    campaignId: uuid('campaign_id'),
+    /**
      * Who created it, or last replaced it by importing its code again (OCT-324): a console user or an
      * API key. Null when it was created before this was recorded, or that user or key was deleted.
      */
@@ -162,6 +168,13 @@ export const vouchers = pgTable(
     check('vouchers_one_creator', sql`num_nonnulls(${t.createdByUserId}, ${t.createdByCredentialId}) <= 1`),
     check('vouchers_one_activator', sql`num_nonnulls(${t.activatedByUserId}, ${t.activatedByCredentialId}) <= 1`),
     index('vouchers_import_batch_idx').on(t.importBatchId),
+    index('vouchers_campaign_idx').on(t.campaignId),
+    // Composite, so a voucher can only belong to a campaign of its own organization.
+    foreignKey({
+      name: 'vouchers_campaign_fk',
+      columns: [t.organizationId, t.campaignId],
+      foreignColumns: [campaigns.organizationId, campaigns.id],
+    }),
     // Composite, so a voucher can only point at a batch of its own organization.
     foreignKey({
       name: 'vouchers_import_batch_fk',

@@ -38,6 +38,7 @@ Lệnh earn đang trên đường lên chain. Hãy chờ `credits.earn.confirmed
 | `purchaseAmount` | `number` | |
 | `estimatedPoints` | `number` | Số ước tính, không phải số được cộng |
 | `newBalance` | `number` | Số dư đã xác nhận, chưa gồm lệnh earn này |
+| `campaignId` | `string` | Chỉ có khi một campaign đã nhân điểm cho lệnh earn |
 
 ## credits.earn.confirmed
 

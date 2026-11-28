@@ -27,8 +27,9 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `validForDays` | `number \| null` | Voucher của mỗi khách dùng được bấy nhiêu ngày kể từ lúc nhận, không quá `expiresAt`. Từ 1 đến 3650; `null` nghĩa là mọi voucher hết hạn vào `expiresAt`. Không đổi được sau khi bắt đầu publish. |
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Mặc định là `ACTIVE`, tức publish điều khoản lên chain trước. Nếu tổ chức bật yêu cầu duyệt, `ACTIVE` đưa voucher vào `PENDING_APPROVAL` cho đến khi Owner duyệt trong console. Mở lại voucher đã publish thì không cần duyệt. |
+| `campaignId` | `string` | Campaign của bạn (không `ENDED` hoặc `ARCHIVED`) mà voucher tham gia. Chỉ đặt lúc tạo. Thời hạn của campaign không đổi `expiresAt` hay `validForDays` của voucher, và kết thúc campaign không đụng tới các voucher của nó. |
 
-`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `createdBy`, `activatedBy`, `activatedAt`, `createdAt` và `updatedAt`. `createdBy` là người tạo voucher, `activatedBy` là người đưa nó lên live (người bấm activate, hoặc Owner đã duyệt). Cả hai có dạng `{ type: 'USER' | 'API_CREDENTIAL', id }`, hoặc `null` khi không có ghi nhận (voucher tạo trước khi Core lưu thông tin này) hoặc khi user hay key đó đã bị xoá. `activatedAt` là lúc bắt đầu publish. `approval` là yêu cầu duyệt gần nhất, `null` nếu chưa từng có. `submittedBy` là `null` khi user hoặc key đó đã bị xoá. Các field: `id` (lượt gửi duyệt mà Owner duyệt hoặc từ chối), `status` (`PENDING`, `APPROVED`, `REJECTED` hoặc `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt`, `reason` (lý do từ chối) và `snapshot` (điều khoản lúc gửi duyệt, cũng là thứ sẽ được publish khi duyệt; `null` với lượt gửi trước khi Core lưu bản chụp).
+`expiresAt` của một claim hoặc voucher của thành viên là hạn riêng của khách đó. `VoucherDto` có thêm `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `campaignId`, `createdBy`, `activatedBy`, `activatedAt`, `createdAt` và `updatedAt`. `createdBy` là người tạo voucher, `activatedBy` là người đưa nó lên live (người bấm activate, hoặc Owner đã duyệt). Cả hai có dạng `{ type: 'USER' | 'API_CREDENTIAL', id }`, hoặc `null` khi không có ghi nhận (voucher tạo trước khi Core lưu thông tin này) hoặc khi user hay key đó đã bị xoá. `activatedAt` là lúc bắt đầu publish. `approval` là yêu cầu duyệt gần nhất, `null` nếu chưa từng có. `submittedBy` là `null` khi user hoặc key đó đã bị xoá. Các field: `id` (lượt gửi duyệt mà Owner duyệt hoặc từ chối), `status` (`PENDING`, `APPROVED`, `REJECTED` hoặc `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt`, `reason` (lý do từ chối) và `snapshot` (điều khoản lúc gửi duyệt, cũng là thứ sẽ được publish khi duyệt; `null` với lượt gửi trước khi Core lưu bản chụp).
 
 ## updateVoucher
 
@@ -61,12 +62,12 @@ getVoucher(voucherId: string, options?): Promise<VoucherDto>
 `POST /v1/rewards/voucher-batches` · Scope: `write`
 
 ```ts
-createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string }, options?): Promise<CreateVoucherBatchResponse>
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string; campaignId?: string }, options?): Promise<CreateVoucherBatchResponse>
 ```
 
 Tạo tối đa 100 voucher thành một lô **DRAFT**. Chưa voucher nào live cho đến khi gọi `activateVoucherBatch`. Mỗi item nhận các field của `createVoucher`, trừ `status`; gửi `status` thì item đó lỗi. Không có item nào hoặc quá 100 item thì cả request trả 400.
 
-Với `dryRun: true`, Core chạy mọi kiểm tra và trả kết quả từng item nhưng không ghi gì: dùng để xem trước một file. `name` đặt tên cho lô, ví dụ tên file (tối đa 120 ký tự, không cần duy nhất).
+Với `dryRun: true`, Core chạy mọi kiểm tra và trả kết quả từng item nhưng không ghi gì: dùng để xem trước một file. `name` đặt tên cho lô, ví dụ tên file (tối đa 120 ký tự, không cần duy nhất). `campaignId` đưa mọi voucher lô tạo ra vào campaign đó; từng item không được gửi riêng.
 
 Mỗi item được xử lý riêng, và `items[i]` của response mô tả `items[i]`. `code` là khoá:
 

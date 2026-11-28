@@ -595,6 +595,15 @@ export class CreditsRepository {
     idempotencyKey: string;
     receiptReference?: string;
     metadata?: Record<string, unknown>;
+    /** The campaign the request named (OCT-340); validated by the caller for new work. */
+    campaignId?: string;
+    /** The boost the chain applies (`credit_account::earn`); omitted is an ordinary earn (10000, 1x). */
+    multiplierBps?: number;
+    /**
+     * Runs inside the transaction before new work is written (never on a replay); a throw rolls the
+     * earn back. The boosted earn re-checks its campaign here under a share lock.
+     */
+    campaignGate?: (tx: DrizzleDb) => Promise<unknown>;
   }) {
     return this.db.transaction(async (outer) => {
       await lockIdempotencyKey(outer, params.organizationId, params.idempotencyKey);
@@ -607,12 +616,18 @@ export class CreditsRepository {
           loyaltyTransactionId,
           organizationEndUserId: params.organizationEndUserId,
           purchaseAmount: params.purchaseAmount,
+          // Fixed at acceptance: the campaign may close before the worker submits.
+          multiplierBps: params.multiplierBps ?? 10_000,
+          // Named on-chain with the boost, so the ledger ties a boosted earn to its campaign.
+          ...(params.campaignId !== undefined ? { campaignId: params.campaignId } : {}),
         },
         intent: {
           organizationEndUserId: params.organizationEndUserId,
           purchaseAmount: params.purchaseAmount,
           receiptReference: params.receiptReference ?? null,
           metadata: params.metadata ?? {},
+          // Only when sent, so an ordinary earn hashes as it did before campaigns.
+          ...(params.campaignId !== undefined ? { campaignId: params.campaignId } : {}),
         },
       });
       const existing = await outer.query.loyaltyTransactions.findFirst({
@@ -636,6 +651,7 @@ export class CreditsRepository {
       }
 
       return withActiveMember(outer, params.organizationId, params.organizationEndUserId, async (tx) => {
+        await params.campaignGate?.(tx);
         let ownership = await tx.query.creditOwnerships.findFirst({
           where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
         });
@@ -673,6 +689,7 @@ export class CreditsRepository {
             receiptReference: params.receiptReference,
             status: 'PENDING',
             metadata: params.metadata ?? {},
+            campaignId: params.campaignId ?? null,
           })
           .returning();
 
@@ -695,6 +712,7 @@ export class CreditsRepository {
             purchaseAmount: params.purchaseAmount,
             estimatedPoints: params.estimatedPoints,
             newBalance,
+            ...(params.campaignId ? { campaignId: params.campaignId } : {}),
           },
         });
         return { transaction, newBalance, isNew: true };

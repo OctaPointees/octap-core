@@ -19,17 +19,18 @@ describe('persona tool map (OCT-294)', () => {
 
   it('keeps the Owner-only reads away from a Developer', () => {
     const developer = toolsForPersona('BUSINESS_DEVELOPER');
-    for (const tool of [
-      'get_refund_policy',
-      'get_refund_policy_history',
-      'list_webhook_endpoints',
-      'list_webhook_deliveries',
-      'list_staff',
-      'list_invitations',
-    ] as const) {
+    for (const tool of ['get_refund_policy', 'get_refund_policy_history', 'list_staff', 'list_invitations'] as const) {
       expect(developer).not.toContain(tool);
     }
     expect(promptsForPersona('BUSINESS_DEVELOPER')).not.toContain('review_pending_vouchers');
+  });
+
+  it('gives a Developer the webhook reads, as Core opens them to both personas', () => {
+    // Core: GET …/webhooks/endpoints and …/deliveries are for an Owner or Business Developer.
+    expect(toolsForPersona('BUSINESS_DEVELOPER')).toEqual(
+      expect.arrayContaining(['list_webhook_endpoints', 'list_webhook_deliveries']),
+    );
+    expect(promptsForPersona('BUSINESS_DEVELOPER')).toContain('check_webhooks');
   });
 
   it('gives a Developer the member reads Core opens to both personas, including what a member holds', () => {

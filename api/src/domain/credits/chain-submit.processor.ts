@@ -24,11 +24,16 @@ import {
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 import { earnFailureCode } from './earn-failure.js';
+import { BASE_MULTIPLIER_BPS } from './campaign-boost.js';
 
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
   purchaseAmount: number;
+  /** A campaign's boost (OCT-340); absent on commands accepted before campaigns, which are 1x. */
+  multiplierBps?: number;
+  /** The campaign behind the boost (OCT-340), named on-chain on `CreditEarned`; absent at 1x. */
+  campaignId?: string;
 }
 
 export interface ReversalChainSubmitPayload {
@@ -83,6 +88,17 @@ class EarnFailedError extends Error {
 function isWrongProgramEarnAbort(err: unknown): boolean {
   const abort = err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err);
   return abort?.module === 'credit_account' && abort.functionName === 'earn' && abort.abortCode === '0';
+}
+
+/**
+ * `program_control::assert_policy_active`'s `EPolicyNotActive` (abort code 3), reached from `earn`:
+ * the transaction named a policy that is no longer the program's active one.
+ */
+function isStalePolicyEarnAbort(err: unknown): boolean {
+  const abort = err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err);
+  return (
+    abort?.module === 'program_control' && abort.functionName === 'assert_policy_active' && abort.abortCode === '3'
+  );
 }
 
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
@@ -349,6 +365,11 @@ export class ChainSubmitProcessor {
     const signed = await this.suiClient.signEarn(program, {
       accountId,
       purchaseAmount: payload.purchaseAmount,
+      multiplierBps: payload.multiplierBps ?? BASE_MULTIPLIER_BPS,
+      // Only with a boost: the chain refuses a campaign on a 1x earn.
+      ...(payload.campaignId && (payload.multiplierBps ?? BASE_MULTIPLIER_BPS) > BASE_MULTIPLIER_BPS
+        ? { campaignId: payload.campaignId }
+        : {}),
       operationKey: operation.idempotencyKey,
     });
     // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`
@@ -437,13 +458,25 @@ export class ChainSubmitProcessor {
       try {
         result = await this.submitEarn(operation, program, accountId, payload);
       } catch (err: unknown) {
-        const reopenedId = isWrongProgramEarnAbort(err)
-          ? await this.reopenIfStale(program, operation.tenantId, ownership.id, accountId, payload)
-          : null;
-        if (!reopenedId) {
-          throw err;
+        if (isStalePolicyEarnAbort(err)) {
+          // The program's policy was rotated (OCT-341) between reading the row and the chain
+          // checking it. Retry once against the row as it is now; a row still naming the same
+          // policy is not a rotation in progress, so the abort stands.
+          const current = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+          if (current.policyVersionId === program.policyVersionId) throw err;
+          this.logger.warn(
+            `earn ${operation.id} hit a rotated policy; resubmitting against policy ${current.policyVersionId}`,
+          );
+          result = await this.submitEarn(operation, current, accountId, payload);
+        } else {
+          const reopenedId = isWrongProgramEarnAbort(err)
+            ? await this.reopenIfStale(program, operation.tenantId, ownership.id, accountId, payload)
+            : null;
+          if (!reopenedId) {
+            throw err;
+          }
+          result = await this.submitEarn(operation, program, reopenedId, payload);
         }
-        result = await this.submitEarn(operation, program, reopenedId, payload);
       }
 
       const confirmedPointsAmount = result.eventField<string>('CreditEarned', 'amount');

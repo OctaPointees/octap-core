@@ -234,7 +234,7 @@ export class ConsoleVoucherBatchService {
   }
 }
 
-function bodyOf<T extends object>(input: T | null | undefined): Partial<Record<keyof T, unknown>> {
+export function bodyOf<T extends object>(input: T | null | undefined): Partial<Record<keyof T, unknown>> {
   return input && typeof input === 'object' && !Array.isArray(input) ? input : {};
 }
 
@@ -259,7 +259,7 @@ function timestampOf(value: unknown, field: string): Date {
 const SEEN_SHAPE = `seen must be a list of up to ${VOUCHER_BATCH_MAX_ITEMS} { voucherId, updatedAt } as you reviewed them`;
 
 /** The batch's vouchers as the Owner reviewed them, by voucher id. */
-function seenOf(value: unknown): Map<string, Date> {
+export function seenOf(value: unknown): Map<string, Date> {
   if (!Array.isArray(value) || value.length > VOUCHER_BATCH_MAX_ITEMS) throw new BadRequestException(SEEN_SHAPE);
   const seen = new Map<string, Date>();
   for (const entry of value as unknown[]) {
@@ -276,7 +276,7 @@ function seenOf(value: unknown): Map<string, Date> {
   return seen;
 }
 
-function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {
+export function actorOf(userId: string, role: 'OWNER' | 'BUSINESS_DEVELOPER'): VoucherActor {
   return role === 'OWNER' ? { role: 'OWNER', userId } : { role: 'DEVELOPER', userId };
 }
 
