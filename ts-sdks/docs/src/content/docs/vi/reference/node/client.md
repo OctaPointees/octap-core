@@ -39,7 +39,7 @@ Mọi method nhận `RequestOptions` làm tham số cuối.
 
 | Nhóm | Method |
 | --- | --- |
-| [Định danh và credits](/vi/reference/node/credits/) | `verifyCustomer`, `earnPoints`, `getBalance`, `getIssuanceBudget`, `listTransactions`, `reservePosRedemption`, `finalizePosRedemption`, `reverseTransaction` |
+| [Định danh và credits](/vi/reference/node/credits/) | `verifyCustomer`, `earnPoints`, `getBalance`, `getIssuanceBudget`, `getLicense`, `listTransactions`, `reservePosRedemption`, `finalizePosRedemption`, `reverseTransaction` |
 | [Voucher](/vi/reference/node/vouchers/) | `createVoucher`, `updateVoucher`, `listVouchers`, `getVoucher`, `claimVoucher`, `getVoucherClaim`, `finalizeVoucherClaim`, `grantVoucher`, `prepareVoucherUse`, `finalizeVoucherUse`, `listMemberVouchers`, `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | [Webhook](/vi/reference/node/webhooks/) | `listWebhookEndpoints`, `listWebhookDeliveries`, `verifyWebhookSignature`, `constructWebhookEvent` |
 

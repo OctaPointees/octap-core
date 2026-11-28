@@ -22,6 +22,7 @@ import { EvidenceSealWorker } from './domain/audit/evidence-seal.worker.js';
 import { VoucherExpiryWorker } from './domain/rewards/voucher-expiry.worker.js';
 import { EvidenceSealProcessor } from './domain/audit/evidence-seal.processor.js';
 import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.module.js';
+import { LicenseExpiryWorker } from './domain/licensing/license-expiry.worker.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
 // SuiModule and ProgramAdminModule are imported here only, not in infra/infrastructure.module.ts:
 // the internet-facing HTTP process (AppModule) has no reason to ever reach the issuer or program
@@ -49,6 +50,7 @@ import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.modul
     EvidenceSealWorker,
     VoucherExpiryWorker,
     EvidenceSealProcessor,
+    LicenseExpiryWorker,
   ],
 })
 export class WorkerModule {}

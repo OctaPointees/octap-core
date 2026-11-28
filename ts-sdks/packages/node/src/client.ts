@@ -6,6 +6,7 @@ import type {
   EarnPointsRequest,
   EarnPointsResponse,
   IssuanceBudgetDto,
+  OrganizationLicenseDto,
   CreditBalanceSnapshot,
   LoyaltyTransactionPage,
   CreateVoucherRequest,
@@ -217,6 +218,14 @@ export class OctaPointClient {
   /** How many more points your program may issue, read live from the chain. */
   async getIssuanceBudget(options?: RequestOptions): Promise<IssuanceBudgetDto> {
     return this.request('/v1/credits/budget', 'GET', undefined, options);
+  }
+
+  /**
+   * Your organization's license: its plan, until when, what it includes, and how much of each limit
+   * is in use. `license` is `null` if the organization has none.
+   */
+  async getLicense(options?: RequestOptions): Promise<OrganizationLicenseDto> {
+    return this.request('/v1/license', 'GET', undefined, options);
   }
 
   // ==========================================

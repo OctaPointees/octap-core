@@ -5,7 +5,7 @@ export * from './credits.schema.js';
 export * from './rewards.schema.js';
 export * from './campaigns.schema.js';
 export * from './voucher-refund-policies.schema.js';
-export * from './billing.schema.js';
+export * from './licensing.schema.js';
 export * from './operations.schema.js';
 export * from './events.schema.js';
 export * from './request-logs.schema.js';

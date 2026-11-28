@@ -17,6 +17,21 @@
 
 ### Added
 
+- `getLicense()` (OCT-329): your organization's license (plan, `startsAt`, `endsAt`, `state`
+  `ACTIVE`/`GRACE`/`EXPIRED`, what it includes) and how much of each limit is in use this license
+  month. `read` scope.
+- License limits (OCT-329): a request the license doesn't cover answers **402** with `code`
+  `LICENSE_LIMIT_REACHED` (`limit`, `used`, `allowed`) or `LICENSE_FEATURE_NOT_INCLUDED`
+  (`feature`). Earn, POS reserve and paid claims stop at 110% of the monthly transactions; voucher
+  batches need `voucher.batches`, sandbox keys need `sandbox`. Types: `LicenseErrorBody`,
+  `LicenseErrorCode`.
+- Webhook `license.usage_threshold` (`LicenseUsageThresholdEventData`): sent once per license month
+  at 80% and at 100% of the monthly transactions.
+- License expiry (OCT-329): 7 days after a license ends (its grace period), earns, POS reserves and
+  paid voucher claims answer **402 `LICENSE_EXPIRED`**; everything else keeps working. Webhook
+  `license.expiry_notice` (`LicenseExpiryNoticeEventData`) is sent 30, 7 and 1 days before the end,
+  when the grace period starts and when it is over (`stage`), once each. Types:
+  `LicenseExpiryStage`, `LICENSE_EXPIRY_STAGES`, `LICENSE_EXPIRY_REMINDER_DAYS`.
 - On-chain evidence reads (OCT-334): `listOrganizationTransactions(query)` (the organization's
   points history with each confirmed row's Sui digest, filtered by type, status or member),
   `getProgram()` (the program's on-chain policy compared with the rules OctaP applies) and

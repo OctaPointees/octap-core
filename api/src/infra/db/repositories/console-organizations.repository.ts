@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, eq, inArray, lte, desc } from 'drizzle-orm';
+import { and, count, eq, inArray, lte, desc } from 'drizzle-orm';
 import { recordAudit } from './audit.repository.js';
 import type {
   ConsoleIdentity,
@@ -27,6 +27,8 @@ import {
   requireSystemAdmin,
   withInitialOwners,
 } from './console-access.js';
+import { grantTrialLicense } from './licenses.repository.js';
+import { requireLicenseCapacity, requireLicenseFeature } from './license-enforcement.js';
 export {
   ConsoleAccessError,
   ConsoleConflictError,
@@ -35,6 +37,22 @@ export {
   ConsoleValidationError,
 } from './console-access.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
+
+/** Refuses with 402 when the license's team (ACTIVE Owners and Business Developers) is full. */
+const requireTeamPlace = (tx: Tx, organizationId: string) =>
+  requireLicenseCapacity(tx, organizationId, 'teamMembers', async () => {
+    const [{ team }] = await tx
+      .select({ team: count() })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, organizationId),
+          eq(organizationMemberships.status, 'ACTIVE'),
+          inArray(organizationMemberships.role, ['OWNER', 'BUSINESS_DEVELOPER']),
+        ),
+      );
+    return team;
+  });
 const hashToken = (token: string) => `sha256:${createHash('sha256').update(token).digest('hex')}`;
 function requestedSlug(payload: unknown, fallback: string) {
   const saved =
@@ -229,6 +247,8 @@ export class ConsoleOrganizationsRepository {
         await tx
           .insert(organizationMemberships)
           .values({ organizationId: org.id, systemUserId: initialOwnerId, role: 'OWNER' });
+        // An approved organization starts on the trial (OCT-329).
+        await grantTrialLicense(tx, org.id);
       }
       await tx
         .update(organizationChangeRequests)
@@ -339,6 +359,9 @@ export class ConsoleOrganizationsRepository {
   async settings(userId: string, organizationId: string, input: OrganizationSettingsInput) {
     return this.db.transaction(async (tx) => {
       const { org } = await this.member(tx, userId, organizationId, true);
+      // Turning approval on needs the feature (OCT-329). Turning it off never does, and vouchers
+      // already waiting can still be decided either way.
+      if (input.voucherApprovalRequired) await requireLicenseFeature(tx, organizationId, 'voucher.approval');
       await tx
         .update(organizations)
         .set({ voucherApprovalRequired: input.voucherApprovalRequired, updatedAt: new Date() })
@@ -396,6 +419,8 @@ export class ConsoleOrganizationsRepository {
         .for('update');
       if (!target) throw new ConsoleNotFoundError();
       if (target.role !== 'BUSINESS_DEVELOPER') throw new ConsoleAccessError();
+      // Restoring a suspended Developer takes a place on the team again (OCT-329).
+      if (status === 'ACTIVE' && target.status !== 'ACTIVE') await requireTeamPlace(tx, organizationId);
       await tx
         .update(organizationMemberships)
         .set({ status, updatedAt: new Date() })
@@ -502,6 +527,8 @@ export class ConsoleOrganizationsRepository {
   async invite(userId: string, organizationId: string, email: string, token: string) {
     return this.db.transaction(async (tx) => {
       await this.member(tx, userId, organizationId, true);
+      // Refused while the team is full, so the Owner learns it now, not when the invitation fails.
+      await requireTeamPlace(tx, organizationId);
       await tx
         .update(invitations)
         .set({ status: 'EXPIRED', updatedAt: new Date() })
@@ -598,6 +625,8 @@ export class ConsoleOrganizationsRepository {
         throw new ConsoleGoneError();
       if (existing && (existing.status === 'ACTIVE' || existing.role === 'OWNER'))
         throw new ConsoleConflictError('This account already has organization access');
+      // The team may have filled up since the invitation was sent (OCT-329).
+      await requireTeamPlace(tx, row.organizationId);
       await tx
         .insert(organizationMemberships)
         .values({ organizationId: row.organizationId, systemUserId: identity.user.id, role: 'BUSINESS_DEVELOPER' })

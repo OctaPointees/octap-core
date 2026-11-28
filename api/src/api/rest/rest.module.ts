@@ -33,9 +33,17 @@ import { ConsoleAuditLogController } from './console-audit-log.controller.js';
 import { ConsoleEvidenceController } from './console-evidence.controller.js';
 import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
+import {
+  ConsoleLicenseController,
+  ConsoleLicensePlansController,
+  LicenseController,
+  PlatformLicensePlansController,
+  PlatformOrganizationLicenseController,
+} from './licenses.controller.js';
+import { PostgresModule } from '#infra/db/postgres.module.js';
 import { ConsoleAnalyticsController } from './console-analytics.controller.js';
 @Module({
-  imports: [DomainModule, AuthModule, ObservabilityModule],
+  imports: [DomainModule, AuthModule, ObservabilityModule, PostgresModule],
   providers: [ConsoleAccessGuard],
   controllers: [
     HealthController,
@@ -43,6 +51,11 @@ import { ConsoleAnalyticsController } from './console-analytics.controller.js';
     McpOAuthController,
     ConsoleMcpTokenController,
     ConsoleAssistantController,
+    ConsoleLicenseController,
+    ConsoleLicensePlansController,
+    LicenseController,
+    PlatformLicensePlansController,
+    PlatformOrganizationLicenseController,
     PlatformOrganizationsController,
     OrganizationResolutionController,
     ConsoleIssuanceBudgetController,

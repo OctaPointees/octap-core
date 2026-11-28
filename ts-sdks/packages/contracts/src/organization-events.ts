@@ -9,6 +9,7 @@ export type OrganizationEventSubject =
   | { kind: 'voucherOwnership'; id: string; voucherId: string; memberId: string }
   | { kind: 'loyaltyTransaction'; id: string; memberId: string }
   | { kind: 'issuanceBudget' }
+  | { kind: 'license' }
   | { kind: 'webhookEndpoint'; id: string };
 
 /**

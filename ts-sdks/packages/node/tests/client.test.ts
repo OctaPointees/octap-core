@@ -396,6 +396,19 @@ describe('merchant route coverage and cancellation', () => {
       headers: { 'x-organization-id': 'org' },
     });
   });
+  it('reads the license', async () => {
+    const { fetchFn, last } = recordingFetch(() => ({ organizationId: 'org', license: null, usage: null }));
+    await expect(new OctaPointClient({ fetchFn }).getLicense({ organizationId: 'org' })).resolves.toEqual({
+      organizationId: 'org',
+      license: null,
+      usage: null,
+    });
+    expect(last()).toMatchObject({
+      url: 'http://localhost:3000/v1/license',
+      method: 'GET',
+      headers: { 'x-organization-id': 'org' },
+    });
+  });
   it('reverses the path transaction with only the command body and supports POS finalize', async () => {
     const { fetchFn, last } = recordingFetch();
     const client = new OctaPointClient({ fetchFn });

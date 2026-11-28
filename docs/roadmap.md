@@ -60,6 +60,9 @@ then move the row to **Implemented** in the same pull request.
 | Programs: earn-rate change. Owners propose a new base `earnBps` (`UPDATE_EARN_RATE`) and System Admins approve it through change requests; a worker publishes and activates a new policy version with `AdminCap` (no new `IssuerCap`) and updates the program row in place (OCT-341) | api/src/domain/organizations/earn-rate-change.processor.ts; api/src/domain/programs/programs.service.ts (`rotateEarnRate`); contracts/sui/sources/program_control.move (`activate_policy`) |
 | Campaigns: time-boxed earn multiplier selected per earn (`campaignId`, 1x–10x, enforced on-chain by `credit_account::earn`'s `multiplier_bps`, with the campaign's id on `CreditEarned`, and still capped by the issuance budget), and voucher grouping (`vouchers.campaign_id`, stamped on single or batch create, with the batch bulk actions over a campaign's vouchers). Business Developers draft, the Owner activates (approves), pauses, resumes, ends and archives; earns naming a campaign that cannot boost them get 422 (OCT-340) | api/src/domain/rewards/campaigns.service.ts; api/src/domain/credits/campaign-boost.ts; api/src/infra/db/repositories/campaigns.repository.ts; contracts/sui/sources/credit_account.move |
 | Voucher refunds: tenant-specific immutable policy versions and claim-time snapshots, Owner-only console publication recording the publishing user (`createdByUserId`; legacy key versions keep `createdByCredentialId`), history readable with a `read` key, atomic coupon/stock/refund decisions; the policy is the only gate on used/expired refunds by a `write` key (OCT-301) | api/src/domain/rewards/console-refund-policy.service.ts; api/src/domain/rewards/refund-policy.ts; api/src/domain/rewards/refund-policy.service.ts; api/src/infra/db/repositories/voucher-refund-policies.repository.ts; Node SDK |
+| Licenses (OCT-329, part 1): a plan catalogue (`license_plans`: tier, monthly price in VND, terms sold, entitlements = features + limits) managed by the System Admin, never deleted; each organization's `licenses` copy a plan's entitlements when granted, so editing a plan never changes a license; state ACTIVE / GRACE (7 days) / EXPIRED worked out from the dates; active and suspended organizations got Growth for 12 months (migration 0044), a newly approved organization gets the trial in the approval's transaction; Owners and Business Developers, `read` API keys and the System Admin read the license and its usage (confirmed transactions this license month, members, API keys, team) | api/src/domain/licensing; api/src/api/rest/licenses.controller.ts; api/src/infra/db/schema/licensing.schema.ts |
+| License enforcement (OCT-329, part 2): 402 `LICENSE_LIMIT_REACHED` / `LICENSE_FEATURE_NOT_INCLUDED`; a `license_usage` counter per license month taken by earn, POS reserve and paid claims (hard stop at 110%, given back on failure), `license.usage_threshold` at 80% and 100% once per month; members, API keys and team capped at 100% under a lock; `@RequiresFeature` on webhooks, voucher batches, the assistant, MCP, sandbox keys and turning on voucher approval; no license, no limits | api/src/infra/db/repositories/license-enforcement.ts; api/src/api/rest/license-feature.guard.ts |
+| License expiry and renewal (OCT-329, part 3): past the 7-day grace, new transactions answer 402 `LICENSE_EXPIRED` and nothing else stops; `LicenseExpiryWorker` sends `license.expiry_notice` at 30/7/1 days left, GRACE and EXPIRED, once per step (`licenses.expiry_notice_stage`, migration 0044), only for the latest license; renewal adds a license from the current `endsAt` (or now once expired), `POST /v1/platform/organizations/:organizationId/license` for the System Admin | api/src/infra/db/repositories/licenses.repository.ts; api/src/domain/licensing/license-expiry.worker.ts |
 
 ### Known gaps in implemented features
 
@@ -248,7 +251,7 @@ and vendor clients.
 | Wildcard subdomain hosting | domain/organizations / Web hosting | Path-based /orgs/:slug fallback and safe Core slug resolution implemented; DNS/host routing remains deployment work |
 | Members: enrollment, identity binding | domain/members | Schema exists in members.schema.ts |
 | Policies: standalone versioning and preview API | domain/policies | Publish/activate exist today only as steps inside `domain/programs`' provisioning flow, not their own CRUD/preview surface |
-| Billing: Stripe test billing, reconciliation | domain/billing; infra/clients/stripe | Schema exists in billing.schema.ts; distinct from points |
+| Licenses: buying and renewing with SePay, reconciliation (OCT-330) | domain/licensing; infra/clients/sepay | Plans and licenses (part 1), enforcement (part 2) and expiry, reminders and admin renewal (part 3) exist; buying with SePay is OCT-330. Distinct from points |
 | Analytics: derived analytics export | domain/analytics; infra/clients/clickhouse; api/db/clickhouse | Analytics-only store |
 | Notifications | domain/notifications | |
 
@@ -265,7 +268,7 @@ A queue adapter goes in `infra/queue` when the first worker needs one.
 | Projection from chain to PostgreSQL | operations |
 | Webhook delivery | webhooks |
 | Analytics export | analytics |
-| Billing reconciliation | billing |
+| SePay transfer reconciliation (OCT-330) | licensing |
 | Notification delivery | notifications |
 
 ### Cross-cutting API

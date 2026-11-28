@@ -12,6 +12,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
 import { EventsModule } from './events/events.module.js';
 import { DeveloperModule } from './developer/developer.module.js';
+import { LicensingModule } from './licensing/licensing.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 const featureModules = [
   OrganizationsModule,
@@ -27,6 +28,7 @@ const featureModules = [
   AssistantModule,
   EventsModule,
   DeveloperModule,
+  LicensingModule,
   AnalyticsModule,
 ];
 @Module({ imports: featureModules, exports: featureModules })

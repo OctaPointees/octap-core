@@ -13,6 +13,7 @@ export * from './organizations.js';
 export * from './mcp-auth.js';
 export * from './assistant.js';
 export * from './request-logs.js';
+export * from './licensing.js';
 export * from './audit.js';
 export * from './evidence.js';
 export * from './analytics.js';

@@ -133,6 +133,27 @@ getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
 
 Ném `OctaApiError` với status 404 nếu bạn không có chương trình đang hoạt động, và 503 nếu không đọc được chain.
 
+## getLicense
+
+Đọc license của tổ chức: gói nào, tới khi nào, gồm những gì, và đã dùng bao nhiêu mỗi hạn mức.
+
+`GET /v1/license` · Scope: `read`
+
+```ts
+getLicense(options?): Promise<OrganizationLicenseDto>
+```
+
+| Field trả về | Kiểu | Mô tả |
+| --- | --- | --- |
+| `organizationId` | `string` | |
+| `license` | `LicenseDto \| null` | `null` nếu tổ chức chưa có license |
+| `license.tier` | `'TRIAL' \| 'STARTER' \| 'GROWTH' \| 'ENTERPRISE'` | |
+| `license.startsAt`, `license.endsAt` | `string` | Theo ISO 8601 |
+| `license.state` | `'ACTIVE' \| 'GRACE' \| 'EXPIRED'` | `GRACE` trong 7 ngày sau `endsAt` (`graceEndsAt`), sau đó là `EXPIRED` |
+| `license.daysLeft` | `number` | Số ngày còn lại tới `endsAt`, 0 khi đã qua |
+| `license.entitlements` | `{ features, limits }` | License gồm những gì, đúng như lúc được cấp. Hạn mức `null` là không giới hạn |
+| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (giao dịch tích và đổi điểm đã xác nhận trong tháng license, từ `periodStart` tới `periodEnd`; tháng cuối kết thúc ở `endsAt`), `members` (đang hoạt động, không bị chặn hay chưa xác minh), `apiKeys` (đang hoạt động), `teamMembers` (Owner và Business Developer đang hoạt động) |
+
 ## listTransactions
 
 Liệt kê giao dịch của thành viên theo từng trang, mới nhất trước.

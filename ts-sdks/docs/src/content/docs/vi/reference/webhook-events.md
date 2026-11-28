@@ -21,6 +21,8 @@ Mọi event đều có dạng này, và `data` phụ thuộc vào `type`:
 | [`voucher.granted`](#vouchergranted) | Chain ghi nhận voucher được tặng hoặc claim miễn phí | Xếp hàng đúng một lần cho mỗi voucher |
 | [`voucher.redeemed`](#voucherredeemed) | Khách hàng đã ký và chain đánh dấu voucher đã dùng | Xếp hàng đúng một lần cho mỗi voucher |
 | [`budget.low`](#budgetlow) | Ngân sách phát hành vượt mức đã dùng 80% hoặc 95% | Kiểm tra vài phút một lần, mỗi lần vượt gửi một event |
+| [`license.usage_threshold`](#licenseusage_threshold) | Số giao dịch trong tháng license chạm 80% hoặc 100% hạn mức của license | Xếp hàng cùng giao dịch, mỗi mốc một lần mỗi tháng license |
+| [`license.expiry_notice`](#licenseexpiry_notice) | License còn 30, 7 hoặc 1 ngày là hết hạn, vào thời gian ân hạn, hoặc đã hết hạn | Kiểm tra 15 phút một lần, mỗi mốc gửi một lần |
 | [`voucher.created` và các event voucher khác](#event-vòng-đời-voucher) | Voucher được tạo, gửi duyệt, trả về, activate, publish thất bại, tạm dừng hoặc archive | Xếp hàng cùng thay đổi |
 
 Event đã xếp hàng vẫn có thể được retry, nên phía nhận có thể thấy cùng `id` nhiều lần.
@@ -134,6 +136,42 @@ Voucher của một khách đã tới hạn dùng của riêng nó (`expiresAt`)
 | `threshold` | `80 \| 95` | Mức phần trăm đã dùng vừa vượt |
 | `remaining` | `number` | Số điểm còn lại trên mọi shard |
 | `capacity` | `number` | Ngân sách ban đầu cộng mọi lần top-up đã áp dụng |
+
+
+## license.usage_threshold
+
+Số giao dịch của tổ chức bạn trong tháng license này (earn, đổi điểm tại POS và nhận voucher trả phí) đã chạm 80% hoặc 100% mức license cho phép. Quá 100% vẫn nhận tiếp tới 110%, sau đó mỗi giao dịch bị từ chối với 402 `LICENSE_LIMIT_REACHED` cho tới khi tháng license mới bắt đầu ở `periodEnd`. Nâng gói license để tăng hạn mức.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `limit` | `'transactionsMonthly'` | Hạn mức được nói tới |
+| `threshold` | `80 \| 100` | Mốc phần trăm đã chạm |
+| `used` | `number` | Số giao dịch đã đếm trong tháng license, tính cả giao dịch này |
+| `allowed` | `number` | Hạn mức mỗi tháng của license |
+| `periodStart` | `string` | Lúc tháng license này bắt đầu |
+| `periodEnd` | `string` | Lúc tháng kết thúc và bộ đếm bắt đầu lại |
+
+## license.expiry_notice
+
+License của tổ chức bạn vừa tới một mốc sắp hết hạn. Hãy gia hạn trước `graceEndsAt`.
+
+| `stage` | Khi nào | Những gì vẫn chạy |
+| --- | --- | --- |
+| `DAYS_30`, `DAYS_7`, `DAYS_1` | 30, 7 hoặc 1 ngày trước `endsAt`. Mốc nhắc dài hơn chính license thì được bỏ qua (trial 14 ngày chỉ nhận `DAYS_7` và `DAYS_1`) | Mọi thứ |
+| `GRACE` | Đã qua `endsAt` | Mọi thứ, thêm 7 ngày |
+| `EXPIRED` | Đã qua `graceEndsAt` | Mọi thứ trừ giao dịch mới: earn, đổi điểm tại POS và nhận voucher trả phí trả 402 `LICENSE_EXPIRED`. Xác nhận giao dịch, hoàn điểm, số dư và voucher khách đang có vẫn chạy |
+
+Mỗi mốc gửi một lần. License đã được gia hạn thì không gửi gì thêm. Nếu nhiều mốc trôi qua mà không ai kiểm tra, chỉ mốc hiện tại được gửi. Gia hạn được tính tiếp từ `endsAt`, nên gia hạn sớm không mất ngày nào.
+
+| Field | Kiểu | Mô tả |
+| --- | --- | --- |
+| `licenseId` | `string` | |
+| `stage` | `'DAYS_30' \| 'DAYS_7' \| 'DAYS_1' \| 'GRACE' \| 'EXPIRED'` | |
+| `tier` | `string` | `TRIAL`, `STARTER`, `GROWTH` hoặc `ENTERPRISE` |
+| `planName` | `string` | |
+| `endsAt` | `string` | |
+| `graceEndsAt` | `string` | Lúc giao dịch mới bị dừng |
+| `daysLeft` | `number` | Số ngày tròn tới `endsAt`, bằng 0 khi đã qua |
 
 ## Event vòng đời voucher
 

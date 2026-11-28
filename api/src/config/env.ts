@@ -113,6 +113,7 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   { name: 'WALRUS_CONSOLE_NETWORK', kind: { type: 'enum', values: ['mainnet', 'testnet'] }, readBy: WORKER },
   { name: 'WALRUS_CONSOLE_API_KEY', kind: text, readBy: WORKER },
   { name: 'WALRUS_CONSOLE_BUCKET_ID', kind: text, readBy: WORKER },
+  { name: 'LICENSE_EXPIRY_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
 ];
 
 export interface EnvValidation {

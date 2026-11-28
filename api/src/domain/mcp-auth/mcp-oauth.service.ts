@@ -12,6 +12,7 @@ import type { Redis } from 'ioredis';
 import type { ConsoleIdentity, McpTokenIntrospection, OrganizationPersona } from '@octap/contracts';
 import { REDIS_CLIENT } from '#infra/cache/redis.provider.js';
 import { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
+import { LicensesRepository } from '#infra/db/repositories/licenses.repository.js';
 import {
   ConsoleUsersRepository,
   GoogleAccountLinkRequiredError,
@@ -121,6 +122,7 @@ export class McpOAuthService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly google: GoogleIdentityClient,
     private readonly users: ConsoleUsersRepository,
+    private readonly licenses: LicensesRepository,
   ) {}
 
   /** RFC 8414 metadata. The issuer is the Core origin MCP hosts reach. */
@@ -364,6 +366,12 @@ export class McpOAuthService {
       await this.redis.del(this.key('token', hash(token)));
       throw new UnauthorizedException('Your access to this organization changed. Sign in again.');
     }
+    // Checked on every use, so a license that loses the feature stops the tokens already out
+    // (OCT-329). The dashboard assistant's tokens need the assistant, not MCP for outside hosts.
+    await this.licenses.requireFeature(
+      record.organizationId,
+      record.clientId === ASSISTANT_CLIENT_ID ? 'assistant' : 'mcp',
+    );
     return {
       identity: {
         user: {
@@ -395,6 +403,8 @@ export class McpOAuthService {
     userId: string,
     organization: ConsoleIdentity['organizations'][number],
   ): Promise<AuthorizationStep> {
+    // Only an organization whose license includes MCP gets a code (OCT-329), before it is spent.
+    await this.licenses.requireFeature(organization.organizationId, 'mcp');
     // Single use: a pending request issues at most one code.
     if ((await this.redis.del(this.key('request', requestId))) === 0)
       throw new NotFoundException('This sign-in expired. Start again from your MCP client.');

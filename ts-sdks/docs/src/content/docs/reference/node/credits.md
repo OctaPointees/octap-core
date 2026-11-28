@@ -133,6 +133,27 @@ getIssuanceBudget(options?): Promise<IssuanceBudgetDto>
 
 Throws `OctaApiError` with status 404 if you have no active program, and 503 if the chain can't be read.
 
+## getLicense
+
+Reads your organization's license: its plan, until when, what it includes, and how much of each limit is in use.
+
+`GET /v1/license` · Scope: `read`
+
+```ts
+getLicense(options?): Promise<OrganizationLicenseDto>
+```
+
+| Returned field | Type | Description |
+| --- | --- | --- |
+| `organizationId` | `string` | |
+| `license` | `LicenseDto \| null` | `null` if the organization has no license |
+| `license.tier` | `'TRIAL' \| 'STARTER' \| 'GROWTH' \| 'ENTERPRISE'` | |
+| `license.startsAt`, `license.endsAt` | `string` | ISO 8601 |
+| `license.state` | `'ACTIVE' \| 'GRACE' \| 'EXPIRED'` | `GRACE` for 7 days after `endsAt` (`graceEndsAt`), then `EXPIRED` |
+| `license.daysLeft` | `number` | Whole days until `endsAt`, 0 once it has passed |
+| `license.entitlements` | `{ features, limits }` | What the license includes, as it was when granted. A `null` limit is no limit |
+| `usage` | `LicenseUsage \| null` | `transactionsMonthly` (confirmed earns and redeems this license month, from `periodStart` to `periodEnd`; the last month ends at `endsAt`), `members` (active, not blocked or unverified), `apiKeys` (active), `teamMembers` (active Owners and Business Developers) |
+
 ## listTransactions
 
 Lists a member's transactions, newest first, one page at a time.

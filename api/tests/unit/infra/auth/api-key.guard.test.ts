@@ -14,6 +14,7 @@ import type { ApiCredentialsRepository } from '#infra/db/repositories/api-creden
 import { stub } from '../../../helpers/stub.js';
 import { fakeRedis } from '../../../helpers/redis.js';
 import { executionContext } from '../../../helpers/fixtures.js';
+import type { LicensesRepository } from '#infra/db/repositories/licenses.repository.js';
 
 const activeCredential = (overrides: Record<string, unknown> = {}) => ({
   id: 'cred-1',
@@ -25,9 +26,14 @@ const activeCredential = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** A license that allows everything, unless a test passes its own check. */
+function licenses(requireFeature = vi.fn(async () => {})) {
+  return stub<LicensesRepository>({ requireFeature });
+}
+
 function guard(credential: unknown, redis: Redis = fakeRedis(), touchLastUsed = vi.fn(async () => {})) {
   const repo = stub<ApiCredentialsRepository>({ findByKeyHash: async () => credential, touchLastUsed });
-  return new ApiKeyGuard(repo, new Reflector(), redis);
+  return new ApiKeyGuard(repo, new Reflector(), redis, licenses());
 }
 
 /** Equivalent to writing the decorator on a controller method (no TS decorator syntax needed). */
@@ -49,6 +55,7 @@ describe('ApiKeyGuard: authentication', () => {
       stub<ApiCredentialsRepository>({ findByKeyHash, touchLastUsed }),
       new Reflector(),
       fakeRedis(),
+      licenses(),
     );
     const ctx = executionContext({ headers: { authorization: 'Bearer octap_live_valid' } });
 
@@ -104,7 +111,12 @@ describe('ApiKeyGuard: authentication', () => {
 describe('ApiKeyGuard: @Public()', () => {
   it('lets a public route through without any credential, never touching the repository or Redis', async () => {
     const findByKeyHash = vi.fn();
-    const g = new ApiKeyGuard(stub<ApiCredentialsRepository>({ findByKeyHash }), new Reflector(), stub<Redis>());
+    const g = new ApiKeyGuard(
+      stub<ApiCredentialsRepository>({ findByKeyHash }),
+      new Reflector(),
+      stub<Redis>(),
+      licenses(),
+    );
 
     expect(await g.canActivate(executionContext({ handler: route(Public()) }))).toBe(true);
     expect(findByKeyHash).not.toHaveBeenCalled();

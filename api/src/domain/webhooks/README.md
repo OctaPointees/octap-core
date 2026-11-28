@@ -53,6 +53,8 @@ Events (types in `@octap/contracts`' `WebhookEvent`):
 | `credits.earn.confirmed` | the chain confirmed an earn | `CreditsRepository.confirmEarnOnChain` |
 | `credits.earn.failed` | an accepted earn definitely failed | `CreditsRepository.failEarnOnChain` |
 | `budget.low` | the fullest budget shard crossed 80% or 95% used | `ProgramsRepository.recordBudgetWarning` |
+| `license.usage_threshold` | this license month's transactions reached 80% or 100% of the limit | `takeLicenseTransaction` |
+| `license.expiry_notice` | the latest license is 30/7/1 days from its end, entered grace, or expired | `LicensesRepository.recordExpiryNotices` (`LicenseExpiryWorker`) |
 | `credits.redemption.confirmed` | the chain confirmed a POS redemption | `CreditsRepository.confirmPosRedemptionOnChain` |
 | `credits.reversed` | a CONFIRMED earn or redemption was reversed in the ledger (not on a replayed key) | `CreditsRepository.recordReversalTransaction` |
 | `voucher.granted` | the chain recorded a grant or free claim | `RewardsRepository.confirmVoucherGrant` |

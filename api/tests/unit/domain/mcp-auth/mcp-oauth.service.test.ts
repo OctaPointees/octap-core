@@ -10,6 +10,7 @@ import {
 } from '#domain/mcp-auth/mcp-oauth.service.js';
 import type { GoogleIdentityClient } from '#infra/clients/google/google-identity.client.js';
 import type { ConsoleUsersRepository } from '#infra/db/repositories/console-users.repository.js';
+import type { LicensesRepository } from '#infra/db/repositories/licenses.repository.js';
 
 type Organization = ConsoleIdentity['organizations'][number];
 
@@ -63,6 +64,7 @@ function setup(organizations: Organization[] = [org('org-a')]) {
     avatarUrl: null,
     systemRole: 'SYSTEM_USER',
   };
+  const licenses = { requireFeature: vi.fn(async () => {}) };
   const users = {
     resolveGoogleUser: vi.fn(async () => user),
     findById: vi.fn(async (id: string) => (id === user.id ? user : null)),
@@ -72,6 +74,7 @@ function setup(organizations: Organization[] = [org('org-a')]) {
     redis as unknown as Redis,
     google as unknown as GoogleIdentityClient,
     users as unknown as ConsoleUsersRepository,
+    licenses as unknown as LicensesRepository,
   );
   const clientId = service.register({ client_name: 'Inspector', redirect_uris: [REDIRECT] }).client_id;
   const authorize = (overrides: Record<string, unknown> = {}) =>
@@ -140,7 +143,7 @@ describe('McpOAuthService metadata and registration', () => {
   it('answers 503 until both MCP settings are configured', () => {
     vi.stubEnv('MCP_OAUTH_SIGNING_KEY', '');
     const { redis } = fakeRedis();
-    const service = new McpOAuthService(redis as unknown as Redis, {} as never, {} as never);
+    const service = new McpOAuthService(redis as unknown as Redis, {} as never, {} as never, {} as never);
     expect(() => service.register({ redirect_uris: [REDIRECT] })).toThrow('MCP sign-in is not configured');
   });
 

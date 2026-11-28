@@ -221,3 +221,83 @@ export async function seedDelivery(
     .returning();
   return created;
 }
+
+/** The four plans migration 0038 seeds (`resetDb` empties them), by tier. */
+export async function seedLicensePlans(db: DrizzleDb) {
+  const all = ['voucher.batches', 'voucher.approval', 'webhooks', 'mcp', 'assistant', 'sandbox'] as const;
+  const rows = await db
+    .insert(schema.licensePlans)
+    .values([
+      {
+        tier: 'TRIAL',
+        name: 'Trial',
+        monthlyPriceVnd: 0,
+        termMonthsAllowed: [],
+        durationDays: 14,
+        purchasable: false,
+        entitlements: {
+          features: [...all],
+          limits: { transactionsMonthly: 1000, members: 500, apiKeys: 2, teamMembers: 3 },
+        },
+      },
+      {
+        tier: 'STARTER',
+        name: 'Starter',
+        monthlyPriceVnd: 990_000,
+        termMonthsAllowed: [3, 6, 12],
+        entitlements: {
+          features: ['voucher.batches', 'webhooks', 'sandbox'],
+          limits: { transactionsMonthly: 10_000, members: 5000, apiKeys: 2, teamMembers: 3 },
+        },
+      },
+      {
+        tier: 'GROWTH',
+        name: 'Growth',
+        monthlyPriceVnd: 2_990_000,
+        termMonthsAllowed: [3, 6, 12],
+        entitlements: {
+          features: [...all],
+          limits: { transactionsMonthly: 50_000, members: 50_000, apiKeys: 10, teamMembers: 10 },
+        },
+      },
+      {
+        tier: 'ENTERPRISE',
+        name: 'Enterprise',
+        monthlyPriceVnd: 0,
+        termMonthsAllowed: [],
+        purchasable: false,
+        entitlements: {
+          features: [...all],
+          limits: { transactionsMonthly: null, members: null, apiKeys: 25, teamMembers: null },
+        },
+      },
+    ])
+    .returning();
+  return Object.fromEntries(rows.map((plan) => [plan.tier, plan])) as Record<
+    (typeof rows)[number]['tier'],
+    (typeof rows)[number]
+  >;
+}
+
+/** A license for `organizationId` from `plan`, copying its entitlements as granting one does. */
+export async function seedLicense(
+  db: DrizzleDb,
+  organizationId: string,
+  plan: typeof schema.licensePlans.$inferSelect,
+  { startsAt = new Date(), endsAt = new Date(Date.now() + 30 * 86_400_000), source = 'ADMIN' as const } = {},
+) {
+  const [license] = await db
+    .insert(schema.licenses)
+    .values({
+      organizationId,
+      planId: plan.id,
+      tier: plan.tier,
+      planName: plan.name,
+      entitlements: plan.entitlements,
+      source,
+      startsAt,
+      endsAt,
+    })
+    .returning();
+  return license;
+}

@@ -4,7 +4,7 @@ import { organizations, apiCredentials } from './organizations.schema.js';
 import { endUsers, organizationEndUsers } from './members.schema.js';
 import { creditOwnerships, blockchainTransactions, loyaltyTransactions } from './credits.schema.js';
 import { vouchers, voucherOwnerships } from './rewards.schema.js';
-import { billingPlans, paymentMethods, subscriptions, invoices } from './billing.schema.js';
+import { licensePlans, licenses, licenseUsage } from './licensing.schema.js';
 import { webhookEndpoints, webhookDeliveries } from './webhooks.schema.js';
 import { organizationEvents } from './events.schema.js';
 
@@ -50,9 +50,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   organizationEndUsers: many(organizationEndUsers),
   loyaltyTransactions: many(loyaltyTransactions),
   vouchers: many(vouchers),
-  paymentMethods: many(paymentMethods),
-  subscriptions: many(subscriptions),
-  invoices: many(invoices),
+  licenses: many(licenses),
   webhookEndpoints: many(webhookEndpoints),
   webhookDeliveries: many(webhookDeliveries),
 }));
@@ -167,51 +165,29 @@ export const voucherOwnershipsRelations = relations(voucherOwnerships, ({ one })
   }),
 }));
 
-// BILLING PLANS RELATIONS
-export const billingPlansRelations = relations(billingPlans, ({ many }) => ({
-  subscriptions: many(subscriptions),
+// LICENSE PLANS RELATIONS
+export const licensePlansRelations = relations(licensePlans, ({ many }) => ({
+  licenses: many(licenses),
 }));
 
-// PAYMENT METHODS RELATIONS
-export const paymentMethodsRelations = relations(paymentMethods, ({ one, many }) => ({
+// LICENSES RELATIONS
+export const licensesRelations = relations(licenses, ({ one, many }) => ({
   organization: one(organizations, {
-    fields: [paymentMethods.organizationId],
+    fields: [licenses.organizationId],
     references: [organizations.id],
   }),
-  subscriptions: many(subscriptions),
-  invoices: many(invoices),
+  plan: one(licensePlans, {
+    fields: [licenses.planId],
+    references: [licensePlans.id],
+  }),
+  usage: many(licenseUsage),
 }));
 
-// SUBSCRIPTIONS RELATIONS
-export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
-  organization: one(organizations, {
-    fields: [subscriptions.organizationId],
-    references: [organizations.id],
-  }),
-  billingPlan: one(billingPlans, {
-    fields: [subscriptions.billingPlanId],
-    references: [billingPlans.id],
-  }),
-  paymentMethod: one(paymentMethods, {
-    fields: [subscriptions.paymentMethodId],
-    references: [paymentMethods.id],
-  }),
-  invoices: many(invoices),
-}));
-
-// INVOICES RELATIONS
-export const invoicesRelations = relations(invoices, ({ one }) => ({
-  subscription: one(subscriptions, {
-    fields: [invoices.subscriptionId],
-    references: [subscriptions.id],
-  }),
-  paymentMethod: one(paymentMethods, {
-    fields: [invoices.paymentMethodId],
-    references: [paymentMethods.id],
-  }),
-  organization: one(organizations, {
-    fields: [invoices.organizationId],
-    references: [organizations.id],
+// LICENSE USAGE RELATIONS
+export const licenseUsageRelations = relations(licenseUsage, ({ one }) => ({
+  license: one(licenses, {
+    fields: [licenseUsage.licenseId],
+    references: [licenses.id],
   }),
 }));
 

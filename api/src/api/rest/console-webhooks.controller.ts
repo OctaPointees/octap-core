@@ -3,6 +3,8 @@ import { ConsoleWebhooksService } from '#domain/webhooks/console-webhooks.servic
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
 import type { RegisterWebhookEndpointBodyDto } from '../dto/webhooks.dto.js';
+import { RequiresFeature } from '#infra/auth/requires-feature.decorator.js';
+import { LicenseFeatureGuard } from './license-feature.guard.js';
 
 /**
  * Owner or Business Developer reads, sends a test event and replays a delivery; only the Owner
@@ -22,6 +24,8 @@ export class ConsoleWebhooksController {
 
   /** Returns the signing secret, this once. */
   @Post('endpoints')
+  @RequiresFeature('webhooks')
+  @UseGuards(LicenseFeatureGuard)
   @Header('Cache-Control', 'no-store')
   registerEndpoint(
     @Req() req: ConsoleRequest,
@@ -42,6 +46,8 @@ export class ConsoleWebhooksController {
   }
 
   @Post('endpoints/:id/enable')
+  @RequiresFeature('webhooks')
+  @UseGuards(LicenseFeatureGuard)
   @Header('Cache-Control', 'no-store')
   enableEndpoint(
     @Req() req: ConsoleRequest,
