@@ -41,3 +41,31 @@ variable "db_password_version" {
   type        = number
   default     = 1
 }
+
+variable "domain" {
+  description = "The Cloudflare zone the public addresses live in (api.<domain>)."
+  type        = string
+  default     = "octap.biz"
+}
+
+variable "console_google_client_id" {
+  description = "The Google OAuth client id console sign-in verifies against (public, not a secret). Set in terraform.tfvars."
+  type        = string
+}
+
+variable "api_feature_secrets" {
+  description = <<-EOT
+    The API's optional feature secrets (secrets.tf) to pass to it. A task can't start while a
+    secret it names has no value, so add a name only after its value is set (infra/README.md).
+    Each one left out only turns its feature off (503).
+  EOT
+  type        = list(string)
+  default     = []
+  validation {
+    condition = alltrue([
+      for s in var.api_feature_secrets :
+      contains(["ENOKI_API_KEY", "MCP_OAUTH_SIGNING_KEY", "OPENAI_API_KEY", "ORGANIZATION_IDENTITY_ENCRYPTION_KEY"], s)
+    ])
+    error_message = "Each entry must be one of the API's feature secrets: ENOKI_API_KEY, MCP_OAUTH_SIGNING_KEY, OPENAI_API_KEY, ORGANIZATION_IDENTITY_ENCRYPTION_KEY."
+  }
+}

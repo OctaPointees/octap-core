@@ -1,8 +1,8 @@
 # Postgres and Redis (OCT-319). Both sit in the private subnets with no public address, and only
 # the ECS tasks' security group can reach them.
 
-# Every Core task (api, worker, mcp, migrate) runs with this group. It opens nothing inbound by
-# itself; the load balancer's rule for the API is added in OCT-320.
+# Every Core task (api, worker, mcp, migrate) runs with this group. Its only inbound rule is the
+# API port from the load balancer (api.tf).
 resource "aws_security_group" "tasks" {
   name        = "${var.name}-tasks"
   description = "Core ECS tasks"
@@ -127,4 +127,8 @@ resource "aws_elasticache_replication_group" "redis" {
   transit_encryption_enabled = true
   automatic_failover_enabled = false
   apply_immediately          = false
+  # A single node goes offline while AWS patches it. A fixed window keeps that out of working hours:
+  # Monday 01:00-02:00 in Vietnam (UTC+7). The API's /health turns 503 meanwhile, and the load
+  # balancer has ECS replace the task (api.tf).
+  maintenance_window = "sun:18:00-sun:19:00"
 }
