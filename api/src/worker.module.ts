@@ -20,6 +20,7 @@ import { EventRetentionWorker } from './domain/events/event-retention.worker.js'
 import { RequestLogRetentionWorker } from './domain/developer/request-log-retention.worker.js';
 import { EvidenceSealWorker } from './domain/audit/evidence-seal.worker.js';
 import { VoucherExpiryWorker } from './domain/rewards/voucher-expiry.worker.js';
+import { CampaignCloseWorker } from './domain/rewards/campaign-close.worker.js';
 import { EvidenceSealProcessor } from './domain/audit/evidence-seal.processor.js';
 import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.module.js';
 // Register <feature>.worker.ts / <feature>.processor.ts providers here, never in AppModule.
@@ -48,6 +49,7 @@ import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.modul
     RequestLogRetentionWorker,
     EvidenceSealWorker,
     VoucherExpiryWorker,
+    CampaignCloseWorker,
     EvidenceSealProcessor,
   ],
 })

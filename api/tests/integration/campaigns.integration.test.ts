@@ -3,6 +3,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { createTestApp } from './support/app.js';
 import { resetDb, schema, seedCredential, seedMember, seedOrganization, seedProgram } from './support/db.js';
+import { CampaignsRepository } from '#infra/db/repositories/campaigns.repository.js';
+import { CampaignCloseWorker } from '#domain/rewards/campaign-close.worker.js';
 
 const ACTORS = ['owner', 'developer', 'outsider'] as const;
 type Actor = (typeof ACTORS)[number];
@@ -254,6 +256,110 @@ describe('campaigns', () => {
       // New work is still refused, and the same key without the campaign is still a conflict.
       await sandboxEarn({ idempotencyKey: 'sbx-new', campaignId }).expect(422);
       await sandboxEarn({}).expect(409);
+    });
+  });
+
+  describe('closing when the window ends (OCT-343)', () => {
+    const sweep = () => new CampaignCloseWorker(ctx.app.get(CampaignsRepository, { strict: false })).sweepOnce();
+    const statusOf = async (id: string) =>
+      (await ctx.db.select().from(schema.campaigns).where(eq(schema.campaigns.id, id)))[0].status;
+    /** Moves a campaign's window into the past, as time passing would. */
+    const over = (id: string) =>
+      ctx.db
+        .update(schema.campaigns)
+        .set({ startsAt: new Date(Date.now() - 3 * 3600_000), endsAt: new Date(Date.now() - 60_000) })
+        .where(eq(schema.campaigns.id, id));
+    const endedRows = async (id: string) =>
+      (await ctx.db.select().from(schema.auditLog).where(eq(schema.auditLog.targetId, id))).filter(
+        (row) => row.action === 'campaign.ended',
+      );
+
+    it('ends ACTIVE and PAUSED campaigns whose window is over, once, from the system', async () => {
+      const active = await live();
+      const paused = await live({ name: 'Paused' });
+      await act(paused, 'pause').expect(201);
+      const running = await live({ name: 'Still on' });
+      const draft = (await create({ name: 'Draft', startsAt: at(-1), endsAt: at(48) }).expect(201)).body.id;
+      for (const id of [active, paused, draft]) await over(id);
+
+      expect(await sweep()).toBe(2);
+      expect(await statusOf(active)).toBe('ENDED');
+      expect(await statusOf(paused)).toBe('ENDED');
+      expect(await statusOf(running)).toBe('ACTIVE');
+      // A DRAFT past its window can't be activated anyway; it stays a DRAFT, to be archived.
+      expect(await statusOf(draft)).toBe('DRAFT');
+
+      const [row] = await endedRows(active);
+      expect(row).toMatchObject({
+        actorType: 'SYSTEM',
+        actorId: null,
+        changes: { status: { from: 'ACTIVE', to: 'ENDED' }, reason: 'window_ended' },
+      });
+      expect((await endedRows(paused))[0].changes).toMatchObject({ status: { from: 'PAUSED', to: 'ENDED' } });
+
+      // A second sweep finds nothing, and writes nothing twice.
+      expect(await sweep()).toBe(0);
+      expect(await endedRows(active)).toHaveLength(1);
+    });
+
+    it('shows a campaign that is over as ENDED on every read, before any sweep', async () => {
+      const inConsole = await live({ name: 'Console' });
+      const apiKey = await live({ name: 'API key' });
+      await over(inConsole);
+      await over(apiKey);
+
+      const list = (await ctx.http().get(path()).set(as('developer')).expect(200)).body;
+      expect(list.find((c: { id: string }) => c.id === inConsole)).toMatchObject({
+        status: 'ENDED',
+        earnBoostLive: false,
+      });
+      expect((await ctx.http().get(`/v1/campaigns/${apiKey}`).set(key).expect(200)).body.status).toBe('ENDED');
+      // The read wrote the system's audit row, not the reader's.
+      expect((await endedRows(inConsole))[0]).toMatchObject({ actorType: 'SYSTEM', actorId: null });
+      expect(await sweep()).toBe(0);
+    });
+
+    it('keeps an ENDED campaign final but archivable, and refuses to pause one that is over', async () => {
+      const due = await live();
+      await over(due);
+      // Not read or swept yet: still ACTIVE in the row, but its window is over.
+      await act(due, 'pause').expect(409);
+      await sweep();
+      await act(due, 'resume').expect(409);
+      await act(due, 'activate').expect(409);
+      await act(due, 'archive').expect(201);
+      expect(await statusOf(due)).toBe('ARCHIVED');
+    });
+
+    it('takes no new vouchers once over, and shows ENDED after a bulk action, before any sweep', async () => {
+      const due = await live();
+      await ctx
+        .http()
+        .post('/v1/rewards/vouchers')
+        .set(key)
+        .send({ ...voucher('IN-TIME'), status: 'DRAFT', campaignId: due })
+        .expect(201);
+      await over(due);
+      expect(
+        (
+          await ctx
+            .http()
+            .post('/v1/rewards/vouchers')
+            .set(key)
+            .send({ ...voucher('TOO-LATE'), status: 'DRAFT', campaignId: due })
+            .expect(409)
+        ).body.message,
+      ).toMatch(/ended at/);
+      await ctx
+        .http()
+        .post('/v1/rewards/voucher-batches')
+        .set(key)
+        .send({ campaignId: due, items: [voucher('LATE-BATCH')] })
+        .expect(409);
+
+      const archived = (await act(due, 'vouchers/archive').expect(201)).body;
+      expect(archived.campaign).toMatchObject({ id: due, status: 'ENDED' });
+      expect(archived.vouchers.map((v: { code: string }) => v.code)).toEqual(['IN-TIME']);
     });
   });
 

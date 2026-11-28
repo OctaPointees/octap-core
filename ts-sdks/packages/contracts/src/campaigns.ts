@@ -2,7 +2,7 @@ import type { VoucherBatchActionResult, VoucherDto } from './rewards.js';
 
 /**
  * DRAFT until an Owner activates it, which approves it. ACTIVE and PAUSED move back and forth;
- * ENDED and ARCHIVED are final.
+ * ENDED (by the Owner, or automatically once `endsAt` has passed) and ARCHIVED are final.
  */
 export type CampaignStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED' | 'ARCHIVED';
 

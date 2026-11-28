@@ -73,6 +73,15 @@ only the Owner activates it (its approval, recording `approvedByUserId`), pauses
 archives it (`campaigns.repository.ts`'s transitions). How an earn uses it is
 `domain/credits/campaign-boost.ts`.
 
+A campaign whose `endsAt` has passed becomes `ENDED` by itself (OCT-343), with a `campaign.ended`
+audit row from the system (`reason: 'window_ended'`). `CampaignCloseWorker` sweeps every
+organization at start and every `CAMPAIGN_CLOSE_SWEEP_INTERVAL_MS` (60 s by default), and every
+campaign read (list and detail, console and API key) first closes that organization's due campaigns
+(`CampaignsRepository.closeDueFor`), so no read shows `ACTIVE` or `PAUSED` for one that is over.
+Both skip rows another transaction holds and repeat the status condition in the update, like voucher
+expiry. An earn checks `endsAt` itself, so it never waits on either. A `DRAFT` past its window stays
+`DRAFT`: it can't be activated, only archived. Pausing a campaign whose window is over is refused.
+
 A voucher joins a campaign when it is created, never later: `campaignId` on a single create, or on a
 batch (`CreateVoucherBatchRequest.campaignId`), which stamps every voucher the batch creates or
 brings back from `ARCHIVED`, in the same transaction. `importBatchId` is unchanged: the batch and the

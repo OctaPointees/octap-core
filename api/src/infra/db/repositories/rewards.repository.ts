@@ -1664,13 +1664,16 @@ export class RewardsRepository {
    */
   private async lockCampaignForVouchers(tx: DrizzleDb, organizationId: string, campaignId: string) {
     const [campaign] = await tx
-      .select({ status: campaigns.status })
+      .select({ status: campaigns.status, endsAt: campaigns.endsAt })
       .from(campaigns)
       .where(and(eq(campaigns.organizationId, organizationId), eq(campaigns.id, campaignId)))
       .for('share');
     if (!campaign) throw notFound('Campaign not found');
     if (campaign.status === 'ENDED' || campaign.status === 'ARCHIVED')
       throw conflict(`An ${campaign.status} campaign takes no new vouchers`);
+    // Over but not closed yet by the sweep or a read (OCT-343): it is ended all the same.
+    if (campaign.endsAt < new Date())
+      throw conflict(`This campaign ended at ${campaign.endsAt.toISOString()} and takes no new vouchers`);
   }
 
   private async lockBatch(tx: DrizzleDb, organizationId: string, batchId: string): Promise<VoucherBatch> {

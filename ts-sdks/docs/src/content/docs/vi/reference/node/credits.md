@@ -68,7 +68,7 @@ Với `live: true`, chỉ trả các campaign có `earnBoostLive` là `true`: đ
 | --- | --- | --- |
 | `id` | `string` | Gửi làm `campaignId` |
 | `name`, `description` | `string`, `string \| null` | |
-| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | Campaign `ACTIVE` hoặc `PAUSED` tự chuyển sang `ENDED` khi đã qua `endsAt` |
 | `startsAt`, `endsAt` | `string` | ISO 8601 |
 | `multiplierBps` | `number \| null` | 20000 là x2. `null` với campaign chỉ gom voucher |
 | `earnBoostLive` | `boolean` | Lệnh earn gửi kèm campaign này có đang được nhân điểm không |
