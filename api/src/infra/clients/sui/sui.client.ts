@@ -85,7 +85,14 @@ export class SuiClientService {
    */
   async signEarn(
     program: OctapProgramConfig,
-    params: { accountId: string; purchaseAmount: number; multiplierBps: number; operationKey: string },
+    params: {
+      accountId: string;
+      purchaseAmount: number;
+      multiplierBps: number;
+      /** The boosting campaign's UUID; absent for a 1x earn. */
+      campaignId?: string;
+      operationKey: string;
+    },
   ): Promise<SignedChainTransaction> {
     const operationKey = new TextEncoder().encode(params.operationKey);
     const { operationShardId, budgetShardId } = selectShards(program, operationKey);
@@ -98,6 +105,7 @@ export class SuiClientService {
       budgetShardId,
       purchaseAmount: params.purchaseAmount,
       multiplierBps: params.multiplierBps,
+      ...(params.campaignId ? { campaignId: uuidBytes(params.campaignId) } : {}),
       operationKey,
     });
     tx.setGasBudget(50_000_000);
@@ -283,4 +291,11 @@ export function selectShards(
   }
   const index = operationShardIndex(operationKey, shardCount);
   return { operationShardId: config.operationShardIds[index], budgetShardId: config.budgetShardIds[index] };
+}
+
+/** A UUID's 16 bytes, as `credit_account::earn` takes a campaign id. */
+function uuidBytes(id: string): Uint8Array {
+  const hex = id.replace(/-/g, '');
+  if (!/^[0-9a-f]{32}$/i.test(hex)) throw new Error(`Not a UUID: ${id}`);
+  return Uint8Array.from(Buffer.from(hex, 'hex'));
 }

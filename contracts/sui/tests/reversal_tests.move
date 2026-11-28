@@ -84,6 +84,7 @@ fun earn(scenario: &mut ts::Scenario, ids: &Ids, account_id: ID, key: vector<u8>
         &mut budget,
         PURCHASE,
         10_000,
+        vector[],
         key,
         clock,
         ts::ctx(scenario),

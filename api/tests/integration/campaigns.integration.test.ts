@@ -146,6 +146,13 @@ describe('campaigns', () => {
           'campaign.resumed',
         ].sort(),
       );
+      // The terms are in the audit log, so the sealed evidence (OCT-77) shows what was approved.
+      expect(audit.find((row) => row.action === 'campaign.created')?.changes).toEqual({
+        name: 'Weekend 2x',
+        startsAt: draft.startsAt,
+        endsAt: draft.endsAt,
+        multiplierBps: 20_000,
+      });
     });
 
     it('refuses to activate a campaign whose window is already over', async () => {
@@ -169,7 +176,7 @@ describe('campaigns', () => {
         .select()
         .from(schema.operations)
         .where(eq(schema.operations.idempotencyKey, 'boosted'));
-      expect(command.payload).toMatchObject({ multiplierBps: 20_000, purchaseAmount: 100_000 });
+      expect(command.payload).toMatchObject({ multiplierBps: 20_000, purchaseAmount: 100_000, campaignId });
 
       // An ordinary earn is unchanged.
       const plain = (await earn({ idempotencyKey: 'plain' }).expect(201)).body;
@@ -179,6 +186,7 @@ describe('campaigns', () => {
         .from(schema.operations)
         .where(eq(schema.operations.idempotencyKey, 'plain'));
       expect(plainCommand.payload).toMatchObject({ multiplierBps: 10_000 });
+      expect(plainCommand.payload).not.toHaveProperty('campaignId');
     });
 
     it('refuses an earn naming a campaign that cannot boost it, never earning at the base rate', async () => {

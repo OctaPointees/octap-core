@@ -126,6 +126,7 @@ describe('SuiClientService', () => {
         accountId: '0xacc',
         purchaseAmount: 10_000,
         multiplierBps: 20_000,
+        campaignId: '7f1c2a4e-0b3d-4c5e-8f6a-1b2c3d4e5f60',
         operationKey: 'idem-1',
       }),
     ).resolves.toBe(signed);
@@ -139,6 +140,8 @@ describe('SuiClientService', () => {
       budgetShardId: PROGRAM.budgetShardIds[0],
       purchaseAmount: 10_000,
       multiplierBps: 20_000,
+      // The campaign's UUID as the 16 bytes `credit_account::earn` names on `CreditEarned`.
+      campaignId: Uint8Array.from(Buffer.from('7f1c2a4e0b3d4c5e8f6a1b2c3d4e5f60', 'hex')),
       operationKey: new TextEncoder().encode('idem-1'),
     });
     expect(tx.setGasBudget).toHaveBeenCalledWith(50_000_000);

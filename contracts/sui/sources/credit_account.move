@@ -50,11 +50,14 @@ const EWrongVoucherTerms: u64 = 14;
 const EVoucherNotPaid: u64 = 15;
 const EVoucherStillAvailable: u64 = 16;
 const EInvalidMultiplier: u64 = 17;
+const EInvalidCampaign: u64 = 18;
 
 /// `multiplier_bps` of an ordinary earn (1x).
 const BASE_MULTIPLIER_BPS: u64 = 10_000;
 /// The most a single earn may be boosted (10x), whoever holds the `IssuerCap`.
 const MAX_MULTIPLIER_BPS: u64 = 100_000;
+/// A campaign id is a UUID's 16 bytes.
+const CAMPAIGN_ID_LENGTH: u64 = 16;
 
 const VOUCHER_AVAILABLE: u8 = 0;
 const VOUCHER_USED: u8 = 1;
@@ -113,6 +116,9 @@ public struct CreditEarned has copy, drop {
     amount: u64,
     /// The boost this earn was given: `BASE_MULTIPLIER_BPS` (10_000) for an ordinary one.
     multiplier_bps: u64,
+    /// The campaign that gave the boost (its UUID's 16 bytes), empty for an ordinary earn, so a
+    /// boosted earn on the ledger names the campaign it is matched against.
+    campaign_id: vector<u8>,
     bucket_expires_at_ms: u64,
     operation_key: vector<u8>,
 }
@@ -223,6 +229,11 @@ entry fun open_account(issuer: &IssuerCap, program: &ProgramControl, beneficiary
 /// `EInvalidMultiplier`. The amount is still debited from the budget shard,
 /// so a boost can never mint past the program's issuance budget.
 ///
+/// `campaign_id` names the campaign behind a boost and is emitted on
+/// `CreditEarned`: 16 bytes for a boosted earn, empty for an ordinary one.
+/// A boost without a campaign, or a campaign on a 1x earn, aborts
+/// `EInvalidCampaign`.
+///
 /// `operation_shard` and `budget_shard` must be the program's shards that
 /// own `operation_key` (see `operation_shard::shard_index_for`): a replayed
 /// key aborts `operation_shard::EDuplicateOperation`, and an earn that
@@ -236,6 +247,7 @@ entry fun earn(
     budget_shard: &mut BudgetShard,
     purchase_amount: u64,
     multiplier_bps: u64,
+    campaign_id: vector<u8>,
     operation_key: vector<u8>,
     clock: &Clock,
     ctx: &TxContext,
@@ -245,6 +257,11 @@ entry fun earn(
     assert!(account.program_id == object::id(program), EWrongProgram);
     program_control::assert_policy_active(program, policy);
     assert!(multiplier_bps >= BASE_MULTIPLIER_BPS && multiplier_bps <= MAX_MULTIPLIER_BPS, EInvalidMultiplier);
+    if (multiplier_bps == BASE_MULTIPLIER_BPS) {
+        assert!(campaign_id.is_empty(), EInvalidCampaign);
+    } else {
+        assert!(campaign_id.length() == CAMPAIGN_ID_LENGTH, EInvalidCampaign);
+    };
 
     // One floor over the whole product, so a boosted earn is exactly what the policy rate times
     // the multiplier gives, never a rounded-down base amount multiplied afterwards.
@@ -277,6 +294,7 @@ entry fun earn(
         beneficiary: account.beneficiary,
         amount,
         multiplier_bps,
+        campaign_id,
         bucket_expires_at_ms: expires_at_ms,
         operation_key,
     });

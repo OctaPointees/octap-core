@@ -44,6 +44,14 @@ export class CampaignsRepository {
         action: 'campaign.created',
         targetType: 'campaign',
         targetId: campaign.id,
+        // The terms, which never change after creation: with the activation row (who approved it,
+        // and when) the sealed audit log (OCT-77) proves what each boosted earn on-chain was matched to.
+        changes: {
+          name: campaign.name,
+          startsAt: campaign.startsAt.toISOString(),
+          endsAt: campaign.endsAt.toISOString(),
+          multiplierBps: campaign.multiplierBps,
+        },
       });
       return campaign;
     });

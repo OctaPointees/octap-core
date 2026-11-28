@@ -1268,6 +1268,7 @@ describe('ChainSubmitProcessor campaign boost (OCT-340)', () => {
           organizationEndUserId: 'user-1',
           purchaseAmount: 10000,
           multiplierBps: 20000,
+          campaignId: 'c0ffee00-0000-4000-8000-000000000001',
         },
       }),
     );
@@ -1276,6 +1277,7 @@ describe('ChainSubmitProcessor campaign boost (OCT-340)', () => {
       accountId: '0xexisting',
       purchaseAmount: 10000,
       multiplierBps: 20000,
+      campaignId: 'c0ffee00-0000-4000-8000-000000000001',
       operationKey: 'idem-chain-1',
     });
     expect(confirmEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ confirmedPointsAmount: 2000 }));

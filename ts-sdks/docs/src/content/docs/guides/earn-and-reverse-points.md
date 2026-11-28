@@ -32,7 +32,7 @@ await client.earnPoints({
 });
 ```
 
-Points become `floor(purchaseAmount × earnBps × multiplierBps ÷ 10⁸)`: 100,000 at 100 basis points and 2x (`multiplierBps` 20000) earns 2,000. The multiplier is at most 10x, enforced on-chain, and boosted points still come out of your [issuance budget](/concepts/issuance-budget/).
+Points become `floor(purchaseAmount × earnBps × multiplierBps ÷ 10⁸)`: 100,000 at 100 basis points and 2x (`multiplierBps` 20000) earns 2,000. The multiplier is at most 10x, enforced on-chain, the campaign's id is recorded on-chain with the earn, and boosted points still come out of your [issuance budget](/concepts/issuance-budget/).
 
 OctaP never picks a campaign for you, and one earn takes at most one. If the campaign isn't `ACTIVE`, is outside its dates, or has no multiplier, the earn is refused with a 422 instead of earning at the base rate, so a misconfigured till shows up at once. `campaignId` is part of the request when a key is reused: retrying with another campaign is a 409.
 

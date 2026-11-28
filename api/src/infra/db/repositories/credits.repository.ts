@@ -610,6 +610,8 @@ export class CreditsRepository {
           purchaseAmount: params.purchaseAmount,
           // Fixed at acceptance: the campaign may close before the worker submits.
           multiplierBps: params.multiplierBps ?? 10_000,
+          // Named on-chain with the boost, so the ledger ties a boosted earn to its campaign.
+          ...(params.campaignId !== undefined ? { campaignId: params.campaignId } : {}),
         },
         intent: {
           organizationEndUserId: params.organizationEndUserId,
