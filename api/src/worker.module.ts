@@ -15,6 +15,7 @@ import { ProgramsService } from './domain/programs/programs.service.js';
 import { OrganizationProvisioningWorker } from './domain/organizations/provisioning.worker.js';
 import { OrganizationProvisioningProcessor } from './domain/organizations/provisioning.processor.js';
 import { BudgetTopUpProcessor } from './domain/organizations/budget-top-up.processor.js';
+import { EarnRateChangeProcessor } from './domain/organizations/earn-rate-change.processor.js';
 import { EventRetentionWorker } from './domain/events/event-retention.worker.js';
 import { RequestLogRetentionWorker } from './domain/developer/request-log-retention.worker.js';
 import { EvidenceSealWorker } from './domain/audit/evidence-seal.worker.js';
@@ -33,6 +34,7 @@ import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.modul
     OrganizationProvisioningWorker,
     OrganizationProvisioningProcessor,
     BudgetTopUpProcessor,
+    EarnRateChangeProcessor,
     BudgetWarningWorker,
     ChainSubmitWorker,
     ChainSubmitProcessor,

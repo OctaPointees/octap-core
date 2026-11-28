@@ -85,6 +85,17 @@ function isWrongProgramEarnAbort(err: unknown): boolean {
   return abort?.module === 'credit_account' && abort.functionName === 'earn' && abort.abortCode === '0';
 }
 
+/**
+ * `program_control::assert_policy_active`'s `EPolicyNotActive` (abort code 3), reached from `earn`:
+ * the transaction named a policy that is no longer the program's active one.
+ */
+function isStalePolicyEarnAbort(err: unknown): boolean {
+  const abort = err instanceof EarnFailedError ? err.moveAbort : moveAbortOf(err);
+  return (
+    abort?.module === 'program_control' && abort.functionName === 'assert_policy_active' && abort.abortCode === '3'
+  );
+}
+
 /** Carries one durable command through its domain services. Lifecycle stays in `chain-submit.worker.ts`. */
 @Injectable()
 export class ChainSubmitProcessor {
@@ -437,13 +448,25 @@ export class ChainSubmitProcessor {
       try {
         result = await this.submitEarn(operation, program, accountId, payload);
       } catch (err: unknown) {
-        const reopenedId = isWrongProgramEarnAbort(err)
-          ? await this.reopenIfStale(program, operation.tenantId, ownership.id, accountId, payload)
-          : null;
-        if (!reopenedId) {
-          throw err;
+        if (isStalePolicyEarnAbort(err)) {
+          // The program's policy was rotated (OCT-341) between reading the row and the chain
+          // checking it. Retry once against the row as it is now; a row still naming the same
+          // policy is not a rotation in progress, so the abort stands.
+          const current = await resolveProgramConfig(this.programsRepo, operation.tenantId);
+          if (current.policyVersionId === program.policyVersionId) throw err;
+          this.logger.warn(
+            `earn ${operation.id} hit a rotated policy; resubmitting against policy ${current.policyVersionId}`,
+          );
+          result = await this.submitEarn(operation, current, accountId, payload);
+        } else {
+          const reopenedId = isWrongProgramEarnAbort(err)
+            ? await this.reopenIfStale(program, operation.tenantId, ownership.id, accountId, payload)
+            : null;
+          if (!reopenedId) {
+            throw err;
+          }
+          result = await this.submitEarn(operation, program, reopenedId, payload);
         }
-        result = await this.submitEarn(operation, program, reopenedId, payload);
       }
 
       const confirmedPointsAmount = result.eventField<string>('CreditEarned', 'amount');

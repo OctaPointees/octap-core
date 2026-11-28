@@ -42,6 +42,7 @@ function adminWith(results: SubmittedChainTransaction[]) {
     buildCreateProgramTransaction: vi.fn(tx),
     buildPublishPolicyTransaction: vi.fn(tx),
     buildActivatePolicyAndIssueCapTransaction: vi.fn(tx),
+    buildActivatePolicyTransaction: vi.fn(tx),
     buildTopUpBudgetTransaction: vi.fn(tx),
     signAndExecute: vi.fn(),
   };
@@ -195,5 +196,37 @@ describe('ProgramAdminClient.topUpBudget', () => {
     await expect(admin.topUpBudget({ adminCapId: '0xa', budgetShardIds: ['0xb'], amount: 10 })).rejects.toThrow(
       message,
     );
+  });
+});
+
+describe('ProgramAdminClient.rotatePolicy', () => {
+  const ROTATE = { adminCapId: '0xadmincap', programId: '0xprogram', version: 2, earnBps: 250, expiryMs: 1_000 };
+
+  it('publishes the new version, then activates it alone, without minting another IssuerCap', async () => {
+    const { admin, client } = adminWith([
+      ok([ev('PolicyPublished', { policy_version_id: '0xpolicy-v2' })]),
+      ok([ev('PolicyActivated', {})]),
+    ]);
+    expect(await admin.rotatePolicy(ROTATE)).toEqual({ policyVersionId: '0xpolicy-v2' });
+    expect(client.buildPublishPolicyTransaction).toHaveBeenCalledWith(ROTATE);
+    expect(client.buildActivatePolicyTransaction).toHaveBeenCalledWith({
+      adminCapId: '0xadmincap',
+      programId: '0xprogram',
+      policyVersionId: '0xpolicy-v2',
+    });
+    expect(client.buildActivatePolicyAndIssueCapTransaction).not.toHaveBeenCalled();
+  });
+
+  it('stops before activating when the publish fails or emits no policy id', async () => {
+    for (const result of [failed('aborted'), ok([])]) {
+      const { admin, client } = adminWith([result]);
+      await expect(admin.rotatePolicy(ROTATE)).rejects.toThrow();
+      expect(client.buildActivatePolicyTransaction).not.toHaveBeenCalled();
+    }
+  });
+
+  it('names the published policy when the activation fails', async () => {
+    const { admin } = adminWith([ok([ev('PolicyPublished', { policy_version_id: '0xpolicy-v2' })]), failed()]);
+    await expect(admin.rotatePolicy(ROTATE)).rejects.toThrow('0xpolicy-v2');
   });
 });

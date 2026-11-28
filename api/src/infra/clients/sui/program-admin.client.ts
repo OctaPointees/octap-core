@@ -167,6 +167,56 @@ export class ProgramAdminClient {
   }
 
   /**
+   * Publishes policy `version` with the new `earnBps` and makes it the program's active policy
+   * (OCT-341). Two transactions, like provisioning: `publish` freezes the `PolicyVersion` without
+   * returning it, so its id is only known from the first transaction's event. Only
+   * `activate_policy` follows, never `issue_cap`: the program's `IssuerCap` stays as it is.
+   *
+   * A publish that lands without the activation leaves a frozen, never-active policy behind,
+   * which no earn can use. An activation that lands is the new on-chain truth even when the
+   * caller fails to record it, so its id is logged.
+   */
+  async rotatePolicy(params: {
+    adminCapId: string;
+    programId: string;
+    version: number;
+    earnBps: number;
+    expiryMs: number;
+  }): Promise<{ policyVersionId: string }> {
+    const publishTx = this.client.buildPublishPolicyTransaction({
+      adminCapId: params.adminCapId,
+      programId: params.programId,
+      version: params.version,
+      earnBps: params.earnBps,
+      expiryMs: params.expiryMs,
+    });
+    publishTx.setGasBudget(50_000_000);
+    const published = await this.client.signAndExecute(publishTx, await this.adminSigner());
+    if (published.status !== 'success') {
+      throw new Error(published.errorMessage ?? 'policy_version::publish failed on-chain');
+    }
+    const policyVersionId = eventField<string>(published, 'PolicyPublished', 'policy_version_id');
+    if (!policyVersionId) {
+      throw new Error('policy_version::publish did not emit PolicyPublished');
+    }
+
+    const activateTx = this.client.buildActivatePolicyTransaction({
+      adminCapId: params.adminCapId,
+      programId: params.programId,
+      policyVersionId,
+    });
+    activateTx.setGasBudget(50_000_000);
+    const activated = await this.client.signAndExecute(activateTx, await this.adminSigner());
+    if (activated.status !== 'success') {
+      throw new Error(activated.errorMessage ?? `activate_policy failed on-chain for policy ${policyVersionId}`);
+    }
+    this.logger.log(
+      `activated policy ${policyVersionId} (version ${params.version}, earn_bps ${params.earnBps}) for program ${params.programId}`,
+    );
+    return { policyVersionId };
+  }
+
+  /**
    * Refills a program's budget shards by `amount` credits in total, split like the initial
    * budget (`splitTopUp`), in one transaction. Signed with the `AdminCap` holder's key — the only
    * signer `budget_shard::top_up` accepts.

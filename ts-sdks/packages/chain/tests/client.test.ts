@@ -144,6 +144,14 @@ describe('OctapChainClient transaction builders', () => {
     ).toEqual([`${PKG}::budget_shard::top_up`, `${PKG}::budget_shard::top_up`]);
   });
 
+  it('activate-only rotates the policy without minting another IssuerCap', () => {
+    expect(
+      moveCalls(
+        client().buildActivatePolicyTransaction({ adminCapId: ID(1), programId: ID(2), policyVersionId: ID(3) }),
+      ),
+    ).toEqual([`${PKG}::program_control::activate_policy`]);
+  });
+
   it('activate+issue_cap optionally creates shards in the same transaction', () => {
     const base = { adminCapId: ID(1), programId: ID(2), policyVersionId: ID(3), issuerRecipient: ID(4) };
     expect(moveCalls(client().buildActivatePolicyAndIssueCapTransaction(base))).toEqual([

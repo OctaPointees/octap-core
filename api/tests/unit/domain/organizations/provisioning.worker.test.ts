@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrganizationProvisioningWorker } from '#domain/organizations/provisioning.worker.js';
 import type { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import type { BudgetTopUpProcessor } from '#domain/organizations/budget-top-up.processor.js';
+import type { EarnRateChangeProcessor } from '#domain/organizations/earn-rate-change.processor.js';
 import type { OrganizationProvisioningProcessor } from '#domain/organizations/provisioning.processor.js';
 
 describe('organization provisioning worker lifecycle', () => {
@@ -17,6 +18,7 @@ describe('organization provisioning worker lifecycle', () => {
       operations as unknown as OperationsRepository,
       {} as OrganizationProvisioningProcessor,
       {} as BudgetTopUpProcessor,
+      {} as EarnRateChangeProcessor,
     );
     vi.stubEnv('ORG_PROVISION_WORKER_ENABLED', 'false');
     worker.onModuleInit();
@@ -43,6 +45,7 @@ describe('organization provisioning worker lifecycle', () => {
       { recoverStaleProcessing: async () => [], claimNextPending } as unknown as OperationsRepository,
       { process } as unknown as OrganizationProvisioningProcessor,
       {} as BudgetTopUpProcessor,
+      {} as EarnRateChangeProcessor,
     );
     const first = worker.pollOnce();
     await vi.waitFor(() => expect(process).toHaveBeenCalledOnce());
@@ -62,6 +65,7 @@ describe('organization provisioning worker lifecycle', () => {
       } as unknown as OperationsRepository,
       { process: provision } as unknown as OrganizationProvisioningProcessor,
       { process: topUp } as unknown as BudgetTopUpProcessor,
+      {} as EarnRateChangeProcessor,
     );
     await worker.pollOnce();
     expect(topUp).toHaveBeenCalledOnce();
@@ -75,6 +79,7 @@ describe('organization provisioning worker lifecycle', () => {
       { recoverStaleProcessing: recover, claimNextPending: claim } as unknown as OperationsRepository,
       {} as OrganizationProvisioningProcessor,
       {} as BudgetTopUpProcessor,
+      {} as EarnRateChangeProcessor,
     );
     await worker.pollOnce();
     expect(log).toHaveBeenCalledOnce();

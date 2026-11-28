@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { alias } from 'drizzle-orm/pg-core';
-import { and, asc, eq, gt, getTableColumns } from 'drizzle-orm';
+import { and, asc, eq, gt, getTableColumns, inArray } from 'drizzle-orm';
 import type { GovernanceProposal } from '@octap/contracts';
 import { DRIZZLE_DB, type DrizzleDb } from '../postgres.provider.js';
 import {
@@ -26,8 +26,12 @@ import {
 } from './console-organizations.repository.js';
 import { withInitialOwners, requireSystemAdmin } from './console-access.js';
 import { acceptCommand } from './operations.repository.js';
-import { ORGANIZATION_BUDGET_TOP_UP_COMMAND } from './organizations.repository.js';
+import {
+  ORGANIZATION_BUDGET_TOP_UP_COMMAND,
+  ORGANIZATION_EARN_RATE_CHANGE_COMMAND,
+} from './organizations.repository.js';
 import { programs } from '../schema/programs.schema.js';
+import { operations } from '../schema/operations.schema.js';
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 type Organization = typeof organizations.$inferSelect;
 const reviewer = alias(systemUsers, 'reviewer');
@@ -87,6 +91,68 @@ export class GovernanceRepository {
     if (problem) throw new ConsoleValidationError(problem);
     const { nationalId, ...fields } = change;
     return { ...fields, ...(nationalId ? { nationalIdLast4: nationalId.slice(-4) } : {}), expected };
+  }
+  /**
+   * Checks an `UPDATE_EARN_RATE` proposal against the organization's program and returns what the
+   * request stores besides `earnBps`: the policy version it was proposed against, so an approval
+   * after another rotation is refused rather than applied on top of it. The caller holds the
+   * organization row FOR UPDATE, which serializes the one-open-request check.
+   */
+  private async earnRatePayload(tx: Tx, orgId: string, earnBps: number) {
+    const program = await tx.query.programs.findFirst({ where: eq(programs.organizationId, orgId) });
+    if (program?.status !== 'ACTIVE')
+      throw new ConsoleConflictError('This organization has no active program to change the earn rate of');
+    if (program.earnBps === earnBps) throw new ConsoleValidationError('The earn rate is already this value');
+    const [open] = await tx
+      .select({ id: organizationChangeRequests.id })
+      .from(organizationChangeRequests)
+      .where(
+        and(
+          eq(organizationChangeRequests.organizationId, orgId),
+          eq(organizationChangeRequests.requestType, 'UPDATE_EARN_RATE'),
+          eq(organizationChangeRequests.status, 'PENDING'),
+        ),
+      );
+    if (open) throw new ConsoleConflictError('This organization already has an earn-rate change waiting for review');
+    return { expectedPolicyVersion: program.policyVersion, previousEarnBps: program.earnBps };
+  }
+  /**
+   * Queues an approved `UPDATE_EARN_RATE` for the worker holding the program admin key. Refused when
+   * the program's policy moved since the proposal, or another earn-rate change has not finished
+   * (or ended UNKNOWN and still needs an operator): two rotations must never race.
+   */
+  private async queueEarnRateChange(
+    tx: Tx,
+    orgId: string,
+    requestId: string,
+    payload: { earnBps?: number; expectedPolicyVersion?: number },
+  ) {
+    const program = await tx.query.programs.findFirst({ where: eq(programs.organizationId, orgId) });
+    if (program?.status !== 'ACTIVE')
+      throw new ConsoleConflictError('This organization has no active program to change the earn rate of');
+    if (program.policyVersion !== payload.expectedPolicyVersion)
+      throw new ConsoleConflictError('The earn rate changed since this request was submitted');
+    const [inFlight] = await tx
+      .select({ id: operations.id })
+      .from(operations)
+      .where(
+        and(
+          eq(operations.tenantId, orgId),
+          eq(operations.commandType, ORGANIZATION_EARN_RATE_CHANGE_COMMAND),
+          inArray(operations.status, ['PENDING', 'PROCESSING', 'UNKNOWN']),
+        ),
+      );
+    if (inFlight)
+      throw new ConsoleConflictError(
+        'Another earn-rate change is still being applied or needs operator reconciliation',
+      );
+    // The worker holding the program admin key executes it; this process never signs.
+    await acceptCommand(tx, {
+      tenantId: orgId,
+      idempotencyKey: `earn-rate-change-${requestId}`,
+      commandType: ORGANIZATION_EARN_RATE_CHANGE_COMMAND,
+      payload: { earnBps: payload.earnBps, fromPolicyVersion: program.policyVersion, changeRequestId: requestId },
+    });
   }
   /** Applies an approved `UPDATE_IDENTITY` request, refusing it if the details moved since submission. */
   private async applyIdentity(tx: Tx, org: Organization, requestId: string, payload: IdentityPayload) {
@@ -151,8 +217,13 @@ export class GovernanceRepository {
         );
       const identity =
         input.requestType === 'UPDATE_IDENTITY' ? await this.identityPayload(tx, org, input.payload) : undefined;
+      const earnRate =
+        input.requestType === 'UPDATE_EARN_RATE'
+          ? await this.earnRatePayload(tx, orgId, input.payload.earnBps!)
+          : undefined;
       const payload = {
         ...(identity ?? input.payload),
+        ...earnRate,
         expectedStatus: org.status,
         ...(input.requestType === 'UPDATE_PROFILE' ? { expectedName: org.name } : {}),
         requestedReason: input.reason,
@@ -259,6 +330,8 @@ export class GovernanceRepository {
         expectedStatus?: string;
         expectedName?: string;
         amount?: number;
+        earnBps?: number;
+        expectedPolicyVersion?: number;
       };
       if (approve) {
         if (org.status !== payload.expectedStatus)
@@ -333,6 +406,9 @@ export class GovernanceRepository {
             });
             break;
           }
+          case 'UPDATE_EARN_RATE':
+            await this.queueEarnRateChange(tx, org.id, request.id, payload);
+            break;
           case 'UPDATE_IDENTITY':
             await this.applyIdentity(tx, org, request.id, request.payload as IdentityPayload);
             break;

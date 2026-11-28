@@ -12,6 +12,7 @@ import { ProgramsService } from '#domain/programs/programs.service.js';
 import { OrganizationProvisioningProcessor } from '#domain/organizations/provisioning.processor.js';
 import { OrganizationProvisioningWorker } from '#domain/organizations/provisioning.worker.js';
 import type { BudgetTopUpProcessor } from '#domain/organizations/budget-top-up.processor.js';
+import type { EarnRateChangeProcessor } from '#domain/organizations/earn-rate-change.processor.js';
 import { stub } from '../helpers/stub.js';
 import type { ProgramAdminClient } from '#infra/clients/sui/program-admin.client.js';
 import type { SuiClientService } from '#infra/clients/sui/sui.client.js';
@@ -294,7 +295,12 @@ describe('organization management and durable provisioning', () => {
       .set({ updatedAt: new Date(Date.now() - 31 * 60000) })
       .where(eq(schema.operations.id, job.id));
     const process = processor();
-    const worker = new OrganizationProvisioningWorker(ops, process.service, stub<BudgetTopUpProcessor>());
+    const worker = new OrganizationProvisioningWorker(
+      ops,
+      process.service,
+      stub<BudgetTopUpProcessor>(),
+      stub<EarnRateChangeProcessor>(),
+    );
     await worker.pollOnce();
     expect(process.provision).not.toHaveBeenCalled();
     expect((await ctx.db.query.operations.findFirst({ where: eq(schema.operations.id, job.id) }))?.status).toBe(
