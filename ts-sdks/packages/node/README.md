@@ -49,7 +49,7 @@ anything, and keep every spend behind the customer's signature.
 | Core routes | SDK methods |
 | --- | --- |
 | `POST /v1/identity/verify` | `verifyCustomer(idToken)` |
-| `POST /v1/credits/earn` | `earnPoints({ organizationEndUserId, purchaseAmount, idempotencyKey })` |
+| `POST /v1/credits/earn` | `earnPoints({ organizationEndUserId, purchaseAmount, idempotencyKey, campaignId? })` |
 | `POST /v1/credits/redeem/reserve`, `/finalize` | `reservePosRedemption`, `finalizePosRedemption` |
 | `POST /v1/credits/transactions/:id/reverse` | `reverseTransaction` |
 | `GET /v1/credits/members/:id/balance`, `/transactions` | `getBalance`, `listTransactions` |
@@ -59,7 +59,7 @@ anything, and keep every spend behind the customer's signature.
 | `GET /v1/credits/members/:id/reconciliation` | `getBalanceReconciliation` |
 | `GET /v1/rewards/refund-policy`, `GET .../history` | `getVoucherRefundPolicy`, `listVoucherRefundPolicyHistory` |
 | `POST/GET /v1/rewards/vouchers`, `GET/PATCH .../:id` | `createVoucher`, `listVouchers`, `getVoucher`, `updateVoucher` |
-| `POST/GET /v1/rewards/voucher-batches`, `GET .../:id` | `createVouchers(items, { dryRun, name })`, `listVoucherBatches`, `getVoucherBatch` |
+| `POST/GET /v1/rewards/voucher-batches`, `GET .../:id` | `createVouchers(items, { dryRun, name, campaignId })`, `listVoucherBatches`, `getVoucherBatch` |
 | `POST .../voucher-batches/:id/activate`, `/pause`, `/resume`, `/archive` | `activateVoucherBatch`, `pauseVoucherBatch`, `resumeVoucherBatch`, `archiveVoucherBatch` |
 | `POST .../vouchers/:id/claim`, `GET .../claims/:id` | `claimVoucher`, `getVoucherClaim` |
 | `POST .../vouchers/:id/grant` | `grantVoucher` |

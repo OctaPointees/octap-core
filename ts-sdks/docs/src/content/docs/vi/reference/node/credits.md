@@ -39,6 +39,7 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `idempotencyKey` | `string` | **Bắt buộc.** Không đổi qua các lần thử lại. |
 | `receiptReference` | `string` | Mã tham chiếu của bạn. |
 | `metadata` | `object` | Dữ liệu của bạn, lưu cùng giao dịch. |
+| `campaignId` | `string` | Campaign có hệ số nhân áp dụng. Campaign phải thuộc tổ chức của bạn, đang `ACTIVE`, trong thời hạn và có hệ số nhân, nếu không lệnh earn trả 422. Bỏ trống cho lệnh earn thường. |
 
 | Field trả về | Kiểu | Mô tả |
 | --- | --- | --- |

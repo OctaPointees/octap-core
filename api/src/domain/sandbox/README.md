@@ -21,7 +21,7 @@ changes. No real member's balance moves, nothing is sent to the chain, no webhoo
 
 | Route | In sandbox |
 | --- | --- |
-| `POST /v1/credits/earn` | Same checks as live (member, program, `earnBps`, the 0-point rule, idempotency with 409 on a changed payload). CONFIRMED at once with a synthetic `sandbox_…` digest; the points are credited to the sandbox balance. The issuance budget is neither checked nor spent. |
+| `POST /v1/credits/earn` | Same checks as live (member, program, `earnBps`, a named campaign and its multiplier (OCT-340), the 0-point rule, idempotency with 409 on a changed payload). CONFIRMED at once with a synthetic `sandbox_…` digest; the points are credited to the sandbox balance. The issuance budget is neither checked nor spent. |
 | `POST /v1/credits/redeem/reserve` | Same checks as live; holds the points in the sandbox balance (400 when it cannot cover them). Returns a `sandbox_…` digest and placeholder bytes. No Enoki. |
 | `POST /v1/credits/redeem/finalize` | Public, like live. A `sandbox_…` digest settles on the sandbox ledger with any non-empty signature. An unsigned hold is released after 30 minutes, like a live one. |
 | `POST /v1/identity/verify` | Live and read-only: it only reads the customer (a POST so the ID token stays out of the URL). |

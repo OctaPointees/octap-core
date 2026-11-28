@@ -84,5 +84,6 @@ chain-submit worker, POS finalize, `ChainOutcomeReconciler` or the indexer confi
 `credits.reversed` and `voucher.redeemed` follow the same rule (OCT-244), the latter behind the
 conditional `AVAILABLE -> REDEEMED` update, so a losing concurrent redeem records nothing.
 
-`credits.earned.data` carries `purchaseAmount` and `estimatedPoints`, not `pointsAmount`.
+`credits.earned.data` carries `purchaseAmount` and `estimatedPoints`, not `pointsAmount`, and
+`campaignId` when a campaign boosted the earn (OCT-340).
 The confirmed event carries the actual `pointsAmount`.

@@ -19,6 +19,23 @@ const earn = await client.earnPoints({
 
 `receiptReference` và `metadata` là tùy chọn, và được tính là một phần của request khi dùng lại key.
 
+### Nhân điểm bằng campaign
+
+Owner có thể chạy một campaign có thời hạn trên console, ví dụ "cuối tuần x2 điểm". Để áp dụng, hãy gửi id của nó:
+
+```ts
+await client.earnPoints({
+  organizationEndUserId: memberId,
+  purchaseAmount: order.totalMinorUnits,
+  idempotencyKey: `earn-${order.id}`,
+  campaignId: weekendCampaignId,
+});
+```
+
+Số điểm là `floor(purchaseAmount × earnBps × multiplierBps ÷ 10⁸)`: 100.000 với 100 basis point và x2 (`multiplierBps` 20000) được 2.000 điểm. Hệ số tối đa là x10, được chain kiểm tra, và điểm nhân thêm vẫn trừ vào [ngân sách phát hành](/vi/concepts/issuance-budget/).
+
+OctaP không bao giờ tự chọn campaign, và mỗi lệnh earn chỉ áp dụng tối đa một campaign. Nếu campaign không `ACTIVE`, nằm ngoài thời hạn, hoặc không có hệ số nhân, lệnh earn bị từ chối với 422 thay vì earn theo tỷ lệ thường, nên máy POS cấu hình sai lộ ra ngay. `campaignId` là một phần của request khi dùng lại key: thử lại với campaign khác trả 409.
+
 ### Biết khi nào điểm tiêu được
 
 Response có trạng thái `PENDING`. Hãy xử lý webhook [`credits.earn.confirmed`](/vi/reference/webhook-events/#creditsearnconfirmed), hoặc đọc lịch sử:

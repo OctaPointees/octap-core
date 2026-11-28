@@ -27,8 +27,9 @@ createVoucher(request: CreateVoucherRequest, options?): Promise<VoucherDto>
 | `validForDays` | `number \| null` | Each customer's voucher is usable this many days from when it is issued, capped by `expiresAt`. 1–3650; `null` means every voucher expires at `expiresAt`. Fixed once publishing starts. |
 | `metadata` | `object` | |
 | `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED'` | Defaults to `ACTIVE`, which publishes the terms on-chain first. If your organization requires approval, `ACTIVE` puts the voucher in `PENDING_APPROVAL` until an Owner approves it in the console. Resuming a published voucher needs no approval. |
+| `campaignId` | `string` | A campaign of yours, not `ENDED` or `ARCHIVED`, that the voucher joins. Set on create only. |
 
-A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `createdBy`, `activatedBy`, `activatedAt`, `createdAt` and `updatedAt`. `createdBy` is who created the voucher and `activatedBy` who took it live (whoever activated it, or the Owner who approved it), each `{ type: 'USER' | 'API_CREDENTIAL', id }`, or `null` when not recorded (vouchers created before this was kept) or once that user or key is deleted; `activatedAt` is when publishing started. `approval` is the latest approval request, `null` if there never was one. `submittedBy` is `null` once that user or key is deleted. Fields: `id` (the submission an Owner approves or rejects), `status` (`PENDING`, `APPROVED`, `REJECTED` or `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt`, `reason` (why it was rejected) and `snapshot` (the terms as submitted, which is what approving publishes; `null` for submissions made before it was kept).
+A claim's or member voucher's `expiresAt` is that customer's own deadline. `VoucherDto` adds `id`, `organizationId`, `claimedCount`, `publishStatus`, `suiTermsId`, `refundPolicy`, `approval`, `batchId`, `campaignId`, `createdBy`, `activatedBy`, `activatedAt`, `createdAt` and `updatedAt`. `createdBy` is who created the voucher and `activatedBy` who took it live (whoever activated it, or the Owner who approved it), each `{ type: 'USER' | 'API_CREDENTIAL', id }`, or `null` when not recorded (vouchers created before this was kept) or once that user or key is deleted; `activatedAt` is when publishing started. `approval` is the latest approval request, `null` if there never was one. `submittedBy` is `null` once that user or key is deleted. Fields: `id` (the submission an Owner approves or rejects), `status` (`PENDING`, `APPROVED`, `REJECTED` or `WITHDRAWN`), `submittedBy` (`{ type: 'USER' | 'API_CREDENTIAL', id }`), `submittedAt`, `reviewedById`, `reviewedAt`, `reason` (why it was rejected) and `snapshot` (the terms as submitted, which is what approving publishes; `null` for submissions made before it was kept).
 
 ## updateVoucher
 
@@ -61,12 +62,12 @@ getVoucher(voucherId: string, options?): Promise<VoucherDto>
 `POST /v1/rewards/voucher-batches` · Scope: `write`
 
 ```ts
-createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string }, options?): Promise<CreateVoucherBatchResponse>
+createVouchers(items: VoucherBatchItem[], batchOptions?: { dryRun?: boolean; name?: string; campaignId?: string }, options?): Promise<CreateVoucherBatchResponse>
 ```
 
 Creates up to 100 vouchers as one **DRAFT** batch. Nothing goes live until `activateVoucherBatch`. Each item takes `createVoucher`'s fields except `status`; sending `status` makes that item an error. More than 100 items, or none, is a 400 for the whole call.
 
-With `dryRun: true`, every check runs and each item's result is returned, but nothing is written: use it to preview a file. `name` labels the batch, for example the file's name (up to 120 characters, not unique).
+With `dryRun: true`, every check runs and each item's result is returned, but nothing is written: use it to preview a file. `name` labels the batch, for example the file's name (up to 120 characters, not unique). `campaignId` puts every voucher the batch creates into that campaign; an item can't carry its own.
 
 Each item is handled on its own, and `items[i]` of the response describes `items[i]`. `code` is the key:
 

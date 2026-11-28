@@ -39,6 +39,7 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `idempotencyKey` | `string` | **Required.** Stable across retries. |
 | `receiptReference` | `string` | Your reference. |
 | `metadata` | `object` | Your data, stored with the transaction. |
+| `campaignId` | `string` | A campaign whose multiplier applies. It must be yours, `ACTIVE`, within its dates and have a multiplier, or the earn is a 422. Omit it for an ordinary earn. |
 
 | Returned field | Type | Description |
 | --- | --- | --- |

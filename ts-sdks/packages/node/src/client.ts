@@ -365,7 +365,7 @@ export class OctaPointClient {
    */
   async createVouchers(
     items: VoucherBatchItem[],
-    batchOptions: { dryRun?: boolean; name?: string } = {},
+    batchOptions: { dryRun?: boolean; name?: string; campaignId?: string } = {},
     options?: RequestOptions,
   ): Promise<CreateVoucherBatchResponse> {
     return this.request<CreateVoucherBatchResponse>(
@@ -375,6 +375,7 @@ export class OctaPointClient {
         items,
         ...(batchOptions.dryRun !== undefined ? { dryRun: batchOptions.dryRun } : {}),
         ...(batchOptions.name !== undefined ? { name: batchOptions.name } : {}),
+        ...(batchOptions.campaignId !== undefined ? { campaignId: batchOptions.campaignId } : {}),
       },
       options,
     );
