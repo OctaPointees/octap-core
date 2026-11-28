@@ -26,7 +26,8 @@ after `purchase_amount`, bounded to 1x–10x (`EInvalidMultiplier`), and credits
 `purchase_amount * earn_bps * multiplier_bps / 10^8`, still debited from the budget shard.
 `CreditEarned` gained a `multiplier_bps` field. Changing an entry function's signature and an event's
 shape is not upgrade-compatible. The previous package `0xcad75786...` (OCT-291) is abandoned on
-testnet, not migrated: every organization's program must be provisioned again on this one.
+testnet, not migrated: wipe and reseed each database that points at it (see "Testnet data is
+disposable" below and `api/src/domain/indexer/README.md`).
 
 Fresh publish for OCT-291 (`VoucherTerms.use_duration_ms`): each customer's voucher can be usable for
 a duration from its own `issued_at_ms`, capped by `expires_at_ms` (`voucher_terms::use_deadline_ms`,

@@ -36,6 +36,8 @@ Points become `floor(purchaseAmount × earnBps × multiplierBps ÷ 10⁸)`: 100,
 
 OctaP never picks a campaign for you, and one earn takes at most one. If the campaign isn't `ACTIVE`, is outside its dates, or has no multiplier, the earn is refused with a 422 instead of earning at the base rate, so a misconfigured till shows up at once. `campaignId` is part of the request when a key is reused: retrying with another campaign is a 409.
 
+A campaign's dates only decide which earns it boosts. Vouchers in the campaign keep their own claim deadline (`expiresAt`) and use period (`validForDays`): to end them with the campaign, give them the same `expiresAt`.
+
 ### Know when points are spendable
 
 The response is `PENDING`. Act on the [`credits.earn.confirmed`](/reference/webhook-events/#creditsearnconfirmed) webhook, or read history:
