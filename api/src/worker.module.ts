@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { type DynamicModule, Module, type Provider } from '@nestjs/common';
+import type { WorkerJobSet } from '#config/env.js';
 import { DomainModule } from './domain/domain.module.js';
 import { InfrastructureModule } from './infra/infrastructure.module.js';
 import { SuiModule } from './infra/clients/sui/sui.module.js';
@@ -28,27 +29,42 @@ import { WalrusConsoleModule } from './infra/clients/walrus/walrus-console.modul
 // admin signer (AWS KMS keys, or raw keys off mainnet; infra/clients/sui/signer.ts). ProgramsService lives here rather than in
 // domain/domain.module.ts for the same reason ChainSubmitProcessor does: that module reaches
 // AppModule too. WalrusConsoleModule (OCT-77) is here for the same reason: only the worker archives.
-@Module({
-  imports: [DomainModule, InfrastructureModule, SuiModule, ProgramAdminModule, WalrusConsoleModule],
-  providers: [
-    OrganizationProvisioningWorker,
-    OrganizationProvisioningProcessor,
-    BudgetTopUpProcessor,
-    EarnRateChangeProcessor,
-    BudgetWarningWorker,
-    ChainSubmitWorker,
-    ChainSubmitProcessor,
-    ChainOutcomeReconciler,
-    WebhookDeliveryWorker,
-    WebhookDeliveryProcessor,
-    EventRetentionWorker,
-    CheckpointIndexerWorker,
-    CheckpointIndexerProcessor,
-    ProgramsService,
-    RequestLogRetentionWorker,
-    EvidenceSealWorker,
-    VoucherExpiryWorker,
-    EvidenceSealProcessor,
-  ],
-})
-export class WorkerModule {}
+//
+// `WORKER_JOBS=org-setup` (OCT-321) loads only organization setup and the other program-admin
+// commands, so a deployment can run them in a worker of their own, the only one given the
+// program-admin key. That worker still reaches the issuer signer, for its address only: setup sends
+// the new program's IssuerCap there.
+const ORG_SETUP: Provider[] = [
+  OrganizationProvisioningWorker,
+  OrganizationProvisioningProcessor,
+  BudgetTopUpProcessor,
+  EarnRateChangeProcessor,
+  ProgramsService,
+];
+
+const EVERYTHING_ELSE: Provider[] = [
+  BudgetWarningWorker,
+  ChainSubmitWorker,
+  ChainSubmitProcessor,
+  ChainOutcomeReconciler,
+  WebhookDeliveryWorker,
+  WebhookDeliveryProcessor,
+  EventRetentionWorker,
+  CheckpointIndexerWorker,
+  CheckpointIndexerProcessor,
+  RequestLogRetentionWorker,
+  EvidenceSealWorker,
+  VoucherExpiryWorker,
+  EvidenceSealProcessor,
+];
+
+@Module({})
+export class WorkerModule {
+  static forJobs(jobs: WorkerJobSet = 'all'): DynamicModule {
+    return {
+      module: WorkerModule,
+      imports: [DomainModule, InfrastructureModule, SuiModule, ProgramAdminModule, WalrusConsoleModule],
+      providers: jobs === 'org-setup' ? ORG_SETUP : [...ORG_SETUP, ...EVERYTHING_ELSE],
+    };
+  }
+}

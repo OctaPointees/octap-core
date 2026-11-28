@@ -32,6 +32,8 @@ so a normal issuer-only worker does not claim program-admin jobs. Set
 Sui network/package and issuer-public-key settings. The worker role needs program-admin
 signing authorization and access to resolve the issuer's public address; private keys
 and AWS credentials stay off Web/HTTP. See docs/kms-signer.md for signer setup.
+`WORKER_JOBS=org-setup` runs only these jobs (setup, budget top-ups, earn-rate changes) in a worker
+of their own, the one deployment that holds the program-admin key (OCT-321).
 
 State: PENDING -> PROCESSING -> SUBMITTED (program ACTIVE). Pre-chain prerequisite
 failure becomes FAILED and can be submitted again under a new key. Once chain calls

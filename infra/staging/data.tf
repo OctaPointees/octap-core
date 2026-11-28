@@ -1,7 +1,7 @@
 # Postgres and Redis (OCT-319). Both sit in the private subnets with no public address, and only
 # the ECS tasks' security group can reach them.
 
-# Every Core task (api, worker, mcp, migrate) runs with this group. Its only inbound rule is the
+# Every Core task (api, worker, org-worker, mcp, migrate) runs with this group. Its only inbound rule is the
 # API port from the load balancer (api.tf).
 resource "aws_security_group" "tasks" {
   name        = "${var.name}-tasks"

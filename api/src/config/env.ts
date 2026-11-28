@@ -36,6 +36,13 @@ const WORKER: readonly ProcessKind[] = ['worker'];
 const BOTH: readonly ProcessKind[] = ['api', 'worker'];
 const positive = { type: 'int', min: 1 } as const;
 const bool = { type: 'bool' } as const;
+/**
+ * Which jobs a worker runs (`worker.module.ts`). `all`, the default, runs every one. `org-setup` runs
+ * only organization setup and the other program-admin commands, so a deployment can give the
+ * program-admin key to that worker alone (OCT-321, `docs/kms-signer.md`).
+ */
+export const WORKER_JOB_SETS = ['all', 'org-setup'] as const;
+export type WorkerJobSet = (typeof WORKER_JOB_SETS)[number];
 const text = { type: 'string' } as const;
 
 export const SUI_NETWORKS = ['testnet', 'mainnet'] as const;
@@ -103,6 +110,7 @@ export const ENV_SCHEMA: readonly EnvVarSpec[] = [
   { name: 'INDEXER_PAGE_SIZE', kind: positive, readBy: WORKER },
   { name: 'INDEXER_MAX_PAGES_PER_POLL', kind: positive, readBy: WORKER },
   { name: 'ORG_PROVISION_WORKER_ENABLED', kind: bool, readBy: WORKER },
+  { name: 'WORKER_JOBS', kind: { type: 'enum', values: WORKER_JOB_SETS }, readBy: WORKER },
   { name: 'ORG_PROVISION_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   { name: 'BUDGET_WARNING_POLL_INTERVAL_MS', kind: positive, readBy: WORKER },
   // Audit evidence (OCT-77): sealing on Sui, and the encrypted copy on Walrus Console
@@ -243,6 +251,9 @@ export function validateEnv(process: ProcessKind, env: NodeJS.ProcessEnv): EnvVa
       );
       if (admin) errors.push(admin);
     }
+    // org-setup runs nothing but the provisioning loop, which only starts with the flag on.
+    if (env.WORKER_JOBS === 'org-setup' && env.ORG_PROVISION_WORKER_ENABLED !== 'true')
+      errors.push('WORKER_JOBS=org-setup needs ORG_PROVISION_WORKER_ENABLED=true: otherwise the worker runs nothing');
   }
 
   return { errors, disabledFeatures };
