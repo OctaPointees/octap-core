@@ -14,12 +14,19 @@ Move source.
 
 | Object | Id |
 | --- | --- |
-| Package (`published-at` = `original-id`, v1) | `0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e` |
-| `0x2::package::UpgradeCap` | `0x7eca84e4a590fe6fdb0d93f34b96051d149d3746fcee89505437aecb89ad6d07` |
-| Publish tx | `4okeG9cudnSnZcAtBv6GjJgL6AhfR4Ytko5GPtTwyQE3` |
+| Package (`published-at` = `original-id`, v1) | `0x60ac6e8eef341188fb0f7049daf349f9065594257f92be219e540ec87b663bd3` |
+| `0x2::package::UpgradeCap` | `0x359d35f7e803bcf2ff954dbf5d12c84bcfc7eb2a9aa0c45bff81b53be2f4a9f4` |
+| Publish tx | `4oeqB4rr4ze3XVyii3VruBXfJTvtQfsAaFcksmPXEfeo` |
 | Toolchain | sui 1.79.0-46f18562f1f5 |
 | `UpgradeCap` holder | deploy wallet (alias `octap-admin`) `0xc86cb60e8e32a8eb34ef7db1849ae91b9f0f26d483e716c42316bf9fe8a09b7d` |
 | Issuer address (issuer signer, receives each program's `IssuerCap`) | `0x6109bef2e5420318a0484df8e2e6c4c6f2aec135fc6e33ba8d57197cac7a1f62` |
+
+Fresh publish for OCT-340 (campaign earn multiplier): `credit_account::earn` takes a `multiplier_bps`
+after `purchase_amount`, bounded to 1x–10x (`EInvalidMultiplier`), and credits
+`purchase_amount * earn_bps * multiplier_bps / 10^8`, still debited from the budget shard.
+`CreditEarned` gained a `multiplier_bps` field. Changing an entry function's signature and an event's
+shape is not upgrade-compatible. The previous package `0xcad75786...` (OCT-291) is abandoned on
+testnet, not migrated: every organization's program must be provisioned again on this one.
 
 Fresh publish for OCT-291 (`VoucherTerms.use_duration_ms`): each customer's voucher can be usable for
 a duration from its own `issued_at_ms`, capped by `expires_at_ms` (`voucher_terms::use_deadline_ms`,

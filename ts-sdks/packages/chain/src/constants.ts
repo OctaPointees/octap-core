@@ -9,7 +9,7 @@ export interface OctapPackageConfig {
 }
 
 export const TESTNET_OCTAP_PACKAGE_CONFIG: OctapPackageConfig = {
-  packageId: '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e',
+  packageId: '0x60ac6e8eef341188fb0f7049daf349f9065594257f92be219e540ec87b663bd3',
 };
 
 /** Not deployed yet; see contracts/sui/DEPLOYMENTS.md. */
