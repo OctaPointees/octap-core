@@ -19,6 +19,12 @@ export interface EarnPointsRequest {
   idempotencyKey: string;
   receiptReference?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * A campaign of this organization whose earn boost applies to this purchase (OCT-340). It must be
+   * ACTIVE, within its window and have a multiplier, or the earn is refused (422): it is never earned
+   * at the base rate instead. Omit for an ordinary earn. One campaign per earn.
+   */
+  campaignId?: string;
 }
 
 export interface EarnPointsResponse {

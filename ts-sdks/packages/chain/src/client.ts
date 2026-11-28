@@ -68,6 +68,16 @@ export interface EarnParams {
   budgetShardId: string;
   /** Smallest currency unit of the underlying purchase, not a credit amount. */
   purchaseAmount: number | bigint;
+  /**
+   * The boost on the policy's earn rate, in basis points: `10_000` for an ordinary earn, at most
+   * `100_000` (10x, enforced on-chain). Points are `floor(purchase * earnBps * multiplierBps / 10^8)`.
+   */
+  multiplierBps: number | bigint;
+  /**
+   * The campaign behind a boost, as its UUID's 16 bytes, emitted on `CreditEarned`. Required above
+   * 1x and omitted (empty) at 1x: anything else aborts `EInvalidCampaign` on-chain.
+   */
+  campaignId?: Uint8Array;
   /** Off-chain command/idempotency key; recorded on-chain so a replay of it aborts. */
   operationKey: Uint8Array;
 }
@@ -354,6 +364,8 @@ export class OctapChainClient {
         operationShard: params.operationShardId,
         budgetShard: params.budgetShardId,
         purchaseAmount: params.purchaseAmount,
+        multiplierBps: params.multiplierBps,
+        campaignId: Array.from(params.campaignId ?? []),
         operationKey: Array.from(params.operationKey),
       },
     })(tx);

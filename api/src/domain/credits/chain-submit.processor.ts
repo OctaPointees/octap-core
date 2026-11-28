@@ -24,11 +24,16 @@ import {
 import { resolveProgramConfig } from '../programs/program-config.js';
 import { EARN_COMMAND_TYPE, REVERSAL_COMMAND_TYPE } from './chain-outcome.reconciler.js';
 import { earnFailureCode } from './earn-failure.js';
+import { BASE_MULTIPLIER_BPS } from './campaign-boost.js';
 
 interface EarnChainSubmitPayload {
   loyaltyTransactionId: string;
   organizationEndUserId: string;
   purchaseAmount: number;
+  /** A campaign's boost (OCT-340); absent on commands accepted before campaigns, which are 1x. */
+  multiplierBps?: number;
+  /** The campaign behind the boost (OCT-340), named on-chain on `CreditEarned`; absent at 1x. */
+  campaignId?: string;
 }
 
 export interface ReversalChainSubmitPayload {
@@ -360,6 +365,11 @@ export class ChainSubmitProcessor {
     const signed = await this.suiClient.signEarn(program, {
       accountId,
       purchaseAmount: payload.purchaseAmount,
+      multiplierBps: payload.multiplierBps ?? BASE_MULTIPLIER_BPS,
+      // Only with a boost: the chain refuses a campaign on a 1x earn.
+      ...(payload.campaignId && (payload.multiplierBps ?? BASE_MULTIPLIER_BPS) > BASE_MULTIPLIER_BPS
+        ? { campaignId: payload.campaignId }
+        : {}),
       operationKey: operation.idempotencyKey,
     });
     // Persisted before sending, so whatever happens to `execute` below, `ChainOutcomeReconciler`

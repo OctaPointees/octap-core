@@ -36,6 +36,8 @@ import type {
   VoucherBatchDetailDto,
   VoucherBatchDto,
   VoucherBatchItem,
+  CampaignDto,
+  ListCampaignsRequest,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
@@ -250,6 +252,21 @@ export class OctaPointClient {
   }
 
   /**
+   * The organization's campaigns, newest first, archived ones left out. With `{ live: true }`, only
+   * those that boost an earn right now: show them at the till and send the pick as `campaignId` on
+   * `earnPoints`.
+   */
+  async listCampaigns(query: ListCampaignsRequest = {}, options?: RequestOptions): Promise<CampaignDto[]> {
+    return this.request<CampaignDto[]>('/v1/campaigns', 'GET', undefined, options, {
+      live: query.live === undefined ? undefined : String(query.live),
+    });
+  }
+
+  async getCampaign(campaignId: string, options?: RequestOptions): Promise<CampaignDto> {
+    return this.request<CampaignDto>(`/v1/campaigns/${encodeURIComponent(campaignId)}`, 'GET', undefined, options);
+  }
+
+  /**
    * A member's balance as OctaP records it against what their `CreditAccount` on Sui can spend:
    * `MATCH`, `PENDING` (something is still on its way to the chain; ask again shortly), `MISMATCH`, or
    * `UNAVAILABLE` (the chain could not be read). Cached for up to 30 seconds.
@@ -365,7 +382,7 @@ export class OctaPointClient {
    */
   async createVouchers(
     items: VoucherBatchItem[],
-    batchOptions: { dryRun?: boolean; name?: string } = {},
+    batchOptions: { dryRun?: boolean; name?: string; campaignId?: string } = {},
     options?: RequestOptions,
   ): Promise<CreateVoucherBatchResponse> {
     return this.request<CreateVoucherBatchResponse>(
@@ -375,6 +392,7 @@ export class OctaPointClient {
         items,
         ...(batchOptions.dryRun !== undefined ? { dryRun: batchOptions.dryRun } : {}),
         ...(batchOptions.name !== undefined ? { name: batchOptions.name } : {}),
+        ...(batchOptions.campaignId !== undefined ? { campaignId: batchOptions.campaignId } : {}),
       },
       options,
     );

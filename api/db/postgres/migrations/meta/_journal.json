@@ -302,6 +302,13 @@
       "when": 1795832265862,
       "tag": "0042_earn_rate_change_request",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795836581370,
+      "tag": "0043_campaigns",
+      "breakpoints": true
     }
   ]
 }

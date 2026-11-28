@@ -89,6 +89,8 @@ describe('ChainSubmitProcessor', () => {
     expect(earn).toHaveBeenCalledWith(programConfigFor('org-1'), {
       accountId: '0xacc1',
       purchaseAmount: 10000,
+      // A command without a multiplier (accepted before campaigns) is an ordinary 1x earn.
+      multiplierBps: 10000,
       operationKey: 'idem-chain-1',
     });
     expect(confirmEarnOnChain).toHaveBeenCalledWith({
@@ -1248,5 +1250,36 @@ describe('ChainSubmitProcessor policy rotation (OCT-341)', () => {
 
     expect(signs).toBe(1);
     expect(markFailed).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ChainSubmitProcessor campaign boost (OCT-340)', () => {
+  it('signs the earn with the multiplier fixed when the earn was accepted, and confirms what the chain minted', async () => {
+    const earn = vi.fn(async () => earned('2000'));
+    const confirmEarnOnChain = vi.fn(async () => ({ id: 'btx-1' }));
+    await processor(
+      { markSubmitted: async () => {} },
+      { getCreditOwnershipByEndUserId: existingAccount, confirmEarnOnChain },
+      { earn },
+    ).process(
+      buildOperation({
+        payload: {
+          loyaltyTransactionId: 'tx-1',
+          organizationEndUserId: 'user-1',
+          purchaseAmount: 10000,
+          multiplierBps: 20000,
+          campaignId: 'c0ffee00-0000-4000-8000-000000000001',
+        },
+      }),
+    );
+
+    expect(earn).toHaveBeenCalledWith(programConfigFor('org-1'), {
+      accountId: '0xexisting',
+      purchaseAmount: 10000,
+      multiplierBps: 20000,
+      campaignId: 'c0ffee00-0000-4000-8000-000000000001',
+      operationKey: 'idem-chain-1',
+    });
+    expect(confirmEarnOnChain).toHaveBeenCalledWith(expect.objectContaining({ confirmedPointsAmount: 2000 }));
   });
 });

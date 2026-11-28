@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { VOUCHER_MAX_VALID_FOR_DAYS, type CreateVoucherRequest, type UpdateVoucherRequest } from '@octap/contracts';
 import { assertVoucherTermsFit } from './voucher-terms.js';
+import { UUID_PATTERN } from '#infra/db/repositories/console-access.js';
 
 /** Date.parse normalizes impossible calendar dates, so validate the components first. */
 function isIsoDateTime(value: string): boolean {
@@ -35,6 +36,13 @@ function assertPositiveInt32OrNull(name: string, value: unknown): void {
   }
 }
 
+/** `campaignId` (OCT-340), when sent: a campaign id. Whether it is this organization's is checked on write. */
+export function assertCampaignId(value: unknown): void {
+  if (value !== undefined && (typeof value !== 'string' || !UUID_PATTERN.test(value))) {
+    throw new BadRequestException('campaignId must be a campaign id');
+  }
+}
+
 /** Shared by create and locked updates; reject malformed JSON before PostgreSQL sees it. */
 export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherRequest, partial = false): void {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -55,10 +63,13 @@ export function validateVoucher(input: CreateVoucherRequest | UpdateVoucherReque
     'validForDays',
     'metadata',
     'status',
+    // Set only on create (OCT-340); a voucher never changes campaign.
+    ...(partial ? [] : ['campaignId']),
   ];
   if (Object.keys(input).some((key) => !allowed.includes(key))) {
     throw new BadRequestException('Voucher body contains unsupported fields');
   }
+  assertCampaignId((input as CreateVoucherRequest).campaignId);
   for (const key of ['code', 'title'] as const) {
     const value = input[key];
     if (

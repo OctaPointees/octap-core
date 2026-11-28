@@ -78,7 +78,7 @@ export interface CreateShardsOptions {
  * shard ids in shard-index order.
  */
 export function createShards(options: CreateShardsOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null,
         '0x2::object::ID',
@@ -113,7 +113,7 @@ export interface TopUpOptions {
  * it wants refilled.
  */
 export function topUp(options: TopUpOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null,
         null,
@@ -137,7 +137,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -159,7 +159,7 @@ export interface ShardIndexOptions {
     ];
 }
 export function shardIndex(options: ShardIndexOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -181,7 +181,7 @@ export interface ShardCountOptions {
     ];
 }
 export function shardCount(options: ShardCountOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -203,7 +203,7 @@ export interface RemainingOptions {
     ];
 }
 export function remaining(options: RemainingOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

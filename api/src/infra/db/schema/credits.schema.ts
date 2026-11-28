@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
+  foreignKey,
   index,
   jsonb,
   pgEnum,
@@ -16,6 +17,7 @@ import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
 import { organizationEndUsers } from './members.schema.js';
 import { organizationMemberships } from './auth.schema.js';
+import { campaigns } from './campaigns.schema.js';
 
 export const loyaltyTxTypeEnum = pgEnum('loyalty_tx_type', [
   'EARN',
@@ -112,10 +114,19 @@ export const loyaltyTransactions = pgTable(
       .unique()
       .references((): AnyPgColumn => loyaltyTransactions.id),
     metadata: jsonb('metadata').default({}),
+    /** The campaign whose multiplier boosted this EARN (OCT-340); null for an ordinary earn. */
+    campaignId: uuid('campaign_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    index('loyalty_tx_campaign_idx').on(t.campaignId),
+    // Composite, so an earn can only name a campaign of its own organization.
+    foreignKey({
+      name: 'loyalty_tx_campaign_fk',
+      columns: [t.organizationId, t.campaignId],
+      foreignColumns: [campaigns.organizationId, campaigns.id],
+    }),
     uniqueIndex('loyalty_tx_org_idempotency_idx').on(t.organizationId, t.idempotencyKey),
     // The organization's history, newest first (OCT-334), and its keyset cursor.
     index('loyalty_tx_org_created_idx').on(t.organizationId, t.createdAt, t.id),

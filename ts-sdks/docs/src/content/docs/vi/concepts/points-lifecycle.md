@@ -7,7 +7,7 @@ Sui là nguồn chuẩn về điểm đã xác nhận, và giao dịch trên cha
 
 ## Earn điểm
 
-1. **Bạn gửi số tiền mua.** OctaP tính `floor(purchaseAmount × earnBps ÷ 10000)`, trong đó `earnBps` là tỷ lệ của chương trình tính theo basis point.
+1. **Bạn gửi số tiền mua.** OctaP tính `floor(purchaseAmount × earnBps ÷ 10000)`, trong đó `earnBps` là tỷ lệ của chương trình tính theo basis point. Lệnh earn có [campaign](/vi/guides/earn-and-reverse-points/#nhân-điểm-bằng-campaign) được nhân thêm `multiplierBps ÷ 10000`, làm tròn một lần trên cả tích.
 2. **Số ước tính được giữ lại.** Giao dịch ở trạng thái `PENDING` và số ước tính nằm trong `pendingEarn`. Khách hàng chưa tiêu được.
 3. **Chain trả lời.** Khi xác nhận, số thực tế được chuyển vào `confirmedBalance`. Khi thất bại, phần giữ được giải phóng và không có gì được cộng.
 

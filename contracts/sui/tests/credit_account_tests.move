@@ -78,7 +78,7 @@ fun earn_then_redeem_happy_path() {
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
     // 10_000-unit purchase at 100 bps (1%) earns 100 credits.
-    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, b"op-1", &clock, ts::ctx(&mut scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, 10_000, vector[], b"op-1", &clock, ts::ctx(&mut scenario));
     assert!(credit_account::spendable(&account, &clock) == 100, 0);
 
     ts::return_shared(budget);
@@ -111,7 +111,7 @@ fun redeem_rejects_non_beneficiary() {
     let mut op_shard = ts::take_shared<OperationShard>(&scenario);
     let mut budget = ts::take_shared<BudgetShard>(&scenario);
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, b"op-1", &clock, ts::ctx(&mut scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, 10_000, vector[], b"op-1", &clock, ts::ctx(&mut scenario));
     ts::return_shared(budget);
     ts::return_shared(op_shard);
     ts::return_shared(account);
@@ -142,7 +142,7 @@ fun redeem_rejects_overspend() {
     let mut op_shard = ts::take_shared<OperationShard>(&scenario);
     let mut budget = ts::take_shared<BudgetShard>(&scenario);
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, b"op-1", &clock, ts::ctx(&mut scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, 10_000, vector[], b"op-1", &clock, ts::ctx(&mut scenario));
     ts::return_shared(budget);
     ts::return_shared(op_shard);
     ts::return_shared(account);
@@ -173,7 +173,7 @@ fun expired_buckets_are_not_spendable() {
     let mut budget = ts::take_shared<BudgetShard>(&scenario);
     let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
-    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, b"op-1", &clock, ts::ctx(&mut scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, 10_000, vector[], b"op-1", &clock, ts::ctx(&mut scenario));
     assert!(credit_account::spendable(&account, &clock) == 100, 0);
 
     // Past the 1-day expiry window: the bucket must no longer count.
@@ -265,6 +265,8 @@ fun earn_rejects_issuer_cap_scoped_to_a_different_program() {
         &mut op_shard,
         &mut budget,
         10_000,
+        10_000,
+        vector[],
         b"op-1",
         &clock,
         ts::ctx(&mut scenario),
@@ -311,6 +313,8 @@ fun earn_rejects_account_opened_in_a_previous_program() {
         &mut op_shard_b,
         &mut budget_b,
         10_000,
+        10_000,
+        vector[],
         b"op-1",
         &clock,
         ts::ctx(&mut scenario),
@@ -362,6 +366,8 @@ fun account_reopened_in_the_current_program_earns() {
         &mut op_shard_b,
         &mut budget_b,
         10_000,
+        10_000,
+        vector[],
         b"op-1",
         &clock,
         ts::ctx(&mut scenario),
@@ -405,7 +411,7 @@ fun earn_rejects_paused_program() {
     let mut op_shard = ts::take_shared<OperationShard>(&scenario);
     let mut budget = ts::take_shared<BudgetShard>(&scenario);
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, b"op-1", &clock, ts::ctx(&mut scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, 10_000, 10_000, vector[], b"op-1", &clock, ts::ctx(&mut scenario));
     ts::return_shared(budget);
     ts::return_shared(op_shard);
     ts::return_shared(account);
@@ -443,6 +449,8 @@ fun earn_with_shards(
         &mut op_shard,
         &mut budget,
         purchase_amount,
+        10_000,
+        vector[],
         operation_key,
         &clock,
         ts::ctx(scenario),
@@ -615,4 +623,100 @@ fun shard_index_matches_shared_fixture() {
     assert!(operation_shard::shard_index_for(&b"earn:fixture-shard-key", 7) == 4, 0);
     assert!(operation_shard::shard_index_for(&b"op-1", 16) == 5, 1);
     assert!(operation_shard::shard_index_for(&b"op-5", 1) == 0, 2);
+}
+
+/// A campaign's 16-byte id, as the API sends it for a boosted earn.
+const CAMPAIGN: vector<u8> = x"7f1c2a4e0b3d4c5e8f6a1b2c3d4e5f60";
+
+/// Earns `purchase_amount` at `multiplier_bps` for `CAMPAIGN` against the
+/// 100-bps setup program, returning the account's spendable balance.
+fun earn_boosted(scenario: &mut ts::Scenario, purchase_amount: u64, multiplier_bps: u64): u64 {
+    earn_for(scenario, purchase_amount, multiplier_bps, CAMPAIGN)
+}
+
+fun earn_for(scenario: &mut ts::Scenario, purchase_amount: u64, multiplier_bps: u64, campaign_id: vector<u8>): u64 {
+    ts::next_tx(scenario, ISSUER);
+    let program = ts::take_shared<ProgramControl>(scenario);
+    let policy = ts::take_immutable<PolicyVersion>(scenario);
+    let issuer_cap = ts::take_from_sender<IssuerCap>(scenario);
+    let mut account = ts::take_shared<CreditAccount>(scenario);
+    let mut op_shard = ts::take_shared<OperationShard>(scenario);
+    let mut budget = ts::take_shared<BudgetShard>(scenario);
+    let clock = clock::create_for_testing(ts::ctx(scenario));
+    credit_account::earn(&issuer_cap, &program, &policy, &mut account, &mut op_shard, &mut budget, purchase_amount, multiplier_bps, campaign_id, b"op-boost", &clock, ts::ctx(scenario));
+    let spendable = credit_account::spendable(&account, &clock);
+    clock::destroy_for_testing(clock);
+    ts::return_shared(budget);
+    ts::return_shared(op_shard);
+    ts::return_shared(account);
+    ts::return_to_sender(scenario, issuer_cap);
+    ts::return_immutable(policy);
+    ts::return_shared(program);
+    spendable
+}
+
+#[test]
+fun boosted_earn_multiplies_the_policy_rate_with_one_floor() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    // 150 * 1% * 2.5x = 3.75, floored once to 3 (not floor(1.5) * 2.5 = 2).
+    assert!(earn_boosted(&mut scenario, 150, 25_000) == 3, 0);
+    ts::end(scenario);
+}
+
+#[test]
+fun boosted_earn_accepts_the_10x_cap() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    assert!(earn_boosted(&mut scenario, 10_000, 100_000) == 1_000, 0);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 17, location = octap::credit_account)] // EInvalidMultiplier
+fun boosted_earn_rejects_more_than_10x() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    earn_boosted(&mut scenario, 10_000, 100_001);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 17, location = octap::credit_account)] // EInvalidMultiplier
+fun boosted_earn_rejects_less_than_1x() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    earn_boosted(&mut scenario, 10_000, 9_999);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 18, location = octap::credit_account)] // EInvalidCampaign
+fun boosted_earn_requires_a_campaign() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    earn_for(&mut scenario, 10_000, 20_000, vector[]);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 18, location = octap::credit_account)] // EInvalidCampaign
+fun boosted_earn_rejects_a_campaign_id_that_is_not_16_bytes() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    earn_for(&mut scenario, 10_000, 20_000, b"weekend");
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 18, location = octap::credit_account)] // EInvalidCampaign
+fun ordinary_earn_names_no_campaign() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    earn_for(&mut scenario, 10_000, 10_000, CAMPAIGN);
+    ts::end(scenario);
+}
+
+#[test, expected_failure(abort_code = 2, location = octap::budget_shard)] // EBudgetExceeded
+fun boosted_earn_still_cannot_overdraw_the_budget() {
+    let mut scenario = ts::begin(ADMIN);
+    setup_with_shards(&mut scenario, 150, 1);
+    // 1x would earn 100, within budget; 2x earns 200, past it.
+    earn_boosted(&mut scenario, 10_000, 20_000);
+    ts::end(scenario);
 }

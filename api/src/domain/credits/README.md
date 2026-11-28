@@ -57,6 +57,15 @@ Failure releases the estimate without crediting it; confirmation releases the es
 the actual event amount, using the locked pending row.
 
 For example, purchase 100000 at 100 bps reserves 1000 estimated points and confirms 1000 points.
+
+An earn may name one campaign (`campaignId`, OCT-340; `campaign-boost.ts`). The campaign must be the
+organization's, `ACTIVE`, within `[startsAt, endsAt]` and have a `multiplierBps`; otherwise the earn
+is a 422, never earned at the base rate. Points are `floor(purchase * earnBps * multiplierBps /
+10^8)`, the same formula `credit_account::earn` applies on-chain, with one floor over the whole
+product: 100000 at 100 bps and 2x is 2000. The multiplier is fixed in the durable command when the
+earn is accepted, so a campaign that closes before the worker submits still boosts what it accepted,
+and `loyalty_transactions.campaign_id` records which campaign it was. A replay under the same key
+skips the campaign check, as it skips the others; a replay with a different `campaignId` is a 409.
 `credits.earned` contains purchase/estimate fields; `credits.earn.confirmed.pointsAmount` is actual points.
 POS reserve and reversal still use real `pointsAmount` values.
 
