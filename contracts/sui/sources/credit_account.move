@@ -49,6 +49,12 @@ const EVoucherNotActive: u64 = 13;
 const EWrongVoucherTerms: u64 = 14;
 const EVoucherNotPaid: u64 = 15;
 const EVoucherStillAvailable: u64 = 16;
+const EInvalidMultiplier: u64 = 17;
+
+/// `multiplier_bps` of an ordinary earn (1x).
+const BASE_MULTIPLIER_BPS: u64 = 10_000;
+/// The most a single earn may be boosted (10x), whoever holds the `IssuerCap`.
+const MAX_MULTIPLIER_BPS: u64 = 100_000;
 
 const VOUCHER_AVAILABLE: u8 = 0;
 const VOUCHER_USED: u8 = 1;
@@ -105,6 +111,8 @@ public struct CreditEarned has copy, drop {
     program_id: ID,
     beneficiary: address,
     amount: u64,
+    /// The boost this earn was given: `BASE_MULTIPLIER_BPS` (10_000) for an ordinary one.
+    multiplier_bps: u64,
     bucket_expires_at_ms: u64,
     operation_key: vector<u8>,
 }
@@ -209,6 +217,12 @@ entry fun open_account(issuer: &IssuerCap, program: &ProgramControl, beneficiary
 /// and `policy`'s earn ratio rather than trusted from the caller, which
 /// is what makes the policy an enforced rule instead of a suggestion.
 ///
+/// `multiplier_bps` boosts the policy's rate for this one earn (a
+/// time-boxed campaign off-chain): `10_000` is an ordinary earn, and
+/// anything outside `[10_000, 100_000]` (1x to 10x) aborts
+/// `EInvalidMultiplier`. The amount is still debited from the budget shard,
+/// so a boost can never mint past the program's issuance budget.
+///
 /// `operation_shard` and `budget_shard` must be the program's shards that
 /// own `operation_key` (see `operation_shard::shard_index_for`): a replayed
 /// key aborts `operation_shard::EDuplicateOperation`, and an earn that
@@ -221,6 +235,7 @@ entry fun earn(
     operation_shard: &mut OperationShard,
     budget_shard: &mut BudgetShard,
     purchase_amount: u64,
+    multiplier_bps: u64,
     operation_key: vector<u8>,
     clock: &Clock,
     ctx: &TxContext,
@@ -229,8 +244,15 @@ entry fun earn(
     assert!(capabilities::issuer_program_id(issuer) == object::id(program), EWrongProgram);
     assert!(account.program_id == object::id(program), EWrongProgram);
     program_control::assert_policy_active(program, policy);
+    assert!(multiplier_bps >= BASE_MULTIPLIER_BPS && multiplier_bps <= MAX_MULTIPLIER_BPS, EInvalidMultiplier);
 
-    let amount = (((purchase_amount as u128) * (policy_version::earn_bps(policy) as u128)) / 10_000) as u64;
+    // One floor over the whole product, so a boosted earn is exactly what the policy rate times
+    // the multiplier gives, never a rounded-down base amount multiplied afterwards.
+    let amount =
+        (
+            ((purchase_amount as u128) * (policy_version::earn_bps(policy) as u128) * (multiplier_bps as u128))
+                / 100_000_000,
+        ) as u64;
     assert!(amount > 0, EZeroEarn);
 
     let seq = account.next_bucket_seq;
@@ -254,6 +276,7 @@ entry fun earn(
         program_id: account.program_id,
         beneficiary: account.beneficiary,
         amount,
+        multiplier_bps,
         bucket_expires_at_ms: expires_at_ms,
         operation_key,
     });

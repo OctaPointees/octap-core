@@ -12,6 +12,8 @@ import { requireProgramConfig } from '../programs/program-config.js';
 import type { EarnPointsRequest, EarnPointsResponse } from '@octap/contracts';
 import { IssuanceBudgetService } from './issuance-budget.service.js';
 import { mapMemberEligibilityError } from './member-eligibility-error.js';
+import { BASE_MULTIPLIER_BPS, campaignBoost } from './campaign-boost.js';
+import { CampaignsRepository } from '#infra/db/repositories/campaigns.repository.js';
 
 type LoyaltyTransaction = Awaited<ReturnType<CreditsRepository['recordEarnTransaction']>>['transaction'];
 
@@ -30,15 +32,21 @@ function toEarnResponse(transaction: LoyaltyTransaction, newBalance: number): Ea
 }
 
 /**
- * `floor(purchaseAmount * earnBps / 10000)` with integer arithmetic, as Move computes it on-chain.
- * Throws 400 when it rounds to zero (the chain would abort) or leaves the safe-integer range.
- * Shared with the sandbox (OCT-297), so a sandbox earn credits exactly what a live one would.
+ * `floor(purchaseAmount * earnBps * multiplierBps / 10^8)` with integer arithmetic, one floor over the
+ * whole product, as `credit_account::earn` computes it on-chain. `multiplierBps` is a campaign's
+ * boost (OCT-340), 10000 for an ordinary earn. Throws 400 when it rounds to zero (the chain would
+ * abort) or leaves the safe-integer range. Shared with the sandbox (OCT-297), so a sandbox earn
+ * credits exactly what a live one would.
  */
-export function pointsForPurchase(purchaseAmount: number, earnBps: number): number {
+export function pointsForPurchase(
+  purchaseAmount: number,
+  earnBps: number,
+  multiplierBps: number = BASE_MULTIPLIER_BPS,
+): number {
   if (!Number.isSafeInteger(purchaseAmount) || purchaseAmount <= 0) {
     throw new BadRequestException('Purchase amount must be a safe integer greater than zero');
   }
-  const estimate = (BigInt(purchaseAmount) * BigInt(earnBps)) / 10_000n;
+  const estimate = (BigInt(purchaseAmount) * BigInt(earnBps) * BigInt(multiplierBps)) / 100_000_000n;
   if (estimate === 0n) {
     throw new BadRequestException('Purchase amount is too small to earn any points');
   }
@@ -54,6 +62,7 @@ export class EarnService {
     private readonly creditsRepo: CreditsRepository,
     private readonly programsRepo: ProgramsRepository,
     private readonly issuanceBudget: IssuanceBudgetService,
+    private readonly campaigns: CampaignsRepository,
   ) {}
 
   async executeEarn(organizationId: string, request: EarnPointsRequest): Promise<EarnPointsResponse> {
@@ -66,11 +75,13 @@ export class EarnService {
       throw new NotFoundException(`Member ${request.organizationEndUserId} was not found for this organization`);
     }
 
-    // A retry under an accepted key skips the gates: it only reports the existing earn.
+    // A retry under an accepted key skips the gates (the campaign's too): it only reports the existing
+    // earn. A different `campaignId` under the same key is still a conflict, from the payload hash.
     const accepted = await this.creditsRepo.findTransactionByIdempotency(organizationId, request.idempotencyKey);
-    const estimatedPoints = accepted
-      ? accepted.pointsAmount
-      : await this.estimatePoints(organizationId, request.purchaseAmount, request.idempotencyKey);
+    const boost = accepted ? null : await campaignBoost(this.campaigns, organizationId, request.campaignId);
+    const estimatedPoints = boost
+      ? await this.estimatePoints(organizationId, request.purchaseAmount, request.idempotencyKey, boost.multiplierBps)
+      : accepted!.pointsAmount;
 
     const { transaction, newBalance } = await this.creditsRepo
       .recordEarnTransaction({
@@ -81,6 +92,9 @@ export class EarnService {
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
+        // The request's own value, so a replay that changed it conflicts; the boost is new work's.
+        campaignId: typeof request.campaignId === 'string' ? request.campaignId : undefined,
+        multiplierBps: boost?.multiplierBps ?? BASE_MULTIPLIER_BPS,
       })
       .catch((error: unknown) => {
         if (error instanceof OperationPayloadConflictError) throw new ConflictException(error.message);
@@ -95,9 +109,10 @@ export class EarnService {
     organizationId: string,
     purchaseAmount: number,
     idempotencyKey: string,
+    multiplierBps: number,
   ): Promise<number> {
     const program = await requireProgramConfig(this.programsRepo, organizationId);
-    const estimatedPoints = pointsForPurchase(purchaseAmount, program.earnBps);
+    const estimatedPoints = pointsForPurchase(purchaseAmount, program.earnBps, multiplierBps);
     if (!(await this.issuanceBudget.canCover(program, idempotencyKey, estimatedPoints))) {
       throw new UnprocessableEntityException('The issuance budget cannot cover this earn; request a top-up');
     }

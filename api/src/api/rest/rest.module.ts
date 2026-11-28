@@ -17,6 +17,7 @@ import { ConsoleMcpTokenController, McpOAuthController } from './mcp-oauth.contr
 import { MembersController } from './members.controller.js';
 import { ConsoleRewardsController } from './console-rewards.controller.js';
 import { ConsoleVoucherBatchesController } from './console-voucher-batches.controller.js';
+import { ConsoleCampaignsController } from './console-campaigns.controller.js';
 import { VoucherBatchesController } from './voucher-batches.controller.js';
 import { ConsoleRefundPolicyController } from './console-refund-policy.controller.js';
 import { ConsoleWebhooksController } from './console-webhooks.controller.js';
@@ -53,6 +54,7 @@ import { ConsoleAnalyticsController } from './console-analytics.controller.js';
     ConsoleEvidenceController,
     ConsoleRewardsController,
     ConsoleVoucherBatchesController,
+    ConsoleCampaignsController,
     ConsoleRefundPolicyController,
     ConsoleWebhooksController,
     ConsoleEventsController,

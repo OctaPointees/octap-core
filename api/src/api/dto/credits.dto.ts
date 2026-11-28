@@ -4,6 +4,11 @@ export interface EarnPointsBodyDto {
   idempotencyKey: string;
   receiptReference?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * A campaign whose earn boost applies (OCT-340): ACTIVE, within its window, with a multiplier, or
+   * the earn is refused (422). Omit for an ordinary earn.
+   */
+  campaignId?: string;
 }
 
 export interface ReverseTransactionBodyDto {

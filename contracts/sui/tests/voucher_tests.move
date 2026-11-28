@@ -75,6 +75,7 @@ fun setup(scenario: &mut ts::Scenario, clock: &Clock): Setup {
         &mut op_shard,
         &mut budget,
         PURCHASE,
+        10_000,
         b"earn",
         clock,
         ts::ctx(scenario),

@@ -9,7 +9,7 @@ import {
 } from '@octap/contracts';
 import type { VoucherBatchValues } from '#infra/db/repositories/rewards.repository.js';
 import type { vouchers } from '#infra/db/schema/rewards.schema.js';
-import { validateVoucher } from './voucher-validation.js';
+import { assertCampaignId, validateVoucher } from './voucher-validation.js';
 
 type Voucher = typeof vouchers.$inferSelect;
 
@@ -40,10 +40,20 @@ export const BATCH_COMPARED_FIELDS = [
 ] as const satisfies readonly (keyof VoucherBatchValues)[];
 
 /** The request body checks that fail the whole call (400); each item is checked on its own later. */
-export function parseBatchRequest(body: unknown): { items: unknown[]; dryRun: boolean; name: string | null } {
+export function parseBatchRequest(body: unknown): {
+  items: unknown[];
+  dryRun: boolean;
+  name: string | null;
+  campaignId: string | null;
+} {
   if (!body || typeof body !== 'object' || Array.isArray(body))
     throw new BadRequestException('Batch body must be an object');
-  const { items, dryRun, name, ...rest } = body as { items?: unknown; dryRun?: unknown; name?: unknown };
+  const { items, dryRun, name, campaignId, ...rest } = body as {
+    items?: unknown;
+    dryRun?: unknown;
+    name?: unknown;
+    campaignId?: unknown;
+  };
   if (Object.keys(rest).length) throw new BadRequestException('Batch body contains unsupported fields');
   if (!Array.isArray(items) || items.length < 1 || items.length > VOUCHER_BATCH_MAX_ITEMS)
     throw new BadRequestException(`items must be an array of 1 to ${VOUCHER_BATCH_MAX_ITEMS} vouchers`);
@@ -53,7 +63,13 @@ export function parseBatchRequest(body: unknown): { items: unknown[]; dryRun: bo
   const label = typeof name === 'string' ? name.trim() : '';
   if (label.length > VOUCHER_BATCH_MAX_NAME_LENGTH)
     throw new BadRequestException(`name must be at most ${VOUCHER_BATCH_MAX_NAME_LENGTH} characters`);
-  return { items, dryRun: dryRun ?? false, name: label || null };
+  assertCampaignId(campaignId);
+  return {
+    items,
+    dryRun: dryRun ?? false,
+    name: label || null,
+    campaignId: (campaignId as string | undefined) ?? null,
+  };
 }
 
 const FIELD_NAMES = new Set<string>([...BATCH_COMPARED_FIELDS, 'code', 'status']);
@@ -95,6 +111,14 @@ export function checkBatchItems(items: unknown[]): { valid: ValidBatchItem[]; in
     const item = raw as VoucherBatchItem;
     const code = raw && typeof raw === 'object' && typeof item.code === 'string' ? item.code : null;
     const fail = (error: InvalidBatchItem['error']) => invalid.push({ index, code, error });
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'campaignId' in raw) {
+      fail({
+        code: 'INVALID',
+        field: 'campaignId',
+        message: "A batch's vouchers join one campaign: send campaignId on the batch, not on an item",
+      });
+      return;
+    }
     if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'status' in raw) {
       fail({
         code: 'INVALID',

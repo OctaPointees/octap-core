@@ -54,6 +54,7 @@ describe('OctapChainClient transaction builders', () => {
           operationShardId: ID(5),
           budgetShardId: ID(6),
           purchaseAmount: 10_000,
+          multiplierBps: 10_000,
           operationKey: new TextEncoder().encode('k'),
         }),
       ),

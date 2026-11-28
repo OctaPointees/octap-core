@@ -24,6 +24,8 @@ import {
 import { UUID_PATTERN } from '#infra/db/repositories/console-access.js';
 import { requireProgramConfig } from '../programs/program-config.js';
 import { pointsForPurchase } from '../credits/earn.service.js';
+import { campaignBoost } from '../credits/campaign-boost.js';
+import { CampaignsRepository } from '#infra/db/repositories/campaigns.repository.js';
 import { assertValidReserveRequest } from '../credits/pos-redemption.service.js';
 import { mapMemberEligibilityError } from '../credits/member-eligibility-error.js';
 
@@ -50,12 +52,14 @@ export class SandboxCreditsService {
     private readonly sandbox: SandboxRepository,
     private readonly creditsRepo: CreditsRepository,
     private readonly programsRepo: ProgramsRepository,
+    private readonly campaigns: CampaignsRepository,
   ) {}
 
   async earn(tenant: TenantContext, request: EarnPointsRequest): Promise<EarnPointsResponse> {
     await this.assertMember(tenant.organizationId, request.organizationEndUserId);
     const program = await requireProgramConfig(this.programsRepo, tenant.organizationId);
-    const points = pointsForPurchase(request.purchaseAmount, program.earnBps);
+    const boost = await campaignBoost(this.campaigns, tenant.organizationId, request.campaignId);
+    const points = pointsForPurchase(request.purchaseAmount, program.earnBps, boost.multiplierBps);
     const { transaction, balance } = await this.sandbox
       .earn({
         organizationId: tenant.organizationId,
@@ -66,6 +70,7 @@ export class SandboxCreditsService {
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
+        campaignId: boost.campaignId ?? undefined,
       })
       .catch(mapWriteError);
     return {

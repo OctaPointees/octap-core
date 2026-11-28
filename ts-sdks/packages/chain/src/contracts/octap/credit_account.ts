@@ -80,6 +80,11 @@ export const CreditEarned = new MoveStruct({ name: `${$moduleName}::CreditEarned
         program_id: bcs.Address,
         beneficiary: bcs.Address,
         amount: bcs.u64(),
+        /**
+         * The boost this earn was given: `BASE_MULTIPLIER_BPS` (10_000) for an ordinary
+         * one.
+         */
+        multiplier_bps: bcs.u64(),
         bucket_expires_at_ms: bcs.u64(),
         operation_key: bcs.vector(bcs.u8())
     } });
@@ -185,6 +190,7 @@ export interface EarnArguments {
     operationShard: RawTransactionArgument<string>;
     budgetShard: RawTransactionArgument<string>;
     purchaseAmount: RawTransactionArgument<number | bigint>;
+    multiplierBps: RawTransactionArgument<number | bigint>;
     operationKey: RawTransactionArgument<Array<number>>;
 }
 export interface EarnOptions {
@@ -197,6 +203,7 @@ export interface EarnOptions {
         operationShard: RawTransactionArgument<string>,
         budgetShard: RawTransactionArgument<string>,
         purchaseAmount: RawTransactionArgument<number | bigint>,
+        multiplierBps: RawTransactionArgument<number | bigint>,
         operationKey: RawTransactionArgument<Array<number>>
     ];
 }
@@ -205,6 +212,12 @@ export interface EarnOptions {
  * The amount is derived on-chain from `purchase_amount` and `policy`'s earn ratio
  * rather than trusted from the caller, which is what makes the policy an enforced
  * rule instead of a suggestion.
+ *
+ * `multiplier_bps` boosts the policy's rate for this one earn (a time-boxed
+ * campaign off-chain): `10_000` is an ordinary earn, and anything outside
+ * `[10_000, 100_000]` (1x to 10x) aborts `EInvalidMultiplier`. The amount is still
+ * debited from the budget shard, so a boost can never mint past the program's
+ * issuance budget.
  *
  * `operation_shard` and `budget_shard` must be the program's shards that own
  * `operation_key` (see `operation_shard::shard_index_for`): a replayed key aborts
@@ -221,10 +234,11 @@ export function earn(options: EarnOptions) {
         null,
         null,
         'u64',
+        'u64',
         'vector<u8>',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["issuer", "program", "policy", "account", "operationShard", "budgetShard", "purchaseAmount", "operationKey"];
+    const parameterNames = ["issuer", "program", "policy", "account", "operationShard", "budgetShard", "purchaseAmount", "multiplierBps", "operationKey"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'credit_account',

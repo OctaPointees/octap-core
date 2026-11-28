@@ -122,7 +122,12 @@ describe('SuiClientService', () => {
     });
 
     await expect(
-      service.signEarn(PROGRAM, { accountId: '0xacc', purchaseAmount: 10_000, operationKey: 'idem-1' }),
+      service.signEarn(PROGRAM, {
+        accountId: '0xacc',
+        purchaseAmount: 10_000,
+        multiplierBps: 20_000,
+        operationKey: 'idem-1',
+      }),
     ).resolves.toBe(signed);
 
     expect(buildEarnTransaction).toHaveBeenCalledWith({
@@ -133,6 +138,7 @@ describe('SuiClientService', () => {
       operationShardId: PROGRAM.operationShardIds[0],
       budgetShardId: PROGRAM.budgetShardIds[0],
       purchaseAmount: 10_000,
+      multiplierBps: 20_000,
       operationKey: new TextEncoder().encode('idem-1'),
     });
     expect(tx.setGasBudget).toHaveBeenCalledWith(50_000_000);

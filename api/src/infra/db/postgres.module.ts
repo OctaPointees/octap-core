@@ -8,6 +8,7 @@ import { WebhooksRepository } from './repositories/webhooks.repository.js';
 import { IdentityRepository } from './repositories/identity.repository.js';
 import { IndexerRepository } from './repositories/indexer.repository.js';
 import { ProgramsRepository } from './repositories/programs.repository.js';
+import { CampaignsRepository } from './repositories/campaigns.repository.js';
 import { VoucherRefundPoliciesRepository } from './repositories/voucher-refund-policies.repository.js';
 import { ConsoleUsersRepository } from './repositories/console-users.repository.js';
 import { ConsoleOperatorRepository } from './repositories/console-operator.repository.js';
@@ -41,6 +42,7 @@ const repositories = [
   IdentityRepository,
   IndexerRepository,
   ProgramsRepository,
+  CampaignsRepository,
   OperationalHealthRepository,
   OrganizationEventsRepository,
   RequestLogsRepository,

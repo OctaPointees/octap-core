@@ -85,7 +85,7 @@ export class SuiClientService {
    */
   async signEarn(
     program: OctapProgramConfig,
-    params: { accountId: string; purchaseAmount: number; operationKey: string },
+    params: { accountId: string; purchaseAmount: number; multiplierBps: number; operationKey: string },
   ): Promise<SignedChainTransaction> {
     const operationKey = new TextEncoder().encode(params.operationKey);
     const { operationShardId, budgetShardId } = selectShards(program, operationKey);
@@ -97,11 +97,12 @@ export class SuiClientService {
       operationShardId,
       budgetShardId,
       purchaseAmount: params.purchaseAmount,
+      multiplierBps: params.multiplierBps,
       operationKey,
     });
     tx.setGasBudget(50_000_000);
     this.logger.log(
-      `earn ${params.purchaseAmount} purchase units -> account ${params.accountId} in program ${program.programControlId}`,
+      `earn ${params.purchaseAmount} purchase units at ${params.multiplierBps} bps -> account ${params.accountId} in program ${program.programControlId}`,
     );
     return this.client.sign(tx, await this.issuerSigner());
   }
