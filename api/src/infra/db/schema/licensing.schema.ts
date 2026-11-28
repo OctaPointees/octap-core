@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 import { organizations } from './organizations.schema.js';
+import { systemUsers } from './auth.schema.js';
 
 export const licenseTierEnum = pgEnum('license_tier', ['TRIAL', 'STARTER', 'GROWTH', 'ENTERPRISE']);
 export const licenseSourceEnum = pgEnum('license_source', ['TRIAL', 'MIGRATION', 'PURCHASE', 'ADMIN']);
@@ -126,6 +127,49 @@ export const licenseUsage = pgTable(
     uniqueIndex('license_usage_license_period_idx').on(t.licenseId, t.periodStart),
     check('license_usage_transactions_not_negative', sql`${t.transactions} >= 0`),
     pgPolicy('tenant_isolation_license_usage', {
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,
+    }),
+  ],
+);
+
+export const licenseOrderStatusEnum = pgEnum('license_order_status', ['PENDING', 'PAID', 'CANCELED']);
+
+/**
+ * LICENSE ORDER: an Owner's order to buy or renew a license, paid by bank transfer (OCT-330). The
+ * amount is the plan's monthly price times the term, worked out on the server. `payment_code` is
+ * what the transfer content carries, so a payment finds its order. `EXPIRED` isn't stored: it is a
+ * PENDING order past `expires_at`.
+ */
+export const licenseOrders = pgTable(
+  'license_orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => licensePlans.id),
+    tier: licenseTierEnum('tier').notNull(),
+    planName: text('plan_name').notNull(),
+    termMonths: integer('term_months').notNull(),
+    amountVnd: integer('amount_vnd').notNull(),
+    paymentCode: text('payment_code').notNull(),
+    status: licenseOrderStatusEnum('status').default('PENDING').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdById: uuid('created_by_id').references(() => systemUsers.id, { onDelete: 'set null' }),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('license_orders_payment_code_idx').on(t.paymentCode),
+    index('license_orders_organization_created_idx').on(t.organizationId, t.createdAt),
+    check('license_orders_amount_positive', sql`${t.amountVnd} > 0`),
+    check('license_orders_term_positive', sql`${t.termMonths} > 0`),
+    pgPolicy('tenant_isolation_license_orders', {
       for: 'all',
       to: authenticatedRole,
       using: sql`${t.organizationId}::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))`,

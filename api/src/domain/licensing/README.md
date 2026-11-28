@@ -121,6 +121,32 @@ of its plan when granted and its own monthly counter.
 `source: ADMIN`, an active plan that isn't the trial, 1–36 months) is the way to renew or upgrade
 until payments exist. It answers the organization's license as it then stands.
 
+## Orders (OCT-330, part 1)
+
+An Owner buys or renews by placing an order; the money comes by bank transfer, which SePay reports
+(part 2). `license_orders` (RLS) holds:
+
+- `amount_vnd`: the plan's `monthly_price_vnd` × `term_months`, worked out on the server. The body
+  is `{ planId, termMonths }` only; any other field, an amount included, is a 400.
+- `payment_code`: `OCTAP` and 8 random digits, unique across every organization, so a transfer's
+  content finds its order. A clash draws again.
+- `status`: `PENDING`, `PAID` or `CANCELED`. An order can be paid for 24 hours; after that a
+  `PENDING` one reads as `EXPIRED`, worked out from `expires_at` and never stored.
+
+One order waits to be paid at a time. Placing the same plan and term again returns it; anything
+else cancels it first, so an old QR code can't be paid by mistake. Both run with the organization's
+row locked FOR UPDATE (the Owner check), so two orders placed at once queue up.
+
+Each order carries its VietQR image, `https://qr.sepay.vn/img?acc=…&bank=…&amount=…&des=<code>`,
+built from `SEPAY_BANK_ACCOUNT` and `SEPAY_BANK_CODE`. Until both are set, the routes answer 503.
+
+| Route | Who |
+| --- | --- |
+| `POST /v1/console/organizations/:organizationId/license/orders` | Owner of an ACTIVE organization; the plan active and purchasable, `termMonths` one of its terms |
+| `GET …/license/orders`, `GET …/orders/:orderId` | Owner; another organization's order is a 404 |
+| `POST …/orders/:orderId/cancel` | Owner; a PENDING order (expired or not), else 409 |
+
 ## Not yet
 
-Buying and renewing by the Owner with SePay (OCT-330); the console screens (OCT-331/332).
+Receiving the money (the SePay webhook) and reconciliation (OCT-330 parts 2–3); the console
+screens (OCT-331/332).

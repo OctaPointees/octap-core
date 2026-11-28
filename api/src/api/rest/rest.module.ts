@@ -35,6 +35,7 @@ import { ConsoleAssistantController } from './console-assistant.controller.js';
 import { ConsoleRequestLogsController } from './console-request-logs.controller.js';
 import {
   ConsoleLicenseController,
+  ConsoleLicenseOrdersController,
   ConsoleLicensePlansController,
   LicenseController,
   PlatformLicensePlansController,
@@ -52,6 +53,7 @@ import { ConsoleAnalyticsController } from './console-analytics.controller.js';
     ConsoleMcpTokenController,
     ConsoleAssistantController,
     ConsoleLicenseController,
+    ConsoleLicenseOrdersController,
     ConsoleLicensePlansController,
     LicenseController,
     PlatformLicensePlansController,

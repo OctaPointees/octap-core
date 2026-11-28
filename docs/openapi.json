@@ -588,6 +588,230 @@
         "description": "**Auth:** console user (Google ID token)."
       }
     },
+    "/v1/console/organizations/{organizationId}/license/orders": {
+      "post": {
+        "operationId": "ConsoleLicenseOrdersController_place",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleLicenseOrdersController_place_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console License Orders"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleLicenseOrdersController_place_Body"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "ConsoleLicenseOrdersController_list",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleLicenseOrdersController_list_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console License Orders"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/license/orders/{orderId}": {
+      "get": {
+        "operationId": "ConsoleLicenseOrdersController_get",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleLicenseOrdersController_get_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console License Orders"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
+    "/v1/console/organizations/{organizationId}/license/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "ConsoleLicenseOrdersController_cancel",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleLicenseOrdersController_cancel_Response"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Console License Orders"
+        ],
+        "security": [
+          {
+            "consoleSession": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "console",
+          "platformAdminOnly": false
+        },
+        "description": "**Auth:** console user (Google ID token)."
+      }
+    },
     "/v1/console/license-plans": {
       "get": {
         "operationId": "ConsoleLicensePlansController_list",
@@ -9052,6 +9276,9 @@
       "name": "Console License"
     },
     {
+      "name": "Console License Orders"
+    },
+    {
       "name": "Console License Plans"
     },
     {
@@ -10485,6 +10712,110 @@
           "license",
           "organizationId",
           "usage"
+        ]
+      },
+      "ConsoleLicenseOrdersController_cancel_Response": {
+        "$ref": "#/components/schemas/LicenseOrderDto",
+        "description": "An order and how to pay it. The amount is always the plan's monthly price times the term."
+      },
+      "ConsoleLicenseOrdersController_get_Response": {
+        "$ref": "#/components/schemas/LicenseOrderDto",
+        "description": "An order and how to pay it. The amount is always the plan's monthly price times the term."
+      },
+      "ConsoleLicenseOrdersController_list_Response": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LicenseOrderDto"
+        }
+      },
+      "ConsoleLicenseOrdersController_place_Body": {
+        "description": "`POST /v1/console/organizations/:organizationId/license/orders`, Owner only.",
+        "type": "object",
+        "properties": {
+          "planId": {
+            "type": "string"
+          },
+          "termMonths": {
+            "description": "One of the plan's `termMonthsAllowed`.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "planId",
+          "termMonths"
+        ]
+      },
+      "ConsoleLicenseOrdersController_place_Response": {
+        "description": "An order and how to pay it. The amount is always the plan's monthly price times the term.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "planId": {
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/LicenseTier"
+          },
+          "planName": {
+            "type": "string"
+          },
+          "termMonths": {
+            "type": "number"
+          },
+          "amountVnd": {
+            "type": "number"
+          },
+          "paymentCode": {
+            "description": "Put it in the transfer content as is: that is how the payment is matched to this order.",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LicenseOrderState"
+          },
+          "qrUrl": {
+            "description": "VietQR image for exactly `amountVnd`, with `paymentCode` as the transfer content.",
+            "type": "string"
+          },
+          "bankAccount": {
+            "type": "string"
+          },
+          "bankCode": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "paidAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amountVnd",
+          "bankAccount",
+          "bankCode",
+          "createdAt",
+          "expiresAt",
+          "id",
+          "organizationId",
+          "paidAt",
+          "paymentCode",
+          "planId",
+          "planName",
+          "qrUrl",
+          "state",
+          "termMonths",
+          "tier"
         ]
       },
       "ConsoleLicensePlansController_list_Response": {
@@ -13264,6 +13595,15 @@
           "organizationId",
           "usage"
         ]
+      },
+      "LicenseOrderState": {
+        "enum": [
+          "CANCELED",
+          "EXPIRED",
+          "PAID",
+          "PENDING"
+        ],
+        "type": "string"
       },
       "LicenseSource": {
         "description": "How a license came about.",
@@ -17000,6 +17340,79 @@
           "members",
           "teamMembers",
           "transactionsMonthly"
+        ]
+      },
+      "LicenseOrderDto": {
+        "description": "An order and how to pay it. The amount is always the plan's monthly price times the term.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "planId": {
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/LicenseTier"
+          },
+          "planName": {
+            "type": "string"
+          },
+          "termMonths": {
+            "type": "number"
+          },
+          "amountVnd": {
+            "type": "number"
+          },
+          "paymentCode": {
+            "description": "Put it in the transfer content as is: that is how the payment is matched to this order.",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LicenseOrderState"
+          },
+          "qrUrl": {
+            "description": "VietQR image for exactly `amountVnd`, with `paymentCode` as the transfer content.",
+            "type": "string"
+          },
+          "bankAccount": {
+            "type": "string"
+          },
+          "bankCode": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "paidAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amountVnd",
+          "bankAccount",
+          "bankCode",
+          "createdAt",
+          "expiresAt",
+          "id",
+          "organizationId",
+          "paidAt",
+          "paymentCode",
+          "planId",
+          "planName",
+          "qrUrl",
+          "state",
+          "termMonths",
+          "tier"
         ]
       },
       "LicensePlanDto": {
