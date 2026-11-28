@@ -1,0 +1,1 @@
+ALTER TYPE "public"."change_request_type" ADD VALUE 'UPDATE_EARN_RATE';

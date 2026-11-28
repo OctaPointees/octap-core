@@ -13,6 +13,8 @@ Sui là nguồn chuẩn về điểm đã xác nhận, và giao dịch trên cha
 
 Ví dụ, 100.000 với 100 basis point (1%) giữ 1.000 điểm ước tính và xác nhận 1.000 điểm. Số ước tính có thể khác kết quả, nên chỉ tin vào số đã xác nhận.
 
+`earnBps` chỉ đổi khi quản trị viên OctaP duyệt yêu cầu `UPDATE_EARN_RATE` của Owner. Một lượt earn còn `PENDING` lúc tỷ lệ mới lên chain sẽ được xác nhận theo tỷ lệ mới, và đó là một lý do khiến số ước tính khác kết quả.
+
 Giao dịch làm tròn xuống còn 0 điểm sẽ bị từ chối với 400, vì chain sẽ abort nó. Mỗi lệnh earn cũng phải nằm trong [ngân sách phát hành](/vi/concepts/issuance-budget/).
 
 ## Ý nghĩa của từng field

@@ -28,6 +28,7 @@ const REQUEST_TYPES = [
   'REINSTATE',
   'BUDGET_TOP_UP',
   'UPDATE_IDENTITY',
+  'UPDATE_EARN_RATE',
 ];
 @Injectable()
 export class AdministrationService {
@@ -53,9 +54,11 @@ export class AdministrationService {
           ? ['name']
           : body.requestType === 'BUDGET_TOP_UP'
             ? ['amount']
-            : body.requestType === 'UPDATE_IDENTITY'
-              ? [...IDENTITY_FIELDS]
-              : [];
+            : body.requestType === 'UPDATE_EARN_RATE'
+              ? ['earnBps']
+              : body.requestType === 'UPDATE_IDENTITY'
+                ? [...IDENTITY_FIELDS]
+                : [];
     if (Object.keys(input).some((key) => !allowed.includes(key)))
       throw new BadRequestException('Unexpected request fields');
     if (
@@ -70,6 +73,11 @@ export class AdministrationService {
       throw new BadRequestException('A display name of 2–160 characters is required');
     if (body.requestType === 'BUDGET_TOP_UP' && (!Number.isSafeInteger(input.amount) || (input.amount as number) < 1))
       throw new BadRequestException('A top-up amount must be a positive whole number of points');
+    if (
+      body.requestType === 'UPDATE_EARN_RATE' &&
+      (!Number.isSafeInteger(input.earnBps) || (input.earnBps as number) < 0 || (input.earnBps as number) > 10000)
+    )
+      throw new BadRequestException('An earn rate must be a whole number of basis points from 0 to 10000');
     let identity: IdentityChange | undefined;
     if (body.requestType === 'UPDATE_IDENTITY') {
       try {

@@ -180,6 +180,12 @@ export interface ActivatePolicyAndIssueCapParams {
   shards?: Pick<CreateShardsParams, 'shardCount' | 'totalBudget'>;
 }
 
+export interface ActivatePolicyParams {
+  adminCapId: string;
+  programId: string;
+  policyVersionId: string;
+}
+
 export interface CreateShardsParams {
   adminCapId: string;
   programId: string;
@@ -555,6 +561,20 @@ export class OctapChainClient {
     if (params.shards) {
       this.addCreateShards(tx, { adminCapId: params.adminCapId, programId: params.programId, ...params.shards });
     }
+    return tx;
+  }
+
+  /**
+   * Activates `params.policyVersionId` for `params.programId`, and nothing else: rotating an
+   * already-provisioned program's policy (OCT-341). Deliberately no `issue_cap`, so the program's
+   * existing `IssuerCap` keeps signing earns, now against the new policy.
+   */
+  buildActivatePolicyTransaction(params: ActivatePolicyParams): Transaction {
+    const tx = new Transaction();
+    programControl.activatePolicy({
+      package: this.packageId,
+      arguments: { admin: params.adminCapId, program: params.programId, policy: params.policyVersionId },
+    })(tx);
     return tx;
   }
 

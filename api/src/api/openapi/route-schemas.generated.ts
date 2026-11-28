@@ -276,6 +276,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "payload": {
+        "description": "`amount` for `BUDGET_TOP_UP`; `earnBps` (0–10000, points per 10,000 units of purchase) for\n`UPDATE_EARN_RATE`, which replaces the organization's base earn rate once approved.",
         "allOf": [
           {
             "type": "object",
@@ -287,6 +288,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                 "type": "string"
               },
               "amount": {
+                "type": "number"
+              },
+              "earnBps": {
                 "type": "number"
               }
             }
@@ -349,6 +353,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_EARN_RATE",
           "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],
@@ -3551,6 +3556,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "REINSTATE",
       "SUSPEND",
       "TRANSFER_OWNERSHIP",
+      "UPDATE_EARN_RATE",
       "UPDATE_IDENTITY",
       "UPDATE_PROFILE"
     ],
@@ -4391,6 +4397,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                     "REINSTATE",
                     "SUSPEND",
                     "TRANSFER_OWNERSHIP",
+                    "UPDATE_EARN_RATE",
                     "UPDATE_IDENTITY",
                     "UPDATE_PROFILE"
                   ],
@@ -4495,6 +4502,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "payload": {
+        "description": "`amount` for `BUDGET_TOP_UP`; `earnBps` (0–10000, points per 10,000 units of purchase) for\n`UPDATE_EARN_RATE`, which replaces the organization's base earn rate once approved.",
         "allOf": [
           {
             "type": "object",
@@ -4506,6 +4514,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
                 "type": "string"
               },
               "amount": {
+                "type": "number"
+              },
+              "earnBps": {
                 "type": "number"
               }
             }
@@ -4568,6 +4579,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
           "REINSTATE",
           "SUSPEND",
           "TRANSFER_OWNERSHIP",
+          "UPDATE_EARN_RATE",
           "UPDATE_IDENTITY",
           "UPDATE_PROFILE"
         ],

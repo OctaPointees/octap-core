@@ -7,7 +7,8 @@ export type GovernanceRequestType =
   | 'BUDGET_TOP_UP'
   | 'SUSPEND'
   | 'REINSTATE'
-  | 'UPDATE_IDENTITY';
+  | 'UPDATE_IDENTITY'
+  | 'UPDATE_EARN_RATE';
 /**
  * `UPDATE_IDENTITY` replaces an organization's legal details once a System Admin approves it. Send
  * at least one field; `organizationType` only classifies an organization that has none yet. The
@@ -19,7 +20,11 @@ export interface IdentityChangePayload extends OrganizationIdentityInput {
 export interface GovernanceProposal {
   requestType: GovernanceRequestType;
   reason: string;
-  payload: { name?: string; targetUserId?: string; amount?: number } & IdentityChangePayload;
+  /**
+   * `amount` for `BUDGET_TOP_UP`; `earnBps` (0–10000, points per 10,000 units of purchase) for
+   * `UPDATE_EARN_RATE`, which replaces the organization's base earn rate once approved.
+   */
+  payload: { name?: string; targetUserId?: string; amount?: number; earnBps?: number } & IdentityChangePayload;
 }
 export interface GovernanceRequest {
   id: string;

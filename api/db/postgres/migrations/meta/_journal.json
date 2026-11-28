@@ -295,6 +295,13 @@
       "when": 1795719494696,
       "tag": "0041_voucher_expiry_index",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795832265862,
+      "tag": "0042_earn_rate_change_request",
+      "breakpoints": true
     }
   ]
 }

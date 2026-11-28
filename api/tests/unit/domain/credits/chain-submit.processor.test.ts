@@ -1187,3 +1187,66 @@ describe('ChainSubmitProcessor voucher commands', () => {
     expect(signReverseRedeem).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ChainSubmitProcessor policy rotation (OCT-341)', () => {
+  const stalePolicy = () =>
+    new SimulationError("MoveAbort, abort code: 3, in '0xpkg::program_control::assert_policy_active'", {
+      executionError: {
+        $kind: 'MoveAbort',
+        message: 'MoveAbort, abort code: 3',
+        MoveAbort: { abortCode: '3', location: { module: 'program_control', functionName: 'assert_policy_active' } },
+      } as never,
+    });
+  /** The row names `0xpolicy-org-1` on the first read and `next` on every read after. */
+  const rotatingRepo = (next: string) => {
+    let reads = 0;
+    return stub<ProgramsRepository>({
+      findByOrganization: async (organizationId: string) =>
+        buildProgramRow(organizationId, reads++ === 0 ? {} : { policyVersionId: next }),
+    });
+  };
+
+  it('resubmits once against the rotated policy the row now names', async () => {
+    const signedWith: string[] = [];
+    const markSubmitted = vi.fn(async () => {});
+    await processor(
+      { markSubmitted, markFailed: () => expect.fail('recovered, not failed') },
+      {
+        getCreditOwnershipByEndUserId: existingAccount,
+        confirmEarnOnChain: async () => ({ id: 'btx-1' }),
+        failEarnOnChain: () => expect.fail('recovered, the hold stays'),
+      },
+      {
+        signEarn: async (program: { policyVersionId: string }, params: unknown) => {
+          signedWith.push(program.policyVersionId);
+          if (program.policyVersionId === '0xpolicy-org-1') throw stalePolicy();
+          return { params, digest: 'DIGEST-RETRY', expirationEpoch: 7n };
+        },
+        execute: async () => ({ ...earned('250'), digest: 'DIGEST-RETRY' }),
+      },
+      rotatingRepo('0xpolicy-v2'),
+    ).process(buildOperation());
+
+    expect(signedWith).toEqual(['0xpolicy-org-1', '0xpolicy-v2']);
+    expect(markSubmitted).toHaveBeenCalledWith('op-1', 'DIGEST-RETRY');
+  });
+
+  it('fails the earn when the row still names the policy the chain refused', async () => {
+    const markFailed = vi.fn(async () => {});
+    let signs = 0;
+    await processor(
+      { markFailed },
+      { getCreditOwnershipByEndUserId: existingAccount, failEarnOnChain: async () => {} },
+      {
+        signEarn: async () => {
+          signs++;
+          throw stalePolicy();
+        },
+      },
+      rotatingRepo('0xpolicy-org-1'),
+    ).process(buildOperation());
+
+    expect(signs).toBe(1);
+    expect(markFailed).toHaveBeenCalledOnce();
+  });
+});

@@ -10,6 +10,14 @@ import { acceptCommand } from './operations.repository.js';
 import { ConsoleConflictError, ConsoleNotFoundError, requireSystemAdmin } from './console-access.js';
 export const ORGANIZATION_PROVISION_COMMAND = 'ORGANIZATION_PROGRAM_PROVISION';
 export const ORGANIZATION_BUDGET_TOP_UP_COMMAND = 'ORGANIZATION_BUDGET_TOP_UP';
+/** An approved `UPDATE_EARN_RATE` request: rotates the program's active policy (OCT-341). */
+export const ORGANIZATION_EARN_RATE_CHANGE_COMMAND = 'ORGANIZATION_EARN_RATE_CHANGE';
+/** Every command the organization worker (program admin key) runs. */
+export const ORGANIZATION_ADMIN_COMMANDS = [
+  ORGANIZATION_PROVISION_COMMAND,
+  ORGANIZATION_BUDGET_TOP_UP_COMMAND,
+  ORGANIZATION_EARN_RATE_CHANGE_COMMAND,
+];
 type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
 const fields = {
   id: organizations.id,
@@ -158,7 +166,7 @@ export class OrganizationsRepository {
       .where(
         and(
           eq(operations.id, id),
-          inArray(operations.commandType, [ORGANIZATION_PROVISION_COMMAND, ORGANIZATION_BUDGET_TOP_UP_COMMAND]),
+          inArray(operations.commandType, ORGANIZATION_ADMIN_COMMANDS),
           inArray(operations.status, ['PROCESSING', 'UNKNOWN']),
         ),
       );

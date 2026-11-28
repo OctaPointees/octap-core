@@ -20,6 +20,16 @@ only ever runs against the program provisioned for it.
   same `AdminCap` key) when its budget shards drain, split across shards like the initial budget.
   `programs.total_budget` keeps the provisioning-time figure; the chain holds the live remaining.
   An approved `BUDGET_TOP_UP` change request is the only way to run it (`domain/administration`).
+- `rotateEarnRate()` replaces the organization's base earn rate (OCT-341): it publishes policy
+  version `n + 1` with the new `earn_bps` (same expiry) and calls `activate_policy` only, never
+  `issue_cap`, so the existing `IssuerCap` keeps signing earns. The `programs` row is then updated in
+  place (`policyVersionId`, `policyVersion`, `earnBps`): it tracks whichever policy is active now.
+  An approved `UPDATE_EARN_RATE` change request is the only way to run it
+  (`EarnRateChangeProcessor`). The request records the policy version it was proposed against, so an
+  approval or a worker run after another rotation is refused; an unknown chain outcome stays
+  `UNKNOWN` and blocks approving another rotation until an operator settles it. An earn signed
+  against the old policy in the moment between activation and the row update aborts with
+  `EPolicyNotActive`; the earn submit path then resubmits once against the row's new policy.
 - No HTTP endpoint yet: provisioning a program is a one-time per-organization setup action, not
   a per-request call, so it's invoked via `scripts/provision-program.mjs` (same pattern as
   `scripts/seed-dev-credential.mjs` for API credentials), not wired into `api/rest`.
