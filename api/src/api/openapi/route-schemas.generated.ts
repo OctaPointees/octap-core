@@ -28,7 +28,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     "type": "string"
   },
   "CampaignStatus": {
-    "description": "DRAFT until an Owner activates it, which approves it. ACTIVE and PAUSED move back and forth;\nENDED and ARCHIVED are final.",
+    "description": "DRAFT until an Owner activates it, which approves it. ACTIVE and PAUSED move back and forth;\nENDED (by the Owner, or automatically once `endsAt` has passed) and ARCHIVED are final.",
     "enum": [
       "ACTIVE",
       "ARCHIVED",

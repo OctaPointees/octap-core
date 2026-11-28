@@ -68,7 +68,7 @@ With `live: true`, only campaigns whose `earnBoostLive` is `true` are returned: 
 | --- | --- | --- |
 | `id` | `string` | Send it as `campaignId` |
 | `name`, `description` | `string`, `string \| null` | |
-| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | An `ACTIVE` or `PAUSED` campaign becomes `ENDED` once `endsAt` has passed |
 | `startsAt`, `endsAt` | `string` | ISO 8601 |
 | `multiplierBps` | `number \| null` | 20000 is 2x. `null` for a campaign that only groups vouchers |
 | `earnBoostLive` | `boolean` | Whether an earn naming it is boosted right now |

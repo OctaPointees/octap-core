@@ -17,7 +17,8 @@ import { systemUsers } from './auth.schema.js';
 
 /**
  * DRAFT until an Owner activates it (that is its approval). ACTIVE and PAUSED move back and forth;
- * ENDED (closed early, or past its window and closed by hand) and ARCHIVED are final.
+ * ENDED (closed early by the Owner, or by the system once `endsAt` has passed, OCT-343) and ARCHIVED
+ * are final.
  */
 export const campaignStatusEnum = pgEnum('campaign_status', ['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED', 'ARCHIVED']);
 

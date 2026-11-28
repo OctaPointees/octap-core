@@ -47,6 +47,7 @@ export class CampaignsService {
   /** Every campaign but archived ones, newest first; with `live`, only those that boost an earn now. */
   async list(orgId: string, live?: unknown): Promise<CampaignDto[]> {
     const onlyLive = parseFlag(live, 'live');
+    await this.campaigns.closeDueFor(orgId);
     const now = new Date();
     const rows = (await this.campaigns.list(orgId, false)).map((c) => toCampaignDto(c, now));
     return onlyLive ? rows.filter((c) => c.earnBoostLive) : rows;
@@ -54,6 +55,7 @@ export class CampaignsService {
 
   /** Another organization's campaign is a 404. */
   async get(orgId: string, campaignId: string): Promise<CampaignDto> {
+    await this.campaigns.closeDueFor(orgId);
     const campaign = await this.campaigns.find(orgId, campaignId);
     if (!campaign) throw new NotFoundException('Campaign not found');
     return toCampaignDto(campaign);
@@ -93,6 +95,7 @@ export class ConsoleCampaignsService {
     const archived = parseFlag(includeArchived);
     return this.run(READ_DENIED, async () => {
       await this.organizations.withAccess(userId, orgId, false, async () => undefined);
+      await this.campaigns.closeDueFor(orgId);
       return (await this.campaigns.list(orgId, archived)).map((c) => toCampaignDto(c));
     });
   }
@@ -101,6 +104,7 @@ export class ConsoleCampaignsService {
   detail(userId: string, orgId: string, campaignId: string): Promise<CampaignDetailDto> {
     return this.run(READ_DENIED, async () => {
       await this.organizations.withAccess(userId, orgId, false, async () => undefined);
+      await this.campaigns.closeDueFor(orgId);
       const campaign = await this.campaigns.find(orgId, campaignId);
       if (!campaign) throw new NotFoundException('Campaign not found');
       await this.rewardsRepo.expireDueFor(orgId, { memberVouchers: 'none' });
