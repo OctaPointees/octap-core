@@ -16,6 +16,8 @@ const STYLE = `
     border: 1px solid #8886; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
   button:hover { border-color: #b4006e; }
   [role=alert] { color: #c62828; }
+  .choice { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; margin: 0 0 16px; }
+  .choice input { margin-top: 5px; }
 `;
 
 /** Page shown when the authorization request itself is invalid: never redirect to an unverified URI. */
@@ -38,8 +40,14 @@ export function renderAuthorizationPage(view: PendingAuthorizationView) {
 <script src="https://accounts.google.com/gsi/client" async></script></head>
 <body><main>
 <h1>Connect ${escapeHtml(view.clientName)} to OctaP</h1>
-<p>It will be able to <strong>read</strong> data of one organization you belong to, as you, for one hour.
-It cannot change anything.</p>
+<p>It will be able to <strong>read</strong> data of one organization you belong to, as you, for one hour.</p>
+${
+  view.canWrite
+    ? `<label class="choice"><input type="checkbox" id="allow-write"> <span><strong>Also allow it to make
+changes</strong>: create and edit vouchers, submit them, and approve, reject or pause them if you are the
+Owner. Every change is shown to you first and is made only after you confirm it.</span></label>`
+    : '<p>It cannot change anything.</p>'
+}
 <p class="muted">After sign-in you return to <strong>${escapeHtml(view.redirectHost)}</strong>.
 Only continue if you started this from your own MCP client.</p>
 <div id="step"><div id="google"></div></div>
@@ -79,7 +87,8 @@ Only continue if you started this from your own MCP client.</p>
       auto_select: false,
       callback: ({ credential }) => {
         error.textContent = '';
-        post('/oauth/authorize/google', { requestId: config.requestId, credential })
+        const allowWrite = document.getElementById('allow-write')?.checked === true;
+        post('/oauth/authorize/google', { requestId: config.requestId, credential, allowWrite })
           .then(next, (cause) => { error.textContent = cause.message; });
       },
     });

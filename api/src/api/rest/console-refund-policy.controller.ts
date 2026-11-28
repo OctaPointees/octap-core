@@ -14,7 +14,7 @@ import {
 import type { SetVoucherRefundPolicyRequest, VoucherRefundPolicyDto } from '@octap/contracts';
 import { ConsoleRefundPolicyService } from '#domain/rewards/console-refund-policy.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 
 /** Owner only, reads included. See `ConsoleRefundPolicyService`. */
 @Public()
@@ -45,6 +45,7 @@ export class ConsoleRefundPolicyController {
 
   /** Publishes the next version, recorded against the signed-in Owner. */
   @Put()
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   publish(
     @Req() req: ConsoleRequest,

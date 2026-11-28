@@ -4,11 +4,13 @@ import {
   DEVELOPER_TOOLS,
   OWNER_PROMPTS,
   OWNER_TOOLS,
+  DEVELOPER_WRITE_TOOLS,
+  OWNER_WRITE_TOOLS,
   instructionsForPersona,
   promptsForPersona,
   toolsForPersona,
 } from '../src/personas.js';
-import { ALL_TOOLS } from '../src/server.js';
+import { ALL_TOOLS, WRITE_TOOLS } from '../src/server.js';
 
 describe('persona tool map (OCT-294)', () => {
   it('gives an Owner every Developer tool and prompt, as Core gives an Owner every Developer permission', () => {
@@ -44,5 +46,26 @@ describe('persona tool map (OCT-294)', () => {
     expect(toolsForPersona('__proto__')).toEqual(['get_connection']);
     expect(promptsForPersona('__proto__')).toEqual([]);
     expect(instructionsForPersona('SYSTEM_ADMIN')).toContain('an unrecognized role');
+  });
+
+  it('offers write tools only to a connection allowed to make changes (OCT-314)', () => {
+    for (const persona of ['BUSINESS_OWNER', 'BUSINESS_DEVELOPER']) {
+      for (const tool of WRITE_TOOLS) expect(toolsForPersona(persona)).not.toContain(tool);
+      expect(toolsForPersona(persona, true)).toContain('confirm_change');
+      expect(instructionsForPersona(persona)).toContain('read-only');
+      expect(instructionsForPersona(persona, true)).toContain('confirm_change only after they clearly agree');
+    }
+    expect(toolsForPersona('SYSTEM_ADMIN', true)).toEqual(['get_connection']);
+  });
+
+  it('keeps Owner decisions away from a Developer, and submitting away from an Owner', () => {
+    // Core: approve, reject and pause are Owner-only; an Owner activates instead of submitting (409).
+    for (const tool of ['approve_voucher', 'reject_voucher', 'pause_voucher'] as const) {
+      expect(OWNER_WRITE_TOOLS).toContain(tool);
+      expect(DEVELOPER_WRITE_TOOLS).not.toContain(tool);
+    }
+    expect(DEVELOPER_WRITE_TOOLS).toContain('submit_voucher');
+    expect(OWNER_WRITE_TOOLS).not.toContain('submit_voucher');
+    expect([...new Set([...OWNER_WRITE_TOOLS, ...DEVELOPER_WRITE_TOOLS])].sort()).toEqual([...WRITE_TOOLS].sort());
   });
 });

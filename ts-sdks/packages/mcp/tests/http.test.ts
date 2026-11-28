@@ -35,20 +35,26 @@ const introspection = (resource: string, persona = 'BUSINESS_OWNER') => ({
 
 const DEVELOPER_TOOLS = [
   'find_member',
+  'get_api_errors',
+  'get_api_usage',
   'get_budget',
   'get_connection',
   'get_member',
   'get_member_balance',
   'get_organization',
+  'get_program_analytics',
+  'get_request_log',
   'get_voucher',
   'get_voucher_batch',
   'list_api_keys',
   'list_member_transactions',
   'list_member_vouchers',
+  'list_transactions',
   'list_voucher_batches',
   'list_vouchers',
   'list_webhook_deliveries',
   'list_webhook_endpoints',
+  'search_request_logs',
 ];
 const OWNER_TOOLS = [
   ...DEVELOPER_TOOLS,
@@ -432,7 +438,9 @@ describe('persona tool sets and prompts (OCT-294)', () => {
       'check_budget',
       'check_member_transactions',
       'check_webhooks',
+      'debug_integration',
       'find_customer',
+      'program_summary',
       'review_api_keys',
       'review_console_access',
       'review_pending_vouchers',
@@ -449,7 +457,9 @@ describe('persona tool sets and prompts (OCT-294)', () => {
     expect((await client.listPrompts()).prompts.map((prompt) => prompt.name).sort()).toEqual([
       'check_member_transactions',
       'check_webhooks',
+      'debug_integration',
       'find_customer',
+      'program_summary',
       'review_api_keys',
       'summarize_member',
     ]);

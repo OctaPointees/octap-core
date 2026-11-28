@@ -2,7 +2,7 @@ import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Req, 
 import type { VoucherDto } from '@octap/contracts';
 import { ConsoleRewardsService } from '#domain/rewards/console-rewards.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 import type {
   ConsoleVoucherBodyDto,
   ConsoleVoucherPatchBodyDto,
@@ -12,7 +12,9 @@ import type {
 
 /**
  * Owner or Business Developer reads and writes drafts; only the Owner pauses, changes a published
- * voucher, and approves or rejects one waiting for approval. See `ConsoleRewardsService`.
+ * voucher, and approves or rejects one waiting for approval. See `ConsoleRewardsService`. Every write
+ * is also open to an MCP host the user allowed to make changes, once confirmed (`@McpWritable`,
+ * OCT-314); the same persona rules apply.
  */
 @Public()
 @UseGuards(ConsoleAccessGuard)
@@ -34,6 +36,7 @@ export class ConsoleRewardsController {
     return this.rewards.detail(req.consoleIdentity.user.id, orgId, id);
   }
   @Post()
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   create(
     @Req() req: ConsoleRequest,
@@ -43,6 +46,7 @@ export class ConsoleRewardsController {
     return this.rewards.create(req.consoleIdentity.user.id, orgId, body);
   }
   @Patch(':id')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   update(
     @Req() req: ConsoleRequest,
@@ -53,6 +57,7 @@ export class ConsoleRewardsController {
     return this.rewards.update(req.consoleIdentity.user.id, orgId, id, body);
   }
   @Post(':id/submit')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   submit(
     @Req() req: ConsoleRequest,
@@ -62,6 +67,7 @@ export class ConsoleRewardsController {
     return this.rewards.submit(req.consoleIdentity.user.id, orgId, id);
   }
   @Post(':id/withdraw')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   withdraw(
     @Req() req: ConsoleRequest,
@@ -71,6 +77,7 @@ export class ConsoleRewardsController {
     return this.rewards.withdraw(req.consoleIdentity.user.id, orgId, id);
   }
   @Post(':id/approve')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   approve(
     @Req() req: ConsoleRequest,
@@ -81,6 +88,7 @@ export class ConsoleRewardsController {
     return this.rewards.approve(req.consoleIdentity.user.id, orgId, id, body);
   }
   @Post(':id/reject')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   reject(
     @Req() req: ConsoleRequest,

@@ -182,7 +182,7 @@ describe('McpOAuthService authorization', () => {
     await expect(authorize({ response_type: 'token' })).rejects.toThrow('response_type must be code');
     await expect(authorize({ code_challenge_method: 'plain' })).rejects.toThrow('PKCE is required');
     await expect(authorize({ code_challenge: undefined })).rejects.toThrow('PKCE is required');
-    await expect(authorize({ scope: 'admin' })).rejects.toThrow('Only the mcp scope');
+    await expect(authorize({ scope: 'admin' })).rejects.toThrow('Only the mcp and mcp:write scopes');
     await expect(authorize({ resource: 'not a url' })).rejects.toThrow('resource is required');
     await expect(authorize({ resource: undefined })).rejects.toThrow('resource is required');
     const view = await authorize({ scope: 'mcp' });

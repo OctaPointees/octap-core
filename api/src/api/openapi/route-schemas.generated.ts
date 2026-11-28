@@ -1018,6 +1018,114 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       "nextCursor"
     ]
   },
+  "ConsoleMcpConfirmationsController_prepare_Body": {
+    "description": "`POST /v1/console/organizations/:organizationId/mcp/confirmations` (OCT-314), with an MCP token that\nhas `mcp:write`: a change to show the user before making it. Nothing changes yet.",
+    "type": "object",
+    "properties": {
+      "method": {
+        "enum": [
+          "DELETE",
+          "PATCH",
+          "POST",
+          "PUT"
+        ],
+        "type": "string"
+      },
+      "path": {
+        "description": "A console route of the token's organization, e.g. `/v1/console/organizations/<id>/vouchers`.",
+        "type": "string"
+      },
+      "body": {
+        "description": "The JSON body to send; `{}` when the route takes none.",
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "summary": {
+        "description": "What the change does, in words the user confirms (1-1000 characters).",
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "path",
+      "summary"
+    ]
+  },
+  "ConsoleMcpConfirmationsController_prepare_Response": {
+    "description": "A prepared change. The host shows `summary`, and only once the user agrees sends `method path` with\nexactly `body` and the header `X-Mcp-Confirmation: <confirmationId>`. The id works once, for that\nrequest only, until `expiresAt` (5 minutes). A retry of the same request with the same id returns\nthe first answer instead of making the change again.",
+    "type": "object",
+    "properties": {
+      "confirmationId": {
+        "type": "string"
+      },
+      "method": {
+        "enum": [
+          "DELETE",
+          "PATCH",
+          "POST",
+          "PUT"
+        ],
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "body": {
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "body",
+      "confirmationId",
+      "expiresAt",
+      "method",
+      "path",
+      "summary"
+    ]
+  },
+  "ConsoleMcpConfirmationsController_read_Response": {
+    "description": "A prepared change. The host shows `summary`, and only once the user agrees sends `method path` with\nexactly `body` and the header `X-Mcp-Confirmation: <confirmationId>`. The id works once, for that\nrequest only, until `expiresAt` (5 minutes). A retry of the same request with the same id returns\nthe first answer instead of making the change again.",
+    "type": "object",
+    "properties": {
+      "confirmationId": {
+        "type": "string"
+      },
+      "method": {
+        "enum": [
+          "DELETE",
+          "PATCH",
+          "POST",
+          "PUT"
+        ],
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "body": {
+        "$ref": "#/components/schemas/Record_string_unknown"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "body",
+      "confirmationId",
+      "expiresAt",
+      "method",
+      "path",
+      "summary"
+    ]
+  },
   "ConsoleMcpTokenController_token_Response": {
     "description": "`GET /v1/console/mcp/token`: what an MCP access token is bound to, for the MCP server (an OAuth\nresource server) to check on every request. Answered only for a live token; any other is a 401.",
     "type": "object",
@@ -1031,6 +1139,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "scopes": {
+        "description": "`mcp` (read), plus `mcp:write` when the user allowed changes at sign-in (OCT-314).",
         "type": "array",
         "items": {
           "type": "string"
@@ -1040,7 +1149,7 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
         "type": "string"
       },
       "organizationId": {
-        "description": "The one organization this token can read.",
+        "description": "The one organization this token can reach.",
         "type": "string"
       },
       "persona": {
@@ -3788,6 +3897,9 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
       },
       "credential": {
         "type": "string"
+      },
+      "allowWrite": {
+        "type": "boolean"
       }
     }
   },

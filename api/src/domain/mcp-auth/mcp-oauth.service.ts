@@ -20,6 +20,12 @@ import {
 /** Every MCP access token starts with this, so the console guard can tell it from a Google ID token. */
 export const MCP_TOKEN_PREFIX = 'octap_mcp_';
 export const MCP_SCOPE = 'mcp';
+/**
+ * Asked for at sign-in, next to `mcp`, by a host that should make changes (OCT-314). The consent page
+ * says so, and a token without it stays read-only: the console guard refuses every write.
+ */
+export const MCP_WRITE_SCOPE = 'mcp:write';
+const SUPPORTED_SCOPES = [MCP_SCOPE, MCP_WRITE_SCOPE];
 export const AUTHORIZATION_REQUEST_TTL_SECONDS = 600;
 export const AUTHORIZATION_CODE_TTL_SECONDS = 60;
 export const ACCESS_TOKEN_TTL_SECONDS = 3600;
@@ -64,6 +70,8 @@ export interface PendingAuthorizationView {
   clientName: string;
   redirectHost: string;
   googleClientId: string;
+  /** The host asked for `mcp:write`: the page says it can make changes. */
+  canWrite: boolean;
 }
 
 export type AuthorizationStep =
@@ -76,6 +84,8 @@ interface PendingAuthorization {
   codeChallenge: string;
   state: string | null;
   resource: string;
+  /** `[mcp]`, or `[mcp, mcp:write]` when the host asked to make changes. */
+  scopes: string[];
   /** Set once Google sign-in succeeded and the user still has to pick an organization. */
   userId?: string;
 }
@@ -86,6 +96,8 @@ interface Grant {
   organizationId: string;
   persona: OrganizationPersona;
   resource: string;
+  /** Missing on a record written before OCT-314: read-only. */
+  scopes?: string[];
 }
 
 interface AuthorizationCodeRecord extends Grant {
@@ -137,7 +149,7 @@ export class McpOAuthService {
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
       revocation_endpoint_auth_methods_supported: ['none'],
-      scopes_supported: [MCP_SCOPE],
+      scopes_supported: SUPPORTED_SCOPES,
     };
   }
 
@@ -192,9 +204,11 @@ export class McpOAuthService {
         'invalid_request',
         'PKCE is required: code_challenge with code_challenge_method S256',
       );
-    const scope = asString(params.scope);
-    if (scope && !scope.split(' ').every((value) => value === MCP_SCOPE))
-      throw new OAuthProtocolError('invalid_scope', `Only the ${MCP_SCOPE} scope is supported`);
+    const requested = asString(params.scope)?.split(' ').filter(Boolean) ?? [];
+    if (!requested.every((value) => SUPPORTED_SCOPES.includes(value)))
+      throw new OAuthProtocolError('invalid_scope', `Only the ${SUPPORTED_SCOPES.join(' and ')} scopes are supported`);
+    // Reading is always granted; writing only when asked for.
+    const scopes = requested.includes(MCP_WRITE_SCOPE) ? [MCP_SCOPE, MCP_WRITE_SCOPE] : [MCP_SCOPE];
     // RFC 8707, required by the MCP spec: without it the token is bound to no MCP server, so any
     // server would accept it.
     const resource = asString(params.resource);
@@ -213,6 +227,7 @@ export class McpOAuthService {
       codeChallenge,
       state,
       resource,
+      scopes,
     };
     await this.redis.set(
       this.key('request', requestId),
@@ -225,16 +240,27 @@ export class McpOAuthService {
       clientName: client.clientName,
       redirectHost: describeRedirect(redirectUri),
       googleClientId: this.googleClientId(),
+      canWrite: scopes.includes(MCP_WRITE_SCOPE),
     };
   }
 
   /**
    * The sign-in page posts the Google ID token here. The token must carry the request id as its
    * nonce, so a Google token minted for anything else (the console itself, another request) is refused.
+   * `allowWrite` is the user's own choice on that page: a host that asked for `mcp:write` gets it only
+   * when the user ticked it; otherwise the connection is read-only.
    */
-  async completeGoogleSignIn(requestId: unknown, credential: unknown): Promise<AuthorizationStep> {
+  async completeGoogleSignIn(
+    requestId: unknown,
+    credential: unknown,
+    allowWrite?: unknown,
+  ): Promise<AuthorizationStep> {
     const id = asString(requestId);
-    const pending = id ? await this.pending(id) : null;
+    const found = id ? await this.pending(id) : null;
+    const pending =
+      found && !(allowWrite === true && found.scopes?.includes(MCP_WRITE_SCOPE))
+        ? { ...found, scopes: [MCP_SCOPE] }
+        : found;
     if (!id || !pending || pending.userId)
       throw new NotFoundException('This sign-in expired. Start again from your MCP client.');
     if (typeof credential !== 'string') throw new UnauthorizedException('A Google sign-in is required');
@@ -304,23 +330,30 @@ export class McpOAuthService {
 
     const token = `${MCP_TOKEN_PREFIX}${random()}`;
     const expiresAt = Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS;
+    const scopes = grantedScopes(record);
     const stored: AccessTokenRecord = {
       clientId: record.clientId,
       userId: record.userId,
       organizationId: record.organizationId,
       persona: record.persona,
       resource: record.resource,
+      scopes,
       expiresAt,
     };
     await this.redis.set(this.key('token', hash(token)), JSON.stringify(stored), 'EX', ACCESS_TOKEN_TTL_SECONDS);
-    return { access_token: token, token_type: 'Bearer', expires_in: ACCESS_TOKEN_TTL_SECONDS, scope: MCP_SCOPE };
+    return {
+      access_token: token,
+      token_type: 'Bearer',
+      expires_in: ACCESS_TOKEN_TTL_SECONDS,
+      scope: scopes.join(' '),
+    };
   }
 
   /**
    * A token for the dashboard assistant (OCT-308), issued by Core itself instead of through the
    * browser flow. It is the same record as any MCP token, so introspection, the console guard and the
-   * MCP server treat it the same way: one organization, the user's persona there, read-only, and
-   * rechecked on every use. It lives only for one assistant turn.
+   * MCP server treat it the same way: one organization, the user's persona there, read-only (no
+   * `mcp:write`, OCT-314), and rechecked on every use. It lives only for one assistant turn.
    */
   async issueAssistantToken(grant: {
     userId: string;
@@ -332,6 +365,7 @@ export class McpOAuthService {
     const stored: AccessTokenRecord = {
       ...grant,
       clientId: ASSISTANT_CLIENT_ID,
+      scopes: [MCP_SCOPE],
       expiresAt: Math.floor(Date.now() / 1000) + ASSISTANT_TOKEN_TTL_SECONDS,
     };
     await this.redis.set(this.key('token', hash(token)), JSON.stringify(stored), 'EX', ASSISTANT_TOKEN_TTL_SECONDS);
@@ -379,7 +413,7 @@ export class McpOAuthService {
       token: {
         active: true,
         clientId: record.clientId,
-        scopes: [MCP_SCOPE],
+        scopes: grantedScopes(record),
         userId: user.id,
         organizationId: record.organizationId,
         persona: record.persona,
@@ -407,6 +441,7 @@ export class McpOAuthService {
       organizationId: organization.organizationId,
       persona: organization.persona,
       resource: pending.resource,
+      scopes: pending.scopes,
     };
     await this.redis.set(this.key('code', hash(code)), JSON.stringify(record), 'EX', AUTHORIZATION_CODE_TTL_SECONDS);
     const redirect = new URL(pending.redirectUri);
@@ -459,6 +494,11 @@ export class McpOAuthService {
     if (!clientId) throw new ServiceUnavailableException('Console Google sign-in is not configured');
     return clientId;
   }
+}
+
+/** A record's scopes; one written before OCT-314 has none and is read-only. */
+function grantedScopes(record: Grant): string[] {
+  return record.scopes?.includes(MCP_WRITE_SCOPE) ? [MCP_SCOPE, MCP_WRITE_SCOPE] : [MCP_SCOPE];
 }
 
 function safeEqual(a: string, b: string) {

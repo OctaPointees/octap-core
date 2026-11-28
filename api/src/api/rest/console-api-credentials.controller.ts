@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ConsoleApiCredentialsService } from '#domain/identity/console-api-credentials.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 import type { ConsoleCredentialBodyDto, ConsoleCredentialPatchBodyDto } from '../dto/console.dto.js';
 
 /** Owner or Business Developer of the organization; see `ConsoleApiCredentialsService` for the scope rules. */
@@ -38,6 +38,7 @@ export class ConsoleApiCredentialsController {
     return this.credentials.issue(req.consoleIdentity.user.id, orgId, body);
   }
   @Patch(':id')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   rename(
     @Req() req: ConsoleRequest,
@@ -48,6 +49,7 @@ export class ConsoleApiCredentialsController {
     return this.credentials.rename(req.consoleIdentity.user.id, orgId, id, body);
   }
   @Delete(':id')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   revoke(
     @Req() req: ConsoleRequest,

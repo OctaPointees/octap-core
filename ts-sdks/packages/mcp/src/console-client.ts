@@ -8,6 +8,8 @@ import type {
   ApiKeyView,
   ConnectionInfo,
   ConsoleReads,
+  ConsoleWrites,
+  InsightReads,
   CoreClientLike,
   InvitationView,
   MemberDetailView,
@@ -54,7 +56,7 @@ export function consoleCoreClient(
   apiUrl: string,
   accessToken: string,
   organizationId: string,
-): CoreClientLike & ConsoleReads {
+): CoreClientLike & ConsoleReads & InsightReads & ConsoleWrites {
   const root = apiUrl.replace(/\/+$/, '');
   const organization = `/v1/console/organizations/${encodeURIComponent(organizationId)}`;
   const get = async <T>(path: string, options?: RequestOptions): Promise<T> => {
@@ -66,6 +68,29 @@ export function consoleCoreClient(
     if (!response.ok) throw new OctaApiError(response.status, response.statusText, body);
     return body as T;
   };
+  const send = async <T>(
+    method: string,
+    path: string,
+    body: unknown,
+    headers: Record<string, string>,
+    options?: RequestOptions,
+  ): Promise<T> => {
+    const response = await fetch(`${root}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    });
+    const answer: unknown = await response.json().catch(() => null);
+    if (!response.ok) throw new OctaApiError(response.status, response.statusText, answer);
+    return answer as T;
+  };
+  const confirmations = `${organization}/mcp/confirmations`;
   const member = (memberId: string) => `${organization}/members/${encodeURIComponent(memberId)}`;
   const withQuery = (path: string, query: Record<string, string | number | boolean | undefined>) => {
     const params = new URLSearchParams();
@@ -136,7 +161,33 @@ export function consoleCoreClient(
     },
     listMemberVouchers: async (memberId, options) =>
       get<VoucherOwnershipDto[]>(`${member(memberId)}/vouchers`, options),
+    consoleTransactions: async (search, options) =>
+      get(withQuery(`${organization}/transactions`, { ...search }), options),
+    getProgramAnalytics: async (range, options) => get(withQuery(`${organization}/analytics/summary`, range), options),
+    searchRequestLogs: async (query, options) => get(withQuery(`${organization}/request-logs`, { ...query }), options),
+    getRequestLog: async (requestId, options) =>
+      get(`${organization}/request-logs/${encodeURIComponent(requestId)}`, options),
+    getApiErrors: async (filters, options) =>
+      get(withQuery(`${organization}/request-logs/errors`, { ...filters }), options),
+    getApiUsage: async (filters, options) =>
+      get(withQuery(`${organization}/request-logs/summary`, { ...filters }), options),
+    organizationPath: (suffix = '') => `${organization}${suffix}`,
+    prepareChange: async (change, options) => send<PreparedChange>('POST', confirmations, change, {}, options),
+    getChange: async (confirmationId, options) =>
+      get<PreparedChange>(`${confirmations}/${encodeURIComponent(confirmationId)}`, options),
+    applyChange: async (change, options) =>
+      send<unknown>(change.method, change.path, change.body, { 'X-Mcp-Confirmation': change.confirmationId }, options),
   };
+}
+
+/** Core's answer to preparing a change (`McpConfirmation` in `@octap/contracts`). */
+export interface PreparedChange {
+  confirmationId: string;
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  path: string;
+  body: Record<string, unknown>;
+  summary: string;
+  expiresAt: string;
 }
 
 /** Asks Core what an MCP access token is bound to. Null when Core refuses the token. */

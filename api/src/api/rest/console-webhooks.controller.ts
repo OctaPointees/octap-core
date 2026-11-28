@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ConsoleWebhooksService } from '#domain/webhooks/console-webhooks.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 import type { RegisterWebhookEndpointBodyDto } from '../dto/webhooks.dto.js';
 
 /**
@@ -32,6 +32,7 @@ export class ConsoleWebhooksController {
   }
 
   @Post('endpoints/:id/disable')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   disableEndpoint(
     @Req() req: ConsoleRequest,
@@ -42,6 +43,7 @@ export class ConsoleWebhooksController {
   }
 
   @Post('endpoints/:id/enable')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   enableEndpoint(
     @Req() req: ConsoleRequest,
@@ -64,6 +66,7 @@ export class ConsoleWebhooksController {
 
   /** Sends a `webhook.test` event to this endpoint only, through the normal signed delivery. */
   @Post('endpoints/:id/test')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   sendTestEvent(
     @Req() req: ConsoleRequest,
@@ -81,6 +84,7 @@ export class ConsoleWebhooksController {
 
   /** Re-queues a DEAD_LETTER delivery, same event id. */
   @Post('deliveries/:id/replay')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   replayDelivery(
     @Req() req: ConsoleRequest,

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { Public } from '#infra/auth/public.decorator.js';
 import { ConsoleOrganizationsService } from '#domain/identity/console-organizations.service.js';
-import { ConsoleAccessGuard, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, PlatformAdminOnly, type ConsoleRequest } from './console-access.guard.js';
 import type {
   ConsoleInvitationBodyDto,
   ConsoleStaffAccessBodyDto,
@@ -32,6 +32,7 @@ export class ConsoleOrganizationsController {
     return this.organizations.organization(request.consoleIdentity.user.id, orgId);
   }
   @Patch('organizations/:organizationId/profile')
+  @McpWritable()
   profile(
     @Req() request: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,
@@ -40,6 +41,7 @@ export class ConsoleOrganizationsController {
     return this.organizations.profile(request.consoleIdentity.user.id, orgId, body);
   }
   @Patch('organizations/:organizationId/settings')
+  @McpWritable()
   settings(
     @Req() request: ConsoleRequest,
     @Param('organizationId', ParseUUIDPipe) orgId: string,

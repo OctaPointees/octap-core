@@ -7,7 +7,7 @@ import type {
 } from '@octap/contracts';
 import { ConsoleVoucherBatchService } from '#domain/rewards/console-rewards.service.js';
 import { Public } from '#infra/auth/public.decorator.js';
-import { ConsoleAccessGuard, type ConsoleRequest } from './console-access.guard.js';
+import { ConsoleAccessGuard, McpWritable, type ConsoleRequest } from './console-access.guard.js';
 import type { ActivateVoucherBatchBodyDto } from '../dto/console.dto.js';
 import type { CreateVoucherBatchBodyDto } from '../dto/rewards.dto.js';
 
@@ -24,6 +24,7 @@ export class ConsoleVoucherBatchesController {
   constructor(private readonly batches: ConsoleVoucherBatchService) {}
 
   @Post()
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   create(
     @Req() req: ConsoleRequest,
@@ -54,6 +55,7 @@ export class ConsoleVoucherBatchesController {
   }
 
   @Post(':batchId/activate')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   activate(
     @Req() req: ConsoleRequest,
@@ -65,6 +67,7 @@ export class ConsoleVoucherBatchesController {
   }
 
   @Post(':batchId/archive')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   archive(
     @Req() req: ConsoleRequest,
@@ -75,6 +78,7 @@ export class ConsoleVoucherBatchesController {
   }
 
   @Post(':batchId/pause')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   pause(
     @Req() req: ConsoleRequest,
@@ -85,6 +89,7 @@ export class ConsoleVoucherBatchesController {
   }
 
   @Post(':batchId/resume')
+  @McpWritable()
   @Header('Cache-Control', 'no-store')
   resume(
     @Req() req: ConsoleRequest,
