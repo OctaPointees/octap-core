@@ -21,7 +21,7 @@ customers' balances, vouchers or reversals.
 
 ## Where licenses come from
 
-- Migration `0042_licensing` seeds the four plans (sample prices and limits) and gives every
+- Migration `0044_licensing` (all of OCT-329: plans, licenses, the usage counter and the expiry notice column) seeds the four plans (sample prices and limits) and gives every
   `ACTIVE` or `SUSPENDED` organization a free Growth license for 12 months. One waiting for approval
   gets the trial when it is approved.
 - Approving a `CREATE_ORGANIZATION` request grants the trial in the same transaction

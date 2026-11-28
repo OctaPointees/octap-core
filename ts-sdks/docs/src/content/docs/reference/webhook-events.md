@@ -38,6 +38,7 @@ An earn is on its way to the chain. Wait for `credits.earn.confirmed` before tre
 | `purchaseAmount` | `number` | |
 | `estimatedPoints` | `number` | An estimate, not the credited amount |
 | `newBalance` | `number` | Confirmed balance, which doesn't include this earn yet |
+| `campaignId` | `string` | Only when a campaign boosted the earn |
 
 ## credits.earn.confirmed
 

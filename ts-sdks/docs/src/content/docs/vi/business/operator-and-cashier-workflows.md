@@ -110,6 +110,7 @@ Tài liệu này mô tả các quy trình vận hành đã được hỗ trợ t
 - **Các bước:**
   1. Cập nhật thông tin hiển thị (tên hiển thị, logo) trực tiếp trong **Settings**.
   2. Khi cần đổi thông tin pháp lý (tên pháp lý, mã số thuế/giấy tờ), gửi yêu cầu **`UPDATE_IDENTITY`** — quản trị viên nền tảng (Platform Admin) phải duyệt trước khi áp dụng.
-  3. Tại mục **Refund Policy**, cấu hình `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, `refundWindowDays`, nhập lý do thay đổi và publish phiên bản mới.
-- **Kết quả mong đợi:** Thông tin hiển thị cập nhật ngay; thay đổi pháp lý chờ Platform Admin duyệt; mỗi lần đổi chính sách hoàn điểm tạo một phiên bản mới để lưu vết đối soát.
+  3. Khi cần đổi tỷ lệ tích điểm cơ bản, gửi yêu cầu **`UPDATE_EARN_RATE`** với `earnBps` mới (0–10000) và lý do. Platform Admin phải duyệt; tỷ lệ mới áp dụng cho mọi lượt earn kể từ lúc lên chain.
+  4. Tại mục **Refund Policy**, cấu hình `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, `refundWindowDays`, nhập lý do thay đổi và publish phiên bản mới.
+- **Kết quả mong đợi:** Thông tin hiển thị cập nhật ngay; thay đổi pháp lý và tỷ lệ tích điểm chờ Platform Admin duyệt; mỗi lần đổi chính sách hoàn điểm tạo một phiên bản mới để lưu vết đối soát.
 - **Xử lý sự cố:** Mở **Refund Policy History** để kiểm tra chính sách áp dụng tại thời điểm phát sinh khiếu nại hoàn điểm.

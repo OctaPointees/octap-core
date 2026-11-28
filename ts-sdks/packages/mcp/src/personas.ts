@@ -12,11 +12,11 @@ export type Persona = 'BUSINESS_OWNER' | 'BUSINESS_DEVELOPER';
  * read more than Core allows.
  *
  * - Business Developer: integration work. The organization, members and what they hold (to debug
- *   what an integration sent), the voucher catalog and batches, the budget, and API keys. Every
- *   Developer tool reads a route Core opens to both personas.
+ *   what an integration sent), the voucher catalog and batches, the budget, API keys, and webhook
+ *   endpoints and deliveries. Every Developer tool reads a route Core opens to both personas.
  * - Business Owner: in Core an Owner can do everything a Developer can, so the Owner set holds every
- *   Developer tool, plus the reads Core keeps for Owners: webhooks (until OCT-306), the refund policy
- *   and its history, staff and invitations.
+ *   Developer tool, plus the reads Core keeps for Owners: the refund policy and its history, staff
+ *   and invitations.
  */
 export const DEVELOPER_TOOLS: readonly ToolName[] = [
   'get_connection',
@@ -32,14 +32,14 @@ export const DEVELOPER_TOOLS: readonly ToolName[] = [
   'get_voucher_batch',
   'get_budget',
   'list_api_keys',
+  'list_webhook_endpoints',
+  'list_webhook_deliveries',
 ];
 
 export const OWNER_TOOLS: readonly ToolName[] = [
   ...DEVELOPER_TOOLS,
   'get_refund_policy',
   'get_refund_policy_history',
-  'list_webhook_endpoints',
-  'list_webhook_deliveries',
   'list_staff',
   'list_invitations',
 ];
@@ -51,20 +51,20 @@ export const PERSONA_TOOLS: Readonly<Record<Persona, readonly ToolName[]>> = {
 
 /**
  * Which prompts each persona sees. A prompt is also offered only when its tools are. The approval,
- * budget, webhook and access reviews are an Owner's job.
+ * budget and access reviews are an Owner's job.
  */
 export const DEVELOPER_PROMPTS: readonly PromptName[] = [
   'find_customer',
   'check_member_transactions',
   'summarize_member',
   'review_api_keys',
+  'check_webhooks',
 ];
 
 export const OWNER_PROMPTS: readonly PromptName[] = [
   ...DEVELOPER_PROMPTS,
   'review_pending_vouchers',
   'check_budget',
-  'check_webhooks',
   'review_console_access',
 ];
 

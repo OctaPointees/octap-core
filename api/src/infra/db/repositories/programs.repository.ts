@@ -81,6 +81,24 @@ export class ProgramsRepository {
     return activated;
   }
 
+  /**
+   * Records a rotated policy (OCT-341) on the row, only while it still holds `fromPolicyVersion`:
+   * the row tracks whichever policy is active on-chain now. Returns nothing when another rotation
+   * got there first.
+   */
+  async updatePolicy(
+    id: string,
+    fromPolicyVersion: number,
+    policy: { policyVersionId: string; policyVersion: number; earnBps: number },
+  ) {
+    const [updated] = await this.db
+      .update(programs)
+      .set(policy)
+      .where(and(eq(programs.id, id), eq(programs.policyVersion, fromPolicyVersion)))
+      .returning();
+    return updated;
+  }
+
   async release(id: string) {
     await this.db.delete(programs).where(eq(programs.id, id));
   }

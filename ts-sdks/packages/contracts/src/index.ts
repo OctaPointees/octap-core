@@ -1,5 +1,6 @@
 export * from './loyalty.js';
 export * from './rewards.js';
+export * from './campaigns.js';
 export * from './voucher-refunds.js';
 export * from './webhooks.js';
 export * from './organization-events.js';

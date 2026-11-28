@@ -39,6 +39,7 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `idempotencyKey` | `string` | **Required.** Stable across retries. |
 | `receiptReference` | `string` | Your reference. |
 | `metadata` | `object` | Your data, stored with the transaction. |
+| `campaignId` | `string` | A campaign whose multiplier applies. It must be yours, `ACTIVE`, within its dates and have a multiplier, or the earn is a 422. Omit it for an ordinary earn. |
 
 | Returned field | Type | Description |
 | --- | --- | --- |
@@ -50,6 +51,39 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `newBalance` | `number` | Confirmed balance, which excludes this earn while it is pending |
 | `status` | [`LoyaltyTxStatus`](/reference/status-values/) | |
 | `idempotencyKey` | `string` | |
+
+## listCampaigns
+
+Lists your campaigns, newest first, without archived ones. Owners create and approve campaigns in the console; a till reads them here to offer the cashier a choice.
+
+`GET /v1/campaigns` · Scope: `read`
+
+```ts
+listCampaigns(query?: { live?: boolean }, options?): Promise<CampaignDto[]>
+```
+
+With `live: true`, only campaigns whose `earnBoostLive` is `true` are returned: `ACTIVE`, within `startsAt`–`endsAt`, with a `multiplierBps`. Send the chosen `id` as `campaignId` on [`earnPoints`](#earnpoints).
+
+| Returned field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Send it as `campaignId` |
+| `name`, `description` | `string`, `string \| null` | |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | |
+| `startsAt`, `endsAt` | `string` | ISO 8601 |
+| `multiplierBps` | `number \| null` | 20000 is 2x. `null` for a campaign that only groups vouchers |
+| `earnBoostLive` | `boolean` | Whether an earn naming it is boosted right now |
+
+A campaign can stop being live between the list and the earn, which is then a 422: earn again without `campaignId`, or list again.
+
+## getCampaign
+
+`GET /v1/campaigns/:campaignId` · Scope: `read`
+
+```ts
+getCampaign(campaignId: string, options?): Promise<CampaignDto>
+```
+
+Another organization's campaign is a 404.
 
 ## getBalance
 

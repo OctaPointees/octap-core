@@ -39,8 +39,10 @@ accepted only as a client-side sanity check and is rejected if it disagrees with
 first credential for a new organization is issued out of band (there is no bootstrap endpoint,
 since calling one would itself need a key): `npm run seed:dev-credential -- <organizationId>`.
 That key carries `read` and `write`, like an Owner's console key; there is no `admin` scope any
-more. Webhooks and the refund policy are managed by the Owner from the console session
-(`/v1/console/organizations/:organizationId/webhooks` and `.../refund-policy`), not with a key. An Owner or Business Developer issues, renames and revokes keys from the
+more. Webhook endpoints and the refund policy are managed by the Owner from the console session
+(`/v1/console/organizations/:organizationId/webhooks` and `.../refund-policy`), not with a key; a
+Business Developer there reads the endpoints and deliveries, sends a test event and replays a
+delivery. An Owner or Business Developer issues, renames and revokes keys from the
 console session (`read` by default; only the Owner issues or manages `write` keys): `/v1/console/organizations/:organizationId/api-credentials`.
 An API-key route authorizes by the key's scopes only, never by the role of whoever created the key.
 

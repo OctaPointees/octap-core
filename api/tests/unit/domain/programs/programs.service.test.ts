@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { ProgramsService } from '#domain/programs/programs.service.js';
 import type { ProgramsRepository } from '#infra/db/repositories/programs.repository.js';
 import type { ProgramAdminClient } from '#infra/clients/sui/program-admin.client.js';
@@ -180,5 +181,84 @@ describe('ProgramsService.topUpBudget', () => {
 
     await expect(topUp).rejects.toMatchObject({ name: 'NotFoundException' });
     expect(topUpBudget).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProgramsService.rotateEarnRate', () => {
+  const ACTIVE_ROW = {
+    id: 'program-row-1',
+    status: 'ACTIVE',
+    programControlId: '0xprogram',
+    adminCapId: '0xadmincap',
+    policyVersion: 3,
+    expiryMs: 2_592_000_000,
+  };
+  const PARAMS = { organizationId: 'org-1', earnBps: 250, fromPolicyVersion: 3 };
+
+  it('publishes the next version with the same expiry, then records it on the same row', async () => {
+    const rotatePolicy = vi.fn(async () => ({ policyVersionId: '0xpolicy-v4' }));
+    const updatePolicy = vi.fn(async () => ({ ...ACTIVE_ROW, policyVersion: 4 }));
+
+    await new ProgramsService(
+      stub<ProgramsRepository>({ findByOrganization: async () => ACTIVE_ROW, updatePolicy }),
+      stub<ProgramAdminClient>({ rotatePolicy }),
+    ).rotateEarnRate(PARAMS);
+
+    expect(rotatePolicy).toHaveBeenCalledWith({
+      adminCapId: '0xadmincap',
+      programId: '0xprogram',
+      version: 4,
+      earnBps: 250,
+      expiryMs: 2_592_000_000,
+    });
+    expect(updatePolicy).toHaveBeenCalledWith('program-row-1', 3, {
+      policyVersionId: '0xpolicy-v4',
+      policyVersion: 4,
+      earnBps: 250,
+    });
+  });
+
+  it.each([
+    ['no program row', undefined],
+    ['a PROVISIONING row', { ...ACTIVE_ROW, status: 'PROVISIONING' }],
+    ['a row without an AdminCap', { ...ACTIVE_ROW, adminCapId: null }],
+  ])('is a NotFoundException for %s, without touching the chain', async (_label, row) => {
+    const rotatePolicy = vi.fn();
+    const rotate = new ProgramsService(
+      stub<ProgramsRepository>({ findByOrganization: async () => row }),
+      stub<ProgramAdminClient>({ rotatePolicy }),
+    ).rotateEarnRate(PARAMS);
+    await expect(rotate).rejects.toMatchObject({ name: 'NotFoundException' });
+    expect(rotatePolicy).not.toHaveBeenCalled();
+  });
+
+  it('is a ConflictException when the row moved past the approved version, without touching the chain', async () => {
+    const rotatePolicy = vi.fn();
+    const rotate = new ProgramsService(
+      stub<ProgramsRepository>({ findByOrganization: async () => ({ ...ACTIVE_ROW, policyVersion: 4 }) }),
+      stub<ProgramAdminClient>({ rotatePolicy }),
+    ).rotateEarnRate(PARAMS);
+    await expect(rotate).rejects.toMatchObject({ name: 'ConflictException' });
+    expect(rotatePolicy).not.toHaveBeenCalled();
+  });
+
+  it('fails loudly (not as a refusal) when the chain rotated but the row could not follow', async () => {
+    const log = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const service = (updatePolicy: () => Promise<unknown>) =>
+      new ProgramsService(
+        stub<ProgramsRepository>({ findByOrganization: async () => ACTIVE_ROW, updatePolicy }),
+        stub<ProgramAdminClient>({ rotatePolicy: async () => ({ policyVersionId: '0xpolicy-v4' }) }),
+      );
+
+    const lost = service(async () => undefined).rotateEarnRate(PARAMS);
+    await expect(lost).rejects.toThrow(/0xpolicy-v4.*repair manually/);
+    await expect(lost).rejects.not.toMatchObject({ name: 'ConflictException' });
+
+    const dbDown = service(async () => {
+      throw new Error('connection reset');
+    }).rotateEarnRate(PARAMS);
+    await expect(dbDown).rejects.toThrow('connection reset');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('0xpolicy-v4'));
+    log.mockRestore();
   });
 });

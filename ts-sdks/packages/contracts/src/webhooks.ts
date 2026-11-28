@@ -81,6 +81,8 @@ export interface CreditsEarnedEventData {
   purchaseAmount: number;
   estimatedPoints: number;
   newBalance: number;
+  /** The campaign whose multiplier boosted it (OCT-340); absent for an ordinary earn. */
+  campaignId?: string;
 }
 
 /**

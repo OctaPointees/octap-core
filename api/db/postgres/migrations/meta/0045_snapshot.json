@@ -1,6 +1,6 @@
 {
-  "id": "1ee45e52-207c-4e23-9789-ea7cdd047ab5",
-  "prevId": "ecb7829e-7d86-4764-8b43-fbaea88fa2bc",
+  "id": "ef3fac9e-a0fe-491d-88cf-2f7d187d600c",
+  "prevId": "09afeccb-a7d8-4ead-a59a-ade690416cd7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1530,6 +1530,12 @@
           "notNull": false,
           "default": "'{}'::jsonb"
         },
+        "campaign_id": {
+          "name": "campaign_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1546,6 +1552,21 @@
         }
       },
       "indexes": {
+        "loyalty_tx_campaign_idx": {
+          "name": "loyalty_tx_campaign_idx",
+          "columns": [
+            {
+              "expression": "campaign_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "loyalty_tx_org_idempotency_idx": {
           "name": "loyalty_tx_org_idempotency_idx",
           "columns": [
@@ -1656,6 +1677,21 @@
             "reverses_transaction_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "loyalty_tx_campaign_fk": {
+          "name": "loyalty_tx_campaign_fk",
+          "tableFrom": "loyalty_transactions",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "organization_id",
+            "campaign_id"
+          ],
+          "columnsTo": [
+            "organization_id",
             "id"
           ],
           "onDelete": "no action",
@@ -2397,6 +2433,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "campaign_id": {
+          "name": "campaign_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "uuid",
@@ -2478,6 +2520,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "vouchers_campaign_idx": {
+          "name": "vouchers_campaign_idx",
+          "columns": [
+            {
+              "expression": "campaign_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2546,6 +2603,21 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "vouchers_campaign_fk": {
+          "name": "vouchers_campaign_fk",
+          "tableFrom": "vouchers",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "organization_id",
+            "campaign_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "vouchers_import_batch_fk": {
           "name": "vouchers_import_batch_fk",
           "tableFrom": "vouchers",
@@ -2583,6 +2655,204 @@
         "vouchers_one_activator": {
           "name": "vouchers_one_activator",
           "value": "num_nonnulls(\"vouchers\".\"activated_by_user_id\", \"vouchers\".\"activated_by_credential_id\") <= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.campaigns": {
+      "name": "campaigns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "campaign_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'DRAFT'"
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "multiplier_bps": {
+          "name": "multiplier_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_by_user_id": {
+          "name": "approved_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "campaigns_org_created_idx": {
+          "name": "campaigns_org_created_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "campaigns_org_id_idx": {
+          "name": "campaigns_org_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "campaigns_organization_id_organizations_id_fk": {
+          "name": "campaigns_organization_id_organizations_id_fk",
+          "tableFrom": "campaigns",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "campaigns_created_by_user_id_system_users_id_fk": {
+          "name": "campaigns_created_by_user_id_system_users_id_fk",
+          "tableFrom": "campaigns",
+          "tableTo": "system_users",
+          "columnsFrom": [
+            "created_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "campaigns_approved_by_user_id_system_users_id_fk": {
+          "name": "campaigns_approved_by_user_id_system_users_id_fk",
+          "tableFrom": "campaigns",
+          "tableTo": "system_users",
+          "columnsFrom": [
+            "approved_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_manage_campaigns": {
+          "name": "tenant_manage_campaigns",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "authenticated"
+          ],
+          "using": "\"campaigns\".\"organization_id\"::text = coalesce(current_setting('app.current_tenant_id', true), (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id'))"
+        }
+      },
+      "checkConstraints": {
+        "campaigns_window": {
+          "name": "campaigns_window",
+          "value": "\"campaigns\".\"ends_at\" > \"campaigns\".\"starts_at\""
+        },
+        "campaigns_multiplier_range": {
+          "name": "campaigns_multiplier_range",
+          "value": "\"campaigns\".\"multiplier_bps\" is null or (\"campaigns\".\"multiplier_bps\" > 10000 and \"campaigns\".\"multiplier_bps\" <= 100000)"
         }
       },
       "isRLSEnabled": false
@@ -5144,7 +5414,8 @@
         "SUSPEND",
         "REINSTATE",
         "BUDGET_TOP_UP",
-        "UPDATE_IDENTITY"
+        "UPDATE_IDENTITY",
+        "UPDATE_EARN_RATE"
       ]
     },
     "public.invitation_status": {
@@ -5302,6 +5573,17 @@
         "EXPIRED",
         "DEPLETED",
         "PENDING_APPROVAL",
+        "ARCHIVED"
+      ]
+    },
+    "public.campaign_status": {
+      "name": "campaign_status",
+      "schema": "public",
+      "values": [
+        "DRAFT",
+        "ACTIVE",
+        "PAUSED",
+        "ENDED",
         "ARCHIVED"
       ]
     },

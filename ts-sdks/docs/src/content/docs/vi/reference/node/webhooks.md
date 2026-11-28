@@ -3,7 +3,7 @@ title: Webhook
 description: Các method Node SDK cho endpoint webhook, delivery và xác minh chữ ký.
 ---
 
-Owner đăng ký, tắt, bật, xoay secret của endpoint và gửi lại delivery đã dead-letter trên Console. Không API key nào làm được, nên SDK chỉ đọc. Xem [Nhận webhook](/vi/guides/receive-webhooks/).
+Trên Console, Owner đăng ký, tắt, bật, xoay secret của endpoint, còn Owner hoặc Business Developer gửi lại delivery đã dead-letter. Không API key nào làm được, nên SDK chỉ đọc. Xem [Nhận webhook](/vi/guides/receive-webhooks/).
 
 ## listWebhookEndpoints
 

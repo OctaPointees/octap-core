@@ -65,6 +65,23 @@ There is no batch approve or reject: an Owner is the approver (OCT-59), so the O
 Persistence is `infra/db/repositories/rewards.repository.ts`; HTTP is `api/rest/rewards.controller.ts` and `api/rest/voucher-batches.controller.ts` (API key), `api/rest/console-rewards.controller.ts` and `api/rest/console-voucher-batches.controller.ts` (console session).
 Every repository method runs under an organization's RLS context (`withTenant`), so Postgres hides other organizations' `vouchers` and `voucher_ownerships`. Request paths pass the authenticated organization (`findVoucherById(organizationId, id)`, …); only worker and indexer callbacks that start from an id read that row's organization first. The organization and member check of a claim or use runs as the connection's own role at its usual point (`asOwnRole`), since the tenant role cannot read `organizations` (OCT-289).
 
+## Campaigns (OCT-340)
+
+A campaign is a named, time-boxed promotion (`campaigns`): an earn boost (`multiplierBps`, 1x–10x,
+or none), a group of vouchers, or both. The Owner and a Business Developer create one as `DRAFT`;
+only the Owner activates it (its approval, recording `approvedByUserId`), pauses, resumes, ends or
+archives it (`campaigns.repository.ts`'s transitions). How an earn uses it is
+`domain/credits/campaign-boost.ts`.
+
+A voucher joins a campaign when it is created, never later: `campaignId` on a single create, or on a
+batch (`CreateVoucherBatchRequest.campaignId`), which stamps every voucher the batch creates or
+brings back from `ARCHIVED`, in the same transaction. `importBatchId` is unchanged: the batch and the
+campaign are two separate groupings. An `ENDED` or `ARCHIVED` campaign takes no new vouchers. The
+campaign's bulk voucher actions (`…/campaigns/:id/vouchers/activate|pause|resume|archive`) are the
+batch ones: one loop (`RewardsRepository.eachVoucherWhere`) over the campaign's vouchers instead of
+the batch's, with the same rules per voucher. Console only: `ConsoleCampaignsService`,
+`api/rest/console-campaigns.controller.ts`.
+
 ## What lives where
 
 | What | Source of truth | PostgreSQL's part |

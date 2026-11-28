@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Campaigns (OCT-340): `earnPoints({ ..., campaignId })` applies an Owner's time-boxed campaign
+  multiplier (up to 10x, from the issuance budget); a campaign that isn't `ACTIVE`, is outside its
+  dates or has no multiplier is a 422, never an earn at the base rate. `createVouchers(items,
+  { campaignId })` puts a batch's vouchers in a campaign. `VoucherDto.campaignId`, and
+  `credits.earned` webhooks carry `campaignId` when a campaign boosted the earn. Needs
+  `@octap/contracts` with the campaign types.
+- `listCampaigns({ live })` and `getCampaign(id)` (`GET /v1/campaigns`, `read` scope): a POS lists
+  the campaigns that boost an earn right now, so the cashier can pick one.
+
 ## 0.3.0
 
 ### Added

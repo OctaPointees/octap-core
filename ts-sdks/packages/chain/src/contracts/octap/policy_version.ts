@@ -58,7 +58,7 @@ export interface PublishOptions {
  * post-publish" an on-chain guarantee instead of a convention.
  */
 export function publish(options: PublishOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null,
         '0x2::object::ID',
@@ -84,7 +84,7 @@ export interface ProgramIdOptions {
     ];
 }
 export function programId(options: ProgramIdOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -106,7 +106,7 @@ export interface VersionOptions {
     ];
 }
 export function version(options: VersionOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -128,7 +128,7 @@ export interface EarnBpsOptions {
     ];
 }
 export function earnBps(options: EarnBpsOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -150,7 +150,7 @@ export interface ExpiryMsOptions {
     ];
 }
 export function expiryMs(options: ExpiryMsOptions) {
-    const packageAddress = options.package ?? '0xcad75786a5bd6b2157fcbed5bb81c819f1224111fa3f8c599e904ce7b55c041e';
+    const packageAddress = options.package ?? '0xd4bc461c880a35e156255a508bacb3a767f50eeb2260c734fff9a5893765af3b';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

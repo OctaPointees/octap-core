@@ -19,6 +19,7 @@ import type {
   ProvisionOrganizationInput,
   ReviewDecisionInput,
   ActivateVoucherBatchRequest,
+  CreateCampaignRequest,
   VoucherApproveInput,
   VoucherRejectInput,
   RequestLogFilters,
@@ -49,6 +50,7 @@ export type OrganizationSettingsBodyDto = Wire<OrganizationSettingsInput>;
 export type VoucherApproveBodyDto = Wire<VoucherApproveInput>;
 export type VoucherRejectBodyDto = Wire<VoucherRejectInput>;
 export type ActivateVoucherBatchBodyDto = Wire<ActivateVoucherBatchRequest>;
+export type CreateCampaignBodyDto = Wire<CreateCampaignRequest>;
 export type ConsoleStaffAccessBodyDto = Wire<ConsoleStaffAccessPatch>;
 export type ConsoleInvitationBodyDto = Wire<ConsoleInvitationInput>;
 export type ConsoleCredentialBodyDto = Wire<ConsoleCredentialInput>;

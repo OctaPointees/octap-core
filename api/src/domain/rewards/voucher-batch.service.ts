@@ -50,7 +50,7 @@ export class VoucherBatchService {
     actor: VoucherActor,
     tx?: DrizzleDb,
   ): Promise<CreateVoucherBatchResponse> {
-    const { items, dryRun, name } = parseBatchRequest(body);
+    const { items, dryRun, name, campaignId } = parseBatchRequest(body);
     const { valid, invalid } = checkBatchItems(items);
     const written = await mapErrors(
       this.rewardsRepo.createVoucherBatch(
@@ -60,6 +60,7 @@ export class VoucherBatchService {
         dryRun,
         name,
         tx,
+        campaignId,
       ),
     );
     const codes = new Map(valid.map((item) => [item.index, item.code]));

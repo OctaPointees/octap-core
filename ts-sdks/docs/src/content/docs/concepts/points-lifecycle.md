@@ -7,11 +7,13 @@ Sui is the authority on confirmed points, and a chain transaction takes time. So
 
 ## Earning
 
-1. **You send a purchase amount.** OctaP calculates `floor(purchaseAmount × earnBps ÷ 10000)`, where `earnBps` is your program's rate in basis points.
+1. **You send a purchase amount.** OctaP calculates `floor(purchaseAmount × earnBps ÷ 10000)`, where `earnBps` is your program's rate in basis points. An earn that names a [campaign](/guides/earn-and-reverse-points/#boost-an-earn-with-a-campaign) is also multiplied by its `multiplierBps ÷ 10000`, with one rounding over the whole product.
 2. **The estimate is held.** The transaction is `PENDING` and the estimate is in `pendingEarn`. The customer can't spend it.
 3. **The chain answers.** On confirmation, the actual amount moves into `confirmedBalance`. On failure, the hold is released and nothing is credited.
 
 For example, 100,000 at 100 basis points (1%) reserves 1,000 estimated points and confirms 1,000 points. The estimate can differ from the result, so only trust confirmed amounts.
+
+`earnBps` changes only when an OctaP administrator approves your Owner's `UPDATE_EARN_RATE` request. An earn still pending when the new rate reaches the chain confirms at the new rate, which is one way the estimate can differ.
 
 A purchase that rounds down to zero points is refused with a 400, because the chain would abort it. Each earn also has to fit your [issuance budget](/concepts/issuance-budget/).
 

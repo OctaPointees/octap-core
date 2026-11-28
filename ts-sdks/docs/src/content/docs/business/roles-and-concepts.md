@@ -10,7 +10,7 @@ This guide explains how OctaP models your business, your staff, your customers, 
 | Concept | Who it is | How they sign in | What they can do |
 | --- | --- | --- | --- |
 | **Organization** | One merchant / partner brand | — | Owns one points program, budget, catalog, member directory, and API keys. |
-| **Business Owner** | Merchant owner or operations lead | Google account on the Business Console | Full organization access: team invitations, refund policy, voucher approvals, webhooks, legal identity change requests, plus all Developer actions. |
+| **Business Owner** | Merchant owner or operations lead | Google account on the Business Console | Full organization access: team invitations, refund policy, voucher approvals, registering and changing webhook endpoints, legal identity change requests, plus all Developer actions. |
 | **Business Developer** | Engineer or integration operator | Google account on the Business Console | Manage API keys, members, draft vouchers/batches, and view budgets/organization status. Cannot approve vouchers (when approval is required), edit refund policies, or manage staff. |
 | **Member (Customer)** | An end customer enrolled in your organization | Google account via your website (`@octap/browser-sdk` / zkLogin) | Holds a Sui loyalty wallet, earns points, claims rewards, and signs voucher redemptions on their own device. |
 

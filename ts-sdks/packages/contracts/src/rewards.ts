@@ -136,9 +136,14 @@ export interface CreateVoucherRequest {
   validForDays?: number | null;
   metadata?: Record<string, unknown>;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED';
+  /**
+   * The campaign it belongs to (OCT-340): one of this organization's that is not ENDED or ARCHIVED.
+   * Set only on create; it never changes afterwards.
+   */
+  campaignId?: string;
 }
 
-export type UpdateVoucherRequest = Partial<CreateVoucherRequest>;
+export type UpdateVoucherRequest = Partial<Omit<CreateVoucherRequest, 'campaignId'>>;
 
 export interface VoucherDto {
   id: string;
@@ -169,6 +174,8 @@ export interface VoucherDto {
   approval?: VoucherApprovalDto | null;
   /** The batch it was created or last imported in (`createVoucherBatch`), `null` if created on its own. */
   batchId?: string | null;
+  /** The campaign it belongs to (OCT-340), `null` if none. */
+  campaignId?: string | null;
   /** Who created it (or last replaced it by importing its code again); `null` if not recorded. */
   createdBy: VoucherActorRef;
   /**
@@ -304,6 +311,11 @@ export interface CreateVoucherBatchRequest {
   items: VoucherBatchItem[];
   /** Run every check and report each item's result, but write nothing. */
   dryRun?: boolean;
+  /**
+   * A campaign (OCT-340), not ENDED or ARCHIVED, that every voucher this batch creates (or brings back
+   * from ARCHIVED) joins. A voucher the batch leaves as it is keeps its own campaign.
+   */
+  campaignId?: string;
 }
 
 /** Machine-readable reason an item was not written. */

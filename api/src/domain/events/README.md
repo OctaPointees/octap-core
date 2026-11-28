@@ -45,7 +45,7 @@ see the webhooks README). Anything recorded there with `recordEvent` reaches the
 - `ConsoleEventStreamService`: the checks before the stream starts, then replay
   (`Last-Event-ID`), live events, heartbeat with the access check, and the token expiry.
 - `EventRetentionWorker` (worker process): every hour, deletes events older than 30 days, except
-  those an endpoint is still owed (PENDING delivery) or the Owner may replay (DEAD_LETTER).
+  those an endpoint is still owed (PENDING delivery) or that may still be replayed (DEAD_LETTER).
 
 ### Why not Redis pub/sub or `LISTEN/NOTIFY`
 

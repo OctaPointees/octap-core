@@ -1,12 +1,13 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OperationsRepository } from '#infra/db/repositories/operations.repository.js';
 import {
+  ORGANIZATION_ADMIN_COMMANDS,
   ORGANIZATION_BUDGET_TOP_UP_COMMAND,
-  ORGANIZATION_PROVISION_COMMAND,
+  ORGANIZATION_EARN_RATE_CHANGE_COMMAND,
 } from '#infra/db/repositories/organizations.repository.js';
 import { BudgetTopUpProcessor } from './budget-top-up.processor.js';
+import { EarnRateChangeProcessor } from './earn-rate-change.processor.js';
 import { OrganizationProvisioningProcessor } from './provisioning.processor.js';
-const COMMANDS = [ORGANIZATION_PROVISION_COMMAND, ORGANIZATION_BUDGET_TOP_UP_COMMAND];
 
 /** Runs the commands that need the program admin key. */
 @Injectable()
@@ -18,6 +19,7 @@ export class OrganizationProvisioningWorker implements OnModuleInit, OnModuleDes
     private readonly operations: OperationsRepository,
     private readonly processor: OrganizationProvisioningProcessor,
     private readonly topUps: BudgetTopUpProcessor,
+    private readonly earnRates: EarnRateChangeProcessor,
   ) {}
   onModuleInit() {
     if (process.env.ORG_PROVISION_WORKER_ENABLED !== 'true') return;
@@ -37,10 +39,16 @@ export class OrganizationProvisioningWorker implements OnModuleInit, OnModuleDes
     if (this.running) return;
     this.running = true;
     try {
-      await this.operations.recoverStaleProcessing(COMMANDS, 30 * 60 * 1000);
-      const jobs = await this.operations.claimNextPending(COMMANDS, 1);
+      await this.operations.recoverStaleProcessing(ORGANIZATION_ADMIN_COMMANDS, 30 * 60 * 1000);
+      const jobs = await this.operations.claimNextPending(ORGANIZATION_ADMIN_COMMANDS, 1);
       for (const job of jobs) {
-        await (job.commandType === ORGANIZATION_BUDGET_TOP_UP_COMMAND ? this.topUps : this.processor).process(job);
+        const processor =
+          job.commandType === ORGANIZATION_BUDGET_TOP_UP_COMMAND
+            ? this.topUps
+            : job.commandType === ORGANIZATION_EARN_RATE_CHANGE_COMMAND
+              ? this.earnRates
+              : this.processor;
+        await processor.process(job);
       }
     } catch {
       this.logger.error('Organization provisioning poll failed; durable command state will be recovered.');

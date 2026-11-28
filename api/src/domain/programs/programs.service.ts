@@ -96,6 +96,53 @@ export class ProgramsService {
   }
 
   /**
+   * Replaces an organization's base earn rate (OCT-341): publishes policy version
+   * `fromPolicyVersion + 1` with `earnBps` (same expiry) and activates it, then records it on the
+   * `programs` row. Runs only for an approved `UPDATE_EARN_RATE` change request
+   * (`EarnRateChangeProcessor`). `fromPolicyVersion` is the version the request was approved
+   * against: if the row moved on since, nothing is sent (`ConflictException`).
+   */
+  async rotateEarnRate(params: { organizationId: string; earnBps: number; fromPolicyVersion: number }) {
+    const program = await this.repo.findByOrganization(params.organizationId);
+    if (program?.status !== 'ACTIVE' || !program.adminCapId || !program.programControlId) {
+      throw new NotFoundException(`Organization ${params.organizationId} has no active program`);
+    }
+    if (program.policyVersion !== params.fromPolicyVersion) {
+      throw new ConflictException(
+        `Program policy is at version ${program.policyVersion}, not ${params.fromPolicyVersion}; the request is stale`,
+      );
+    }
+    const version = program.policyVersion + 1;
+    const { policyVersionId } = await this.admin.rotatePolicy({
+      adminCapId: program.adminCapId,
+      programId: program.programControlId,
+      version,
+      earnBps: params.earnBps,
+      expiryMs: Number(program.expiryMs),
+    });
+    // From here the chain only accepts earns against the new policy: the row must follow.
+    let updated: Awaited<ReturnType<ProgramsRepository['updatePolicy']>>;
+    try {
+      updated = await this.repo.updatePolicy(program.id, params.fromPolicyVersion, {
+        policyVersionId,
+        policyVersion: version,
+        earnBps: params.earnBps,
+      });
+    } catch (err: unknown) {
+      this.logger.error(
+        `program ${program.id} activated policy ${policyVersionId} (version ${version}) on-chain but not recorded — repair manually`,
+      );
+      throw err;
+    }
+    if (!updated) {
+      throw new Error(
+        `program ${program.id} activated policy ${policyVersionId} (version ${version}) on-chain, but its row moved on — repair manually`,
+      );
+    }
+    return updated;
+  }
+
+  /**
    * Refills an organization's on-chain issuance budget by `amount` credits, split across its
    * budget shards like the initial budget. The `programs` row's `totalBudget` stays the
    * provisioning-time figure; the chain's `BudgetShard.remaining` is the live one. Runs only for an

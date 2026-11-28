@@ -39,6 +39,7 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `idempotencyKey` | `string` | **Bắt buộc.** Không đổi qua các lần thử lại. |
 | `receiptReference` | `string` | Mã tham chiếu của bạn. |
 | `metadata` | `object` | Dữ liệu của bạn, lưu cùng giao dịch. |
+| `campaignId` | `string` | Campaign có hệ số nhân áp dụng. Campaign phải thuộc tổ chức của bạn, đang `ACTIVE`, trong thời hạn và có hệ số nhân, nếu không lệnh earn trả 422. Bỏ trống cho lệnh earn thường. |
 
 | Field trả về | Kiểu | Mô tả |
 | --- | --- | --- |
@@ -50,6 +51,39 @@ earnPoints(request: EarnPointsRequest, options?): Promise<EarnPointsResponse>
 | `newBalance` | `number` | Số dư đã xác nhận, chưa gồm lệnh earn đang chờ này |
 | `status` | [`LoyaltyTxStatus`](/vi/reference/status-values/) | |
 | `idempotencyKey` | `string` | |
+
+## listCampaigns
+
+Liệt kê các campaign của bạn, mới nhất trước, không gồm campaign đã lưu trữ. Owner tạo và duyệt campaign trên console; máy POS đọc ở đây để cho thu ngân chọn.
+
+`GET /v1/campaigns` · Scope: `read`
+
+```ts
+listCampaigns(query?: { live?: boolean }, options?): Promise<CampaignDto[]>
+```
+
+Với `live: true`, chỉ trả các campaign có `earnBoostLive` là `true`: đang `ACTIVE`, trong khoảng `startsAt`–`endsAt` và có `multiplierBps`. Gửi `id` được chọn làm `campaignId` trong [`earnPoints`](#earnpoints).
+
+| Field trả về | Kiểu | Mô tả |
+| --- | --- | --- |
+| `id` | `string` | Gửi làm `campaignId` |
+| `name`, `description` | `string`, `string \| null` | |
+| `status` | `'DRAFT' \| 'ACTIVE' \| 'PAUSED' \| 'ENDED' \| 'ARCHIVED'` | |
+| `startsAt`, `endsAt` | `string` | ISO 8601 |
+| `multiplierBps` | `number \| null` | 20000 là x2. `null` với campaign chỉ gom voucher |
+| `earnBoostLive` | `boolean` | Lệnh earn gửi kèm campaign này có đang được nhân điểm không |
+
+Campaign có thể hết hiệu lực giữa lúc lấy danh sách và lúc earn, khi đó lệnh earn trả 422: earn lại không kèm `campaignId`, hoặc lấy lại danh sách.
+
+## getCampaign
+
+`GET /v1/campaigns/:campaignId` · Scope: `read`
+
+```ts
+getCampaign(campaignId: string, options?): Promise<CampaignDto>
+```
+
+Campaign của tổ chức khác trả 404.
 
 ## getBalance
 

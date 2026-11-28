@@ -16,6 +16,7 @@ export {
   type ReverseRedeemParams,
   type PublishPolicyParams,
   type ActivatePolicyAndIssueCapParams,
+  type ActivatePolicyParams,
   type CreateShardsParams,
   type TopUpBudgetParams,
   type SubmittedChainTransaction,

@@ -12,8 +12,8 @@ Mọi tool trong `@octap/mcp` đều chỉ đọc. Mỗi tool đều khai báo o
 
 | Persona | Tools | Prompts |
 | --- | --- | --- |
-| **Business Developer** | 13 tool (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys` |
-| **Business Owner** | Toàn bộ 13 tool của Developer + 6 tool của Owner (`get_refund_policy`, `get_refund_policy_history`, `list_webhook_endpoints`, `list_webhook_deliveries`, `list_staff`, `list_invitations`) | Toàn bộ 4 prompt của Developer + 4 prompt của Owner (`review_pending_vouchers`, `check_budget`, `check_webhooks`, `review_console_access`) |
+| **Business Developer** | 15 tool (`get_connection`, `get_organization`, `find_member`, `get_member`, `get_member_balance`, `list_member_transactions`, `list_member_vouchers`, `list_vouchers`, `get_voucher`, `list_voucher_batches`, `get_voucher_batch`, `get_budget`, `list_api_keys`, `list_webhook_endpoints`, `list_webhook_deliveries`) | `find_customer`, `check_member_transactions`, `summarize_member`, `review_api_keys`, `check_webhooks` |
+| **Business Owner** | Toàn bộ 15 tool của Developer + 4 tool của Owner (`get_refund_policy`, `get_refund_policy_history`, `list_staff`, `list_invitations`) | Toàn bộ 5 prompt của Developer + 3 prompt của Owner (`review_pending_vouchers`, `check_budget`, `review_console_access`) |
 
 Core luôn kiểm tra lại organization, giới hạn chỉ đọc `GET` và persona trên mỗi HTTP request.
 
@@ -78,14 +78,14 @@ Trả về các voucher thành viên đang giữ gồm `ownershipId`, `voucherId
 | `list_voucher_batches` | Developer, Owner | Tùy chọn `limit`, `cursor` | Các batch đã import kèm thống kê số lượng theo trạng thái |
 | `get_voucher_batch` | Developer, Owner | `batchId` (UUID) | Chi tiết một batch và các voucher bên trong |
 
-### Quản trị, webhook & nhân sự (chỉ Owner)
+### Webhook, quản trị & nhân sự
 
 | Tool | Persona | Đầu vào | Dữ liệu trả về |
 | --- | --- | --- | --- |
 | `get_refund_policy` | Owner | Không | Chính sách hoàn điểm hiện tại (`version`, `allowUnused`, `allowExpired`, `allowRedeemed`, `restockUnused`, `refundWindowDays`, `reason`) |
 | `get_refund_policy_history` | Owner | Tùy chọn `beforeVersion`, `limit` | Các phiên bản chính sách trước đây, mới nhất trước, kèm `nextBeforeVersion` |
-| `list_webhook_endpoints` | Owner | Không | Danh sách endpoint (`id`, `url` đã lược bỏ query string, `description`, `status`, `createdAt`; ẩn signing secret) |
-| `list_webhook_deliveries` | Owner | Tùy chọn `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Các lượt gửi gần đây kèm số lần thử, `lastResponseStatus`, `lastError` và `nextAttemptAt` |
+| `list_webhook_endpoints` | Developer, Owner | Không | Danh sách endpoint (`id`, `url` đã lược bỏ query string, `description`, `status`, `createdAt`; ẩn signing secret) |
+| `list_webhook_deliveries` | Developer, Owner | Tùy chọn `status` (`PENDING`, `DELIVERED`, `DEAD_LETTER`), `endpointId`, `limit`, `cursor` | Các lượt gửi gần đây kèm số lần thử, `lastResponseStatus`, `lastError` và `nextAttemptAt` |
 | `list_staff` | Owner | Không | Nhân sự có quyền vào Console (`name`, `email`, `persona`, `status`: active hoặc suspended) |
 | `list_invitations` | Owner | Không | Lời mời vào Console (`email`, `role`, `status`, `expiresAt`; ẩn token/link mời) |
 
@@ -103,5 +103,5 @@ Các MCP host có thể hiển thị trực tiếp các prompt sau cho người 
 | `review_api_keys` | Developer, Owner | Không | Phát hiện API key chưa từng dùng, cũ hoặc có quyền ghi |
 | `review_pending_vouchers` | Owner | Không | Liệt kê các voucher chờ Owner duyệt và những điểm cần kiểm tra trước khi duyệt |
 | `check_budget` | Owner | Không | Kiểm tra ngân sách điểm còn lại và có cần nạp thêm hay không |
-| `check_webhooks` | Owner | Không | Nhóm các webhook delivery lỗi/đang retry theo endpoint và gợi ý nguyên nhân |
+| `check_webhooks` | Developer, Owner | Không | Nhóm các webhook delivery lỗi/đang retry theo endpoint và gợi ý nguyên nhân |
 | `review_console_access` | Owner | Không | Rà soát danh sách Owner, Business Developer, tài khoản bị tạm ngưng và lời mời đang chờ |

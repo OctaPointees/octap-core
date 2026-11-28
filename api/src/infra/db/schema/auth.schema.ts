@@ -29,6 +29,7 @@ export const changeRequestTypeEnum = pgEnum('change_request_type', [
   'REINSTATE',
   'BUDGET_TOP_UP',
   'UPDATE_IDENTITY',
+  'UPDATE_EARN_RATE',
 ]);
 
 /**

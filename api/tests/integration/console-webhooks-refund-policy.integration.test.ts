@@ -18,7 +18,7 @@ const policy = {
   reason: 'Customer service policy',
 };
 
-describe('console webhooks and refund policy: Owner only, from a Google session', () => {
+describe('console webhooks and refund policy, from a Google session', () => {
   let ctx: Awaited<ReturnType<typeof createTestApp>>;
   let ids: Record<Actor, string>;
   let orgId: string;
@@ -61,13 +61,20 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
     return { endpoint, deliveryId: delivery.id };
   };
 
-  /** Every console route this ticket adds, in an order the Owner can run them all in. */
-  const routes = (endpointId: string, deliveryId: string): Array<[string, (actor: Actor) => Test, number]> => [
-    ['list endpoints', (a) => ctx.http().get(hooks('/endpoints')).set(as(a)), 200],
+  /**
+   * Every webhook and refund policy console route, in an order the Owner can run them all in, with
+   * whether a Business Developer may call it too.
+   */
+  const routes = (
+    endpointId: string,
+    deliveryId: string,
+  ): Array<[string, (actor: Actor) => Test, number, 'developer' | 'owner']> => [
+    ['list endpoints', (a) => ctx.http().get(hooks('/endpoints')).set(as(a)), 200, 'developer'],
     [
       'register an endpoint',
       (a) => ctx.http().post(hooks('/endpoints')).set(as(a)).send({ url: 'https://merchant.example/other' }),
       201,
+      'owner',
     ],
     [
       'disable an endpoint',
@@ -77,6 +84,7 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
           .post(hooks(`/endpoints/${endpointId}/disable`))
           .set(as(a)),
       201,
+      'owner',
     ],
     [
       'enable an endpoint',
@@ -86,6 +94,7 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
           .post(hooks(`/endpoints/${endpointId}/enable`))
           .set(as(a)),
       201,
+      'owner',
     ],
     [
       'rotate a secret',
@@ -95,8 +104,19 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
           .post(hooks(`/endpoints/${endpointId}/rotate-secret`))
           .set(as(a)),
       201,
+      'owner',
     ],
-    ['list deliveries', (a) => ctx.http().get(hooks('/deliveries')).set(as(a)), 200],
+    [
+      'send a test event',
+      (a) =>
+        ctx
+          .http()
+          .post(hooks(`/endpoints/${endpointId}/test`))
+          .set(as(a)),
+      201,
+      'developer',
+    ],
+    ['list deliveries', (a) => ctx.http().get(hooks('/deliveries')).set(as(a)), 200, 'developer'],
     [
       'replay a delivery',
       (a) =>
@@ -105,10 +125,11 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
           .post(hooks(`/deliveries/${deliveryId}/replay`))
           .set(as(a)),
       201,
+      'developer',
     ],
-    ['read the refund policy', (a) => ctx.http().get(refunds()).set(as(a)), 200],
-    ['read its history', (a) => ctx.http().get(refunds('/history')).set(as(a)), 200],
-    ['publish a refund policy', (a) => ctx.http().put(refunds()).set(as(a)).send(policy), 200],
+    ['read the refund policy', (a) => ctx.http().get(refunds()).set(as(a)), 200, 'owner'],
+    ['read its history', (a) => ctx.http().get(refunds('/history')).set(as(a)), 200, 'owner'],
+    ['publish a refund policy', (a) => ctx.http().put(refunds()).set(as(a)).send(policy), 200, 'owner'],
   ];
 
   beforeAll(async () => {
@@ -135,10 +156,11 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
     reader = { authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { scopes: ['read'] })).rawKey}` };
   });
 
-  it('refuses everyone but the active Owner, a Business Developer included, and changes nothing when it does', async () => {
+  it('refuses a Business Developer the Owner-only routes and everyone else every route, changing nothing', async () => {
     const { endpoint, deliveryId } = await seedWebhooks();
     for (const actor of ['developer', 'stranger', 'inactive', 'outsider'] as const) {
-      for (const [name, send] of routes(endpoint.id, deliveryId)) {
+      for (const [name, send, , who] of routes(endpoint.id, deliveryId)) {
+        if (actor === 'developer' && who === 'developer') continue;
         const refused = await send(actor);
         expect([name, actor, refused.status]).toEqual([name, actor, 403]);
       }
@@ -150,6 +172,24 @@ describe('console webhooks and refund policy: Owner only, from a Google session'
     expect((await deliveriesWithEvents(ctx.db))[0].status).toBe('DEAD_LETTER');
     expect(await ctx.db.select().from(schema.voucherRefundPolicies)).toEqual([]);
     await ctx.http().get(refunds()).expect(401);
+  });
+
+  it('lets a Business Developer read webhooks, send a test event and replay a delivery', async () => {
+    const { endpoint, deliveryId } = await seedWebhooks();
+    for (const [name, send, status, who] of routes(endpoint.id, deliveryId)) {
+      if (who !== 'developer') continue;
+      const response = await send('developer');
+      expect([name, response.status]).toEqual([name, status]);
+      expect(response.headers['cache-control']).toBe('no-store');
+    }
+    const [listed] = (await ctx.http().get(hooks('/endpoints')).set(as('developer')).expect(200)).body;
+    expect(listed).not.toHaveProperty('secret');
+    const deliveries = await deliveriesWithEvents(ctx.db);
+    expect(deliveries.find((d) => d.id === deliveryId)?.status).toBe('PENDING');
+    expect(deliveries.map((d) => d.eventType)).toContain('webhook.test');
+    // The endpoint itself is as the Owner registered it.
+    const [stored] = await ctx.db.select().from(schema.webhookEndpoints);
+    expect(stored).toMatchObject({ status: 'ACTIVE', secret: endpoint.secret });
   });
 
   it('lets the Owner do everything, and refuses the Owner of a suspended organization', async () => {
