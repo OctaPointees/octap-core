@@ -38,6 +38,28 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ],
     "type": "string"
   },
+  "CampaignsController_get_Response": {
+    "$ref": "#/components/schemas/CampaignDto",
+    "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
+  },
+  "CampaignsController_list_Query": {
+    "type": "object",
+    "properties": {
+      "live": {
+        "enum": [
+          "false",
+          "true"
+        ],
+        "type": "string"
+      }
+    }
+  },
+  "CampaignsController_list_Response": {
+    "type": "array",
+    "items": {
+      "$ref": "#/components/schemas/CampaignDto"
+    }
+  },
   "ConsoleAnalyticsController_summary_Query": {
     "type": "object",
     "properties": {
@@ -369,86 +391,8 @@ export const ROUTE_SCHEMAS: Record<string, Record<string, unknown>> = {
     ]
   },
   "ConsoleCampaignsController_create_Response": {
-    "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it.",
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "organizationId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "description": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "status": {
-        "$ref": "#/components/schemas/CampaignStatus"
-      },
-      "startsAt": {
-        "type": "string"
-      },
-      "endsAt": {
-        "type": "string"
-      },
-      "multiplierBps": {
-        "description": "20000 is 2x. `null`: the campaign boosts no earn, it only groups vouchers.",
-        "type": [
-          "null",
-          "number"
-        ]
-      },
-      "earnBoostLive": {
-        "description": "Whether an earn naming it is boosted right now: ACTIVE, within its window, with a multiplier.",
-        "type": "boolean"
-      },
-      "createdByUserId": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "approvedByUserId": {
-        "description": "The Owner whose first activation approved it.",
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "approvedAt": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "createdAt": {
-        "type": "string"
-      },
-      "updatedAt": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "approvedAt",
-      "approvedByUserId",
-      "createdAt",
-      "createdByUserId",
-      "description",
-      "earnBoostLive",
-      "endsAt",
-      "id",
-      "multiplierBps",
-      "name",
-      "organizationId",
-      "startsAt",
-      "status",
-      "updatedAt"
-    ]
+    "$ref": "#/components/schemas/CampaignDto",
+    "description": "A named, time-boxed promotion (OCT-340). It may boost earn, group vouchers, or both:\n- Earn: an earn that sends this campaign's id as `campaignId` gets `multiplierBps` on top of the\n  program's rate, while the campaign is ACTIVE and `startsAt <= now <= endsAt`. Otherwise the earn is\n  refused (422), never earned at the base rate instead.\n- Vouchers: a voucher created with `campaignId`, alone or in a batch, belongs to it."
   },
   "ConsoleCampaignsController_detail_Response": {
     "description": "A campaign with its vouchers, in `code` order.",

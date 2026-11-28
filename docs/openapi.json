@@ -7243,6 +7243,102 @@
         "description": "**Auth:** merchant API key.\n\n**Required scopes:** `write`."
       }
     },
+    "/v1/campaigns": {
+      "get": {
+        "operationId": "CampaignsController_list",
+        "parameters": [
+          {
+            "name": "live",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
+    "/v1/campaigns/{campaignId}": {
+      "get": {
+        "operationId": "CampaignsController_get",
+        "parameters": [
+          {
+            "name": "campaignId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrganizationIdHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success."
+          },
+          "4XX": {
+            "description": "Request rejected. `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-octap-auth": {
+          "kind": "apiKey",
+          "scopes": [
+            "read"
+          ]
+        },
+        "description": "**Auth:** merchant API key.\n\n**Required scopes:** `read`."
+      }
+    },
     "/v1/webhooks/endpoints": {
       "get": {
         "operationId": "WebhooksController_listEndpoints",
@@ -8502,6 +8598,9 @@
     "contact": {}
   },
   "tags": [
+    {
+      "name": "Campaigns"
+    },
     {
       "name": "Console Analytics"
     },

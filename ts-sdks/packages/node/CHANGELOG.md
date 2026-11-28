@@ -10,6 +10,8 @@
   { campaignId })` puts a batch's vouchers in a campaign. `VoucherDto.campaignId`, and
   `credits.earned` webhooks carry `campaignId` when a campaign boosted the earn. Needs
   `@octap/contracts` with the campaign types.
+- `listCampaigns({ live })` and `getCampaign(id)` (`GET /v1/campaigns`, `read` scope): a POS lists
+  the campaigns that boost an earn right now, so the cashier can pick one.
 
 ## 0.3.0
 

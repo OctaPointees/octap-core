@@ -36,6 +36,8 @@ import type {
   VoucherBatchDetailDto,
   VoucherBatchDto,
   VoucherBatchItem,
+  CampaignDto,
+  ListCampaignsRequest,
 } from '@octap/contracts';
 import type { Transport } from './transports/transport.js';
 import { OctaApiError, OctaSdkError, OctaNetworkError, OctaRequestAbortedError } from './errors/index.js';
@@ -247,6 +249,21 @@ export class OctaPointClient {
    */
   async getProgram(options?: RequestOptions): Promise<ProgramEvidence> {
     return this.request<ProgramEvidence>('/v1/credits/program', 'GET', undefined, options);
+  }
+
+  /**
+   * The organization's campaigns, newest first, archived ones left out. With `{ live: true }`, only
+   * those that boost an earn right now: show them at the till and send the pick as `campaignId` on
+   * `earnPoints`.
+   */
+  async listCampaigns(query: ListCampaignsRequest = {}, options?: RequestOptions): Promise<CampaignDto[]> {
+    return this.request<CampaignDto[]>('/v1/campaigns', 'GET', undefined, options, {
+      live: query.live === undefined ? undefined : String(query.live),
+    });
+  }
+
+  async getCampaign(campaignId: string, options?: RequestOptions): Promise<CampaignDto> {
+    return this.request<CampaignDto>(`/v1/campaigns/${encodeURIComponent(campaignId)}`, 'GET', undefined, options);
   }
 
   /**

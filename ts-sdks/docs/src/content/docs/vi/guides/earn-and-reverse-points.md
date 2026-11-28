@@ -21,7 +21,7 @@ const earn = await client.earnPoints({
 
 ### Nhân điểm bằng campaign
 
-Owner có thể chạy một campaign có thời hạn trên console, ví dụ "cuối tuần x2 điểm". Để áp dụng, hãy gửi id của nó:
+Owner có thể chạy một campaign có thời hạn trên console, ví dụ "cuối tuần x2 điểm". Lấy các campaign đang chạy bằng [`listCampaigns({ live: true })`](/vi/reference/node/credits/#listcampaigns), cho thu ngân chọn, rồi gửi id của nó:
 
 ```ts
 await client.earnPoints({

@@ -249,6 +249,38 @@ describe('campaigns', () => {
     });
   });
 
+  describe('API key reads', () => {
+    it('lists the live campaigns for a till, reads one, and never another organization’s', async () => {
+      const weekend = await live();
+      const paused = await live({ name: 'Paused' });
+      await act(paused, 'pause').expect(201);
+      const vouchersOnly = await live({ name: 'Vouchers', multiplierBps: null });
+      const draft = (
+        await create({ name: 'Draft', startsAt: at(-1), endsAt: at(48), multiplierBps: 20_000 }).expect(201)
+      ).body.id;
+      const archived = await live({ name: 'Gone' });
+      await act(archived, 'archive').expect(201);
+      const theirs = (
+        await create({ name: 'Theirs', startsAt: at(-1), endsAt: at(48) }, 'outsider', otherOrgId).expect(201)
+      ).body.id;
+
+      const all = (await ctx.http().get('/v1/campaigns').set(key).expect(200)).body;
+      expect(all.map((c: { id: string }) => c.id).sort()).toEqual([weekend, paused, vouchersOnly, draft].sort());
+      const liveOnes = (await ctx.http().get('/v1/campaigns?live=true').set(key).expect(200)).body;
+      expect(liveOnes).toEqual([expect.objectContaining({ id: weekend, multiplierBps: 20_000, earnBoostLive: true })]);
+      await ctx.http().get('/v1/campaigns?live=yes').set(key).expect(400);
+
+      expect((await ctx.http().get(`/v1/campaigns/${weekend}`).set(key).expect(200)).body.name).toBe('Weekend 2x');
+      await ctx.http().get(`/v1/campaigns/${theirs}`).set(key).expect(404);
+
+      // A sandbox key reads the same campaigns, to test the till's picker.
+      const sandbox = {
+        Authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { environment: 'SANDBOX' })).rawKey}`,
+      };
+      expect((await ctx.http().get('/v1/campaigns?live=true').set(sandbox).expect(200)).body).toHaveLength(1);
+    });
+  });
+
   describe('vouchers', () => {
     it('stamps a batch, and a single voucher, with the campaign, keeping the batch as it is', async () => {
       const campaignId = (await create({ name: 'Tết', startsAt: at(1), endsAt: at(200) }).expect(201)).body.id;

@@ -50,6 +50,8 @@ anything, and keep every spend behind the customer's signature.
 | --- | --- |
 | `POST /v1/identity/verify` | `verifyCustomer(idToken)` |
 | `POST /v1/credits/earn` | `earnPoints({ organizationEndUserId, purchaseAmount, idempotencyKey, campaignId? })` |
+| `GET /v1/campaigns` | `listCampaigns({ live? })` |
+| `GET /v1/campaigns/:id` | `getCampaign(campaignId)` |
 | `POST /v1/credits/redeem/reserve`, `/finalize` | `reservePosRedemption`, `finalizePosRedemption` |
 | `POST /v1/credits/transactions/:id/reverse` | `reverseTransaction` |
 | `GET /v1/credits/members/:id/balance`, `/transactions` | `getBalance`, `listTransactions` |

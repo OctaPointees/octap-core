@@ -38,6 +38,11 @@ export interface CampaignDto {
   updatedAt: string;
 }
 
+export interface ListCampaignsRequest {
+  /** Only campaigns that boost an earn right now (`earnBoostLive`). Defaults to `false`. */
+  live?: boolean;
+}
+
 /** A campaign with its vouchers, in `code` order. */
 export interface CampaignDetailDto extends CampaignDto {
   vouchers: VoucherDto[];

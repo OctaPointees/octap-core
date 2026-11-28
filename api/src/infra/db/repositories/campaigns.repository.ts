@@ -116,7 +116,6 @@ export class CampaignsRepository {
     });
   }
 
-  /** The campaign row, locked; call it inside the organization's `withTenant` block. */
   /**
    * The campaign under a share lock, inside the caller's transaction, or undefined. An earn re-checks
    * its campaign this way, so a pause or end (which takes the row lock) waits for that earn to commit,
@@ -131,6 +130,7 @@ export class CampaignsRepository {
     return campaign;
   }
 
+  /** The campaign row, locked; call it inside the organization's `withTenant` block. */
   async lock(tx: DrizzleDb, organizationId: string, id: string, mode: 'update' | 'share'): Promise<Campaign> {
     const [campaign] = await tx
       .select()

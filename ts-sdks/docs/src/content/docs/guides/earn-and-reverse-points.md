@@ -21,7 +21,7 @@ const earn = await client.earnPoints({
 
 ### Boost an earn with a campaign
 
-An Owner can run a time-boxed campaign in the console, such as "weekend 2x points". To apply it, send its id:
+An Owner can run a time-boxed campaign in the console, such as "weekend 2x points". List the live ones with [`listCampaigns({ live: true })`](/reference/node/credits/#listcampaigns), let the cashier pick, and send its id:
 
 ```ts
 await client.earnPoints({

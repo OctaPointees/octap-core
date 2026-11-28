@@ -36,6 +36,31 @@ const OWNER_DENIED =
 const PAUSE_DENIED = 'Only an active Owner of an active organization can pause or resume its rewards';
 
 /**
+ * Campaigns for a merchant API key (OCT-340): read only, so a POS can list the campaigns that boost
+ * an earn right now and let the cashier pick one for `earnPoints({ campaignId })`. Creating and
+ * approving campaigns stays in the console.
+ */
+@Injectable()
+export class CampaignsService {
+  constructor(private readonly campaigns: CampaignsRepository) {}
+
+  /** Every campaign but archived ones, newest first; with `live`, only those that boost an earn now. */
+  async list(orgId: string, live?: unknown): Promise<CampaignDto[]> {
+    const onlyLive = parseFlag(live, 'live');
+    const now = new Date();
+    const rows = (await this.campaigns.list(orgId, false)).map((c) => toCampaignDto(c, now));
+    return onlyLive ? rows.filter((c) => c.earnBoostLive) : rows;
+  }
+
+  /** Another organization's campaign is a 404. */
+  async get(orgId: string, campaignId: string): Promise<CampaignDto> {
+    const campaign = await this.campaigns.find(orgId, campaignId);
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    return toCampaignDto(campaign);
+  }
+}
+
+/**
  * Campaigns from the console (OCT-340). The Owner and a Business Developer read them and create them
  * as DRAFTs. Only the Owner moves a campaign's own status: activating a DRAFT is its approval, and
  * nothing is boosted before it. An earn opts into a campaign with `campaignId`
@@ -253,8 +278,8 @@ function isoDate(value: unknown, field: string): Date {
 }
 
 /** `?includeArchived=true` arrives as a string; a boolean is fine too. */
-function parseFlag(value: unknown): boolean {
+function parseFlag(value: unknown, name = 'includeArchived'): boolean {
   if (value === undefined || value === false || value === 'false') return false;
   if (value === true || value === 'true') return true;
-  throw new BadRequestException('includeArchived must be true or false');
+  throw new BadRequestException(`${name} must be true or false`);
 }
