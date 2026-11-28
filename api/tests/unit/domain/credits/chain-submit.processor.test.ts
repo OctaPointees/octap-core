@@ -1250,6 +1250,9 @@ describe('ChainSubmitProcessor policy rotation (OCT-341)', () => {
 
     expect(signs).toBe(1);
     expect(markFailed).toHaveBeenCalledOnce();
+  });
+});
+
 describe('ChainSubmitProcessor campaign boost (OCT-340)', () => {
   it('signs the earn with the multiplier fixed when the earn was accepted, and confirms what the chain minted', async () => {
     const earn = vi.fn(async () => earned('2000'));
