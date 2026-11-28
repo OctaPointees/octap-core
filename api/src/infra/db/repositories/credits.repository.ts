@@ -591,6 +591,11 @@ export class CreditsRepository {
     campaignId?: string;
     /** The boost the chain applies (`credit_account::earn`); omitted is an ordinary earn (10000, 1x). */
     multiplierBps?: number;
+    /**
+     * Runs inside the transaction before new work is written (never on a replay); a throw rolls the
+     * earn back. The boosted earn re-checks its campaign here under a share lock.
+     */
+    campaignGate?: (tx: DrizzleDb) => Promise<unknown>;
   }) {
     return this.db.transaction(async (outer) => {
       await lockIdempotencyKey(outer, params.organizationId, params.idempotencyKey);
@@ -636,6 +641,7 @@ export class CreditsRepository {
       }
 
       return withActiveMember(outer, params.organizationId, params.organizationEndUserId, async (tx) => {
+        await params.campaignGate?.(tx);
         let ownership = await tx.query.creditOwnerships.findFirst({
           where: eq(creditOwnerships.organizationEndUserId, params.organizationEndUserId),
         });

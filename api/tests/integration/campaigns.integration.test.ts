@@ -225,6 +225,28 @@ describe('campaigns', () => {
         first.transactionId,
       );
     });
+
+    it('answers a sandbox replay with the original earn once its campaign has closed, as live does', async () => {
+      const sandbox = {
+        Authorization: `Bearer ${(await seedCredential(ctx.db, orgId, { environment: 'SANDBOX' })).rawKey}`,
+      };
+      const sandboxEarn = (body: Record<string, unknown>) =>
+        ctx
+          .http()
+          .post('/v1/credits/earn')
+          .set(sandbox)
+          .send({ organizationEndUserId: memberId, purchaseAmount: 100_000, idempotencyKey: 'sbx', ...body });
+      const campaignId = await live();
+      const first = (await sandboxEarn({ campaignId }).expect(201)).body;
+      expect(first).toMatchObject({ isSandbox: true, pointsEarned: 2000 });
+
+      await act(campaignId, 'end').expect(201);
+      const again = (await sandboxEarn({ campaignId }).expect(201)).body;
+      expect(again).toMatchObject({ transactionId: first.transactionId, pointsEarned: 2000 });
+      // New work is still refused, and the same key without the campaign is still a conflict.
+      await sandboxEarn({ idempotencyKey: 'sbx-new', campaignId }).expect(422);
+      await sandboxEarn({}).expect(409);
+    });
   });
 
   describe('vouchers', () => {
@@ -303,6 +325,31 @@ describe('campaigns', () => {
           .expect(201)
       ).body;
       await ctx.http().patch(`/v1/rewards/vouchers/${plain.id}`).set(key).send({ campaignId }).expect(400);
+    });
+
+    it('gives an archived code brought back by a batch that batch’s campaign, or none', async () => {
+      const first = (await create({ name: 'Tết', startsAt: at(1), endsAt: at(200) }).expect(201)).body.id;
+      const second = (await create({ name: 'Summer', startsAt: at(1), endsAt: at(200) }).expect(201)).body.id;
+      const batch = (campaignId?: string) =>
+        ctx
+          .http()
+          .post('/v1/rewards/voucher-batches')
+          .set(key)
+          .send({ ...(campaignId ? { campaignId } : {}), items: [voucher('TET10')] })
+          .expect(201);
+      const campaignOf = async () =>
+        (await ctx.db.select().from(schema.vouchers).where(eq(schema.vouchers.code, 'TET10')))[0].campaignId;
+
+      await batch(first);
+      await act(first, 'vouchers/archive').expect(201);
+      await batch();
+      expect(await campaignOf()).toBeNull();
+      expect((await ctx.http().get(`${path()}/${first}`).set(as('owner')).expect(200)).body.vouchers).toEqual([]);
+
+      // Archived again, then brought back into another campaign.
+      await ctx.db.update(schema.vouchers).set({ status: 'ARCHIVED' }).where(eq(schema.vouchers.code, 'TET10'));
+      await batch(second);
+      expect(await campaignOf()).toBe(second);
     });
 
     it('archives, and lets only the Owner pause, every voucher of the campaign at once', async () => {

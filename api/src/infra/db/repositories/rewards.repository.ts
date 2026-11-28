@@ -1336,8 +1336,9 @@ export class RewardsRepository {
           : {}),
         status: 'DRAFT',
         importBatchId: batch.id,
-        // Brought back as a new voucher: it joins the batch's campaign, if the batch names one.
-        ...(campaignId ? { campaignId } : {}),
+        // Brought back as a new voucher: it joins the batch's campaign, and a batch naming none
+        // clears the old one, so the old campaign's bulk actions no longer reach it.
+        campaignId,
         updatedAt: new Date(),
       })
       .where(eq(vouchers.id, stored.id))

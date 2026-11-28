@@ -58,8 +58,13 @@ export class SandboxCreditsService {
   async earn(tenant: TenantContext, request: EarnPointsRequest): Promise<EarnPointsResponse> {
     await this.assertMember(tenant.organizationId, request.organizationEndUserId);
     const program = await requireProgramConfig(this.programsRepo, tenant.organizationId);
-    const boost = await campaignBoost(this.campaigns, tenant.organizationId, request.campaignId);
-    const points = pointsForPurchase(request.purchaseAmount, program.earnBps, boost.multiplierBps);
+    // As live: a retry under an accepted key skips the campaign check and reports the original earn,
+    // even once its campaign has closed. Its `campaignId` still has to match, from the payload hash.
+    const replayed = await this.sandbox.findByKey(tenant.organizationId, request.idempotencyKey);
+    const boost = replayed ? null : await campaignBoost(this.campaigns, tenant.organizationId, request.campaignId);
+    const points = boost
+      ? pointsForPurchase(request.purchaseAmount, program.earnBps, boost.multiplierBps)
+      : replayed!.pointsAmount;
     const { transaction, balance } = await this.sandbox
       .earn({
         organizationId: tenant.organizationId,
@@ -70,7 +75,7 @@ export class SandboxCreditsService {
         idempotencyKey: request.idempotencyKey,
         receiptReference: request.receiptReference,
         metadata: request.metadata,
-        campaignId: boost.campaignId ?? undefined,
+        campaignId: typeof request.campaignId === 'string' ? request.campaignId : undefined,
       })
       .catch(mapWriteError);
     return {

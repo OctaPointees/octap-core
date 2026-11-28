@@ -141,28 +141,40 @@ describe('EarnService campaigns (OCT-340)', () => {
     multiplierBps: 20_000,
     ...overrides,
   });
-  const withCampaign = (row: unknown) => {
-    const recordEarnTransaction = vi.fn(async (params: { estimatedPoints: number; idempotencyKey: string }) => ({
-      transaction: buildLoyaltyTransaction({
-        id: 'tx-1',
-        organizationEndUserId: 'user-1',
-        pointsAmount: params.estimatedPoints,
-        status: 'PENDING',
-        idempotencyKey: params.idempotencyKey,
-      }),
-      newBalance: 0,
-      isNew: true,
-    }));
+  const withCampaign = (row: unknown, locked: unknown = row) => {
+    const recordEarnTransaction = vi.fn(
+      async (params: {
+        estimatedPoints: number;
+        idempotencyKey: string;
+        campaignGate?: (tx: never) => Promise<unknown>;
+      }) => {
+        // As the repository does, inside the earn's transaction.
+        await params.campaignGate?.('tx' as never);
+        return {
+          transaction: buildLoyaltyTransaction({
+            id: 'tx-1',
+            organizationEndUserId: 'user-1',
+            pointsAmount: params.estimatedPoints,
+            status: 'PENDING',
+            idempotencyKey: params.idempotencyKey,
+          }),
+          newBalance: 0,
+          isNew: true,
+        };
+      },
+    );
     const find = vi.fn(async () => row);
+    const findLocked = vi.fn(async () => locked);
     const repo = stub<CreditsRepository>({
       findMemberOrganizationId: async () => 'org-1',
       findTransactionByIdempotency: async () => undefined,
       recordEarnTransaction,
     });
     return {
-      service: new EarnService(repo, PROGRAMS_REPO, budget, stub<CampaignsRepository>({ find })),
+      service: new EarnService(repo, PROGRAMS_REPO, budget, stub<CampaignsRepository>({ find, findLocked })),
       recordEarnTransaction,
       find,
+      findLocked,
     };
   };
 
@@ -177,10 +189,20 @@ describe('EarnService campaigns (OCT-340)', () => {
     );
   });
 
+  it('checks the campaign again under its lock inside the earn, refusing one paused in between', async () => {
+    const { service, findLocked } = withCampaign(campaign(), campaign({ status: 'PAUSED' }));
+    await expect(service.executeEarn('org-1', { ...request, campaignId: CAMPAIGN_ID })).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringMatching(/is PAUSED, not ACTIVE/),
+    });
+    expect(findLocked).toHaveBeenCalledWith('tx', 'org-1', CAMPAIGN_ID);
+  });
+
   it('is an ordinary 1x earn without a campaignId, never reading campaigns', async () => {
-    const { service, recordEarnTransaction, find } = withCampaign(campaign());
+    const { service, recordEarnTransaction, find, findLocked } = withCampaign(campaign());
     await service.executeEarn('org-1', request);
     expect(find).not.toHaveBeenCalled();
+    expect(findLocked).not.toHaveBeenCalled();
     expect(recordEarnTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ campaignId: undefined, multiplierBps: 10_000, estimatedPoints: 1000 }),
     );

@@ -14,6 +14,7 @@ import { IssuanceBudgetService } from './issuance-budget.service.js';
 import { mapMemberEligibilityError } from './member-eligibility-error.js';
 import { BASE_MULTIPLIER_BPS, campaignBoost } from './campaign-boost.js';
 import { CampaignsRepository } from '#infra/db/repositories/campaigns.repository.js';
+import type { DrizzleDb } from '#infra/db/postgres.provider.js';
 
 type LoyaltyTransaction = Awaited<ReturnType<CreditsRepository['recordEarnTransaction']>>['transaction'];
 
@@ -95,6 +96,19 @@ export class EarnService {
         // The request's own value, so a replay that changed it conflicts; the boost is new work's.
         campaignId: typeof request.campaignId === 'string' ? request.campaignId : undefined,
         multiplierBps: boost?.multiplierBps ?? BASE_MULTIPLIER_BPS,
+        // The check above ran outside the earn's transaction: an Owner could pause or end the campaign
+        // in between. Checking again under a share lock closes that window. A campaign's multiplier
+        // never changes, so its status and dates are all that can have moved.
+        ...(boost?.campaignId
+          ? {
+              campaignGate: (tx: DrizzleDb) =>
+                campaignBoost(
+                  { find: (org, id) => this.campaigns.findLocked(tx, org, id) },
+                  organizationId,
+                  boost.campaignId,
+                ),
+            }
+          : {}),
       })
       .catch((error: unknown) => {
         if (error instanceof OperationPayloadConflictError) throw new ConflictException(error.message);

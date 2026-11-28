@@ -259,6 +259,11 @@ export class SandboxRepository {
     });
   }
 
+  /** The sandbox transaction already accepted under `idempotencyKey`, if any. */
+  async findByKey(organizationId: string, idempotencyKey: string): Promise<SandboxTransaction | undefined> {
+    return withTenant(this.db, organizationId, (tx) => this.byKey(tx, organizationId, idempotencyKey, false));
+  }
+
   private async byKey(tx: Tx, organizationId: string, idempotencyKey: string): Promise<SandboxTransaction>;
   private async byKey(
     tx: Tx,
