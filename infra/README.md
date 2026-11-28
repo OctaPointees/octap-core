@@ -84,7 +84,8 @@ to the `api` ECS service, health-checked on `/health`. The tasks accept traffic 
 balancer only. The certificate (ACM) and the DNS records live in Cloudflare, created by
 Terraform, DNS only: Cloudflare's proxy would cut a stream at 100 seconds.
 
-1. **A Cloudflare API token** with DNS edit on `octap.biz`, in the shell, never in a file here:
+1. **A Cloudflare API token** on the `octap.biz` zone with Zone Read (Terraform looks the zone up by
+   name) and DNS Edit, in the shell, never in a file here:
 
    ```sh
    export CLOUDFLARE_API_TOKEN=...                 # bash
