@@ -196,6 +196,8 @@ export class ConsoleCampaignsService {
     results: VoucherBatchActionRow[],
     tx: DrizzleDb,
   ): Promise<CampaignVoucherActionResponse> {
+    // The response shows the campaign as it stands: ENDED once its window is over (OCT-343).
+    await this.campaigns.closeDueFor(orgId, tx);
     const campaign = await this.campaigns.find(orgId, campaignId, tx);
     return {
       campaign: toCampaignDto(campaign!),

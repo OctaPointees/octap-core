@@ -330,6 +330,37 @@ describe('campaigns', () => {
       await act(due, 'archive').expect(201);
       expect(await statusOf(due)).toBe('ARCHIVED');
     });
+
+    it('takes no new vouchers once over, and shows ENDED after a bulk action, before any sweep', async () => {
+      const due = await live();
+      await ctx
+        .http()
+        .post('/v1/rewards/vouchers')
+        .set(key)
+        .send({ ...voucher('IN-TIME'), status: 'DRAFT', campaignId: due })
+        .expect(201);
+      await over(due);
+      expect(
+        (
+          await ctx
+            .http()
+            .post('/v1/rewards/vouchers')
+            .set(key)
+            .send({ ...voucher('TOO-LATE'), status: 'DRAFT', campaignId: due })
+            .expect(409)
+        ).body.message,
+      ).toMatch(/ended at/);
+      await ctx
+        .http()
+        .post('/v1/rewards/voucher-batches')
+        .set(key)
+        .send({ campaignId: due, items: [voucher('LATE-BATCH')] })
+        .expect(409);
+
+      const archived = (await act(due, 'vouchers/archive').expect(201)).body;
+      expect(archived.campaign).toMatchObject({ id: due, status: 'ENDED' });
+      expect(archived.vouchers.map((v: { code: string }) => v.code)).toEqual(['IN-TIME']);
+    });
   });
 
   describe('API key reads', () => {
