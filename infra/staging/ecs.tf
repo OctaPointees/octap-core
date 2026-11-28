@@ -1,12 +1,12 @@
 # The ECS cluster and the one-off migration task (OCT-319). The api service (api.tf, OCT-320)
-# runs here; the worker and mcp services join in OCT-321 and OCT-307.
+# and the workers (workers.tf, OCT-321) run here; the mcp service joins in OCT-307.
 
 resource "aws_ecs_cluster" "core" {
   name = var.name
 }
 
 # The role ECS itself uses to start a task: pull the image, write logs, read the task's secrets.
-# What a running process may do (KMS signing) is a separate task role, added with the workers.
+# What a running process may do (KMS signing) is a separate task role, per worker (workers.tf).
 data "aws_iam_policy_document" "ecs_tasks_assume" {
   statement {
     actions = ["sts:AssumeRole"]

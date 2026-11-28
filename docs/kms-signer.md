@@ -116,9 +116,11 @@ A member of the AWS project can skip the access key: `aws login --profile octap-
 The testnet deployment is also the staging environment real users touch, so it gets the
 production shape wherever the host allows:
 
-- **On AWS compute** (ECS/Fargate, EKS, EC2): use `OctapTestnetIssuerSigner` as the task role,
-  pod identity or instance profile. Don't set any AWS key variables; the default chain picks up
-  the role. This is the target shape for mainnet too.
+- **On AWS compute** (ECS/Fargate, EKS, EC2): give the worker a role with `kms:Sign` on the issuer
+  key only, as its task role, pod identity or instance profile. Don't set any AWS key variables;
+  the default chain picks up the role. This is the target shape for mainnet too. Staging does this
+  on ECS (OCT-321, `infra/staging/workers.tf`): `worker` signs with the issuer key, and a separate
+  `org-worker` (`WORKER_JOBS=org-setup`) is the only task that may sign with the program-admin key.
 - **On a non-AWS host**: create a dedicated IAM user `octap-testnet-worker` with only the issuer
   role's policy (never the admin key), and store its access key in the host's secret store as
   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Don't reuse the team's signer key there.

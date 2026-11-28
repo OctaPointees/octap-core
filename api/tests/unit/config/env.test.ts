@@ -166,6 +166,20 @@ describe('validateEnv', () => {
           .errors,
       ).toEqual([]);
     });
+
+    it('runs WORKER_JOBS=org-setup only with provisioning on, and knows no other job set', () => {
+      const worker = { ...DB, SUI_ISSUER_PRIVATE_KEY: 'k', SUI_PROGRAM_ADMIN_PRIVATE_KEY: 'a' };
+      expect(validateEnv('worker', { ...worker, WORKER_JOBS: 'org-setup' }).errors).toEqual([
+        'WORKER_JOBS=org-setup needs ORG_PROVISION_WORKER_ENABLED=true: otherwise the worker runs nothing',
+      ]);
+      expect(
+        validateEnv('worker', { ...worker, WORKER_JOBS: 'org-setup', ORG_PROVISION_WORKER_ENABLED: 'true' }).errors,
+      ).toEqual([]);
+      expect(validateEnv('worker', { ...worker, WORKER_JOBS: 'all' }).errors).toEqual([]);
+      expect(validateEnv('worker', { ...worker, WORKER_JOBS: 'chain' }).errors).toHaveLength(1);
+      // The API process doesn't read it.
+      expect(validateEnv('api', { ...DB, WORKER_JOBS: 'chain' }).errors).toEqual([]);
+    });
   });
 });
 

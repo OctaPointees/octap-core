@@ -109,6 +109,30 @@ Terraform, DNS only: Cloudflare's proxy would cut a stream at 100 seconds.
 Check it: `curl https://api.octap.biz/health` returns 200. A new `image_tag` rolls the service out;
 one that never turns healthy is rolled back by ECS.
 
+## The workers (OCT-321)
+
+Two ECS services run `node api/dist/worker.js` from the same image, each with its own task role,
+which is its only AWS credential (`workers.tf`, `docs/kms-signer.md`):
+
+| Service | Jobs | KMS |
+| --- | --- | --- |
+| `worker` | everything but organization setup: chain submission, the indexer, webhooks, sweeps | `Sign` on the issuer key |
+| `org-worker` | organization setup, budget top-ups, earn-rate changes (`WORKER_JOBS=org-setup`) | `Sign` on the program-admin key, the issuer key's public key only |
+
+The keys (`alias/octap-testnet-issuer`, `alias/octap-testnet-program-admin`) exist outside
+Terraform, which only looks them up. A deploy stops a worker's old task before it starts the new
+one, so no job runs twice at once.
+
+Both sign as the same Sui addresses as every developer's local worker, so they spend the same
+testnet SUI.
+
+Check them:
+
+```sh
+aws ecs describe-services --cluster octap-staging --services worker org-worker   --query 'services[].[serviceName,runningCount,desiredCount]'
+MSYS_NO_PATHCONV=1 aws logs tail /octap/staging/worker --since 15m      # Git Bash needs MSYS_NO_PATHCONV
+```
+
 ## Rules
 
 - `apply` is always run by hand, after reading the plan. Nothing applies automatically.
